@@ -180,6 +180,7 @@
   .icon-btn{ background:none; border:none; cursor:pointer; color:var(--text-faint); font-family:var(--mono); font-size:13px; padding:2px 6px; border-radius:3px; transition:all .15s ease; }
   .icon-btn:hover{ color:var(--p0); background:var(--p0-bg); }
   .icon-btn.toggle:hover{ color:var(--accent); background:var(--accent-glow); }
+  .icon-btn.edit:hover{ color:var(--accent); background:var(--accent-glow); }
 
   .progress-row{ display:flex; align-items:center; gap:10px; margin-top:12px; }
   .progress-track{ flex:1; height:5px; background:var(--bg-inset); border-radius:3px; overflow:hidden; border:1px solid var(--border); }
@@ -188,15 +189,17 @@
   .progress-fill.done{ background:var(--text-faint); }
   .progress-pct{ font-family:var(--mono); font-size:11.5px; font-weight:600; color:var(--text-dim); width:34px; text-align:right; }
 
-  .milestones{ margin-top:14px; padding-top:12px; border-top:1px solid var(--border); display:flex; flex-direction:column; gap:6px; }
-  .ms-row{ display:flex; align-items:center; gap:8px; font-size:12.5px; }
-  .ms-row .ms-text{ flex:1; }
-  .ms-row.done .ms-text{ text-decoration:line-through; color:var(--text-faint); }
+  .goal-children{ margin-top:14px; padding-top:12px; border-top:1px solid var(--border); display:flex; flex-direction:column; gap:6px; }
+  .child-row{ display:flex; align-items:center; gap:8px; font-size:12.5px; }
+  .child-row .child-kind{ font-family:var(--mono); font-size:9px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.04em; flex-shrink:0; }
+  .child-row .child-text{ flex:1; }
+  .child-row.done .child-text{ text-decoration:line-through; color:var(--text-faint); }
+  .child-spacer{ width:14px; height:14px; flex-shrink:0; display:inline-block; }
   .ms-check{ width:14px; height:14px; border-radius:3px; border:1.5px solid var(--text-faint); background:transparent; cursor:pointer; flex-shrink:0; position:relative; }
   .ms-check.done{ background:var(--accent); border-color:var(--accent); }
   .ms-check.done::after{ content:""; position:absolute; left:3px; top:0px; width:4px; height:7px; border:solid #04140F; border-width:0 1.5px 1.5px 0; transform:rotate(40deg); }
-  .add-ms-row{ display:flex; gap:6px; margin-top:4px; }
-  .add-ms-row input{ flex:1; font-family:var(--sans); font-size:12px; padding:6px 8px; }
+  .add-child-row{ display:flex; gap:6px; margin-top:6px; flex-wrap:wrap; }
+  .add-child-row .btn{ font-size:10.5px; padding:6px 10px; }
 
   /* ===== MATRIX VIEW (goals, grouped by category) ===== */
   .matrix-section{ margin-bottom:26px; }
@@ -260,6 +263,40 @@
   .habit-foot{ display:flex; align-items:center; justify-content:space-between; gap:14px; margin-top:12px; flex-wrap:wrap; }
   .streak-tag{ font-family:var(--mono); font-size:11px; color:var(--text-dim); }
   .streak-tag b{ color:var(--accent); }
+
+  /* ===== CALENDAR ===== */
+  .cal-toolbar{ display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:22px; flex-wrap:wrap; }
+  .cal-nav-group{ display:flex; align-items:center; gap:10px; }
+  .cal-nav-btn{ background:var(--bg-raised); border:1px solid var(--border-bright); color:var(--text-dim); width:30px; height:30px; border-radius:5px; cursor:pointer; font-family:var(--mono); font-size:14px; display:flex; align-items:center; justify-content:center; }
+  .cal-nav-btn:hover{ border-color:var(--accent-dim); color:var(--accent); }
+  .cal-month-label{ font-family:var(--mono); font-size:14px; font-weight:700; letter-spacing:0.02em; min-width:160px; text-align:center; }
+  .cal-legend{ display:flex; gap:14px; margin:14px 0 4px; flex-wrap:wrap; }
+  .cal-legend-item{ display:flex; align-items:center; gap:6px; font-family:var(--mono); font-size:10.5px; color:var(--text-dim); }
+  .cal-legend-dot{ width:7px; height:7px; border-radius:2px; flex-shrink:0; }
+  .cal-grid{ display:grid; grid-template-columns:repeat(7,1fr); gap:1px; background:var(--border); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; margin-top:14px; }
+  .cal-weekday{ background:var(--bg-inset); text-align:center; padding:8px 4px; font-family:var(--mono); font-size:10px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.05em; }
+  .cal-day{ background:var(--bg-raised); min-height:96px; padding:6px 6px 8px; display:flex; flex-direction:column; gap:3px; }
+  .cal-day.other-month{ background:var(--bg-inset); opacity:0.45; }
+  .cal-day.today{ box-shadow:inset 0 0 0 1.5px var(--violet); }
+  .cal-day-num{ font-family:var(--mono); font-size:11px; color:var(--text-dim); }
+  .cal-day.today .cal-day-num{ color:var(--violet); font-weight:700; }
+  .cal-entry{ display:flex; align-items:center; gap:4px; font-size:10px; line-height:1.3; overflow:hidden; }
+  .cal-entry .cal-dot{ width:6px; height:6px; border-radius:2px; flex-shrink:0; }
+  .cal-entry .cal-entry-text{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text-dim); }
+  .cal-entry.google .cal-dot{ background:var(--accent); }
+  .cal-entry.project .cal-dot{ background:var(--violet); }
+  .cal-entry.action .cal-dot{ background:var(--p1); }
+  .cal-more{ font-family:var(--mono); font-size:9.5px; color:var(--text-faint); }
+
+  /* ===== AGENT ===== */
+  .agent-chat{ display:flex; flex-direction:column; gap:10px; margin-top:20px; max-height:56vh; overflow-y:auto; padding-right:4px; }
+  .agent-msg{ max-width:78%; padding:10px 13px; border-radius:8px; font-size:13px; line-height:1.5; white-space:pre-wrap; }
+  .agent-msg.user{ align-self:flex-end; background:var(--accent-glow); border:1px solid var(--accent-dim); color:var(--text); }
+  .agent-msg.assistant{ align-self:flex-start; background:var(--bg-raised); border:1px solid var(--border); color:var(--text); }
+  .agent-msg.pending{ color:var(--text-faint); font-style:italic; }
+  .agent-input-row{ display:flex; gap:8px; margin-top:14px; align-items:flex-end; }
+  .agent-input-row textarea{ flex:1; min-height:52px; }
+  .agent-empty{ color:var(--text-faint); font-size:12.5px; text-align:center; padding:30px 0; }
 
   /* ===== JOURNAL ===== */
   .journal-composer{ background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-top:20px; margin-bottom:22px; }
@@ -339,6 +376,7 @@
       <div class="brand" style="margin-bottom:20px;">personal_system<span class="cursor"></span></div>
       <div class="field"><label for="authEmail">email</label><input type="email" id="authEmail" placeholder="you@example.com" autocomplete="email"></div>
       <div class="field"><label for="authPassword">password</label><input type="password" id="authPassword" placeholder="••••••••" autocomplete="current-password"></div>
+      <label class="infinite-toggle"><input type="checkbox" id="staySignedInCheckbox" checked><span>stay signed in on this device</span></label>
       <div class="auth-error" id="authError"></div>
       <button class="btn btn-accent" id="authSubmitBtn" type="button" style="width:100%;margin-top:6px;">sign in</button>
       <button class="auth-toggle" id="authToggleBtn" type="button">Don't have an account? <span>Create one</span></button>
@@ -361,6 +399,8 @@
 
       <nav class="side-nav" id="sideNav">
         <button class="side-link active" data-section="planner" type="button"><span class="sl-glyph">▤</span>Planner</button>
+        <button class="side-link" data-section="agent" type="button"><span class="sl-glyph">◈</span>Agent</button>
+        <button class="side-link" data-section="calendar" type="button"><span class="sl-glyph">▦</span>Calendar</button>
         <button class="side-link" data-section="journal" type="button"><span class="sl-glyph">✎</span>Journal</button>
         <button class="side-link" data-section="people" type="button"><span class="sl-glyph">☺</span>People</button>
       </nav>
@@ -415,7 +455,7 @@
         </div>
         <div class="goal-list" id="goalList"></div>
         <div class="empty-state" id="goalEmptyState" style="display:none;">
-          <div class="glyph">&lt;/&gt;</div><h3>no goals yet</h3><p>Add your first goal and break it into milestones.</p>
+          <div class="glyph">&lt;/&gt;</div><h3>no goals yet</h3><p>Add your first goal, then attach projects, habits and actions to it.</p>
         </div>
       </div>
 
@@ -481,6 +521,52 @@
       </div>
     </section>
 
+    <!-- ===== AGENT SECTION ===== -->
+    <section id="agentSection" style="display:none;">
+      <div class="main-header">
+        <div>
+          <h1>agent</h1>
+          <p class="subhead">Tell it what happened — it captures goals, projects, habits, actions, journal entries and people for you. It can create and edit, but never delete.</p>
+        </div>
+        <button class="btn" id="agentKeyBtn" type="button">api key</button>
+      </div>
+
+      <div class="agent-chat" id="agentChat"></div>
+
+      <div class="agent-input-row">
+        <textarea id="agentInput" class="journal-textarea" placeholder="e.g. Add a P1 action to call the dentist tomorrow, and log that today's run felt great" rows="2"></textarea>
+        <button class="btn btn-accent" id="agentSendBtn" type="button">send</button>
+      </div>
+    </section>
+
+    <!-- ===== CALENDAR SECTION ===== -->
+    <section id="calendarSection" style="display:none;">
+      <div class="main-header">
+        <div>
+          <h1>calendar</h1>
+          <p class="subhead">Project due dates and action dates, alongside your connected Google Calendar.</p>
+        </div>
+        <div id="calConnectArea"></div>
+      </div>
+
+      <div class="cal-toolbar">
+        <div class="cal-nav-group">
+          <button class="cal-nav-btn" id="calPrevBtn" type="button" aria-label="Previous month">‹</button>
+          <span class="cal-month-label" id="calMonthLabel"></span>
+          <button class="cal-nav-btn" id="calNextBtn" type="button" aria-label="Next month">›</button>
+        </div>
+        <button class="btn" id="calTodayBtn" type="button">today</button>
+      </div>
+
+      <div class="cal-legend">
+        <span class="cal-legend-item"><span class="cal-legend-dot" style="background:var(--accent)"></span>Google Calendar</span>
+        <span class="cal-legend-item"><span class="cal-legend-dot" style="background:var(--violet)"></span>Project due</span>
+        <span class="cal-legend-item"><span class="cal-legend-dot" style="background:var(--p1)"></span>Action date</span>
+      </div>
+
+      <div class="cal-grid" id="calGrid"></div>
+    </section>
+
     <!-- ===== JOURNAL SECTION ===== -->
     <section id="journalSection" style="display:none;">
       <div class="main-header">
@@ -531,7 +617,7 @@
 <!-- ===== GOAL MODAL ===== -->
 <div class="modal-overlay" id="goalModalOverlay" hidden>
   <div class="modal">
-    <div class="modal-head"><span class="dot g"></span><h2>new_goal.json</h2></div>
+    <div class="modal-head"><span class="dot g"></span><h2 id="goalModalTitle">new_goal.json</h2></div>
     <div class="modal-inner">
       <div class="field"><label for="goalTitleInput">title</label><input type="text" id="goalTitleInput" placeholder="e.g. Ship v2 of side project"></div>
       <div class="field-row">
@@ -555,7 +641,7 @@
 <!-- ===== PROJECT MODAL ===== -->
 <div class="modal-overlay" id="projectModalOverlay" hidden>
   <div class="modal">
-    <div class="modal-head"><span class="dot g"></span><h2>new_project.json</h2></div>
+    <div class="modal-head"><span class="dot g"></span><h2 id="projectModalTitle">new_project.json</h2></div>
     <div class="modal-inner">
       <div class="field"><label for="projectTitleInput">project</label><input type="text" id="projectTitleInput" placeholder="e.g. Redesign onboarding flow"></div>
       <div class="field"><label for="projectGoalSelect">parent goal</label><select id="projectGoalSelect"></select></div>
@@ -574,7 +660,7 @@
 <!-- ===== HABIT MODAL ===== -->
 <div class="modal-overlay" id="habitModalOverlay" hidden>
   <div class="modal">
-    <div class="modal-head"><span class="dot g"></span><h2>new_habit.json</h2></div>
+    <div class="modal-head"><span class="dot g"></span><h2 id="habitModalTitle">new_habit.json</h2></div>
     <div class="modal-inner">
       <div class="field"><label for="habitTitleInput">habit</label><input type="text" id="habitTitleInput" placeholder="e.g. Read for 20 minutes"></div>
       <div class="field"><label for="habitGoalSelect">parent goal</label><select id="habitGoalSelect"></select></div>
@@ -594,7 +680,7 @@
 <!-- ===== ACTION MODAL ===== -->
 <div class="modal-overlay" id="actionModalOverlay" hidden>
   <div class="modal">
-    <div class="modal-head"><span class="dot g"></span><h2>new_action.json</h2></div>
+    <div class="modal-head"><span class="dot g"></span><h2 id="actionModalTitle">new_action.json</h2></div>
     <div class="modal-inner">
       <div class="field"><label for="actionTitleInput">action</label><input type="text" id="actionTitleInput" placeholder="e.g. Call the accountant"></div>
       <div class="field-row">
@@ -604,9 +690,9 @@
         </div></div>
       </div>
       <div class="field"><label>belongs to</label><div class="chip-select" id="actionParentTypeSelect">
-        <div class="chip-opt sel" data-pt="goal">Goal</div><div class="chip-opt" data-pt="project">Project</div>
+        <div class="chip-opt sel" data-pt="goal">Goal</div><div class="chip-opt" data-pt="project">Project</div><div class="chip-opt" data-pt="none">None</div>
       </div></div>
-      <div class="field"><label for="actionParentSelect">parent</label><select id="actionParentSelect"></select></div>
+      <div class="field" id="actionParentField"><label for="actionParentSelect">parent</label><select id="actionParentSelect"></select></div>
       <div class="field"><label for="actionDateInput">date</label><input type="date" id="actionDateInput"></div>
       <div class="modal-actions"><button class="btn" id="cancelActionModalBtn" type="button">cancel</button><button class="btn btn-accent" id="saveActionBtn" type="button">save action</button></div>
     </div>
@@ -629,16 +715,52 @@
     </div>
   </div>
 </div>
+
+<!-- ===== AGENT API KEY MODAL ===== -->
+<div class="modal-overlay" id="agentKeyModalOverlay" hidden>
+  <div class="modal">
+    <div class="modal-head"><span class="dot g"></span><h2>claude_api_key.json</h2></div>
+    <div class="modal-inner">
+      <div class="field"><label for="agentApiKeyInput">anthropic api key</label><input type="password" id="agentApiKeyInput" placeholder="sk-ant-..."></div>
+      <p class="panel-hint">Stored only in this browser's local storage — sent straight to Anthropic's API and nowhere else. Never saved to the app's database, never pushed to GitHub.</p>
+      <div class="modal-actions"><button class="btn" id="agentKeyClearBtn" type="button">clear key</button><button class="btn btn-accent" id="agentKeySaveBtn" type="button">save key</button></div>
+    </div>
+  </div>
+</div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script>
 (function(){
   "use strict";
 
   var SUPABASE_URL = "https://eqguvoaysqspogtdmpun.supabase.co";
   var SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVxZ3V2b2F5c3FzcG9ndGRtcHVuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM3NjMzNTYsImV4cCI6MjA5OTMzOTM1Nn0.-VzRmhQ19aph0oqcVXdkgK7D5cKMp-b1QM8YLD45hsc";
-  var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  // "Stay signed in" toggle: when on (default), the session persists in localStorage across
+  // browser restarts, same as normal. When off, the session lives in sessionStorage instead,
+  // so closing the browser signs you out — useful on a shared/public machine.
+  // Every storage access below is wrapped in try/catch: some browser contexts (private
+  // browsing, strict security policies, certain file:// edge cases) throw on storage access,
+  // and an uncaught error here would silently break the entire script before any button
+  // listener gets attached.
+  function safeGet(store, key){ try{ return store.getItem(key); }catch(e){ return null; } }
+  function safeSet(store, key, value){ try{ store.setItem(key, value); }catch(e){} }
+  function safeRemove(store, key){ try{ store.removeItem(key); }catch(e){} }
+  function staySignedInPref(){ return safeGet(window.localStorage, "staySignedInPref") !== "false"; }
+  function authStorageBackend(){ return staySignedInPref() ? window.localStorage : window.sessionStorage; }
+  var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      storage: {
+        getItem: function(key){ return safeGet(authStorageBackend(), key); },
+        setItem: function(key, value){ safeSet(authStorageBackend(), key, value); },
+        removeItem: function(key){ safeRemove(authStorageBackend(), key); }
+      }
+    }
+  });
 
   var PRIORITIES = ["P0","P1","P2","P3"];
   var CATEGORIES = ["Health","Finance","Career","Maintenance","Growth","Relationships","Life"];
@@ -680,6 +802,11 @@
     document.getElementById("authError").textContent = "";
   });
 
+  document.getElementById("staySignedInCheckbox").checked = staySignedInPref();
+  document.getElementById("staySignedInCheckbox").addEventListener("change", function(){
+    safeSet(window.localStorage, "staySignedInPref", this.checked ? "true" : "false");
+  });
+
   document.getElementById("authSubmitBtn").addEventListener("click", async function(){
     var email = document.getElementById("authEmail").value.trim();
     var password = document.getElementById("authPassword").value;
@@ -687,6 +814,7 @@
     errEl.style.color = "var(--p0)";
     errEl.textContent = "";
     if(!email || !password){ errEl.textContent = "Enter an email and password."; return; }
+    safeSet(window.localStorage, "staySignedInPref", document.getElementById("staySignedInCheckbox").checked ? "true" : "false");
     this.disabled = true;
     try{
       if(authMode === "signup"){
@@ -725,6 +853,8 @@
   });
 
   /* ---------------- Load from Supabase ---------------- */
+  var chatMessages = [];
+
   async function loadAll(){
     var results = await Promise.all([
       sb.from("goals").select("*").order("created_at"),
@@ -732,15 +862,17 @@
       sb.from("habits").select("*").order("created_at"),
       sb.from("actions").select("*").order("created_at"),
       sb.from("journal").select("*").order("date", { ascending:false }),
-      sb.from("people").select("*").order("created_at")
+      sb.from("people").select("*").order("created_at"),
+      sb.from("chat_messages").select("*").order("created_at")
     ]);
     results.forEach(function(r){ if(r.error) console.error(r.error); });
-    state.goals = (results[0].data || []).map(function(r){ return { id:r.id, title:r.title, priority:r.priority, category:r.category, due:r.due, ongoing:r.ongoing, milestones:r.milestones || [] }; });
+    state.goals = (results[0].data || []).map(function(r){ return { id:r.id, title:r.title, priority:r.priority, category:r.category, due:r.due, ongoing:r.ongoing }; });
     state.projects = (results[1].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done }; });
     state.habits = (results[2].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, frequency:r.frequency, days:r.days || {} }; });
     state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done }; });
     state.journal = (results[4].data || []).map(function(r){ return { id:r.id, date:r.date, text:r.text }; });
     state.people = (results[5].data || []).map(function(r){ return { id:r.id, name:r.name, relationship:r.relationship, contact:r.contact, notes:r.notes }; });
+    chatMessages = (results[6].data || []).map(function(r){ return { role:r.role, content:r.content }; });
   }
 
   /* ---------------- Top-level + planner tabs ---------------- */
@@ -765,7 +897,7 @@
     if(!btn) return;
     activeSection = btn.dataset.section;
     document.querySelectorAll(".side-link").forEach(function(l){ l.classList.toggle("active", l===btn); });
-    ["plannerSection","journalSection","peopleSection"].forEach(function(id){
+    ["plannerSection","agentSection","calendarSection","journalSection","peopleSection"].forEach(function(id){
       document.getElementById(id).style.display = (id === activeSection + "Section") ? "" : "none";
     });
   });
@@ -842,14 +974,22 @@
    .forEach(function(pair){ wireChipSelect(document.getElementById(pair[0]), pair[1]); });
 
   /* ---------------- Stats ---------------- */
+  function goalDirectChildren(g){
+    var projs = state.projects.filter(function(p){ return p.goalId === g.id; }).map(function(p){ return { kind:"project", id:p.id, title:p.title, done:p.done }; });
+    var acts = state.actions.filter(function(a){ return a.parentType==="goal" && a.parentId===g.id; }).map(function(a){ return { kind:"action", id:a.id, title:a.title, done:a.done }; });
+    var habs = state.habits.filter(function(h){ return h.goalId === g.id; }).map(function(h){ return { kind:"habit", id:h.id, title:h.title, done:false }; });
+    return projs.concat(acts, habs);
+  }
   function goalProgress(g){
-    if(!g.milestones.length) return 0;
-    var done = g.milestones.filter(function(m){ return m.done; }).length;
-    return Math.round(done / g.milestones.length * 100);
+    var items = goalDirectChildren(g).filter(function(x){ return x.kind !== "habit"; });
+    if(!items.length) return 0;
+    var done = items.filter(function(x){ return x.done; }).length;
+    return Math.round(done / items.length * 100);
   }
   function goalStatus(g){
+    var items = goalDirectChildren(g).filter(function(x){ return x.kind !== "habit"; });
     var pct = goalProgress(g);
-    if(pct >= 100 && g.milestones.length) return "done";
+    if(pct >= 100 && items.length) return "done";
     if(!g.ongoing && g.due && g.due < todayStr()) return "behind";
     return "on-track";
   }
@@ -916,11 +1056,16 @@
     document.getElementById("goalList").innerHTML = list.map(function(g){
       var pct = goalProgress(g);
       var status = goalStatus(g);
-      var msHtml = g.milestones.map(function(m){
-        return '<div class="ms-row' + (m.done?' done':'') + '">' +
-          '<button class="ms-check' + (m.done?' done':'') + '" data-action="toggle-ms" data-goal="' + g.id + '" data-ms="' + m.id + '" aria-label="Toggle milestone"></button>' +
-          '<span class="ms-text">' + escapeHtml(m.text) + '</span>' +
-          '<button class="icon-btn" data-action="del-ms" data-goal="' + g.id + '" data-ms="' + m.id + '" aria-label="Delete milestone">&times;</button>' +
+      var childHtml = goalDirectChildren(g).map(function(c){
+        var checkbox = c.kind === "habit"
+          ? '<span class="child-spacer"></span>'
+          : '<button class="ms-check' + (c.done?' done':'') + '" data-action="toggle-child" data-kind="' + c.kind + '" data-id="' + c.id + '" aria-label="Toggle done"></button>';
+        return '<div class="child-row' + (c.done?' done':'') + '">' +
+          checkbox +
+          '<span class="child-kind">' + c.kind + '</span>' +
+          '<span class="child-text">' + escapeHtml(c.title) + '</span>' +
+          '<button class="icon-btn edit" data-action="edit-child" data-kind="' + c.kind + '" data-id="' + c.id + '" aria-label="Edit">✎</button>' +
+          '<button class="icon-btn" data-action="del-child" data-kind="' + c.kind + '" data-id="' + c.id + '" aria-label="Delete">&times;</button>' +
         '</div>';
       }).join("");
       return '<div class="goal-card ' + g.category + '" data-id="' + g.id + '">' +
@@ -935,79 +1080,106 @@
         '<div class="card-body">' +
           '<div class="goal-body-head">' +
             '<h3 class="goal-title">' + escapeHtml(g.title) + '</h3>' +
-            '<div class="entity-actions"><button class="icon-btn" data-action="del-goal" data-id="' + g.id + '" aria-label="Delete goal">&times;</button></div>' +
+            '<div class="entity-actions">' +
+              '<button class="icon-btn edit" data-action="edit-goal" data-id="' + g.id + '" aria-label="Edit goal">✎</button>' +
+              '<button class="icon-btn" data-action="del-goal" data-id="' + g.id + '" aria-label="Delete goal">&times;</button>' +
+            '</div>' +
           '</div>' +
           '<div class="progress-row">' +
             '<div class="progress-track"><div class="progress-fill ' + (status==="behind"?"behind":status==="done"?"done":"") + '" style="width:' + pct + '%"></div></div>' +
             '<div class="progress-pct">' + pct + '%</div>' +
           '</div>' +
-          '<div class="milestones">' + msHtml +
-            '<div class="add-ms-row"><input type="text" placeholder="Add milestone" data-goal="' + g.id + '" class="ms-input">' +
-            '<button class="btn" data-action="add-ms" data-goal="' + g.id + '" type="button">+</button></div>' +
+          '<div class="goal-children">' + childHtml +
+            '<div class="add-child-row">' +
+              '<button class="btn" data-action="quick-add-project" data-goal="' + g.id + '" type="button">+ project</button>' +
+              '<button class="btn" data-action="quick-add-habit" data-goal="' + g.id + '" type="button">+ habit</button>' +
+              '<button class="btn" data-action="quick-add-action" data-goal="' + g.id + '" type="button">+ action</button>' +
+            '</div>' +
           '</div>' +
         '</div>' +
       '</div>';
     }).join("");
   }
 
+  /* ---------------- Shared child mutations (used by goal cards + their own tabs) ---------------- */
+  async function toggleProjectDone(id){
+    var p = projectById(id);
+    if(!p) return;
+    p.done = !p.done; renderAll();
+    var r = await sb.from("projects").update({ done: p.done }).eq("id", p.id);
+    if(r.error) console.error(r.error);
+  }
+  async function deleteProject(id){
+    // orphans this project's actions rather than deleting them
+    state.actions.forEach(function(x){ if(x.parentType==="project" && x.parentId===id){ x.parentType="none"; x.parentId=null; } });
+    state.projects = state.projects.filter(function(x){ return x.id !== id; });
+    renderAll();
+    await sb.from("actions").update({ parent_type:"none", parent_id:null }).eq("parent_type","project").eq("parent_id", id);
+    var r = await sb.from("projects").delete().eq("id", id);
+    if(r.error) console.error(r.error);
+  }
+  async function toggleActionDone(id){
+    var a = state.actions.find(function(x){ return x.id === id; });
+    if(!a) return;
+    a.done = !a.done; renderAll();
+    var r = await sb.from("actions").update({ done: a.done }).eq("id", a.id);
+    if(r.error) console.error(r.error);
+  }
+  async function deleteAction(id){
+    state.actions = state.actions.filter(function(x){ return x.id !== id; });
+    renderAll();
+    var r = await sb.from("actions").delete().eq("id", id);
+    if(r.error) console.error(r.error);
+  }
+  async function deleteHabit(id){
+    state.habits = state.habits.filter(function(x){ return x.id !== id; });
+    renderAll();
+    var r = await sb.from("habits").delete().eq("id", id);
+    if(r.error) console.error(r.error);
+  }
+  function editGoal(id){ var g = goalById(id); if(g) openGoalModal(g); }
+  function editProject(id){ var p = projectById(id); if(p) openProjectModal(null, p); }
+  function editHabit(id){ var h = state.habits.find(function(x){ return x.id === id; }); if(h) openHabitModal(null, h); }
+  function editAction(id){ var a = state.actions.find(function(x){ return x.id === id; }); if(a) openActionModal(null, a); }
+
   document.getElementById("goalList").addEventListener("click", async function(e){
     var tile = e.target.closest('[data-action="open-goal"]');
     if(tile){ views.goals = "list"; document.querySelectorAll("#goalsSubToggle .sub-view-tab").forEach(function(b){ b.classList.toggle("active", b.dataset.sub === "list"); }); renderGoals(); return; }
     var t = e.target.closest("[data-action]");
     if(!t) return;
-    if(t.dataset.action === "toggle-ms"){
-      var g = goalById(t.dataset.goal);
-      var m = g && g.milestones.find(function(x){ return x.id === t.dataset.ms; });
-      if(m){
-        m.done = !m.done; renderAll();
-        var r1 = await sb.from("goals").update({ milestones: g.milestones }).eq("id", g.id);
-        if(r1.error) console.error(r1.error);
-      }
-    } else if(t.dataset.action === "del-ms"){
-      var g2 = goalById(t.dataset.goal);
-      if(g2){
-        g2.milestones = g2.milestones.filter(function(x){ return x.id !== t.dataset.ms; });
-        renderAll();
-        var r2 = await sb.from("goals").update({ milestones: g2.milestones }).eq("id", g2.id);
-        if(r2.error) console.error(r2.error);
-      }
-    } else if(t.dataset.action === "del-goal"){
+    if(t.dataset.action === "del-goal"){
+      // deleting a goal orphans its projects/habits/actions rather than deleting them —
+      // parent links are optional, so children keep existing on their own.
       var goalId = t.dataset.id;
-      var projectIds = state.projects.filter(function(x){ return x.goalId === goalId; }).map(function(x){ return x.id; });
+      state.projects.forEach(function(x){ if(x.goalId === goalId) x.goalId = null; });
+      state.habits.forEach(function(x){ if(x.goalId === goalId) x.goalId = null; });
+      state.actions.forEach(function(x){ if(x.parentType==="goal" && x.parentId===goalId){ x.parentType="none"; x.parentId=null; } });
       state.goals = state.goals.filter(function(x){ return x.id !== goalId; });
-      state.projects = state.projects.filter(function(x){ return x.goalId !== goalId; });
-      state.habits = state.habits.filter(function(x){ return x.goalId !== goalId; });
-      state.actions = state.actions.filter(function(x){ return !(x.parentType==="goal" && x.parentId===goalId) && !(x.parentType==="project" && projectIds.indexOf(x.parentId)!==-1); });
       renderAll();
-      if(projectIds.length) await sb.from("actions").delete().eq("parent_type","project").in("parent_id", projectIds);
-      await sb.from("actions").delete().eq("parent_type","goal").eq("parent_id", goalId);
+      await sb.from("projects").update({ goal_id: null }).eq("goal_id", goalId);
+      await sb.from("habits").update({ goal_id: null }).eq("goal_id", goalId);
+      await sb.from("actions").update({ parent_type:"none", parent_id:null }).eq("parent_type","goal").eq("parent_id", goalId);
       var r3 = await sb.from("goals").delete().eq("id", goalId);
       if(r3.error) console.error(r3.error);
-    } else if(t.dataset.action === "add-ms"){
-      var input = t.parentElement.querySelector(".ms-input");
-      var text = input.value.trim();
-      if(!text) return;
-      var g3 = goalById(t.dataset.goal);
-      if(g3){
-        g3.milestones.push({ id: uid(), text: text, done:false });
-        renderAll();
-        var r4 = await sb.from("goals").update({ milestones: g3.milestones }).eq("id", g3.id);
-        if(r4.error) console.error(r4.error);
-      }
-    }
-  });
-  document.getElementById("goalList").addEventListener("keydown", async function(e){
-    if(e.key === "Enter" && e.target.classList.contains("ms-input")){
-      var goalId = e.target.dataset.goal;
-      var text = e.target.value.trim();
-      if(!text) return;
-      var g = goalById(goalId);
-      if(g){
-        g.milestones.push({ id: uid(), text: text, done:false });
-        renderAll();
-        var r = await sb.from("goals").update({ milestones: g.milestones }).eq("id", g.id);
-        if(r.error) console.error(r.error);
-      }
+    } else if(t.dataset.action === "edit-goal"){
+      editGoal(t.dataset.id);
+    } else if(t.dataset.action === "quick-add-project"){
+      openProjectModal(t.dataset.goal);
+    } else if(t.dataset.action === "quick-add-habit"){
+      openHabitModal(t.dataset.goal);
+    } else if(t.dataset.action === "quick-add-action"){
+      openActionModal(t.dataset.goal);
+    } else if(t.dataset.action === "toggle-child"){
+      if(t.dataset.kind === "project") await toggleProjectDone(t.dataset.id);
+      else if(t.dataset.kind === "action") await toggleActionDone(t.dataset.id);
+    } else if(t.dataset.action === "edit-child"){
+      if(t.dataset.kind === "project") editProject(t.dataset.id);
+      else if(t.dataset.kind === "action") editAction(t.dataset.id);
+      else if(t.dataset.kind === "habit") editHabit(t.dataset.id);
+    } else if(t.dataset.action === "del-child"){
+      if(t.dataset.kind === "project") await deleteProject(t.dataset.id);
+      else if(t.dataset.kind === "action") await deleteAction(t.dataset.id);
+      else if(t.dataset.kind === "habit") await deleteHabit(t.dataset.id);
     }
   });
 
@@ -1025,8 +1197,10 @@
   }
 
   function renderProjectsMatrix(list){
-    var sections = state.goals.map(function(g){
-      var items = list.filter(function(p){ return p.goalId === g.id; });
+    var groups = state.goals.map(function(g){ return { id: g.id, title: g.title }; });
+    groups.push({ id: null, title: "Unassigned" });
+    var sections = groups.map(function(g){
+      var items = list.filter(function(p){ return (p.goalId || null) === g.id; });
       if(!items.length) return "";
       var tiles = items.map(function(p){
         var overdue = !p.done && p.due && p.due < todayStr();
@@ -1034,6 +1208,7 @@
           '<div class="ms-tile-top">' +
             '<button class="ms-check' + (p.done?' done':'') + '" data-action="toggle-proj" data-id="' + p.id + '" aria-label="Toggle done"></button>' +
             '<span class="ms-tile-title' + (p.done?' done':'') + '">' + escapeHtml(p.title) + '</span>' +
+            '<button class="icon-btn edit" data-action="edit-proj" data-id="' + p.id + '" aria-label="Edit project">✎</button>' +
             '<button class="icon-btn" data-action="del-proj" data-id="' + p.id + '" aria-label="Delete project">&times;</button>' +
           '</div>' +
           '<div class="ms-tile-meta"><span class="prio-badge ' + p.priority + '">' + p.priority + '</span>' +
@@ -1055,7 +1230,7 @@
       return '<div class="goal-card" data-id="' + p.id + '">' +
         '<div class="card-tab">' +
           '<span class="prio-badge ' + p.priority + '">' + p.priority + '</span><span class="sep">·</span>' +
-          '<span class="parent-tag">goal: <b>' + escapeHtml(g ? g.title : "—") + '</b></span>' +
+          '<span class="parent-tag">' + (g ? 'goal: <b>' + escapeHtml(g.title) + '</b>' : 'standalone') + '</span>' +
           '<span class="due-tag">' + (p.due ? '<span style="color:' + (overdue?'var(--p0)':'var(--text-dim)') + '">' + fmtDate(p.due) + '</span>' : '') +
           '<span class="status-dot ' + (p.done?"done":(overdue?"behind":"on-track")) + '"></span></span>' +
         '</div>' +
@@ -1064,6 +1239,7 @@
             '<h3 class="goal-title' + (p.done?' completed':'') + '" style="' + (p.done?'color:var(--text-faint);text-decoration:line-through;':'') + '">' + escapeHtml(p.title) + '</h3>' +
             '<div class="entity-actions">' +
               '<button class="icon-btn toggle" data-action="toggle-proj" data-id="' + p.id + '" aria-label="Toggle done">' + (p.done?'↺':'✓') + '</button>' +
+              '<button class="icon-btn edit" data-action="edit-proj" data-id="' + p.id + '" aria-label="Edit project">✎</button>' +
               '<button class="icon-btn" data-action="del-proj" data-id="' + p.id + '" aria-label="Delete project">&times;</button>' +
             '</div>' +
           '</div>' +
@@ -1075,18 +1251,9 @@
   document.getElementById("projectList").addEventListener("click", async function(e){
     var t = e.target.closest("[data-action]");
     if(!t) return;
-    if(t.dataset.action === "toggle-proj"){
-      var p = projectById(t.dataset.id);
-      if(p){ p.done = !p.done; renderAll(); var r1 = await sb.from("projects").update({ done: p.done }).eq("id", p.id); if(r1.error) console.error(r1.error); }
-    } else if(t.dataset.action === "del-proj"){
-      var projId = t.dataset.id;
-      state.projects = state.projects.filter(function(x){ return x.id !== projId; });
-      state.actions = state.actions.filter(function(x){ return !(x.parentType==="project" && x.parentId===projId); });
-      renderAll();
-      await sb.from("actions").delete().eq("parent_type","project").eq("parent_id", projId);
-      var r2 = await sb.from("projects").delete().eq("id", projId);
-      if(r2.error) console.error(r2.error);
-    }
+    if(t.dataset.action === "toggle-proj") await toggleProjectDone(t.dataset.id);
+    else if(t.dataset.action === "edit-proj") editProject(t.dataset.id);
+    else if(t.dataset.action === "del-proj") await deleteProject(t.dataset.id);
   });
 
   /* ---------------- Habits ---------------- */
@@ -1111,8 +1278,10 @@
 
   function renderHabitsMatrix(list){
     var today = todayStr();
-    var sections = state.goals.map(function(g){
-      var items = list.filter(function(h){ return h.goalId === g.id; });
+    var groups = state.goals.map(function(g){ return { id: g.id, title: g.title }; });
+    groups.push({ id: null, title: "Unassigned" });
+    var sections = groups.map(function(g){
+      var items = list.filter(function(h){ return (h.goalId || null) === g.id; });
       if(!items.length) return "";
       var tiles = items.map(function(h){
         var streak = habitStreak(h);
@@ -1121,6 +1290,7 @@
           '<div class="ms-tile-top">' +
             '<button class="ms-check' + (on?' done':'') + '" data-action="toggle-habit-today" data-id="' + h.id + '" aria-label="Toggle today"></button>' +
             '<span class="ms-tile-title">' + escapeHtml(h.title) + '</span>' +
+            '<button class="icon-btn edit" data-action="edit-habit" data-id="' + h.id + '" aria-label="Edit habit">✎</button>' +
             '<button class="icon-btn" data-action="del-habit" data-id="' + h.id + '" aria-label="Delete habit">&times;</button>' +
           '</div>' +
           '<div class="ms-tile-meta"><span class="prio-badge ' + h.priority + '">' + h.priority + '</span><span>' + h.frequency + '</span>' +
@@ -1150,12 +1320,15 @@
         '<div class="card-tab">' +
           '<span class="prio-badge ' + h.priority + '">' + h.priority + '</span><span class="sep">·</span>' +
           '<span class="type-badge">' + h.frequency + '</span><span class="sep">·</span>' +
-          '<span class="parent-tag">goal: <b>' + escapeHtml(g ? g.title : "—") + '</b></span>' +
+          '<span class="parent-tag">' + (g ? 'goal: <b>' + escapeHtml(g.title) + '</b>' : 'standalone') + '</span>' +
         '</div>' +
         '<div class="card-body">' +
           '<div class="goal-body-head">' +
             '<h3 class="goal-title">' + escapeHtml(h.title) + '</h3>' +
-            '<div class="entity-actions"><button class="icon-btn" data-action="del-habit" data-id="' + h.id + '" aria-label="Delete habit">&times;</button></div>' +
+            '<div class="entity-actions">' +
+              '<button class="icon-btn edit" data-action="edit-habit" data-id="' + h.id + '" aria-label="Edit habit">✎</button>' +
+              '<button class="icon-btn" data-action="del-habit" data-id="' + h.id + '" aria-label="Delete habit">&times;</button>' +
+            '</div>' +
           '</div>' +
           '<div class="habit-foot"><span class="streak-tag"><b>' + streak + '</b> day streak</span><div class="habit-days">' + boxes + '</div></div>' +
         '</div>' +
@@ -1183,25 +1356,22 @@
       }
       return;
     }
+    var editBtn = e.target.closest('[data-action="edit-habit"]');
+    if(editBtn){ editHabit(editBtn.dataset.id); return; }
     var del = e.target.closest('[data-action="del-habit"]');
-    if(del){
-      var habitId = del.dataset.id;
-      state.habits = state.habits.filter(function(x){ return x.id !== habitId; });
-      renderAll();
-      var r3 = await sb.from("habits").delete().eq("id", habitId);
-      if(r3.error) console.error(r3.error);
-    }
+    if(del) await deleteHabit(del.dataset.id);
   });
 
   /* ---------------- Actions ---------------- */
   function parentTitle(a){
     if(a.parentType === "goal"){ var g = goalById(a.parentId); return g ? g.title : "—"; }
-    var p = projectById(a.parentId); return p ? p.title : "—";
+    if(a.parentType === "project"){ var p = projectById(a.parentId); return p ? p.title : "—"; }
+    return "—";
   }
   function resolveGoalIdForAction(a){
     if(a.parentType === "goal") return a.parentId;
-    var p = projectById(a.parentId);
-    return p ? p.goalId : null;
+    if(a.parentType === "project"){ var p = projectById(a.parentId); return p ? p.goalId : null; }
+    return null;
   }
 
   function renderActions(){
@@ -1217,7 +1387,9 @@
   }
 
   function renderActionsMatrix(list){
-    var sections = state.goals.map(function(g){
+    var groups = state.goals.map(function(g){ return { id: g.id, title: g.title }; });
+    groups.push({ id: null, title: "Unassigned" });
+    var sections = groups.map(function(g){
       var items = list.filter(function(a){ return resolveGoalIdForAction(a) === g.id; });
       if(!items.length) return "";
       var tiles = items.map(function(a){
@@ -1226,6 +1398,7 @@
           '<div class="ms-tile-top">' +
             '<button class="ms-check' + (a.done?' done':'') + '" data-action="toggle-action" data-id="' + a.id + '" aria-label="Toggle done"></button>' +
             '<span class="ms-tile-title' + (a.done?' done':'') + '">' + escapeHtml(a.title) + '</span>' +
+            '<button class="icon-btn edit" data-action="edit-action" data-id="' + a.id + '" aria-label="Edit action">✎</button>' +
             '<button class="icon-btn" data-action="del-action" data-id="' + a.id + '" aria-label="Delete action">&times;</button>' +
           '</div>' +
           '<div class="ms-tile-meta"><span class="prio-badge ' + a.priority + '">' + a.priority + '</span><span class="type-badge">' + a.type + '</span>' +
@@ -1248,7 +1421,7 @@
         '<div class="card-tab">' +
           '<span class="prio-badge ' + a.priority + '">' + a.priority + '</span><span class="sep">·</span>' +
           '<span class="type-badge">' + a.type + '</span><span class="sep">·</span>' +
-          '<span class="parent-tag">' + a.parentType + ': <b>' + escapeHtml(parentTitle(a)) + '</b></span>' +
+          '<span class="parent-tag">' + (a.parentType === "none" ? "standalone" : (a.parentType + ': <b>' + escapeHtml(parentTitle(a)) + '</b>')) + '</span>' +
           '<span class="due-tag">' + (a.date ? '<span style="color:' + (overdue?'var(--p0)':'var(--text-dim)') + '">' + fmtDate(a.date) + '</span>' : '') +
           '<span class="status-dot ' + (a.done?"done":(overdue?"behind":"on-track")) + '"></span></span>' +
         '</div>' +
@@ -1257,6 +1430,7 @@
             '<h3 class="goal-title" style="' + (a.done?'color:var(--text-faint);text-decoration:line-through;':'') + '">' + escapeHtml(a.title) + '</h3>' +
             '<div class="entity-actions">' +
               '<button class="icon-btn toggle" data-action="toggle-action" data-id="' + a.id + '" aria-label="Toggle done">' + (a.done?'↺':'✓') + '</button>' +
+              '<button class="icon-btn edit" data-action="edit-action" data-id="' + a.id + '" aria-label="Edit action">✎</button>' +
               '<button class="icon-btn" data-action="del-action" data-id="' + a.id + '" aria-label="Delete action">&times;</button>' +
             '</div>' +
           '</div>' +
@@ -1267,16 +1441,9 @@
   document.getElementById("actionList").addEventListener("click", async function(e){
     var t = e.target.closest("[data-action]");
     if(!t) return;
-    if(t.dataset.action === "toggle-action"){
-      var a = state.actions.find(function(x){ return x.id === t.dataset.id; });
-      if(a){ a.done = !a.done; renderAll(); var r1 = await sb.from("actions").update({ done: a.done }).eq("id", a.id); if(r1.error) console.error(r1.error); }
-    } else if(t.dataset.action === "del-action"){
-      var actionId = t.dataset.id;
-      state.actions = state.actions.filter(function(x){ return x.id !== actionId; });
-      renderAll();
-      var r2 = await sb.from("actions").delete().eq("id", actionId);
-      if(r2.error) console.error(r2.error);
-    }
+    if(t.dataset.action === "toggle-action") await toggleActionDone(t.dataset.id);
+    else if(t.dataset.action === "edit-action") editAction(t.dataset.id);
+    else if(t.dataset.action === "del-action") await deleteAction(t.dataset.id);
   });
 
   /* ---------------- Journal ---------------- */
@@ -1346,6 +1513,459 @@
     if(r.error) console.error(r.error);
   });
 
+  /* ---------------- Calendar / Google Calendar ---------------- */
+  // Replace with the OAuth 2.0 Client ID from Google Cloud Console (APIs & Services -> Credentials).
+  // Safe to embed client-side — it identifies the app, not a secret. The read-only scope below
+  // means this app can only ever list your events, never create/edit/delete anything in Google Calendar.
+  var GOOGLE_CLIENT_ID = "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com";
+  var GOOGLE_CAL_SCOPE = "https://www.googleapis.com/auth/calendar.readonly";
+  var googleTokenClient = null;
+  var googleAccessToken = null;
+  var calendarMonth = (function(){ var d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d; })();
+  var googleEventsCache = {};
+
+  function initGoogleClient(){
+    if(!window.google || !google.accounts || !google.accounts.oauth2) return;
+    googleTokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: GOOGLE_CAL_SCOPE,
+      callback: function(resp){
+        if(resp.error){ console.error(resp); return; }
+        googleAccessToken = resp.access_token;
+        renderCalConnectArea();
+        loadGoogleEventsForMonth(calendarMonth);
+      }
+    });
+  }
+  (function pollForGoogleClient(){
+    var tries = 0;
+    var iv = setInterval(function(){
+      tries++;
+      if(window.google && google.accounts && google.accounts.oauth2){ initGoogleClient(); clearInterval(iv); }
+      else if(tries > 20){ clearInterval(iv); }
+    }, 300);
+  })();
+
+  function connectGoogleCalendar(){
+    if(!googleTokenClient){ alert("Google sign-in isn't ready yet — try again in a moment."); return; }
+    googleTokenClient.requestAccessToken({ prompt: googleAccessToken ? "" : "consent" });
+  }
+  function disconnectGoogleCalendar(){
+    if(googleAccessToken && window.google && google.accounts && google.accounts.oauth2){
+      google.accounts.oauth2.revoke(googleAccessToken, function(){});
+    }
+    googleAccessToken = null;
+    googleEventsCache = {};
+    renderCalConnectArea();
+    renderCalendar();
+  }
+  function renderCalConnectArea(){
+    var el = document.getElementById("calConnectArea");
+    if(googleAccessToken){
+      el.innerHTML = '<button class="btn" id="calDisconnectBtn" type="button">disconnect google calendar</button>';
+      document.getElementById("calDisconnectBtn").addEventListener("click", disconnectGoogleCalendar);
+    } else {
+      el.innerHTML = '<button class="btn btn-accent" id="calConnectBtn" type="button">connect google calendar</button>';
+      document.getElementById("calConnectBtn").addEventListener("click", connectGoogleCalendar);
+    }
+  }
+  renderCalConnectArea();
+
+  function monthKey(d){ return d.getFullYear() + "-" + (d.getMonth()+1); }
+
+  async function loadGoogleEventsForMonth(monthDate){
+    if(!googleAccessToken) return;
+    var key = monthKey(monthDate);
+    if(googleEventsCache[key]){ renderCalendar(); return; }
+    var timeMin = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1).toISOString();
+    var timeMax = new Date(monthDate.getFullYear(), monthDate.getMonth()+1, 1).toISOString();
+    try{
+      var url = "https://www.googleapis.com/calendar/v3/calendars/primary/events"
+        + "?timeMin=" + encodeURIComponent(timeMin)
+        + "&timeMax=" + encodeURIComponent(timeMax)
+        + "&singleEvents=true&orderBy=startTime&maxResults=250";
+      var resp = await fetch(url, { headers: { "Authorization": "Bearer " + googleAccessToken } });
+      if(resp.status === 401){
+        googleAccessToken = null; renderCalConnectArea(); renderCalendar(); return;
+      }
+      var data = await resp.json();
+      googleEventsCache[key] = (data.items || []).map(function(ev){
+        var date = ev.start && (ev.start.date || (ev.start.dateTime ? ev.start.dateTime.slice(0,10) : null));
+        return { id: ev.id, title: ev.summary || "(untitled)", date: date };
+      }).filter(function(ev){ return ev.date; });
+    }catch(e){
+      console.error(e);
+      googleEventsCache[key] = [];
+    }
+    renderCalendar();
+  }
+
+  function renderCalendar(){
+    document.getElementById("calMonthLabel").textContent = calendarMonth.toLocaleDateString(undefined, { month:"long", year:"numeric" });
+
+    var year = calendarMonth.getFullYear(), month = calendarMonth.getMonth();
+    var firstOfMonth = new Date(year, month, 1);
+    var startOffset = (firstOfMonth.getDay() + 6) % 7; // Monday-first grid
+    var gridStart = new Date(year, month, 1 - startOffset);
+    var todayKey = todayStr();
+    var gEvents = googleEventsCache[monthKey(calendarMonth)] || [];
+
+    var weekdayLabels = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+    var html = weekdayLabels.map(function(w){ return '<div class="cal-weekday">' + w + '</div>'; }).join("");
+
+    for(var i=0;i<42;i++){
+      var cellDate = new Date(gridStart); cellDate.setDate(gridStart.getDate() + i);
+      var cellKey = cellDate.getFullYear() + "-" + String(cellDate.getMonth()+1).padStart(2,"0") + "-" + String(cellDate.getDate()).padStart(2,"0");
+      var inMonth = cellDate.getMonth() === month;
+      var entries = [];
+      gEvents.filter(function(ev){ return ev.date === cellKey; }).forEach(function(ev){ entries.push({ kind:"google", text: ev.title }); });
+      state.projects.filter(function(p){ return p.due === cellKey; }).forEach(function(p){ entries.push({ kind:"project", text: p.title }); });
+      state.actions.filter(function(a){ return a.date === cellKey; }).forEach(function(a){ entries.push({ kind:"action", text: a.title }); });
+      var shown = entries.slice(0,3);
+      var extra = entries.length - shown.length;
+      var entriesHtml = shown.map(function(en){
+        return '<div class="cal-entry ' + en.kind + '" title="' + escapeHtml(en.text) + '"><span class="cal-dot"></span><span class="cal-entry-text">' + escapeHtml(en.text) + '</span></div>';
+      }).join("") + (extra > 0 ? '<div class="cal-more">+' + extra + ' more</div>' : '');
+
+      html += '<div class="cal-day' + (inMonth?'':' other-month') + (cellKey===todayKey?' today':'') + '">' +
+        '<div class="cal-day-num">' + cellDate.getDate() + '</div>' +
+        entriesHtml +
+      '</div>';
+    }
+    document.getElementById("calGrid").innerHTML = html;
+  }
+
+  document.getElementById("calPrevBtn").addEventListener("click", function(){
+    calendarMonth.setMonth(calendarMonth.getMonth()-1);
+    renderCalendar();
+    if(googleAccessToken) loadGoogleEventsForMonth(calendarMonth);
+  });
+  document.getElementById("calNextBtn").addEventListener("click", function(){
+    calendarMonth.setMonth(calendarMonth.getMonth()+1);
+    renderCalendar();
+    if(googleAccessToken) loadGoogleEventsForMonth(calendarMonth);
+  });
+  document.getElementById("calTodayBtn").addEventListener("click", function(){
+    var d = new Date(); d.setDate(1); d.setHours(0,0,0,0);
+    calendarMonth = d;
+    renderCalendar();
+    if(googleAccessToken) loadGoogleEventsForMonth(calendarMonth);
+  });
+
+  /* ---------------- Agent ---------------- */
+  var AGENT_TOOLS = [
+    { name:"create_goal", description:"Create a new goal.", input_schema:{ type:"object", properties:{
+      title:{ type:"string" }, priority:{ type:"string", enum:PRIORITIES }, category:{ type:"string", enum:CATEGORIES },
+      due:{ type:"string", description:"YYYY-MM-DD, omit if ongoing or no due date" }, ongoing:{ type:"boolean" }
+    }, required:["title","priority","category"] } },
+    { name:"edit_goal", description:"Edit an existing goal by id.", input_schema:{ type:"object", properties:{
+      id:{ type:"string" }, title:{ type:"string" }, priority:{ type:"string", enum:PRIORITIES }, category:{ type:"string", enum:CATEGORIES },
+      due:{ type:"string" }, ongoing:{ type:"boolean" }
+    }, required:["id"] } },
+    { name:"create_project", description:"Create a new project, optionally attached to a goal.", input_schema:{ type:"object", properties:{
+      title:{ type:"string" }, goal_id:{ type:"string", description:"id of the parent goal, omit for no parent" },
+      priority:{ type:"string", enum:PRIORITIES }, due:{ type:"string" }, hours:{ type:"number" }
+    }, required:["title","priority"] } },
+    { name:"edit_project", description:"Edit an existing project by id.", input_schema:{ type:"object", properties:{
+      id:{ type:"string" }, title:{ type:"string" }, goal_id:{ type:"string" }, priority:{ type:"string", enum:PRIORITIES },
+      due:{ type:"string" }, hours:{ type:"number" }, done:{ type:"boolean" }
+    }, required:["id"] } },
+    { name:"create_habit", description:"Create a new recurring habit, optionally attached to a goal.", input_schema:{ type:"object", properties:{
+      title:{ type:"string" }, goal_id:{ type:"string" }, priority:{ type:"string", enum:PRIORITIES }, frequency:{ type:"string", enum:["daily","weekly"] }
+    }, required:["title","priority","frequency"] } },
+    { name:"edit_habit", description:"Edit an existing habit by id.", input_schema:{ type:"object", properties:{
+      id:{ type:"string" }, title:{ type:"string" }, goal_id:{ type:"string" }, priority:{ type:"string", enum:PRIORITIES }, frequency:{ type:"string", enum:["daily","weekly"] }
+    }, required:["id"] } },
+    { name:"create_action", description:"Create a new quick, single-shot action, optionally attached to a goal or project.", input_schema:{ type:"object", properties:{
+      title:{ type:"string" }, type:{ type:"string", enum:ACTION_TYPES }, priority:{ type:"string", enum:PRIORITIES },
+      parent_type:{ type:"string", enum:["goal","project","none"] }, parent_id:{ type:"string", description:"id of the parent goal or project; omit if parent_type is none" },
+      date:{ type:"string" }
+    }, required:["title","type","priority","parent_type"] } },
+    { name:"edit_action", description:"Edit an existing action by id.", input_schema:{ type:"object", properties:{
+      id:{ type:"string" }, title:{ type:"string" }, type:{ type:"string", enum:ACTION_TYPES }, priority:{ type:"string", enum:PRIORITIES },
+      parent_type:{ type:"string", enum:["goal","project","none"] }, parent_id:{ type:"string" }, date:{ type:"string" }, done:{ type:"boolean" }
+    }, required:["id"] } },
+    { name:"add_journal_entry", description:"Add a new journal entry.", input_schema:{ type:"object", properties:{
+      date:{ type:"string", description:"YYYY-MM-DD, defaults to today if omitted" }, text:{ type:"string" }
+    }, required:["text"] } },
+    { name:"create_person", description:"Add a new person.", input_schema:{ type:"object", properties:{
+      name:{ type:"string" }, relationship:{ type:"string", enum:RELATIONSHIPS }, contact:{ type:"string" }, notes:{ type:"string" }
+    }, required:["name","relationship"] } },
+    { name:"edit_person", description:"Edit an existing person by id.", input_schema:{ type:"object", properties:{
+      id:{ type:"string" }, name:{ type:"string" }, relationship:{ type:"string", enum:RELATIONSHIPS }, contact:{ type:"string" }, notes:{ type:"string" }
+    }, required:["id"] } }
+  ];
+
+  function buildAgentSystemPrompt(){
+    var lines = [];
+    lines.push("You are the capture assistant inside a personal terminal-styled planner app called personal_system.");
+    lines.push("The user describes things in natural language (tasks, goals, projects, habits, journal reflections, people) and you record them accurately using the tools provided.");
+    lines.push("Prefer calling a tool over just describing what you would do. You can create new items and edit existing ones, but you can NEVER delete anything — if asked to delete or remove something, tell the user to do it manually in the app instead.");
+    lines.push("Today's date is " + todayStr() + ".");
+    lines.push("");
+    lines.push("Current goals (id | title | priority | category | due | ongoing):");
+    state.goals.forEach(function(g){ lines.push("- " + g.id + " | " + g.title + " | " + g.priority + " | " + g.category + " | " + (g.due||"—") + " | " + (g.ongoing?"ongoing":"has end date")); });
+    lines.push("");
+    lines.push("Current projects (id | title | goalId | priority | due | hours | done):");
+    state.projects.forEach(function(p){ lines.push("- " + p.id + " | " + p.title + " | " + (p.goalId||"none") + " | " + p.priority + " | " + (p.due||"—") + " | " + p.hours + "h | " + (p.done?"done":"open")); });
+    lines.push("");
+    lines.push("Current habits (id | title | goalId | priority | frequency):");
+    state.habits.forEach(function(h){ lines.push("- " + h.id + " | " + h.title + " | " + (h.goalId||"none") + " | " + h.priority + " | " + h.frequency); });
+    lines.push("");
+    lines.push("Current actions (id | title | type | priority | parentType | parentId | date | done):");
+    state.actions.forEach(function(a){ lines.push("- " + a.id + " | " + a.title + " | " + a.type + " | " + a.priority + " | " + a.parentType + " | " + (a.parentId||"—") + " | " + (a.date||"—") + " | " + (a.done?"done":"open")); });
+    lines.push("");
+    lines.push("Current people (id | name | relationship):");
+    state.people.forEach(function(p){ lines.push("- " + p.id + " | " + p.name + " | " + p.relationship); });
+    return lines.join("\n");
+  }
+
+  async function executeAgentTool(name, input){
+    try{
+      if(name === "create_goal"){
+        var ongoing1 = !!input.ongoing;
+        var res = await sb.from("goals").insert({ title:input.title, priority:input.priority, category:input.category, due: ongoing1 ? null : (input.due || null), ongoing: ongoing1 }).select().single();
+        if(res.error) return { error: res.error.message };
+        var r = res.data;
+        state.goals.push({ id:r.id, title:r.title, priority:r.priority, category:r.category, due:r.due, ongoing:r.ongoing });
+        renderAll(); return { ok:true, id:r.id };
+      }
+      if(name === "edit_goal"){
+        var g = goalById(input.id);
+        if(!g) return { error:"no goal with that id" };
+        var gp = {};
+        ["title","priority","category","due","ongoing"].forEach(function(k){ if(input[k] !== undefined) gp[k] = input[k]; });
+        if(gp.ongoing === true) gp.due = null;
+        var res2 = await sb.from("goals").update(gp).eq("id", input.id).select().single();
+        if(res2.error) return { error: res2.error.message };
+        var r2 = res2.data;
+        var i2 = state.goals.findIndex(function(x){ return x.id === input.id; });
+        if(i2 !== -1) state.goals[i2] = { id:r2.id, title:r2.title, priority:r2.priority, category:r2.category, due:r2.due, ongoing:r2.ongoing };
+        renderAll(); return { ok:true };
+      }
+      if(name === "create_project"){
+        var res3 = await sb.from("projects").insert({ goal_id: input.goal_id || null, title:input.title, priority:input.priority, due: input.due || null, hours: input.hours || 0, done:false }).select().single();
+        if(res3.error) return { error: res3.error.message };
+        var r3 = res3.data;
+        state.projects.push({ id:r3.id, goalId:r3.goal_id, title:r3.title, priority:r3.priority, due:r3.due, hours:Number(r3.hours), done:r3.done });
+        renderAll(); return { ok:true, id:r3.id };
+      }
+      if(name === "edit_project"){
+        var p = projectById(input.id);
+        if(!p) return { error:"no project with that id" };
+        var pp = {};
+        if(input.title !== undefined) pp.title = input.title;
+        if(input.goal_id !== undefined) pp.goal_id = input.goal_id || null;
+        if(input.priority !== undefined) pp.priority = input.priority;
+        if(input.due !== undefined) pp.due = input.due || null;
+        if(input.hours !== undefined) pp.hours = input.hours;
+        if(input.done !== undefined) pp.done = input.done;
+        var res4 = await sb.from("projects").update(pp).eq("id", input.id).select().single();
+        if(res4.error) return { error: res4.error.message };
+        var r4 = res4.data;
+        var i4 = state.projects.findIndex(function(x){ return x.id === input.id; });
+        if(i4 !== -1) state.projects[i4] = { id:r4.id, goalId:r4.goal_id, title:r4.title, priority:r4.priority, due:r4.due, hours:Number(r4.hours), done:r4.done };
+        renderAll(); return { ok:true };
+      }
+      if(name === "create_habit"){
+        var res5 = await sb.from("habits").insert({ goal_id: input.goal_id || null, title:input.title, priority:input.priority, frequency:input.frequency, days:{} }).select().single();
+        if(res5.error) return { error: res5.error.message };
+        var r5 = res5.data;
+        state.habits.push({ id:r5.id, goalId:r5.goal_id, title:r5.title, priority:r5.priority, frequency:r5.frequency, days:r5.days || {} });
+        renderAll(); return { ok:true, id:r5.id };
+      }
+      if(name === "edit_habit"){
+        var h = state.habits.find(function(x){ return x.id === input.id; });
+        if(!h) return { error:"no habit with that id" };
+        var hp = {};
+        if(input.title !== undefined) hp.title = input.title;
+        if(input.goal_id !== undefined) hp.goal_id = input.goal_id || null;
+        if(input.priority !== undefined) hp.priority = input.priority;
+        if(input.frequency !== undefined) hp.frequency = input.frequency;
+        var res6 = await sb.from("habits").update(hp).eq("id", input.id).select().single();
+        if(res6.error) return { error: res6.error.message };
+        var r6 = res6.data;
+        var i6 = state.habits.findIndex(function(x){ return x.id === input.id; });
+        if(i6 !== -1) state.habits[i6] = { id:r6.id, goalId:r6.goal_id, title:r6.title, priority:r6.priority, frequency:r6.frequency, days:r6.days || {} };
+        renderAll(); return { ok:true };
+      }
+      if(name === "create_action"){
+        var pt7 = input.parent_type || "none";
+        var res7 = await sb.from("actions").insert({ title:input.title, type:input.type, priority:input.priority, parent_type:pt7, parent_id: pt7 === "none" ? null : (input.parent_id || null), date: input.date || null, done:false }).select().single();
+        if(res7.error) return { error: res7.error.message };
+        var r7 = res7.data;
+        state.actions.push({ id:r7.id, parentType:r7.parent_type, parentId:r7.parent_id, title:r7.title, type:r7.type, priority:r7.priority, date:r7.date, done:r7.done });
+        renderAll(); return { ok:true, id:r7.id };
+      }
+      if(name === "edit_action"){
+        var a = state.actions.find(function(x){ return x.id === input.id; });
+        if(!a) return { error:"no action with that id" };
+        var ap = {};
+        if(input.title !== undefined) ap.title = input.title;
+        if(input.type !== undefined) ap.type = input.type;
+        if(input.priority !== undefined) ap.priority = input.priority;
+        if(input.parent_type !== undefined) ap.parent_type = input.parent_type;
+        if(input.parent_id !== undefined) ap.parent_id = input.parent_type === "none" ? null : (input.parent_id || null);
+        if(input.date !== undefined) ap.date = input.date || null;
+        if(input.done !== undefined) ap.done = input.done;
+        var res8 = await sb.from("actions").update(ap).eq("id", input.id).select().single();
+        if(res8.error) return { error: res8.error.message };
+        var r8 = res8.data;
+        var i8 = state.actions.findIndex(function(x){ return x.id === input.id; });
+        if(i8 !== -1) state.actions[i8] = { id:r8.id, parentType:r8.parent_type, parentId:r8.parent_id, title:r8.title, type:r8.type, priority:r8.priority, date:r8.date, done:r8.done };
+        renderAll(); return { ok:true };
+      }
+      if(name === "add_journal_entry"){
+        var res9 = await sb.from("journal").insert({ date: input.date || todayStr(), text: input.text }).select().single();
+        if(res9.error) return { error: res9.error.message };
+        var r9 = res9.data;
+        state.journal.push({ id:r9.id, date:r9.date, text:r9.text });
+        renderAll(); return { ok:true, id:r9.id };
+      }
+      if(name === "create_person"){
+        var res10 = await sb.from("people").insert({ name:input.name, relationship:input.relationship, contact:input.contact || "", notes:input.notes || "" }).select().single();
+        if(res10.error) return { error: res10.error.message };
+        var r10 = res10.data;
+        state.people.push({ id:r10.id, name:r10.name, relationship:r10.relationship, contact:r10.contact, notes:r10.notes });
+        renderAll(); return { ok:true, id:r10.id };
+      }
+      if(name === "edit_person"){
+        var pe = state.people.find(function(x){ return x.id === input.id; });
+        if(!pe) return { error:"no person with that id" };
+        var pep = {};
+        ["name","relationship","contact","notes"].forEach(function(k){ if(input[k] !== undefined) pep[k] = input[k]; });
+        var res11 = await sb.from("people").update(pep).eq("id", input.id).select().single();
+        if(res11.error) return { error: res11.error.message };
+        var r11 = res11.data;
+        var i11 = state.people.findIndex(function(x){ return x.id === input.id; });
+        if(i11 !== -1) state.people[i11] = { id:r11.id, name:r11.name, relationship:r11.relationship, contact:r11.contact, notes:r11.notes };
+        renderAll(); return { ok:true };
+      }
+      return { error: "unknown tool " + name };
+    }catch(e){
+      return { error: String(e) };
+    }
+  }
+
+  async function callClaude(messages){
+    var apiKey = safeGet(window.localStorage, "anthropicApiKey");
+    if(!apiKey) throw new Error("no_api_key");
+    var resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true"
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-5",
+        max_tokens: 1024,
+        system: buildAgentSystemPrompt(),
+        messages: messages,
+        tools: AGENT_TOOLS
+      })
+    });
+    if(!resp.ok){
+      var errBody = await resp.text();
+      throw new Error("Claude API error " + resp.status + ": " + errBody.slice(0,300));
+    }
+    return await resp.json();
+  }
+
+  async function persistChatMessage(role, content){
+    var r = await sb.from("chat_messages").insert({ role: role, content: content });
+    if(r.error) console.error(r.error);
+  }
+
+  function renderChatMessages(){
+    var el = document.getElementById("agentChat");
+    if(!el) return;
+    if(!chatMessages.length){
+      el.innerHTML = '<div class="agent-empty">Tell the agent what happened — it can add goals, projects, habits, actions, journal entries, and people.</div>';
+    } else {
+      el.innerHTML = chatMessages.map(function(m){
+        return '<div class="agent-msg ' + m.role + (m.pending ? ' pending' : '') + '">' + escapeHtml(m.content) + '</div>';
+      }).join("");
+    }
+    el.scrollTop = el.scrollHeight;
+  }
+
+  async function sendAgentMessage(userText){
+    chatMessages.push({ role:"user", content:userText });
+    chatMessages.push({ role:"assistant", content:"…thinking", pending:true });
+    renderChatMessages();
+    await persistChatMessage("user", userText);
+
+    var working = chatMessages.filter(function(m){ return !m.pending; }).map(function(m){ return { role:m.role, content:m.content }; });
+
+    var finalText = "";
+    var safety = 0;
+    while(safety < 6){
+      safety++;
+      var data;
+      try{
+        data = await callClaude(working);
+      }catch(e){
+        finalText = e.message === "no_api_key"
+          ? 'No Claude API key set yet — click "api key" above to add one.'
+          : ("Something went wrong talking to Claude: " + e.message);
+        break;
+      }
+      var content = data.content || [];
+      var toolUses = content.filter(function(b){ return b.type === "tool_use"; });
+      if(data.stop_reason === "tool_use" && toolUses.length){
+        working.push({ role:"assistant", content: content });
+        var toolResults = [];
+        for(var i=0;i<toolUses.length;i++){
+          var tu = toolUses[i];
+          var result = await executeAgentTool(tu.name, tu.input || {});
+          toolResults.push({ type:"tool_result", tool_use_id: tu.id, content: JSON.stringify(result) });
+        }
+        working.push({ role:"user", content: toolResults });
+        continue;
+      }
+      var textBlocks = content.filter(function(b){ return b.type === "text"; });
+      finalText = textBlocks.map(function(b){ return b.text; }).join("\n").trim() || "Done.";
+      break;
+    }
+
+    var pendingIdx = chatMessages.findIndex(function(m){ return m.pending; });
+    if(pendingIdx !== -1) chatMessages[pendingIdx] = { role:"assistant", content: finalText };
+    renderChatMessages();
+    await persistChatMessage("assistant", finalText);
+  }
+
+  document.getElementById("agentSendBtn").addEventListener("click", async function(){
+    var input = document.getElementById("agentInput");
+    var text = input.value.trim();
+    if(!text) return;
+    input.value = "";
+    this.disabled = true;
+    await sendAgentMessage(text);
+    this.disabled = false;
+  });
+  document.getElementById("agentInput").addEventListener("keydown", function(e){
+    if(e.key === "Enter" && !e.shiftKey){
+      e.preventDefault();
+      document.getElementById("agentSendBtn").click();
+    }
+  });
+  document.getElementById("agentKeyBtn").addEventListener("click", function(){
+    document.getElementById("agentApiKeyInput").value = safeGet(window.localStorage, "anthropicApiKey") || "";
+    openModal("agentKeyModalOverlay");
+  });
+  document.getElementById("agentKeySaveBtn").addEventListener("click", function(){
+    var key = document.getElementById("agentApiKeyInput").value.trim();
+    if(key) safeSet(window.localStorage, "anthropicApiKey", key);
+    closeModal("agentKeyModalOverlay");
+  });
+  document.getElementById("agentKeyClearBtn").addEventListener("click", function(){
+    safeRemove(window.localStorage, "anthropicApiKey");
+    document.getElementById("agentApiKeyInput").value = "";
+    closeModal("agentKeyModalOverlay");
+  });
+
   /* ---------------- Modals ---------------- */
   function openModal(id){ document.getElementById(id).hidden = false; }
   function closeModal(id){ document.getElementById(id).hidden = true; }
@@ -1358,17 +1978,21 @@
   });
 
   function fillGoalSelect(sel){
-    sel.innerHTML = state.goals.map(function(g){ return '<option value="' + g.id + '">' + escapeHtml(g.title) + '</option>'; }).join("");
+    var opts = state.goals.map(function(g){ return '<option value="' + g.id + '">' + escapeHtml(g.title) + '</option>'; }).join("");
+    sel.innerHTML = '<option value="">— no parent goal —</option>' + opts;
   }
 
   // Goal modal
-  function openGoalModal(){
-    document.getElementById("goalTitleInput").value = "";
-    document.getElementById("goalDueInput").value = "";
-    document.getElementById("goalDueInput").disabled = false;
-    document.getElementById("goalInfiniteCheckbox").checked = false;
-    setChip(document.getElementById("goalPrioSelect"), "p", "P1");
-    setChip(document.getElementById("goalCatSelect"), "c", "Career");
+  var editingGoalId = null;
+  function openGoalModal(editGoalObj){
+    editingGoalId = editGoalObj ? editGoalObj.id : null;
+    document.getElementById("goalModalTitle").textContent = editGoalObj ? "edit_goal.json" : "new_goal.json";
+    document.getElementById("goalTitleInput").value = editGoalObj ? editGoalObj.title : "";
+    document.getElementById("goalDueInput").value = editGoalObj && editGoalObj.due ? editGoalObj.due : "";
+    document.getElementById("goalDueInput").disabled = editGoalObj ? !!editGoalObj.ongoing : false;
+    document.getElementById("goalInfiniteCheckbox").checked = editGoalObj ? !!editGoalObj.ongoing : false;
+    setChip(document.getElementById("goalPrioSelect"), "p", editGoalObj ? editGoalObj.priority : "P1");
+    setChip(document.getElementById("goalCatSelect"), "c", editGoalObj ? editGoalObj.category : "Career");
     openModal("goalModalOverlay");
     document.getElementById("goalTitleInput").focus();
   }
@@ -1386,26 +2010,38 @@
       priority: chipValue(document.getElementById("goalPrioSelect"), "p"),
       category: chipValue(document.getElementById("goalCatSelect"), "c"),
       due: ongoing ? null : (document.getElementById("goalDueInput").value || null),
-      ongoing: ongoing,
-      milestones: []
+      ongoing: ongoing
     };
     this.disabled = true;
-    var res = await sb.from("goals").insert(payload).select().single();
+    var isEdit = !!editingGoalId;
+    var res = isEdit
+      ? await sb.from("goals").update(payload).eq("id", editingGoalId).select().single()
+      : await sb.from("goals").insert(payload).select().single();
     this.disabled = false;
     if(res.error){ alert(res.error.message); return; }
     var r = res.data;
-    state.goals.push({ id:r.id, title:r.title, priority:r.priority, category:r.category, due:r.due, ongoing:r.ongoing, milestones:r.milestones || [] });
+    var mapped = { id:r.id, title:r.title, priority:r.priority, category:r.category, due:r.due, ongoing:r.ongoing };
+    if(isEdit){
+      var idx = state.goals.findIndex(function(x){ return x.id === editingGoalId; });
+      if(idx !== -1) state.goals[idx] = mapped;
+    } else {
+      state.goals.push(mapped);
+    }
     renderAll(); closeModal("goalModalOverlay");
   });
 
   // Project modal
-  function openProjectModal(){
-    if(!state.goals.length){ alert("Add a goal first — projects need a parent goal."); return; }
-    document.getElementById("projectTitleInput").value = "";
-    document.getElementById("projectDueInput").value = "";
-    document.getElementById("projectHoursInput").value = "";
+  var editingProjectId = null;
+  function openProjectModal(presetGoalId, editProjectObj){
+    editingProjectId = editProjectObj ? editProjectObj.id : null;
+    document.getElementById("projectModalTitle").textContent = editProjectObj ? "edit_project.json" : "new_project.json";
+    document.getElementById("projectTitleInput").value = editProjectObj ? editProjectObj.title : "";
+    document.getElementById("projectDueInput").value = editProjectObj && editProjectObj.due ? editProjectObj.due : "";
+    document.getElementById("projectHoursInput").value = editProjectObj ? editProjectObj.hours : "";
     fillGoalSelect(document.getElementById("projectGoalSelect"));
-    setChip(document.getElementById("projectPrioSelect"), "p", "P2");
+    var goalToSelect = editProjectObj ? (editProjectObj.goalId || "") : (presetGoalId || "");
+    document.getElementById("projectGoalSelect").value = goalToSelect;
+    setChip(document.getElementById("projectPrioSelect"), "p", editProjectObj ? editProjectObj.priority : "P2");
     openModal("projectModalOverlay");
     document.getElementById("projectTitleInput").focus();
   }
@@ -1414,28 +2050,44 @@
     var title = document.getElementById("projectTitleInput").value.trim();
     if(!title) return;
     var payload = {
-      goal_id: document.getElementById("projectGoalSelect").value,
+      goal_id: document.getElementById("projectGoalSelect").value || null,
       title: title, priority: chipValue(document.getElementById("projectPrioSelect"), "p"),
       due: document.getElementById("projectDueInput").value || null,
-      hours: parseFloat(document.getElementById("projectHoursInput").value) || 0,
-      done:false
+      hours: parseFloat(document.getElementById("projectHoursInput").value) || 0
     };
     this.disabled = true;
-    var res = await sb.from("projects").insert(payload).select().single();
+    var isEdit = !!editingProjectId;
+    var res;
+    if(isEdit){
+      res = await sb.from("projects").update(payload).eq("id", editingProjectId).select().single();
+    } else {
+      payload.done = false;
+      res = await sb.from("projects").insert(payload).select().single();
+    }
     this.disabled = false;
     if(res.error){ alert(res.error.message); return; }
     var r = res.data;
-    state.projects.push({ id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done });
+    var mapped = { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done };
+    if(isEdit){
+      var idx = state.projects.findIndex(function(x){ return x.id === editingProjectId; });
+      if(idx !== -1) state.projects[idx] = mapped;
+    } else {
+      state.projects.push(mapped);
+    }
     renderAll(); closeModal("projectModalOverlay");
   });
 
   // Habit modal
-  function openHabitModal(){
-    if(!state.goals.length){ alert("Add a goal first — habits need a parent goal."); return; }
-    document.getElementById("habitTitleInput").value = "";
+  var editingHabitId = null;
+  function openHabitModal(presetGoalId, editHabitObj){
+    editingHabitId = editHabitObj ? editHabitObj.id : null;
+    document.getElementById("habitModalTitle").textContent = editHabitObj ? "edit_habit.json" : "new_habit.json";
+    document.getElementById("habitTitleInput").value = editHabitObj ? editHabitObj.title : "";
     fillGoalSelect(document.getElementById("habitGoalSelect"));
-    setChip(document.getElementById("habitPrioSelect"), "p", "P2");
-    setChip(document.getElementById("habitFreqSelect"), "f", "daily");
+    var goalToSelect = editHabitObj ? (editHabitObj.goalId || "") : (presetGoalId || "");
+    document.getElementById("habitGoalSelect").value = goalToSelect;
+    setChip(document.getElementById("habitPrioSelect"), "p", editHabitObj ? editHabitObj.priority : "P2");
+    setChip(document.getElementById("habitFreqSelect"), "f", editHabitObj ? editHabitObj.frequency : "daily");
     openModal("habitModalOverlay");
     document.getElementById("habitTitleInput").focus();
   }
@@ -1444,17 +2096,29 @@
     var title = document.getElementById("habitTitleInput").value.trim();
     if(!title) return;
     var payload = {
-      goal_id: document.getElementById("habitGoalSelect").value,
+      goal_id: document.getElementById("habitGoalSelect").value || null,
       title: title, priority: chipValue(document.getElementById("habitPrioSelect"), "p"),
-      frequency: chipValue(document.getElementById("habitFreqSelect"), "f"),
-      days: {}
+      frequency: chipValue(document.getElementById("habitFreqSelect"), "f")
     };
     this.disabled = true;
-    var res = await sb.from("habits").insert(payload).select().single();
+    var isEdit = !!editingHabitId;
+    var res;
+    if(isEdit){
+      res = await sb.from("habits").update(payload).eq("id", editingHabitId).select().single();
+    } else {
+      payload.days = {};
+      res = await sb.from("habits").insert(payload).select().single();
+    }
     this.disabled = false;
     if(res.error){ alert(res.error.message); return; }
     var r = res.data;
-    state.habits.push({ id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, frequency:r.frequency, days:r.days || {} });
+    var mapped = { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, frequency:r.frequency, days:r.days || {} };
+    if(isEdit){
+      var idx = state.habits.findIndex(function(x){ return x.id === editingHabitId; });
+      if(idx !== -1) state.habits[idx] = mapped;
+    } else {
+      state.habits.push(mapped);
+    }
     renderAll(); closeModal("habitModalOverlay");
   });
 
@@ -1464,19 +2128,35 @@
 
   function fillActionParentSelect(){
     var pt = chipValue(document.getElementById("actionParentTypeSelect"), "pt");
+    var fieldEl = document.getElementById("actionParentField");
     var sel = document.getElementById("actionParentSelect");
+    if(pt === "none"){
+      fieldEl.style.display = "none";
+      sel.innerHTML = "";
+      return;
+    }
+    fieldEl.style.display = "";
     if(pt === "goal") sel.innerHTML = state.goals.map(function(g){ return '<option value="' + g.id + '">' + escapeHtml(g.title) + '</option>'; }).join("");
     else sel.innerHTML = state.projects.map(function(p){ return '<option value="' + p.id + '">' + escapeHtml(p.title) + '</option>'; }).join("");
   }
   document.getElementById("actionParentTypeSelect").addEventListener("click", function(){ fillActionParentSelect(); });
 
-  function openActionModal(){
-    if(!state.goals.length){ alert("Add a goal first — actions need a parent goal or project."); return; }
-    document.getElementById("actionTitleInput").value = "";
-    document.getElementById("actionDateInput").value = todayStr();
-    setChip(document.getElementById("actionPrioSelect"), "p", "P1");
-    setChip(document.getElementById("actionParentTypeSelect"), "pt", "goal");
+  var editingActionId = null;
+  function openActionModal(presetGoalId, editActionObj){
+    editingActionId = editActionObj ? editActionObj.id : null;
+    document.getElementById("actionModalTitle").textContent = editActionObj ? "edit_action.json" : "new_action.json";
+    document.getElementById("actionTitleInput").value = editActionObj ? editActionObj.title : "";
+    document.getElementById("actionDateInput").value = editActionObj ? (editActionObj.date || "") : todayStr();
+    setChip(document.getElementById("actionPrioSelect"), "p", editActionObj ? editActionObj.priority : "P1");
+    if(editActionObj) actionTypeSel.value = editActionObj.type;
+    var defaultPt = editActionObj ? editActionObj.parentType
+      : (presetGoalId ? "goal" : (state.goals.length ? "goal" : (state.projects.length ? "project" : "none")));
+    setChip(document.getElementById("actionParentTypeSelect"), "pt", defaultPt);
     fillActionParentSelect();
+    if(defaultPt !== "none"){
+      var parentIdToSelect = editActionObj ? editActionObj.parentId : presetGoalId;
+      if(parentIdToSelect) document.getElementById("actionParentSelect").value = parentIdToSelect;
+    }
     openModal("actionModalOverlay");
     document.getElementById("actionTitleInput").focus();
   }
@@ -1484,23 +2164,36 @@
   document.getElementById("saveActionBtn").addEventListener("click", async function(){
     var title = document.getElementById("actionTitleInput").value.trim();
     if(!title) return;
+    var pt = chipValue(document.getElementById("actionParentTypeSelect"), "pt");
     var parentSelect = document.getElementById("actionParentSelect");
-    if(!parentSelect.value) return;
+    if(pt !== "none" && !parentSelect.value) return;
     var payload = {
       title: title,
       type: actionTypeSel.value,
       priority: chipValue(document.getElementById("actionPrioSelect"), "p"),
-      parent_type: chipValue(document.getElementById("actionParentTypeSelect"), "pt"),
-      parent_id: parentSelect.value,
-      date: document.getElementById("actionDateInput").value || null,
-      done:false
+      parent_type: pt,
+      parent_id: pt === "none" ? null : parentSelect.value,
+      date: document.getElementById("actionDateInput").value || null
     };
     this.disabled = true;
-    var res = await sb.from("actions").insert(payload).select().single();
+    var isEdit = !!editingActionId;
+    var res;
+    if(isEdit){
+      res = await sb.from("actions").update(payload).eq("id", editingActionId).select().single();
+    } else {
+      payload.done = false;
+      res = await sb.from("actions").insert(payload).select().single();
+    }
     this.disabled = false;
     if(res.error){ alert(res.error.message); return; }
     var r = res.data;
-    state.actions.push({ id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done });
+    var mapped = { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done };
+    if(isEdit){
+      var idx = state.actions.findIndex(function(x){ return x.id === editingActionId; });
+      if(idx !== -1) state.actions[idx] = mapped;
+    } else {
+      state.actions.push(mapped);
+    }
     renderAll(); closeModal("actionModalOverlay");
   });
 
@@ -1539,8 +2232,10 @@
     renderProjects();
     renderHabits();
     renderActions();
+    renderCalendar();
     renderJournal();
     renderPeople();
+    renderChatMessages();
   }
 })();
 </script>
