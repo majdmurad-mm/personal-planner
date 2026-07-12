@@ -169,6 +169,35 @@
   .goal-card.Relationships{ border-left-color:var(--cat-relationships); border-color:rgba(95,168,255,0.25); background:linear-gradient(135deg, var(--cat-relationships-bg), var(--bg-raised) 55%); }
   .goal-card.Life{ border-left-color:var(--cat-life); border-color:rgba(34,211,238,0.25); background:linear-gradient(135deg, var(--cat-life-bg), var(--bg-raised) 55%); }
 
+  /* ===== AREAS ===== */
+  .area-block{ margin-bottom:30px; }
+  .area-block:last-child{ margin-bottom:0; }
+  .area-head{ display:flex; align-items:center; gap:9px; margin-bottom:14px; padding-bottom:11px; border-bottom:2px solid var(--border-bright); flex-wrap:wrap; }
+  .area-head[data-action="open-area-detail"]{ cursor:pointer; }
+  .area-head[data-action="open-area-detail"]:hover .area-name{ color:var(--accent); }
+  .area-dash-stats{ display:flex; gap:10px; flex-wrap:wrap; margin:18px 0 24px; }
+  .area-dash-stat{ background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:12px 18px; min-width:84px; text-align:center; }
+  .area-dash-stat-num{ display:block; font-family:var(--mono); font-size:22px; font-weight:700; color:var(--text); }
+  .area-dash-stat-label{ font-family:var(--mono); font-size:9.5px; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-faint); }
+  .area-dash-stat.good .area-dash-stat-num{ color:var(--accent); }
+  .area-dash-stat.warn .area-dash-stat-num{ color:var(--p1); }
+  .area-dash-stat.critical .area-dash-stat-num{ color:var(--p0); }
+  .area-detail-title-row{ display:flex; align-items:center; gap:10px; margin-top:10px; }
+  .area-detail-title-row h1{ margin:0; }
+  .area-icon{ font-family:var(--mono); font-size:17px; line-height:1; width:22px; text-align:center; flex-shrink:0; color:var(--text-faint); }
+  .area-icon.Health{ color:var(--cat-health); } .area-head.Health{ border-bottom-color:var(--cat-health); }
+  .area-icon.Finance{ color:var(--cat-finance); } .area-head.Finance{ border-bottom-color:var(--cat-finance); }
+  .area-icon.Career{ color:var(--cat-career); } .area-head.Career{ border-bottom-color:var(--cat-career); }
+  .area-icon.Maintenance{ color:var(--cat-maintenance); } .area-head.Maintenance{ border-bottom-color:var(--cat-maintenance); }
+  .area-icon.Growth{ color:var(--cat-growth); } .area-head.Growth{ border-bottom-color:var(--cat-growth); }
+  .area-icon.Relationships{ color:var(--cat-relationships); } .area-head.Relationships{ border-bottom-color:var(--cat-relationships); }
+  .area-icon.Life{ color:var(--cat-life); } .area-head.Life{ border-bottom-color:var(--cat-life); }
+  .area-head-addbtn{ font-size:10.5px; padding:5px 10px; }
+  .area-name{ font-family:var(--mono); font-size:15px; font-weight:700; letter-spacing:0.01em; margin:0; }
+  .area-counts{ margin-left:auto; font-family:var(--mono); font-size:10.5px; color:var(--text-faint); }
+  .area-counts b{ color:var(--text-dim); font-weight:700; }
+  .area-empty-note{ color:var(--text-faint); font-size:12.5px; margin:0; }
+
   .card-tab{ display:flex; align-items:center; gap:10px; padding:9px 16px; background:var(--bg-inset); border-bottom:1px solid var(--border); font-family:var(--mono); font-size:10.5px; color:var(--text-faint); flex-wrap:wrap; }
   .card-tab .sep{ color:var(--text-faint); opacity:0.5; }
   .card-tab .due-tag{ margin-left:auto; display:flex; align-items:center; gap:8px; }
@@ -188,6 +217,20 @@
   .progress-fill.behind{ background:var(--p0); }
   .progress-fill.done{ background:var(--text-faint); }
   .progress-pct{ font-family:var(--mono); font-size:11.5px; font-weight:600; color:var(--text-dim); width:34px; text-align:right; }
+
+  .health-bar-row{ display:flex; align-items:center; gap:10px; margin-top:7px; }
+  .health-label{ font-family:var(--mono); font-size:9px; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-faint); width:38px; flex-shrink:0; }
+  .health-track{ flex:1; height:5px; background:var(--bg-inset); border-radius:3px; overflow:hidden; border:1px solid var(--border); }
+  .health-fill{ height:100%; background:var(--accent); transition:width .4s ease; }
+  .health-fill.warn{ background:var(--p1); }
+  .health-fill.critical{ background:var(--p0); }
+  .health-manual-tag{ color:var(--violet); font-size:8px; vertical-align:middle; margin-left:2px; }
+  .health-dots{ display:flex; gap:4px; flex-shrink:0; }
+  .health-dot{ width:9px; height:9px; border-radius:50%; border:1.5px solid var(--border-bright); background:transparent; cursor:pointer; padding:0; }
+  .health-bar-row input.health-pct-input{ width:42px; flex-shrink:0; text-align:right; padding:2px 4px; font-size:11px; font-family:var(--mono); }
+  .health-dot.good.on{ background:var(--accent); border-color:var(--accent); }
+  .health-dot.warn.on{ background:var(--p1); border-color:var(--p1); }
+  .health-dot.critical.on{ background:var(--p0); border-color:var(--p0); }
 
   .goal-children{ margin-top:14px; padding-top:12px; border-top:1px solid var(--border); display:flex; flex-direction:column; gap:6px; }
   .child-row{ display:flex; align-items:center; gap:8px; font-size:12.5px; }
@@ -212,6 +255,48 @@
   .matrix-tile{ aspect-ratio:1; border-radius:6px; position:relative; overflow:hidden; cursor:pointer; border:2px solid var(--border); background:var(--bg-inset); transition:transform .12s ease, border-color .12s ease; }
   .matrix-tile:hover{ transform:translateY(-2px); border-color:var(--border-bright); }
   .matrix-tile-initial{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:26px; font-weight:700; opacity:0.35; }
+  .matrix-tile-icon-img{ position:absolute; inset:0; width:100%; height:100%; display:block; mask-size:65%; -webkit-mask-size:65%; mask-repeat:no-repeat; -webkit-mask-repeat:no-repeat; mask-position:center; -webkit-mask-position:center; opacity:0.9; }
+  .icon-upload-row{ display:flex; align-items:center; gap:10px; }
+  .icon-preview{ width:40px; height:40px; border-radius:6px; background-color:var(--bg-inset); border:1px solid var(--border); flex-shrink:0; mask-size:contain; -webkit-mask-size:contain; mask-repeat:no-repeat; -webkit-mask-repeat:no-repeat; mask-position:center; -webkit-mask-position:center; }
+
+  /* ===== WHITEBOARD ===== */
+  .wb-toolbar{ display:flex; align-items:center; gap:14px; margin:18px 0 14px; flex-wrap:wrap; }
+  .wb-colors{ display:flex; gap:6px; }
+  .wb-swatch{ width:22px; height:22px; border-radius:50%; border:2px solid var(--border-bright); cursor:pointer; padding:0; }
+  .wb-swatch.sel{ box-shadow:0 0 0 2px var(--bg-inset), 0 0 0 3px var(--accent); }
+  .wb-toolbar input[type="color"]{ width:34px; height:30px; padding:2px; cursor:pointer; }
+  .wb-width-label{ font-family:var(--mono); font-size:11px; color:var(--text-dim); display:flex; align-items:center; gap:6px; }
+  .wb-save-status{ margin-left:auto; font-family:var(--mono); font-size:10px; color:var(--text-faint); }
+  #wbConnectBtn.on{ background:var(--accent); color:var(--bg); border-color:var(--accent); }
+  .wb-canvas-wrap{ position:relative; border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; touch-action:none; }
+  #wbCanvas{ display:block; width:100%; height:60vh; background:#fff; cursor:crosshair; }
+  .wb-conn-svg{ position:absolute; inset:0; width:100%; height:100%; pointer-events:none; overflow:visible; }
+  .wb-conn-hit{ pointer-events:stroke; cursor:pointer; }
+  .wb-conn-line{ stroke:var(--text-faint); stroke-width:1.5; pointer-events:none; }
+  .wb-conn:hover .wb-conn-line{ stroke:var(--accent); stroke-width:2.25; }
+  .wb-overlay{ position:absolute; inset:0; pointer-events:none; }
+  .wb-goal-node{ position:absolute; width:148px; background:var(--bg-raised); border:1px solid var(--border-bright); border-left:3px solid var(--border-bright); border-radius:6px; padding:8px 10px; pointer-events:auto; cursor:grab; box-shadow:0 4px 14px rgba(0,0,0,0.3); user-select:none; touch-action:none; }
+  .wb-goal-node:hover{ border-color:var(--text-faint); }
+  .wb-goal-node.dragging{ cursor:grabbing; box-shadow:0 10px 28px rgba(0,0,0,0.45); z-index:50; }
+  .wb-goal-node.is-project{ border-left-style:dashed; }
+  .wb-goal-node.connect-pending{ box-shadow:0 0 0 2px var(--accent), 0 10px 28px rgba(0,0,0,0.45); }
+  .wb-goal-node.Health{ border-left-color:var(--cat-health); }
+  .wb-goal-node.Finance{ border-left-color:var(--cat-finance); }
+  .wb-goal-node.Career{ border-left-color:var(--cat-career); }
+  .wb-goal-node.Maintenance{ border-left-color:var(--cat-maintenance); }
+  .wb-goal-node.Growth{ border-left-color:var(--cat-growth); }
+  .wb-goal-node.Relationships{ border-left-color:var(--cat-relationships); }
+  .wb-goal-node.Life{ border-left-color:var(--cat-life); }
+  .wb-goal-node-top{ display:flex; align-items:center; gap:7px; }
+  .wb-goal-node-icon{ width:20px; height:20px; border-radius:4px; display:block; flex-shrink:0; mask-size:contain; -webkit-mask-size:contain; mask-repeat:no-repeat; -webkit-mask-repeat:no-repeat; mask-position:center; -webkit-mask-position:center; }
+  .wb-goal-node-initial{ width:20px; height:20px; border-radius:4px; display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:11px; font-weight:700; background:var(--bg-inset); color:var(--text-dim); flex-shrink:0; }
+  .wb-goal-node-title{ font-family:var(--mono); font-size:11.5px; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .wb-goal-node-meta{ display:flex; align-items:center; gap:6px; margin-top:7px; }
+  .wb-goal-node-health-dot{ width:7px; height:7px; border-radius:50%; margin-left:auto; background:var(--accent); }
+  .wb-goal-node-health-dot.warn{ background:var(--p1); }
+  .wb-goal-node-health-dot.critical{ background:var(--p0); }
+  .wb-empty-hint{ position:absolute; top:12px; left:12px; font-family:var(--mono); font-size:11px; color:var(--text-faint); pointer-events:none; }
+  .entity-icon-img{ width:22px; height:22px; border-radius:5px; display:block; flex-shrink:0; mask-size:contain; -webkit-mask-size:contain; mask-repeat:no-repeat; -webkit-mask-repeat:no-repeat; mask-position:center; -webkit-mask-position:center; }
   .matrix-tile-status{ position:absolute; top:6px; left:6px; width:7px; height:7px; border-radius:50%; z-index:2; }
   .matrix-tile-status.on-track{ background:var(--accent); box-shadow:0 0 5px var(--accent); }
   .matrix-tile-status.behind{ background:var(--p0); box-shadow:0 0 5px var(--p0); }
@@ -219,9 +304,10 @@
   .matrix-tile-badge{ position:absolute; top:5px; right:5px; z-index:2; }
   .matrix-tile-scrim{ position:absolute; left:0; right:0; bottom:3px; padding:5px 7px 4px; background:linear-gradient(0deg, rgba(0,0,0,0.85), transparent); }
   .matrix-tile-title{ font-family:var(--sans); font-size:10.5px; font-weight:600; color:#fff; line-height:1.25; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
-  .matrix-tile-progress{ position:absolute; bottom:0; left:0; right:0; height:3px; background:rgba(255,255,255,0.15); z-index:2; }
+  .matrix-tile-progress{ position:absolute; bottom:0; left:0; right:0; height:5px; background:rgba(255,255,255,0.15); z-index:2; }
   .matrix-tile-progress-fill{ height:100%; background:var(--accent); }
   .matrix-tile-progress-fill.behind{ background:var(--p0); }
+  .matrix-tile-progress-fill.warn{ background:var(--p1); }
   .matrix-tile-progress-fill.done{ background:var(--text-faint); }
   .matrix-tile.Health{ background:var(--cat-health-bg); } .matrix-tile.Health .matrix-tile-initial{ color:var(--cat-health); }
   .matrix-tile.Finance{ background:var(--cat-finance-bg); } .matrix-tile.Finance .matrix-tile-initial{ color:var(--cat-finance); }
@@ -319,6 +405,51 @@
   .person-contact{ font-family:var(--mono); font-size:11px; color:var(--text-dim); margin-top:8px; }
   .person-notes{ font-size:12px; color:var(--text-dim); margin-top:8px; line-height:1.4; }
 
+  /* ===== DRAG-TO-REORDER (list views) ===== */
+  [draggable="true"]{ cursor:grab; }
+  [draggable="true"].dragging{ opacity:0.4; cursor:grabbing; }
+
+  /* ===== TRACKER ===== */
+  .tracker-grid-wrap{ overflow-x:auto; margin-top:16px; border:1px solid var(--border); border-radius:var(--radius); }
+  .tracker-table{ width:100%; border-collapse:collapse; }
+  .tracker-table th, .tracker-table td{ border:1px solid var(--border); padding:0; }
+  .tracker-row-head{ background:var(--bg-inset); text-align:left; padding:9px 12px; white-space:nowrap; vertical-align:middle; }
+  .tv-name{ font-size:12.5px; font-weight:600; color:var(--text); }
+  .tv-unit{ font-family:var(--mono); font-size:9.5px; color:var(--text-faint); margin-left:5px; }
+  .tracker-sparkline{ display:flex; align-items:flex-end; gap:2px; height:16px; margin-top:5px; }
+  .tracker-spark-bar{ width:4px; background:var(--accent-dim); border-radius:1px; min-height:2px; }
+  .tracker-col-head{ background:var(--bg-inset); text-align:center; padding:8px 4px; font-family:var(--mono); font-size:10px; color:var(--text-faint); min-width:64px; cursor:pointer; transition:all .15s ease; }
+  .tracker-col-head:hover{ color:var(--text-dim); }
+  .tracker-col-head.today{ color:var(--violet); font-weight:700; }
+  .tracker-col-head.sel{ box-shadow:inset 0 0 0 1.5px var(--accent); color:var(--accent); }
+  .tracker-cell{ text-align:center; padding:2px; vertical-align:middle; background:var(--bg-raised); }
+  .tracker-cell:hover{ background:var(--bg-inset); }
+  .tracker-cell-input{ width:100%; min-width:64px; text-align:center; background:transparent; border:none; color:var(--text); font-family:var(--mono); font-size:11.5px; padding:9px 4px; }
+  .tracker-cell-input:focus{ background:var(--bg-inset); outline:1.5px solid var(--accent-dim); outline-offset:-1.5px; }
+  .tracker-scale{ display:flex; gap:3px; justify-content:center; padding:10px 4px; }
+  .tracker-scale-dot{ width:9px; height:9px; border-radius:50%; border:1.5px solid var(--border-bright); background:transparent; cursor:pointer; padding:0; }
+  .tracker-scale-dot.on{ background:var(--violet); border-color:var(--violet); }
+  .tracker-summary-panel{ background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-top:20px; }
+  .tracker-summary-top{ display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:10px; }
+  .tracker-summary-top input[type="date"]{ width:auto; }
+  .tv-cat-list{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+  .tv-cat-chip{ display:inline-flex; align-items:center; gap:6px; font-family:var(--mono); font-size:11px; font-weight:700; padding:4px 8px; border-radius:3px; }
+  .tv-cat-chip button{ background:none; border:none; cursor:pointer; color:inherit; font-size:12px; line-height:1; padding:0; opacity:0.75; }
+  .tv-cat-chip button:hover{ opacity:1; }
+  .tv-cat-add-row{ display:flex; gap:6px; align-items:center; }
+  .tv-cat-add-row input[type="text"]{ flex:1; }
+  .tv-cat-add-row input[type="color"]{ width:38px; height:36px; padding:2px; cursor:pointer; }
+  .tracker-cat-select{ cursor:pointer; }
+
+  /* ===== CONTEXT MENU ===== */
+  .ctx-menu{ position:fixed; z-index:200; background:var(--bg-raised); border:1px solid var(--border-bright); border-radius:6px; padding:4px; min-width:140px; box-shadow:0 8px 30px rgba(0,0,0,0.4); }
+  .ctx-menu[hidden]{ display:none; }
+  .ctx-menu-item{ display:block; width:100%; text-align:left; background:none; border:none; padding:8px 10px; font-family:var(--mono); font-size:11.5px; color:var(--text-dim); cursor:pointer; border-radius:4px; }
+  .ctx-menu-item:hover{ background:var(--bg-inset); color:var(--text); }
+  .ctx-menu-item.danger:hover{ background:var(--p0-bg); color:var(--p0); }
+  .ctx-menu-sep{ height:1px; background:var(--border); margin:4px 2px; }
+  .global-toast{ position:fixed; left:50%; bottom:22px; transform:translateX(-50%); z-index:300; max-width:min(480px, 90vw); background:var(--bg-raised); border:1px solid var(--p1); color:var(--text); font-family:var(--mono); font-size:11.5px; line-height:1.5; padding:10px 14px; border-radius:6px; box-shadow:0 8px 30px rgba(0,0,0,0.45); }
+
   .empty-state{ text-align:center; padding:56px 20px; border:1px dashed var(--border); border-radius:var(--radius); color:var(--text-faint); margin-top:16px; }
   .empty-state .glyph{ font-family:var(--mono); font-size:22px; color:var(--border-bright); margin-bottom:8px; }
   .empty-state h3{ font-family:var(--mono); font-size:15px; color:var(--text); margin:0 0 6px; }
@@ -398,8 +529,11 @@
       <div class="brand-sub" id="todayLabel">// loading…</div>
 
       <nav class="side-nav" id="sideNav">
-        <button class="side-link active" data-section="planner" type="button"><span class="sl-glyph">▤</span>Planner</button>
-        <button class="side-link" data-section="agent" type="button"><span class="sl-glyph">◈</span>Agent</button>
+        <button class="side-link active" data-section="agent" type="button"><span class="sl-glyph">◈</span>Agent</button>
+        <button class="side-link" data-section="areas" type="button"><span class="sl-glyph">◆</span>Areas</button>
+        <button class="side-link" data-section="planner" type="button"><span class="sl-glyph">▤</span>Planner</button>
+        <button class="side-link" data-section="tracker" type="button"><span class="sl-glyph">▥</span>Tracker</button>
+        <button class="side-link" data-section="whiteboard" type="button"><span class="sl-glyph">▧</span>Whiteboard</button>
         <button class="side-link" data-section="calendar" type="button"><span class="sl-glyph">▦</span>Calendar</button>
         <button class="side-link" data-section="journal" type="button"><span class="sl-glyph">✎</span>Journal</button>
         <button class="side-link" data-section="people" type="button"><span class="sl-glyph">☺</span>People</button>
@@ -421,7 +555,7 @@
 
   <main class="main">
     <!-- ===== PLANNER SECTION ===== -->
-    <section id="plannerSection">
+    <section id="plannerSection" style="display:none;">
       <div class="main-header">
         <div>
           <h1 id="plannerH1">planner<span class="path-sep">/</span>goals</h1>
@@ -521,8 +655,42 @@
       </div>
     </section>
 
+    <!-- ===== AREAS SECTION ===== -->
+    <section id="areasSection" style="display:none;">
+      <div class="main-header">
+        <div>
+          <h1>areas</h1>
+          <p class="subhead">Every goal, project, habit, and action — grouped by the life area (category) it belongs to.</p>
+        </div>
+      </div>
+      <div id="areaList"></div>
+    </section>
+
+    <!-- ===== AREA DETAIL SECTION ===== -->
+    <section id="areaDetailSection" style="display:none;">
+      <div class="main-header">
+        <div>
+          <button class="btn" id="areaDetailBackBtn" type="button">‹ back</button>
+          <div class="area-detail-title-row" id="areaDetailTitleRow"></div>
+        </div>
+      </div>
+      <div class="area-dash-stats" id="areaDetailStats"></div>
+      <div id="areaDetailBody"></div>
+    </section>
+
+    <!-- ===== GOAL DETAIL SECTION ===== -->
+    <section id="goalDetailSection" style="display:none;">
+      <div class="main-header">
+        <div>
+          <button class="btn" id="goalDetailBackBtn" type="button">‹ back</button>
+          <p class="subhead" style="margin-top:10px;">Full detail view for this goal — everything attached to it in one place.</p>
+        </div>
+      </div>
+      <div id="goalDetailBody"></div>
+    </section>
+
     <!-- ===== AGENT SECTION ===== -->
-    <section id="agentSection" style="display:none;">
+    <section id="agentSection">
       <div class="main-header">
         <div>
           <h1>agent</h1>
@@ -565,6 +733,73 @@
       </div>
 
       <div class="cal-grid" id="calGrid"></div>
+    </section>
+
+    <!-- ===== TRACKER SECTION ===== -->
+    <section id="trackerSection" style="display:none;">
+      <div class="main-header">
+        <div>
+          <h1>tracker</h1>
+          <p class="subhead">Daily variables you track over time — mood, sleep, water, whatever moves the needle — laid out like a spreadsheet.</p>
+        </div>
+        <button class="btn btn-accent" id="openTrackerVarsModalBtn" type="button">+ manage variables</button>
+      </div>
+
+      <div class="cal-toolbar">
+        <div class="cal-nav-group">
+          <button class="cal-nav-btn" id="trackerPrevBtn" type="button" aria-label="Previous week">‹</button>
+          <span class="cal-month-label" id="trackerRangeLabel"></span>
+          <button class="cal-nav-btn" id="trackerNextBtn" type="button" aria-label="Next week">›</button>
+        </div>
+        <button class="btn" id="trackerTodayBtn" type="button">today</button>
+      </div>
+
+      <div class="tracker-grid-wrap">
+        <table class="tracker-table" id="trackerTable"></table>
+      </div>
+      <div class="empty-state" id="trackerEmptyState" style="display:none;">
+        <div class="glyph">▥</div><h3>no variables yet</h3><p>Click "manage variables" to start tracking something.</p>
+      </div>
+
+      <div class="tracker-summary-panel">
+        <div class="tracker-summary-top">
+          <input type="date" id="trackerSummaryDateInput">
+          <button class="btn btn-accent" id="saveTrackerSummaryBtn" type="button">save summary</button>
+        </div>
+        <textarea id="trackerSummaryInput" class="journal-textarea" placeholder="How did the day go overall?" rows="3"></textarea>
+      </div>
+
+      <div class="ctx-menu" id="trackerVarCtxMenu" hidden>
+        <button class="ctx-menu-item" data-ctx="up" type="button">move up</button>
+        <button class="ctx-menu-item" data-ctx="down" type="button">move down</button>
+        <button class="ctx-menu-item" data-ctx="edit" type="button">edit</button>
+        <div class="ctx-menu-sep"></div>
+        <button class="ctx-menu-item danger" data-ctx="delete" type="button">delete</button>
+      </div>
+    </section>
+
+    <!-- ===== WHITEBOARD SECTION ===== -->
+    <section id="whiteboardSection" style="display:none;">
+      <div class="main-header">
+        <div>
+          <h1>whiteboard</h1>
+          <p class="subhead">A mind map — goals and projects as movable cards, connect them into relations, sketch around them.</p>
+        </div>
+      </div>
+      <div class="wb-toolbar">
+        <div class="wb-colors" id="wbColorSwatches"></div>
+        <input type="color" id="wbColorPicker" value="#1A1A1A" aria-label="Custom color">
+        <label class="wb-width-label">width <input type="range" id="wbWidthInput" min="1" max="24" value="3"></label>
+        <button class="btn" id="wbClearBtn" type="button">clear drawing</button>
+        <button class="btn" id="wbConnectBtn" type="button" title="Click two cards in a row to link them">🔗 connect</button>
+        <span class="wb-save-status" id="wbSaveStatus"></span>
+      </div>
+      <p class="panel-hint" id="wbConnectHint" style="display:none;">Connect mode on — click a card, then click another to link them. Click the same card again to cancel. Right-click a line to remove it.</p>
+      <div class="wb-canvas-wrap" id="wbCanvasWrap">
+        <canvas id="wbCanvas"></canvas>
+        <svg class="wb-conn-svg" id="wbConnSvg"></svg>
+        <div class="wb-overlay" id="wbOverlay"></div>
+      </div>
     </section>
 
     <!-- ===== JOURNAL SECTION ===== -->
@@ -630,9 +865,25 @@
         </div>
       </div>
       <div class="field"><label>category</label><div class="chip-select" id="goalCatSelect">
-        <div class="chip-opt" data-c="Health">Health</div><div class="chip-opt" data-c="Finance">Finance</div><div class="chip-opt sel" data-c="Career">Career</div>
-        <div class="chip-opt" data-c="Maintenance">Maintenance</div><div class="chip-opt" data-c="Growth">Growth</div><div class="chip-opt" data-c="Relationships">Relationships</div><div class="chip-opt" data-c="Life">Life</div>
+        <div class="chip-opt" data-c="Health">✚ Health</div><div class="chip-opt" data-c="Finance">$ Finance</div><div class="chip-opt sel" data-c="Career">▲ Career</div>
+        <div class="chip-opt" data-c="Maintenance">⚙ Maintenance</div><div class="chip-opt" data-c="Growth">↑ Growth</div><div class="chip-opt" data-c="Relationships">♥ Relationships</div><div class="chip-opt" data-c="Life">◐ Life</div>
       </div></div>
+      <div class="field"><label>health (optional override)</label>
+        <div class="field-row">
+          <div class="field"><div class="chip-select" id="goalHealthLevelSelect">
+            <div class="chip-opt sel" data-hl="">auto</div><div class="chip-opt" data-hl="good">good</div><div class="chip-opt" data-hl="warn">warn</div><div class="chip-opt" data-hl="critical">critical</div>
+          </div></div>
+          <div class="field"><input type="number" min="0" max="100" id="goalHealthPctInput" placeholder="% (blank = auto)"></div>
+        </div>
+      </div>
+      <div class="field"><label>icon (optional)</label>
+        <div class="icon-upload-row">
+          <div class="icon-preview" id="goalIconPreview"></div>
+          <input type="file" accept="image/*" id="goalIconFileInput" style="display:none;">
+          <button class="btn" id="goalIconUploadBtn" type="button">upload image</button>
+          <button class="btn" id="goalIconRemoveBtn" type="button" style="display:none;">remove</button>
+        </div>
+      </div>
       <div class="modal-actions"><button class="btn" id="cancelGoalModalBtn" type="button">cancel</button><button class="btn btn-accent" id="saveGoalBtn" type="button">save goal</button></div>
     </div>
   </div>
@@ -652,6 +903,14 @@
         <div class="field"><label for="projectDueInput">due date</label><input type="date" id="projectDueInput"></div>
       </div>
       <div class="field"><label for="projectHoursInput">estimated hours</label><input type="number" min="0" step="0.5" id="projectHoursInput" placeholder="0"></div>
+      <div class="field"><label>icon (optional)</label>
+        <div class="icon-upload-row">
+          <div class="icon-preview" id="projectIconPreview"></div>
+          <input type="file" accept="image/*" id="projectIconFileInput" style="display:none;">
+          <button class="btn" id="projectIconUploadBtn" type="button">upload image</button>
+          <button class="btn" id="projectIconRemoveBtn" type="button" style="display:none;">remove</button>
+        </div>
+      </div>
       <div class="modal-actions"><button class="btn" id="cancelProjectModalBtn" type="button">cancel</button><button class="btn btn-accent" id="saveProjectBtn" type="button">save project</button></div>
     </div>
   </div>
@@ -719,14 +978,50 @@
 <!-- ===== AGENT API KEY MODAL ===== -->
 <div class="modal-overlay" id="agentKeyModalOverlay" hidden>
   <div class="modal">
-    <div class="modal-head"><span class="dot g"></span><h2>claude_api_key.json</h2></div>
+    <div class="modal-head"><span class="dot g"></span><h2>gemini_api_key.json</h2></div>
     <div class="modal-inner">
-      <div class="field"><label for="agentApiKeyInput">anthropic api key</label><input type="password" id="agentApiKeyInput" placeholder="sk-ant-..."></div>
-      <p class="panel-hint">Stored only in this browser's local storage — sent straight to Anthropic's API and nowhere else. Never saved to the app's database, never pushed to GitHub.</p>
+      <div class="field"><label for="agentApiKeyInput">gemini api key</label><input type="password" id="agentApiKeyInput" placeholder="AIza..."></div>
+      <p class="panel-hint">Stored only in this browser's local storage — sent straight to Google's Gemini API and nowhere else. Never saved to the app's database, never pushed to GitHub. Free key: aistudio.google.com/apikey</p>
       <div class="modal-actions"><button class="btn" id="agentKeyClearBtn" type="button">clear key</button><button class="btn btn-accent" id="agentKeySaveBtn" type="button">save key</button></div>
     </div>
   </div>
 </div>
+
+<!-- ===== TRACKER VARIABLES MODAL ===== -->
+<div class="modal-overlay" id="trackerVarsModalOverlay" hidden>
+  <div class="modal">
+    <div class="modal-head"><span class="dot g"></span><h2>tracker_variables.json</h2></div>
+    <div class="modal-inner">
+      <div class="field"><label for="tvNameInput">variable name</label><input type="text" id="tvNameInput" placeholder="e.g. Sleep, Mood, Water intake"></div>
+      <div class="field-row">
+        <div class="field"><label>type</label><div class="chip-select" id="tvTypeSelect">
+          <div class="chip-opt sel" data-t="number">number</div><div class="chip-opt" data-t="scale">scale</div><div class="chip-opt" data-t="boolean">yes/no</div><div class="chip-opt" data-t="text">text</div><div class="chip-opt" data-t="category">category</div>
+        </div></div>
+        <div class="field" id="tvUnitField"><label for="tvUnitInput">unit (optional)</label><input type="text" id="tvUnitInput" placeholder="e.g. hrs, kg, $"></div>
+        <div class="field" id="tvScaleField" style="display:none;"><label for="tvScaleMaxInput">scale max</label><input type="number" id="tvScaleMaxInput" min="2" max="10" value="5"></div>
+      </div>
+      <div class="field" id="tvCategoriesField" style="display:none;">
+        <label>categories</label>
+        <div class="tv-cat-list" id="tvCatList"></div>
+        <div class="tv-cat-add-row">
+          <input type="text" id="tvCatLabelInput" placeholder="category name">
+          <input type="color" id="tvCatColorInput" value="#52E7C0">
+          <button class="btn" id="tvCatAddBtn" type="button">+ add</button>
+        </div>
+      </div>
+      <div class="modal-actions"><button class="btn" id="tvCancelEditBtn" type="button" style="display:none;">cancel edit</button><button class="btn btn-accent" id="tvSaveBtn" type="button">add variable</button></div>
+      <p class="panel-hint">Right-click a variable name in the grid to reorder, edit, or delete it. Deleting a variable also deletes its full history — there's no undo.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ===== GLOBAL RIGHT-CLICK MENU ===== -->
+<div class="ctx-menu" id="globalCtxMenu" hidden>
+  <button class="ctx-menu-item" data-ctx="edit" type="button">edit</button>
+  <button class="ctx-menu-item danger" data-ctx="delete" type="button">delete</button>
+</div>
+
+<div class="global-toast" id="globalToast" style="display:none;"></div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -764,17 +1059,148 @@
 
   var PRIORITIES = ["P0","P1","P2","P3"];
   var CATEGORIES = ["Health","Finance","Career","Maintenance","Growth","Relationships","Life"];
+  var CATEGORY_ICONS = { Health:"✚", Finance:"$", Career:"▲", Maintenance:"⚙", Growth:"↑", Relationships:"♥", Life:"◐" };
+  var CATEGORY_COLOR_VAR = { Health:"--cat-health", Finance:"--cat-finance", Career:"--cat-career", Maintenance:"--cat-maintenance", Growth:"--cat-growth", Relationships:"--cat-relationships", Life:"--cat-life" };
+  function categoryColorVar(cat){ return "var(" + (CATEGORY_COLOR_VAR[cat] || "--text-dim") + ")"; }
+  // Uploaded icons are typically monochrome glyphs (black shape on a transparent background), so
+  // instead of drawing the raw image we use it as a CSS mask and fill the shape with the goal/
+  // project's area color — the icon recolors itself if the category ever changes, no re-upload
+  // needed. Requires the icon to have real alpha transparency (see readImageAsIcon, which now
+  // exports PNG instead of JPEG for exactly this reason).
+  function iconMaskHtml(cls, dataUri, category){
+    return '<span class="' + cls + '" style="-webkit-mask-image:url(' + dataUri + ');mask-image:url(' + dataUri + ');background-color:' + categoryColorVar(category) + ';"></span>';
+  }
   var ACTION_TYPES = ["Call","Email","Meeting","Research","Write","Review","Task","Follow-up"];
   var RELATIONSHIPS = ["Family","Friend","Colleague","Mentor","Partner","Other"];
 
   function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+  function nextPosition(arr){ return arr.length ? Math.max.apply(null, arr.map(function(x){ return x.position||0; })) + 1 : 0; }
+  // Inserts with a position field for drag-to-reorder, but falls back to a plain insert if the
+  // position column doesn't exist yet (migration_positions.sql not run) — so creating goals/
+  // projects/habits/actions/people never breaks just because that migration is still pending.
+  // Parses "Could not find the 'X' column of 'table' in the schema cache" (PostgREST's error when
+  // a pending migration hasn't been run yet) and returns the offending column name, or null.
+  function parseMissingColumn(errMsg){
+    var m = /find the '([\w]+)' column/i.exec(errMsg || "") || /column '([\w]+)'/i.exec(errMsg || "");
+    return m ? m[1] : null;
+  }
+  // Inserts/updates, but if Supabase rejects the request because an optional field's column
+  // doesn't exist yet (its migration hasn't been run), strips that one field and retries — so
+  // saving never breaks just because some other pending migration (icon, health, position, ...)
+  // hasn't landed. Only ever drops fields we ourselves sent, never a required field (those columns
+  // already exist from the original schema).
+  async function safeWrite(op, payload){
+    var attempt = {};
+    for(var k in payload){ attempt[k] = payload[k]; }
+    var dropped = [];
+    for(var i=0; i<8; i++){
+      var res = await op(attempt);
+      if(!res.error){ res.droppedFields = dropped; return res; }
+      var col = parseMissingColumn(res.error.message);
+      if(!col || !(col in attempt)) return res;
+      dropped.push(col);
+      var next = {};
+      for(var k2 in attempt){ if(k2 !== col) next[k2] = attempt[k2]; }
+      attempt = next;
+    }
+    return { error: { message: "Could not save — too many missing columns." } };
+  }
+  async function safeInsert(table, payload, arr){
+    var withPos = {};
+    for(var k in payload){ withPos[k] = payload[k]; }
+    withPos.position = nextPosition(arr);
+    return safeWrite(function(p){ return sb.from(table).insert(p).select().single(); }, withPos);
+  }
+  async function safeUpdate(table, id, payload){
+    return safeWrite(function(p){ return sb.from(table).update(p).eq("id", id).select().single(); }, payload);
+  }
+  // Small non-blocking message in the corner — used to surface saves that silently dropped a field
+  // because its migration hasn't been run yet (see safeWrite), instead of failing invisibly.
+  var toastTimer = null;
+  function toast(msg){
+    var el = document.getElementById("globalToast");
+    if(!el) return;
+    el.textContent = msg;
+    el.style.display = "block";
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ el.style.display = "none"; }, 4500);
+  }
+  var DROPPED_FIELD_LABELS = {
+    health_override: "health status", health_pct_override: "health %",
+    icon: "icon image", position: "custom order",
+    whiteboard_x: "whiteboard position", whiteboard_y: "whiteboard position"
+  };
+  function warnDroppedFields(dropped){
+    if(!dropped || !dropped.length) return;
+    var labels = dropped.map(function(c){ return DROPPED_FIELD_LABELS[c] || c; });
+    labels = labels.filter(function(l, i){ return labels.indexOf(l) === i; });
+    toast("Saved, but " + labels.join(", ") + " needs a pending database update to be run first — see _Memory/ for the migration.");
+  }
   function todayStr(){ return new Date().toISOString().slice(0,10); }
   function fmtDate(d){ return d ? new Date(d + "T00:00:00").toLocaleDateString(undefined, { month:"short", day:"numeric" }) : ""; }
   function escapeHtml(s){
     return String(s).replace(/[&<>"']/g, function(c){ return { "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]; });
   }
+  // Reads an uploaded image file, center-crops it to a square, downsizes it, and returns a PNG
+  // data URI — small enough to store directly in a text column (no Storage bucket needed for a
+  // personal-scale app like this). PNG (not JPEG) specifically to keep alpha transparency, since
+  // icons are rendered as a CSS mask tinted with the area color (see iconMaskHtml) — that only
+  // works if the glyph has a transparent background.
+  function readImageAsIcon(file, size){
+    size = size || 96;
+    return new Promise(function(resolve, reject){
+      var reader = new FileReader();
+      reader.onerror = function(){ reject(reader.error || new Error("Could not read file")); };
+      reader.onload = function(){
+        var img = new Image();
+        img.onerror = function(){ reject(new Error("Could not load image")); };
+        img.onload = function(){
+          var cropSize = Math.min(img.width, img.height);
+          var sx = (img.width - cropSize) / 2, sy = (img.height - cropSize) / 2;
+          var canvas = document.createElement("canvas");
+          canvas.width = size; canvas.height = size;
+          var ctx = canvas.getContext("2d");
+          ctx.drawImage(img, sx, sy, cropSize, cropSize, 0, 0, size, size);
+          resolve(canvas.toDataURL("image/png"));
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+  // Wires the upload/remove buttons for one icon-picker in a modal. Returns a setPreview(dataUri)
+  // function the caller uses to initialize/reset the preview when the modal opens. getCategory (if
+  // given) is called each time to tint the preview the same way the saved icon will render
+  // elsewhere in the app (see iconMaskHtml) — the caller is responsible for re-invoking setPreview
+  // when the category selection changes so the preview stays in sync.
+  function wireIconUploader(prefix, onChange, getCategory){
+    var preview = document.getElementById(prefix + "IconPreview");
+    var fileInput = document.getElementById(prefix + "IconFileInput");
+    var uploadBtn = document.getElementById(prefix + "IconUploadBtn");
+    var removeBtn = document.getElementById(prefix + "IconRemoveBtn");
+    function setPreview(dataUri){
+      preview.style.backgroundImage = "none";
+      preview.style.webkitMaskImage = dataUri ? "url(" + dataUri + ")" : "none";
+      preview.style.maskImage = dataUri ? "url(" + dataUri + ")" : "none";
+      preview.style.backgroundColor = dataUri ? categoryColorVar(getCategory ? getCategory() : null) : "";
+      removeBtn.style.display = dataUri ? "" : "none";
+    }
+    uploadBtn.addEventListener("click", function(){ fileInput.click(); });
+    fileInput.addEventListener("change", async function(){
+      var file = fileInput.files[0];
+      fileInput.value = "";
+      if(!file) return;
+      try{
+        var dataUri = await readImageAsIcon(file);
+        setPreview(dataUri);
+        onChange(dataUri);
+      }catch(err){ alert("Could not process that image."); }
+    });
+    removeBtn.addEventListener("click", function(){ setPreview(null); onChange(null); });
+    return setPreview;
+  }
 
-  var state = { goals:[], projects:[], habits:[], actions:[], journal:[], people:[] };
+  var state = { goals:[], projects:[], habits:[], actions:[], journal:[], people:[], trackerVars:[], trackerEntries:[], trackerDays:[], wbConnections:[] };
   var currentUser = null;
 
   function goalById(id){ return state.goals.find(function(g){ return g.id === id; }); }
@@ -845,7 +1271,7 @@
     if(session && session.user){
       currentUser = session.user;
       showApp();
-      loadAll().then(renderAll);
+      loadAll().then(function(){ renderAll(); trackerLoadSummaryIntoInput(); renderWhiteboardNodes(); });
     } else {
       currentUser = null;
       showAuthScreen();
@@ -863,20 +1289,34 @@
       sb.from("actions").select("*").order("created_at"),
       sb.from("journal").select("*").order("date", { ascending:false }),
       sb.from("people").select("*").order("created_at"),
-      sb.from("chat_messages").select("*").order("created_at")
+      sb.from("chat_messages").select("*").order("created_at"),
+      sb.from("tracker_variables").select("*").order("position", { ascending:true }),
+      sb.from("tracker_entries").select("*"),
+      sb.from("tracker_days").select("*")
     ]);
     results.forEach(function(r){ if(r.error) console.error(r.error); });
-    state.goals = (results[0].data || []).map(function(r){ return { id:r.id, title:r.title, priority:r.priority, category:r.category, due:r.due, ongoing:r.ongoing }; });
-    state.projects = (results[1].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done }; });
-    state.habits = (results[2].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, frequency:r.frequency, days:r.days || {} }; });
-    state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done }; });
+    // position defaults to 0 (via ||0) when the migration_positions.sql column doesn't exist yet —
+    // Array.sort is stable, so that's a no-op and rows keep the server's created_at order until
+    // the migration runs and real position values exist.
+    state.goals = (results[0].data || []).map(function(r){ return { id:r.id, title:r.title, priority:r.priority, category:r.category, due:r.due, ongoing:r.ongoing, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null) }; });
+    state.goals.sort(function(a,b){ return a.position - b.position; });
+    state.projects = (results[1].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null) }; });
+    state.projects.sort(function(a,b){ return a.position - b.position; });
+    state.habits = (results[2].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, frequency:r.frequency, days:r.days || {}, position:r.position||0 }; });
+    state.habits.sort(function(a,b){ return a.position - b.position; });
+    state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0 }; });
+    state.actions.sort(function(a,b){ return a.position - b.position; });
     state.journal = (results[4].data || []).map(function(r){ return { id:r.id, date:r.date, text:r.text }; });
-    state.people = (results[5].data || []).map(function(r){ return { id:r.id, name:r.name, relationship:r.relationship, contact:r.contact, notes:r.notes }; });
+    state.people = (results[5].data || []).map(function(r){ return { id:r.id, name:r.name, relationship:r.relationship, contact:r.contact, notes:r.notes, position:r.position||0 }; });
+    state.people.sort(function(a,b){ return a.position - b.position; });
     chatMessages = (results[6].data || []).map(function(r){ return { role:r.role, content:r.content }; });
+    state.trackerVars = (results[7].data || []).map(function(r){ return { id:r.id, name:r.name, type:r.type, unit:r.unit, scaleMax:r.scale_max, categories:r.categories || [], position:r.position }; });
+    state.trackerEntries = (results[8].data || []).map(function(r){ return { id:r.id, date:r.date, variableId:r.variable_id, value:r.value }; });
+    state.trackerDays = (results[9].data || []).map(function(r){ return { id:r.id, date:r.date, summary:r.summary }; });
   }
 
   /* ---------------- Top-level + planner tabs ---------------- */
-  var activeSection = "planner";
+  var activeSection = "agent";
   var activePlannerTab = "goals";
   var filters = { goals:"all", projects:"all", habits:"all", actions:"all", people:"all" };
   var views = { goals:"list", projects:"matrix", habits:"matrix", actions:"matrix" };
@@ -892,14 +1332,19 @@
     });
   }
 
+  var ALL_SECTION_IDS = ["plannerSection","areasSection","trackerSection","whiteboardSection","agentSection","calendarSection","journalSection","peopleSection","goalDetailSection","areaDetailSection"];
+  function showSection(name){
+    activeSection = name;
+    document.querySelectorAll(".side-link").forEach(function(l){ l.classList.toggle("active", l.dataset.section === name); });
+    ALL_SECTION_IDS.forEach(function(id){
+      document.getElementById(id).style.display = (id === name + "Section") ? "" : "none";
+    });
+    if(name === "whiteboard") activateWhiteboard();
+  }
   document.getElementById("sideNav").addEventListener("click", function(e){
     var btn = e.target.closest(".side-link");
     if(!btn) return;
-    activeSection = btn.dataset.section;
-    document.querySelectorAll(".side-link").forEach(function(l){ l.classList.toggle("active", l===btn); });
-    ["plannerSection","agentSection","calendarSection","journalSection","peopleSection"].forEach(function(id){
-      document.getElementById(id).style.display = (id === activeSection + "Section") ? "" : "none";
-    });
+    showSection(btn.dataset.section);
   });
 
   var addBtn = document.getElementById("panelAddBtn");
@@ -970,7 +1415,7 @@
   }
 
   [["goalPrioSelect","p"],["projectPrioSelect","p"],["habitPrioSelect","p"],["habitFreqSelect","f"],
-   ["actionPrioSelect","p"],["actionParentTypeSelect","pt"],["goalCatSelect","c"],["personRelSelect","r"]]
+   ["actionPrioSelect","p"],["actionParentTypeSelect","pt"],["goalCatSelect","c"],["personRelSelect","r"],["tvTypeSelect","t"],["goalHealthLevelSelect","hl"]]
    .forEach(function(pair){ wireChipSelect(document.getElementById(pair[0]), pair[1]); });
 
   /* ---------------- Stats ---------------- */
@@ -992,6 +1437,82 @@
     if(pct >= 100 && items.length) return "done";
     if(!g.ongoing && g.due && g.due < todayStr()) return "behind";
     return "on-track";
+  }
+  // Health is a richer signal than progress alone — it factors in pacing against the due date,
+  // so a goal can show "at risk" before it's technically overdue (unlike goalStatus, which only
+  // flags "behind" once the due date has actually passed).
+  // Shared pacing computation — given a real progress % and a due date, decide the auto health
+  // level. Used by both goals (via their children) and projects (via their own done/actions).
+  function paceHealthLevel(progress, ongoing, due){
+    if(progress >= 100) return "good";
+    if(ongoing || !due) return "good";
+    var today = todayStr();
+    if(due < today) return "critical";
+    var daysLeft = Math.round((new Date(due + "T00:00:00") - new Date(today + "T00:00:00")) / 86400000);
+    if(daysLeft <= 3 && progress < 70) return "critical";
+    if(daysLeft <= 10 && progress < 50) return "warn";
+    return "good";
+  }
+  function goalHealth(g){
+    var progress = goalProgress(g);
+    var pct = (g.healthPctOverride != null) ? g.healthPctOverride : progress;
+    var level = g.healthOverride || paceHealthLevel(progress, g.ongoing, g.due);
+    return { pct:pct, level:level, manual: !!(g.healthOverride || g.healthPctOverride != null) };
+  }
+  async function setGoalHealthOverride(id, level){
+    var g = goalById(id);
+    if(!g) return;
+    var newVal = (g.healthOverride === level) ? null : level;
+    g.healthOverride = newVal;
+    renderAll();
+    var r = await safeUpdate("goals", id, { health_override: newVal });
+    if(r.error){ console.error(r.error); toast("Could not save health status: " + r.error.message); return; }
+    warnDroppedFields(r.droppedFields);
+  }
+  async function setGoalHealthPct(id, rawValue){
+    var g = goalById(id);
+    if(!g) return;
+    var v = rawValue === "" || rawValue === null || rawValue === undefined ? null : Math.max(0, Math.min(100, Math.round(Number(rawValue))));
+    if(v !== null && isNaN(v)) return;
+    g.healthPctOverride = v;
+    renderAll();
+    var r = await safeUpdate("goals", id, { health_pct_override: v });
+    if(r.error){ console.error(r.error); toast("Could not save health %: " + r.error.message); return; }
+    warnDroppedFields(r.droppedFields);
+  }
+  function projectProgress(p){
+    var actions = state.actions.filter(function(a){ return a.parentType === "project" && a.parentId === p.id; });
+    if(p.done) return 100;
+    if(!actions.length) return 0;
+    var done = actions.filter(function(a){ return a.done; }).length;
+    return Math.round(done / actions.length * 100);
+  }
+  function projectHealth(p){
+    var progress = projectProgress(p);
+    var pct = (p.healthPctOverride != null) ? p.healthPctOverride : progress;
+    var level = p.healthOverride || paceHealthLevel(progress, false, p.due);
+    return { pct:pct, level:level, manual: !!(p.healthOverride || p.healthPctOverride != null) };
+  }
+  async function setProjectHealthOverride(id, level){
+    var p = projectById(id);
+    if(!p) return;
+    var newVal = (p.healthOverride === level) ? null : level;
+    p.healthOverride = newVal;
+    renderAll();
+    var r = await safeUpdate("projects", id, { health_override: newVal });
+    if(r.error){ console.error(r.error); toast("Could not save health status: " + r.error.message); return; }
+    warnDroppedFields(r.droppedFields);
+  }
+  async function setProjectHealthPct(id, rawValue){
+    var p = projectById(id);
+    if(!p) return;
+    var v = rawValue === "" || rawValue === null || rawValue === undefined ? null : Math.max(0, Math.min(100, Math.round(Number(rawValue))));
+    if(v !== null && isNaN(v)) return;
+    p.healthPctOverride = v;
+    renderAll();
+    var r = await safeUpdate("projects", id, { health_pct_override: v });
+    if(r.error){ console.error(r.error); toast("Could not save health %: " + r.error.message); return; }
+    warnDroppedFields(r.droppedFields);
   }
   function habitStreak(h){
     var streak = 0, d = new Date();
@@ -1034,71 +1555,83 @@
       var items = list.filter(function(g){ return g.category === cat; });
       if(!items.length) return "";
       var tiles = items.map(function(g){
-        var pct = goalProgress(g);
         var status = goalStatus(g);
+        var health = goalHealth(g);
         var initial = g.title.trim().charAt(0).toUpperCase() || "?";
-        return '<div class="matrix-tile ' + g.category + '" data-action="open-goal" data-id="' + g.id + '" title="' + escapeHtml(g.title) + '">' +
+        return '<div class="matrix-tile ' + g.category + '" data-action="open-goal" data-kind="goal" data-id="' + g.id + '" title="' + escapeHtml(g.title) + '">' +
           '<span class="matrix-tile-status ' + status + '"></span>' +
           '<span class="matrix-tile-badge prio-badge ' + g.priority + '">' + g.priority + '</span>' +
-          '<span class="matrix-tile-initial">' + initial + '</span>' +
+          (g.icon ? iconMaskHtml("matrix-tile-icon-img", g.icon, g.category) : '<span class="matrix-tile-initial">' + initial + '</span>') +
           '<div class="matrix-tile-scrim"><div class="matrix-tile-title">' + escapeHtml(g.title) + '</div></div>' +
-          '<div class="matrix-tile-progress"><div class="matrix-tile-progress-fill ' + (status==="behind"?"behind":status==="done"?"done":"") + '" style="width:' + pct + '%"></div></div>' +
+          '<div class="matrix-tile-progress" title="health"><div class="matrix-tile-progress-fill ' + (status==="done"?"done":(health.level!=="good"?health.level:"")) + '" style="width:' + health.pct + '%"></div></div>' +
         '</div>';
       }).join("");
-      return '<div class="matrix-section"><div class="matrix-section-head"><span class="matrix-section-title">' + cat + '</span>' +
+      return '<div class="matrix-section"><div class="matrix-section-head"><span class="matrix-section-title">' + CATEGORY_ICONS[cat] + ' ' + cat + '</span>' +
         '<span class="matrix-section-count">' + items.length + '</span><span class="matrix-section-line"></span></div>' +
         '<div class="matrix-grid">' + tiles + '</div></div>';
     }).join("");
     document.getElementById("goalList").innerHTML = sections;
   }
 
-  function renderGoalsList(list){
-    document.getElementById("goalList").innerHTML = list.map(function(g){
-      var pct = goalProgress(g);
-      var status = goalStatus(g);
-      var childHtml = goalDirectChildren(g).map(function(c){
-        var checkbox = c.kind === "habit"
-          ? '<span class="child-spacer"></span>'
-          : '<button class="ms-check' + (c.done?' done':'') + '" data-action="toggle-child" data-kind="' + c.kind + '" data-id="' + c.id + '" aria-label="Toggle done"></button>';
-        return '<div class="child-row' + (c.done?' done':'') + '">' +
-          checkbox +
-          '<span class="child-kind">' + c.kind + '</span>' +
-          '<span class="child-text">' + escapeHtml(c.title) + '</span>' +
-          '<button class="icon-btn edit" data-action="edit-child" data-kind="' + c.kind + '" data-id="' + c.id + '" aria-label="Edit">✎</button>' +
-          '<button class="icon-btn" data-action="del-child" data-kind="' + c.kind + '" data-id="' + c.id + '" aria-label="Delete">&times;</button>' +
-        '</div>';
-      }).join("");
-      return '<div class="goal-card ' + g.category + '" data-id="' + g.id + '">' +
-        '<div class="card-tab">' +
-          '<span class="prio-badge ' + g.priority + '">' + g.priority + '</span><span class="sep">·</span>' +
-          '<span class="cat-badge ' + g.category + '">' + g.category + '</span>' +
-          '<span class="due-tag">' +
-            (g.ongoing ? '<span class="infinite-badge">∞ ongoing</span>' : (g.due ? '<span>' + fmtDate(g.due) + '</span>' : '')) +
-            '<span class="status-dot ' + status + '"></span>' +
-          '</span>' +
-        '</div>' +
-        '<div class="card-body">' +
-          '<div class="goal-body-head">' +
-            '<h3 class="goal-title">' + escapeHtml(g.title) + '</h3>' +
-            '<div class="entity-actions">' +
-              '<button class="icon-btn edit" data-action="edit-goal" data-id="' + g.id + '" aria-label="Edit goal">✎</button>' +
-              '<button class="icon-btn" data-action="del-goal" data-id="' + g.id + '" aria-label="Delete goal">&times;</button>' +
-            '</div>' +
-          '</div>' +
-          '<div class="progress-row">' +
-            '<div class="progress-track"><div class="progress-fill ' + (status==="behind"?"behind":status==="done"?"done":"") + '" style="width:' + pct + '%"></div></div>' +
-            '<div class="progress-pct">' + pct + '%</div>' +
-          '</div>' +
-          '<div class="goal-children">' + childHtml +
-            '<div class="add-child-row">' +
-              '<button class="btn" data-action="quick-add-project" data-goal="' + g.id + '" type="button">+ project</button>' +
-              '<button class="btn" data-action="quick-add-habit" data-goal="' + g.id + '" type="button">+ habit</button>' +
-              '<button class="btn" data-action="quick-add-action" data-goal="' + g.id + '" type="button">+ action</button>' +
-            '</div>' +
-          '</div>' +
-        '</div>' +
+  function renderGoalCardHtml(g){
+    var pct = goalProgress(g);
+    var status = goalStatus(g);
+    var health = goalHealth(g);
+    var childHtml = goalDirectChildren(g).map(function(c){
+      var checkbox = c.kind === "habit"
+        ? '<span class="child-spacer"></span>'
+        : '<button class="ms-check' + (c.done?' done':'') + '" data-action="toggle-child" data-kind="' + c.kind + '" data-id="' + c.id + '" aria-label="Toggle done"></button>';
+      return '<div class="child-row' + (c.done?' done':'') + '" data-kind="' + c.kind + '" data-id="' + c.id + '">' +
+        checkbox +
+        '<span class="child-kind">' + c.kind + '</span>' +
+        '<span class="child-text">' + escapeHtml(c.title) + '</span>' +
+        '<button class="icon-btn edit" data-action="edit-child" data-kind="' + c.kind + '" data-id="' + c.id + '" aria-label="Edit">✎</button>' +
+        '<button class="icon-btn" data-action="del-child" data-kind="' + c.kind + '" data-id="' + c.id + '" aria-label="Delete">&times;</button>' +
       '</div>';
     }).join("");
+    return '<div class="goal-card ' + g.category + '" data-kind="goal" data-id="' + g.id + '" draggable="true">' +
+      '<div class="card-tab">' +
+        '<span class="prio-badge ' + g.priority + '">' + g.priority + '</span><span class="sep">·</span>' +
+        '<span class="cat-badge ' + g.category + '">' + CATEGORY_ICONS[g.category] + ' ' + g.category + '</span>' +
+        '<span class="due-tag">' +
+          (g.ongoing ? '<span class="infinite-badge">∞ ongoing</span>' : (g.due ? '<span>' + fmtDate(g.due) + '</span>' : '')) +
+          '<span class="status-dot ' + status + '"></span>' +
+        '</span>' +
+      '</div>' +
+      '<div class="card-body">' +
+        '<div class="goal-body-head">' +
+          (g.icon ? iconMaskHtml("entity-icon-img", g.icon, g.category) : '') +
+          '<h3 class="goal-title">' + escapeHtml(g.title) + '</h3>' +
+          '<div class="entity-actions">' +
+            '<button class="icon-btn edit" data-action="edit-goal" data-id="' + g.id + '" aria-label="Edit goal">✎</button>' +
+            '<button class="icon-btn" data-action="del-goal" data-id="' + g.id + '" aria-label="Delete goal">&times;</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="progress-row">' +
+          '<div class="progress-track"><div class="progress-fill ' + (status==="behind"?"behind":status==="done"?"done":"") + '" style="width:' + pct + '%"></div></div>' +
+          '<div class="progress-pct">' + pct + '%</div>' +
+        '</div>' +
+        '<div class="health-bar-row">' +
+          '<span class="health-label">health' + (health.manual ? '<span class="health-manual-tag" title="manually set">&#9679;</span>' : '') + '</span>' +
+          '<div class="health-track"><div class="health-fill ' + (health.level!=="good"?health.level:"") + '" style="width:' + health.pct + '%"></div></div>' +
+          '<input type="number" class="health-pct-input" min="0" max="100" value="' + health.pct + '" data-action="set-goal-health-pct" data-id="' + g.id + '" aria-label="Health percentage">' +
+          '<div class="health-dots">' + ["good","warn","critical"].map(function(lvl){
+            return '<button class="health-dot ' + lvl + (health.manual && health.level===lvl?' on':'') + '" data-action="set-goal-health" data-id="' + g.id + '" data-level="' + lvl + '" aria-label="Set health ' + lvl + '" title="' + lvl + ' (click again to clear)"></button>';
+          }).join("") + '</div>' +
+        '</div>' +
+        '<div class="goal-children">' + childHtml +
+          '<div class="add-child-row">' +
+            '<button class="btn" data-action="quick-add-project" data-goal="' + g.id + '" type="button">+ project</button>' +
+            '<button class="btn" data-action="quick-add-habit" data-goal="' + g.id + '" type="button">+ habit</button>' +
+            '<button class="btn" data-action="quick-add-action" data-goal="' + g.id + '" type="button">+ action</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function renderGoalsList(list){
+    document.getElementById("goalList").innerHTML = list.map(renderGoalCardHtml).join("");
   }
 
   /* ---------------- Shared child mutations (used by goal cards + their own tabs) ---------------- */
@@ -1113,8 +1646,11 @@
     // orphans this project's actions rather than deleting them
     state.actions.forEach(function(x){ if(x.parentType==="project" && x.parentId===id){ x.parentType="none"; x.parentId=null; } });
     state.projects = state.projects.filter(function(x){ return x.id !== id; });
+    state.wbConnections = state.wbConnections.filter(function(c){ return !((c.fromType==="project"&&c.fromId===id)||(c.toType==="project"&&c.toId===id)); });
     renderAll();
     await sb.from("actions").update({ parent_type:"none", parent_id:null }).eq("parent_type","project").eq("parent_id", id);
+    await sb.from("whiteboard_connections").delete().eq("from_id", id);
+    await sb.from("whiteboard_connections").delete().eq("to_id", id);
     var r = await sb.from("projects").delete().eq("id", id);
     if(r.error) console.error(r.error);
   }
@@ -1137,32 +1673,155 @@
     var r = await sb.from("habits").delete().eq("id", id);
     if(r.error) console.error(r.error);
   }
+  async function deleteGoal(goalId){
+    // deleting a goal orphans its projects/habits/actions rather than deleting them —
+    // parent links are optional, so children keep existing on their own.
+    state.projects.forEach(function(x){ if(x.goalId === goalId) x.goalId = null; });
+    state.habits.forEach(function(x){ if(x.goalId === goalId) x.goalId = null; });
+    state.actions.forEach(function(x){ if(x.parentType==="goal" && x.parentId===goalId){ x.parentType="none"; x.parentId=null; } });
+    state.goals = state.goals.filter(function(x){ return x.id !== goalId; });
+    state.wbConnections = state.wbConnections.filter(function(c){ return !((c.fromType==="goal"&&c.fromId===goalId)||(c.toType==="goal"&&c.toId===goalId)); });
+    renderAll();
+    await sb.from("projects").update({ goal_id: null }).eq("goal_id", goalId);
+    await sb.from("habits").update({ goal_id: null }).eq("goal_id", goalId);
+    await sb.from("actions").update({ parent_type:"none", parent_id:null }).eq("parent_type","goal").eq("parent_id", goalId);
+    await sb.from("whiteboard_connections").delete().eq("from_id", goalId);
+    await sb.from("whiteboard_connections").delete().eq("to_id", goalId);
+    var r3 = await sb.from("goals").delete().eq("id", goalId);
+    if(r3.error) console.error(r3.error);
+  }
+  async function deleteJournalEntry(id){
+    state.journal = state.journal.filter(function(x){ return x.id !== id; });
+    renderAll();
+    var r = await sb.from("journal").delete().eq("id", id);
+    if(r.error) console.error(r.error);
+  }
+  async function deletePerson(id){
+    state.people = state.people.filter(function(x){ return x.id !== id; });
+    renderAll();
+    var r = await sb.from("people").delete().eq("id", id);
+    if(r.error) console.error(r.error);
+  }
   function editGoal(id){ var g = goalById(id); if(g) openGoalModal(g); }
   function editProject(id){ var p = projectById(id); if(p) openProjectModal(null, p); }
   function editHabit(id){ var h = state.habits.find(function(x){ return x.id === id; }); if(h) openHabitModal(null, h); }
   function editAction(id){ var a = state.actions.find(function(x){ return x.id === id; }); if(a) openActionModal(null, a); }
 
-  document.getElementById("goalList").addEventListener("click", async function(e){
+  /* ---------------- Generic right-click edit/delete (goals, projects, habits, actions, journal, people) ---------------- */
+  var DELETE_HANDLERS = {
+    goal: deleteGoal,
+    project: deleteProject,
+    habit: deleteHabit,
+    action: deleteAction,
+    journal: deleteJournalEntry,
+    person: deletePerson
+  };
+  var EDIT_HANDLERS = {
+    goal: editGoal,
+    project: editProject,
+    habit: editHabit,
+    action: editAction
+  };
+  var globalCtxTarget = null;
+  function openGlobalCtxMenu(x, y, kind, id){
+    globalCtxTarget = { kind:kind, id:id };
+    var menu = document.getElementById("globalCtxMenu");
+    menu.querySelector('[data-ctx="edit"]').style.display = EDIT_HANDLERS[kind] ? "" : "none";
+    menu.hidden = false;
+    var maxX = window.innerWidth - menu.offsetWidth - 8;
+    var maxY = window.innerHeight - menu.offsetHeight - 8;
+    menu.style.left = Math.max(4, Math.min(x, maxX)) + "px";
+    menu.style.top = Math.max(4, Math.min(y, maxY)) + "px";
+  }
+  function closeGlobalCtxMenu(){
+    document.getElementById("globalCtxMenu").hidden = true;
+    globalCtxTarget = null;
+  }
+  document.addEventListener("contextmenu", function(e){
+    var el = e.target.closest("[data-kind][data-id]");
+    if(!el || !DELETE_HANDLERS[el.dataset.kind]) return;
+    e.preventDefault();
+    openGlobalCtxMenu(e.clientX, e.clientY, el.dataset.kind, el.dataset.id);
+  });
+  document.addEventListener("click", function(e){
+    var menu = document.getElementById("globalCtxMenu");
+    if(!menu.hidden && !menu.contains(e.target)) closeGlobalCtxMenu();
+  });
+  document.getElementById("globalCtxMenu").addEventListener("click", async function(e){
+    var btn = e.target.closest("[data-ctx]");
+    if(!btn || !globalCtxTarget) return;
+    var target = globalCtxTarget;
+    closeGlobalCtxMenu();
+    if(btn.dataset.ctx === "delete"){
+      var handler = DELETE_HANDLERS[target.kind];
+      if(handler) await handler(target.id);
+    } else if(btn.dataset.ctx === "edit"){
+      var editHandler = EDIT_HANDLERS[target.kind];
+      if(editHandler) editHandler(target.id);
+    }
+  });
+
+  /* ---------------- Generic drag-to-reorder (list views only — matrix views aren't draggable) ---------------- */
+  function makeSortable(containerId, table, getArray, afterReorder){
+    var container = document.getElementById(containerId);
+    var draggingEl = null;
+    container.addEventListener("dragstart", function(e){
+      var el = e.target.closest("[draggable='true'][data-id]");
+      if(!el){ e.preventDefault(); return; }
+      draggingEl = el;
+      e.dataTransfer.effectAllowed = "move";
+      try{ e.dataTransfer.setData("text/plain", el.dataset.id); }catch(err){}
+      setTimeout(function(){ el.classList.add("dragging"); }, 0);
+    });
+    container.addEventListener("dragend", function(){
+      if(draggingEl) draggingEl.classList.remove("dragging");
+      draggingEl = null;
+    });
+    container.addEventListener("dragover", function(e){
+      if(!draggingEl) return;
+      e.preventDefault();
+      var over = e.target.closest("[data-id]");
+      if(!over || over === draggingEl || !container.contains(over)) return;
+      var rect = over.getBoundingClientRect();
+      var before = (e.clientY - rect.top) < rect.height / 2;
+      container.insertBefore(draggingEl, before ? over : over.nextSibling);
+    });
+    container.addEventListener("drop", async function(e){
+      e.preventDefault();
+      if(!draggingEl) return;
+      var arr = getArray();
+      var ids = Array.prototype.map.call(container.children, function(el){ return el.dataset.id; }).filter(Boolean);
+      var byId = {}; arr.forEach(function(x){ byId[x.id] = x; });
+      ids.forEach(function(id, i){ if(byId[id]) byId[id].position = i; });
+      arr.sort(function(a,b){ return (a.position||0) - (b.position||0); });
+      if(afterReorder) afterReorder();
+      var results = await Promise.all(ids.map(function(id, i){ return sb.from(table).update({ position: i }).eq("id", id); }));
+      results.forEach(function(r){ if(r.error) console.error(r.error); });
+    });
+  }
+  makeSortable("goalList", "goals", function(){ return state.goals; }, renderGoals);
+  makeSortable("projectList", "projects", function(){ return state.projects; }, renderProjects);
+  makeSortable("habitList", "habits", function(){ return state.habits; }, renderHabits);
+  makeSortable("actionList", "actions", function(){ return state.actions; }, renderActions);
+  makeSortable("peopleGrid", "people", function(){ return state.people; }, renderPeople);
+
+  async function handleGoalCardClick(e){
     var tile = e.target.closest('[data-action="open-goal"]');
     if(tile){ views.goals = "list"; document.querySelectorAll("#goalsSubToggle .sub-view-tab").forEach(function(b){ b.classList.toggle("active", b.dataset.sub === "list"); }); renderGoals(); return; }
     var t = e.target.closest("[data-action]");
     if(!t) return;
     if(t.dataset.action === "del-goal"){
-      // deleting a goal orphans its projects/habits/actions rather than deleting them —
-      // parent links are optional, so children keep existing on their own.
-      var goalId = t.dataset.id;
-      state.projects.forEach(function(x){ if(x.goalId === goalId) x.goalId = null; });
-      state.habits.forEach(function(x){ if(x.goalId === goalId) x.goalId = null; });
-      state.actions.forEach(function(x){ if(x.parentType==="goal" && x.parentId===goalId){ x.parentType="none"; x.parentId=null; } });
-      state.goals = state.goals.filter(function(x){ return x.id !== goalId; });
-      renderAll();
-      await sb.from("projects").update({ goal_id: null }).eq("goal_id", goalId);
-      await sb.from("habits").update({ goal_id: null }).eq("goal_id", goalId);
-      await sb.from("actions").update({ parent_type:"none", parent_id:null }).eq("parent_type","goal").eq("parent_id", goalId);
-      var r3 = await sb.from("goals").delete().eq("id", goalId);
-      if(r3.error) console.error(r3.error);
+      await deleteGoal(t.dataset.id);
     } else if(t.dataset.action === "edit-goal"){
       editGoal(t.dataset.id);
+    } else if(t.dataset.action === "open-goal-detail"){
+      openGoalDetailPage(t.dataset.id);
+    } else if(t.dataset.action === "set-goal-health"){
+      await setGoalHealthOverride(t.dataset.id, t.dataset.level);
+    } else if(t.dataset.action === "open-area-detail"){
+      openAreaDetailPage(t.dataset.cat);
+    } else if(t.dataset.action === "quick-add-goal"){
+      openGoalModal(null, t.dataset.cat);
     } else if(t.dataset.action === "quick-add-project"){
       openProjectModal(t.dataset.goal);
     } else if(t.dataset.action === "quick-add-habit"){
@@ -1181,7 +1840,158 @@
       else if(t.dataset.kind === "action") await deleteAction(t.dataset.id);
       else if(t.dataset.kind === "habit") await deleteHabit(t.dataset.id);
     }
-  });
+  }
+  document.getElementById("goalList").addEventListener("click", handleGoalCardClick);
+  document.getElementById("areaList").addEventListener("click", handleGoalCardClick);
+  document.getElementById("goalDetailBody").addEventListener("click", handleGoalCardClick);
+
+  async function handleGoalCardChange(e){
+    var t = e.target;
+    if(!t.dataset) return;
+    if(t.dataset.action === "set-goal-health-pct") await setGoalHealthPct(t.dataset.id, t.value);
+  }
+  document.getElementById("goalList").addEventListener("change", handleGoalCardChange);
+  document.getElementById("areaList").addEventListener("change", handleGoalCardChange);
+  document.getElementById("goalDetailBody").addEventListener("change", handleGoalCardChange);
+
+  /* ---------------- Goal detail page ---------------- */
+  var goalDetailId = null;
+  var goalDetailReturnSection = "areas";
+  function openGoalDetailPage(id){
+    goalDetailId = id;
+    goalDetailReturnSection = activeSection;
+    showSection("goalDetail");
+    renderGoalDetail();
+  }
+  function closeGoalDetailPage(){
+    showSection(goalDetailReturnSection);
+    goalDetailId = null;
+  }
+  function renderGoalDetail(){
+    if(activeSection !== "goalDetail" || !goalDetailId) return;
+    var g = goalById(goalDetailId);
+    if(!g){ closeGoalDetailPage(); return; }
+    document.getElementById("goalDetailBody").innerHTML = renderGoalCardHtml(g);
+  }
+  document.getElementById("goalDetailBackBtn").addEventListener("click", closeGoalDetailPage);
+
+  /* ---------------- Areas ---------------- */
+  function computeAreaData(cat){
+    var goals = state.goals.filter(function(g){ return g.category === cat; });
+    var goalIds = {}; goals.forEach(function(g){ goalIds[g.id] = true; });
+    var projects = state.projects.filter(function(p){ return p.goalId && goalIds[p.goalId]; });
+    var habits = state.habits.filter(function(h){ return h.goalId && goalIds[h.goalId]; });
+    var projectIds = {}; projects.forEach(function(p){ projectIds[p.id] = true; });
+    var actions = state.actions.filter(function(a){
+      return (a.parentType==="goal" && goalIds[a.parentId]) || (a.parentType==="project" && projectIds[a.parentId]);
+    });
+    return { goals:goals, projects:projects, habits:habits, actions:actions };
+  }
+
+  /* ---------------- Area detail page (dashboard of all goals in one area) ---------------- */
+  var areaDetailCat = null;
+  var areaDetailReturnSection = "areas";
+  function openAreaDetailPage(cat){
+    areaDetailCat = cat;
+    areaDetailReturnSection = activeSection;
+    showSection("areaDetail");
+    renderAreaDetail();
+  }
+  function closeAreaDetailPage(){
+    showSection(areaDetailReturnSection);
+    areaDetailCat = null;
+  }
+  function renderAreaDetail(){
+    if(activeSection !== "areaDetail" || !areaDetailCat) return;
+    var cat = areaDetailCat;
+    var data = computeAreaData(cat);
+    var healthCounts = { good:0, warn:0, critical:0 };
+    data.goals.forEach(function(g){ healthCounts[goalHealth(g).level]++; });
+
+    document.getElementById("areaDetailTitleRow").innerHTML =
+      '<span class="area-icon ' + cat + '" style="font-size:24px;">' + CATEGORY_ICONS[cat] + '</span>' +
+      '<h1>' + cat + '</h1>' +
+      '<button class="btn btn-accent" data-action="quick-add-goal" data-cat="' + cat + '" type="button">+ goal</button>';
+
+    document.getElementById("areaDetailStats").innerHTML =
+      '<div class="area-dash-stat"><span class="area-dash-stat-num">' + data.goals.length + '</span><span class="area-dash-stat-label">goals</span></div>' +
+      '<div class="area-dash-stat"><span class="area-dash-stat-num">' + data.projects.length + '</span><span class="area-dash-stat-label">projects</span></div>' +
+      '<div class="area-dash-stat"><span class="area-dash-stat-num">' + data.habits.length + '</span><span class="area-dash-stat-label">habits</span></div>' +
+      '<div class="area-dash-stat"><span class="area-dash-stat-num">' + data.actions.length + '</span><span class="area-dash-stat-label">actions</span></div>' +
+      '<div class="area-dash-stat good"><span class="area-dash-stat-num">' + healthCounts.good + '</span><span class="area-dash-stat-label">healthy</span></div>' +
+      '<div class="area-dash-stat warn"><span class="area-dash-stat-num">' + healthCounts.warn + '</span><span class="area-dash-stat-label">at risk</span></div>' +
+      '<div class="area-dash-stat critical"><span class="area-dash-stat-num">' + healthCounts.critical + '</span><span class="area-dash-stat-label">critical</span></div>';
+
+    document.getElementById("areaDetailBody").innerHTML = data.goals.length
+      ? '<div class="goal-list">' + data.goals.map(renderGoalCardHtml).join("") + '</div>'
+      : '<p class="area-empty-note">No goals in this area yet.</p>';
+  }
+  document.getElementById("areaDetailBackBtn").addEventListener("click", closeAreaDetailPage);
+  document.getElementById("areaDetailSection").addEventListener("click", handleGoalCardClick);
+  document.getElementById("areaDetailSection").addEventListener("change", handleGoalCardChange);
+
+  function renderAreaGoalTile(g){
+    var status = goalStatus(g);
+    var health = goalHealth(g);
+    var initial = g.title.trim().charAt(0).toUpperCase() || "?";
+    return '<div class="matrix-tile ' + g.category + '" data-action="open-goal-detail" data-kind="goal" data-id="' + g.id + '" title="' + escapeHtml(g.title) + '">' +
+      '<span class="matrix-tile-status ' + status + '"></span>' +
+      '<span class="matrix-tile-badge prio-badge ' + g.priority + '">' + g.priority + '</span>' +
+      (g.icon ? iconMaskHtml("matrix-tile-icon-img", g.icon, g.category) : '<span class="matrix-tile-initial">' + initial + '</span>') +
+      '<div class="matrix-tile-scrim"><div class="matrix-tile-title">' + escapeHtml(g.title) + '</div></div>' +
+      '<div class="matrix-tile-progress" title="health"><div class="matrix-tile-progress-fill ' + (status==="done"?"done":(health.level!=="good"?health.level:"")) + '" style="width:' + health.pct + '%"></div></div>' +
+    '</div>';
+  }
+
+  function renderAreas(){
+    var categorizedProjectIds = {};
+    var blocks = CATEGORIES.map(function(cat){
+      var data = computeAreaData(cat);
+      data.projects.forEach(function(p){ categorizedProjectIds[p.id] = true; });
+      var body = data.goals.length
+        ? '<div class="matrix-grid">' + data.goals.map(renderAreaGoalTile).join("") + '</div>'
+        : '<p class="area-empty-note">No goals in this area yet.</p>';
+      return '<div class="area-block">' +
+        '<div class="area-head ' + cat + '" data-action="open-area-detail" data-cat="' + cat + '"><span class="area-icon ' + cat + '">' + CATEGORY_ICONS[cat] + '</span><h2 class="area-name">' + cat + '</h2>' +
+          '<button class="btn area-head-addbtn" data-action="quick-add-goal" data-cat="' + cat + '" type="button">+ goal</button>' +
+          '<span class="area-counts"><b>' + data.goals.length + '</b> goals · <b>' + data.projects.length + '</b> projects · <b>' + data.habits.length + '</b> habits · <b>' + data.actions.length + '</b> actions</span>' +
+        '</div>' + body +
+      '</div>';
+    }).join("");
+
+    // Parentless projects/habits have no goal to trace an area back through. Actions count as
+    // uncategorized if they sit directly on no parent, or on a project that is itself uncategorized —
+    // otherwise they're already covered above via their (categorized) parent project.
+    var uProjects = state.projects.filter(function(p){ return !p.goalId; });
+    var uHabits = state.habits.filter(function(h){ return !h.goalId; });
+    var uActions = state.actions.filter(function(a){
+      if(a.parentType === "project") return !categorizedProjectIds[a.parentId];
+      return a.parentType !== "goal";
+    });
+    if(uProjects.length || uHabits.length || uActions.length){
+      var rows = uProjects.map(function(p){ return { kind:"project", id:p.id, title:p.title, done:p.done }; })
+        .concat(uHabits.map(function(h){ return { kind:"habit", id:h.id, title:h.title, done:false }; }))
+        .concat(uActions.map(function(a){ return { kind:"action", id:a.id, title:a.title, done:a.done }; }));
+      var rowsHtml = rows.map(function(c){
+        var checkbox = c.kind === "habit"
+          ? '<span class="child-spacer"></span>'
+          : '<button class="ms-check' + (c.done?' done':'') + '" data-action="toggle-child" data-kind="' + c.kind + '" data-id="' + c.id + '" aria-label="Toggle done"></button>';
+        return '<div class="child-row' + (c.done?' done':'') + '" data-kind="' + c.kind + '" data-id="' + c.id + '">' + checkbox +
+          '<span class="child-kind">' + c.kind + '</span><span class="child-text">' + escapeHtml(c.title) + '</span>' +
+          '<button class="icon-btn edit" data-action="edit-child" data-kind="' + c.kind + '" data-id="' + c.id + '" aria-label="Edit">✎</button>' +
+          '<button class="icon-btn" data-action="del-child" data-kind="' + c.kind + '" data-id="' + c.id + '" aria-label="Delete">&times;</button>' +
+        '</div>';
+      }).join("");
+      blocks += '<div class="area-block">' +
+        '<div class="area-head"><span class="area-icon">○</span><h2 class="area-name">Uncategorized</h2>' +
+          '<span class="area-counts"><b>' + uProjects.length + '</b> projects · <b>' + uHabits.length + '</b> habits · <b>' + uActions.length + '</b> actions</span>' +
+        '</div>' +
+        '<div class="goal-card" style="padding:4px 16px;">' + rowsHtml + '</div>' +
+      '</div>';
+    }
+
+    document.getElementById("areaList").innerHTML = blocks;
+  }
 
   /* ---------------- Projects ---------------- */
   function renderProjects(){
@@ -1204,7 +2014,7 @@
       if(!items.length) return "";
       var tiles = items.map(function(p){
         var overdue = !p.done && p.due && p.due < todayStr();
-        return '<div class="ms-tile">' +
+        return '<div class="ms-tile" data-kind="project" data-id="' + p.id + '">' +
           '<div class="ms-tile-top">' +
             '<button class="ms-check' + (p.done?' done':'') + '" data-action="toggle-proj" data-id="' + p.id + '" aria-label="Toggle done"></button>' +
             '<span class="ms-tile-title' + (p.done?' done':'') + '">' + escapeHtml(p.title) + '</span>' +
@@ -1227,7 +2037,8 @@
     document.getElementById("projectList").innerHTML = list.map(function(p){
       var g = goalById(p.goalId);
       var overdue = !p.done && p.due && p.due < todayStr();
-      return '<div class="goal-card" data-id="' + p.id + '">' +
+      var health = projectHealth(p);
+      return '<div class="goal-card" data-kind="project" data-id="' + p.id + '" draggable="true">' +
         '<div class="card-tab">' +
           '<span class="prio-badge ' + p.priority + '">' + p.priority + '</span><span class="sep">·</span>' +
           '<span class="parent-tag">' + (g ? 'goal: <b>' + escapeHtml(g.title) + '</b>' : 'standalone') + '</span>' +
@@ -1236,6 +2047,7 @@
         '</div>' +
         '<div class="card-body">' +
           '<div class="goal-body-head">' +
+            (p.icon ? iconMaskHtml("entity-icon-img", p.icon, g ? g.category : null) : '') +
             '<h3 class="goal-title' + (p.done?' completed':'') + '" style="' + (p.done?'color:var(--text-faint);text-decoration:line-through;':'') + '">' + escapeHtml(p.title) + '</h3>' +
             '<div class="entity-actions">' +
               '<button class="icon-btn toggle" data-action="toggle-proj" data-id="' + p.id + '" aria-label="Toggle done">' + (p.done?'↺':'✓') + '</button>' +
@@ -1244,6 +2056,14 @@
             '</div>' +
           '</div>' +
           '<p class="panel-hint" style="margin-top:8px;">' + p.hours + 'h estimated</p>' +
+          '<div class="health-bar-row">' +
+            '<span class="health-label">health' + (health.manual ? '<span class="health-manual-tag" title="manually set">&#9679;</span>' : '') + '</span>' +
+            '<div class="health-track"><div class="health-fill ' + (health.level!=="good"?health.level:"") + '" style="width:' + health.pct + '%"></div></div>' +
+            '<input type="number" class="health-pct-input" min="0" max="100" value="' + health.pct + '" data-action="set-project-health-pct" data-id="' + p.id + '" aria-label="Health percentage">' +
+            '<div class="health-dots">' + ["good","warn","critical"].map(function(lvl){
+              return '<button class="health-dot ' + lvl + (health.manual && health.level===lvl?' on':'') + '" data-action="set-project-health" data-id="' + p.id + '" data-level="' + lvl + '" aria-label="Set health ' + lvl + '" title="' + lvl + ' (click again to clear)"></button>';
+            }).join("") + '</div>' +
+          '</div>' +
         '</div>' +
       '</div>';
     }).join("");
@@ -1254,6 +2074,11 @@
     if(t.dataset.action === "toggle-proj") await toggleProjectDone(t.dataset.id);
     else if(t.dataset.action === "edit-proj") editProject(t.dataset.id);
     else if(t.dataset.action === "del-proj") await deleteProject(t.dataset.id);
+    else if(t.dataset.action === "set-project-health") await setProjectHealthOverride(t.dataset.id, t.dataset.level);
+  });
+  document.getElementById("projectList").addEventListener("change", async function(e){
+    var t = e.target;
+    if(t.dataset && t.dataset.action === "set-project-health-pct") await setProjectHealthPct(t.dataset.id, t.value);
   });
 
   /* ---------------- Habits ---------------- */
@@ -1286,7 +2111,7 @@
       var tiles = items.map(function(h){
         var streak = habitStreak(h);
         var on = !!h.days[today];
-        return '<div class="ms-tile">' +
+        return '<div class="ms-tile" data-kind="habit" data-id="' + h.id + '">' +
           '<div class="ms-tile-top">' +
             '<button class="ms-check' + (on?' done':'') + '" data-action="toggle-habit-today" data-id="' + h.id + '" aria-label="Toggle today"></button>' +
             '<span class="ms-tile-title">' + escapeHtml(h.title) + '</span>' +
@@ -1316,7 +2141,7 @@
         return '<div class="day-cell"><span class="day-cell-label">' + wd + '</span>' +
           '<button type="button" class="day-box' + (on?' on':'') + (dt===today?' today':'') + '" data-habit="' + h.id + '" data-date="' + dt + '" aria-label="' + dt + (on?' done':' not done') + '"></button></div>';
       }).join("");
-      return '<div class="goal-card" data-id="' + h.id + '">' +
+      return '<div class="goal-card" data-kind="habit" data-id="' + h.id + '" draggable="true">' +
         '<div class="card-tab">' +
           '<span class="prio-badge ' + h.priority + '">' + h.priority + '</span><span class="sep">·</span>' +
           '<span class="type-badge">' + h.frequency + '</span><span class="sep">·</span>' +
@@ -1394,7 +2219,7 @@
       if(!items.length) return "";
       var tiles = items.map(function(a){
         var overdue = !a.done && a.date && a.date < todayStr();
-        return '<div class="ms-tile">' +
+        return '<div class="ms-tile" data-kind="action" data-id="' + a.id + '">' +
           '<div class="ms-tile-top">' +
             '<button class="ms-check' + (a.done?' done':'') + '" data-action="toggle-action" data-id="' + a.id + '" aria-label="Toggle done"></button>' +
             '<span class="ms-tile-title' + (a.done?' done':'') + '">' + escapeHtml(a.title) + '</span>' +
@@ -1417,7 +2242,7 @@
   function renderActionsList(list){
     document.getElementById("actionList").innerHTML = list.map(function(a){
       var overdue = !a.done && a.date && a.date < todayStr();
-      return '<div class="goal-card" data-id="' + a.id + '">' +
+      return '<div class="goal-card" data-kind="action" data-id="' + a.id + '" draggable="true">' +
         '<div class="card-tab">' +
           '<span class="prio-badge ' + a.priority + '">' + a.priority + '</span><span class="sep">·</span>' +
           '<span class="type-badge">' + a.type + '</span><span class="sep">·</span>' +
@@ -1446,6 +2271,321 @@
     else if(t.dataset.action === "del-action") await deleteAction(t.dataset.id);
   });
 
+  /* ---------------- Whiteboard ---------------- */
+  var wbCanvas, wbCtx;
+  var wbDrawing = false;
+  var wbColor = "#1A1A1A";
+  var wbWidth = 3;
+  var wbLastX = 0, wbLastY = 0;
+  var wbSaveTimer = null;
+  var wbLoadStarted = false;
+
+  function wbCanvasPos(e){
+    var rect = wbCanvas.getBoundingClientRect();
+    var scaleX = wbCanvas.width / rect.width;
+    var scaleY = wbCanvas.height / rect.height;
+    return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
+  }
+
+  function resizeWhiteboardCanvas(){
+    if(!wbCtx) return;
+    var rect = wbCanvas.getBoundingClientRect();
+    var newW = Math.max(1, Math.round(rect.width));
+    var newH = Math.max(1, Math.round(rect.height));
+    if(newW === wbCanvas.width && newH === wbCanvas.height) return;
+    var hadContent = wbCanvas.width > 0 && wbCanvas.height > 0;
+    var prev = hadContent ? wbCanvas.toDataURL() : null;
+    wbCanvas.width = newW;
+    wbCanvas.height = newH;
+    wbCtx.fillStyle = "#ffffff";
+    wbCtx.fillRect(0, 0, wbCanvas.width, wbCanvas.height);
+    if(prev){
+      var img = new Image();
+      img.onload = function(){ wbCtx.drawImage(img, 0, 0, wbCanvas.width, wbCanvas.height); };
+      img.src = prev;
+    }
+  }
+
+  function activateWhiteboard(){
+    resizeWhiteboardCanvas();
+    if(!wbLoadStarted){ wbLoadStarted = true; loadWhiteboard(); loadWbConnections(); }
+    renderWhiteboardNodes();
+  }
+
+  // Default cascade layout for goals/projects that haven't been dragged yet (no saved wbX/wbY) —
+  // a simple grid so nothing starts stacked on top of itself. Once dragged, a node's position is
+  // persisted and this is never used for it again.
+  function wbNodePosition(item, index){
+    if(item.wbX != null && item.wbY != null) return { x: item.wbX, y: item.wbY };
+    var col = index % 5, row = Math.floor(index / 5);
+    return { x: 16 + col * 164, y: 16 + row * 96 };
+  }
+  function wbNodeHtml(type, item, index){
+    var pos = wbNodePosition(item, index);
+    var linkedGoal = type === "project" ? goalById(item.goalId) : null;
+    var category = type === "goal" ? item.category : (linkedGoal ? linkedGoal.category : null);
+    var health = type === "goal" ? goalHealth(item) : projectHealth(item);
+    var initial = (item.title || "?").trim().charAt(0).toUpperCase() || "?";
+    return '<div class="wb-goal-node' + (category ? " " + category : "") + (type === "project" ? " is-project" : "") + '" data-type="' + type + '" data-id="' + item.id + '" style="left:' + pos.x + 'px; top:' + pos.y + 'px;">' +
+      '<div class="wb-goal-node-top">' +
+        (item.icon ? iconMaskHtml("wb-goal-node-icon", item.icon, category) : '<span class="wb-goal-node-initial">' + initial + '</span>') +
+        '<span class="wb-goal-node-title">' + (type === "project" ? "▸ " : "") + escapeHtml(item.title) + '</span>' +
+      '</div>' +
+      '<div class="wb-goal-node-meta">' +
+        '<span class="prio-badge ' + item.priority + '">' + item.priority + '</span>' +
+        '<span class="wb-goal-node-health-dot ' + (health.level !== "good" ? health.level : "") + '"></span>' +
+      '</div>' +
+    '</div>';
+  }
+  function renderWhiteboardNodes(){
+    var overlay = document.getElementById("wbOverlay");
+    if(!overlay) return;
+    if(!state.goals.length && !state.projects.length){
+      overlay.innerHTML = '<div class="wb-empty-hint">Add a goal or project from the Planner or Areas tab — it\'ll show up here as a movable card.</div>';
+      renderWbConnections();
+      return;
+    }
+    var html = state.goals.map(function(g, i){ return wbNodeHtml("goal", g, i); }).join("");
+    html += state.projects.map(function(p, i){ return wbNodeHtml("project", p, state.goals.length + i); }).join("");
+    overlay.innerHTML = html;
+    renderWbConnections();
+  }
+
+  /* ---- Connections: mind-map relations between goal/project cards ---- */
+  function wbNodeCenter(type, id){
+    var el = document.querySelector('.wb-goal-node[data-type="' + type + '"][data-id="' + id + '"]');
+    if(!el) return null;
+    return { x: parseFloat(el.style.left) + el.offsetWidth / 2, y: parseFloat(el.style.top) + el.offsetHeight / 2 };
+  }
+  // Redraws every connection line by reading the *live* DOM position of each endpoint node, rather
+  // than tracked coordinates — so a card mid-drag keeps its lines attached with no extra bookkeeping.
+  function renderWbConnections(){
+    var svg = document.getElementById("wbConnSvg");
+    if(!svg) return;
+    svg.innerHTML = state.wbConnections.map(function(c){
+      var a = wbNodeCenter(c.fromType, c.fromId);
+      var b = wbNodeCenter(c.toType, c.toId);
+      if(!a || !b) return "";
+      return '<g class="wb-conn" data-kind="wbconn" data-id="' + c.id + '">' +
+        '<line class="wb-conn-hit" x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '" stroke="transparent" stroke-width="14"></line>' +
+        '<line class="wb-conn-line" x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '"></line>' +
+      '</g>';
+    }).join("");
+  }
+  async function loadWbConnections(){
+    var res = await sb.from("whiteboard_connections").select("*");
+    if(res.error){ console.error(res.error); return; }
+    state.wbConnections = (res.data || []).map(function(r){ return { id:r.id, fromType:r.from_type, fromId:r.from_id, toType:r.to_type, toId:r.to_id }; });
+    renderWbConnections();
+  }
+  async function createWbConnection(fromType, fromId, toType, toId){
+    if(fromType === toType && fromId === toId) return;
+    var exists = state.wbConnections.some(function(c){
+      return (c.fromType===fromType && c.fromId===fromId && c.toType===toType && c.toId===toId) ||
+             (c.fromType===toType && c.fromId===toId && c.toType===fromType && c.toId===fromId);
+    });
+    if(exists) return;
+    var conn = { id: uid(), fromType:fromType, fromId:fromId, toType:toType, toId:toId };
+    state.wbConnections.push(conn);
+    renderWbConnections();
+    var statusEl = document.getElementById("wbSaveStatus");
+    if(statusEl) statusEl.textContent = "saving…";
+    var res = await sb.from("whiteboard_connections").insert({ from_type:fromType, from_id:fromId, to_type:toType, to_id:toId }).select().single();
+    if(res.error){
+      console.error(res.error);
+      if(statusEl) statusEl.textContent = "";
+      toast("Could not save that connection — run migration_whiteboard_connections.sql (see _Memory/) first.");
+      return;
+    }
+    conn.id = res.data.id;
+    if(statusEl){ statusEl.textContent = "saved"; setTimeout(function(){ statusEl.textContent = ""; }, 1500); }
+  }
+  async function deleteWbConnection(id){
+    state.wbConnections = state.wbConnections.filter(function(c){ return c.id !== id; });
+    renderWbConnections();
+    var r = await sb.from("whiteboard_connections").delete().eq("id", id);
+    if(r.error) console.error(r.error);
+  }
+  DELETE_HANDLERS.wbconn = deleteWbConnection;
+
+  var wbConnectMode = false;
+  var wbPendingConnect = null;
+  function setWbConnectMode(on){
+    wbConnectMode = on;
+    wbPendingConnect = null;
+    document.querySelectorAll(".wb-goal-node.connect-pending").forEach(function(n){ n.classList.remove("connect-pending"); });
+    document.getElementById("wbConnectBtn").classList.toggle("on", on);
+    document.getElementById("wbConnectHint").style.display = on ? "" : "none";
+  }
+  function handleWbConnectClick(type, id, node){
+    if(wbPendingConnect && wbPendingConnect.type === type && wbPendingConnect.id === id){
+      node.classList.remove("connect-pending");
+      wbPendingConnect = null;
+      return;
+    }
+    if(!wbPendingConnect){
+      wbPendingConnect = { type:type, id:id };
+      node.classList.add("connect-pending");
+      return;
+    }
+    createWbConnection(wbPendingConnect.type, wbPendingConnect.id, type, id);
+    document.querySelectorAll(".wb-goal-node.connect-pending").forEach(function(n){ n.classList.remove("connect-pending"); });
+    wbPendingConnect = null;
+  }
+
+  // Free 2D drag for goal/project nodes (distinct from the list drag-to-reorder in makeSortable —
+  // this persists an absolute x/y instead of an index). A short click (no meaningful movement)
+  // opens the item — or, in connect mode, selects it for linking — instead of registering as a drag.
+  function wireWhiteboardDrag(){
+    var overlay = document.getElementById("wbOverlay");
+    var dragEl = null, dragPointerId = null, startClientX, startClientY, startLeft, startTop, moved;
+    overlay.addEventListener("pointerdown", function(e){
+      var node = e.target.closest(".wb-goal-node");
+      if(!node) return;
+      dragEl = node;
+      dragPointerId = e.pointerId;
+      moved = false;
+      startClientX = e.clientX; startClientY = e.clientY;
+      startLeft = parseFloat(node.style.left) || 0;
+      startTop = parseFloat(node.style.top) || 0;
+      node.setPointerCapture(e.pointerId);
+      node.classList.add("dragging");
+    });
+    overlay.addEventListener("pointermove", function(e){
+      if(!dragEl || e.pointerId !== dragPointerId) return;
+      var dx = e.clientX - startClientX, dy = e.clientY - startClientY;
+      if(Math.abs(dx) > 3 || Math.abs(dy) > 3) moved = true;
+      dragEl.style.left = (startLeft + dx) + "px";
+      dragEl.style.top = (startTop + dy) + "px";
+      renderWbConnections();
+    });
+    overlay.addEventListener("pointerup", async function(e){
+      if(!dragEl || e.pointerId !== dragPointerId) return;
+      var node = dragEl;
+      dragEl = null; dragPointerId = null;
+      node.classList.remove("dragging");
+      var type = node.dataset.type, id = node.dataset.id;
+      if(!moved){
+        if(wbConnectMode){ handleWbConnectClick(type, id, node); return; }
+        if(type === "goal") openGoalDetailPage(id); else editProject(id);
+        return;
+      }
+      var x = Math.round(parseFloat(node.style.left) || 0);
+      var y = Math.round(parseFloat(node.style.top) || 0);
+      var item = type === "goal" ? goalById(id) : projectById(id);
+      if(item){ item.wbX = x; item.wbY = y; }
+      var statusEl = document.getElementById("wbSaveStatus");
+      if(statusEl) statusEl.textContent = "saving…";
+      var r = await safeUpdate(type === "goal" ? "goals" : "projects", id, { whiteboard_x: x, whiteboard_y: y });
+      if(r.error){ console.error(r.error); if(statusEl) statusEl.textContent = ""; return; }
+      warnDroppedFields(r.droppedFields);
+      if(statusEl){ statusEl.textContent = "saved"; setTimeout(function(){ statusEl.textContent = ""; }, 1500); }
+    });
+    overlay.addEventListener("pointercancel", function(){
+      if(dragEl) dragEl.classList.remove("dragging");
+      dragEl = null; dragPointerId = null;
+    });
+  }
+
+  function scheduleWhiteboardSave(){
+    document.getElementById("wbSaveStatus").textContent = "saving…";
+    clearTimeout(wbSaveTimer);
+    wbSaveTimer = setTimeout(saveWhiteboard, 900);
+  }
+  async function saveWhiteboard(){
+    if(!wbCtx) return;
+    var dataUri = wbCanvas.toDataURL("image/png");
+    var res = await sb.from("whiteboard").upsert({ image: dataUri, updated_at: new Date().toISOString() }, { onConflict: "user_id" }).select().single();
+    var statusEl = document.getElementById("wbSaveStatus");
+    if(res.error){ console.error(res.error); if(statusEl) statusEl.textContent = ""; return; }
+    if(statusEl) statusEl.textContent = "saved";
+    setTimeout(function(){ if(statusEl) statusEl.textContent = ""; }, 1500);
+  }
+  async function loadWhiteboard(){
+    var res = await sb.from("whiteboard").select("image").maybeSingle();
+    if(res.error){ console.error(res.error); return; }
+    if(wbCtx && res.data && res.data.image){
+      var img = new Image();
+      img.onload = function(){ wbCtx.drawImage(img, 0, 0, wbCanvas.width, wbCanvas.height); };
+      img.src = res.data.image;
+    }
+  }
+
+  function initWhiteboard(){
+    wbCanvas = document.getElementById("wbCanvas");
+    wbCtx = wbCanvas.getContext("2d");
+
+    wbCanvas.addEventListener("pointerdown", function(e){
+      if(!wbCtx) return;
+      wbDrawing = true;
+      wbCanvas.setPointerCapture(e.pointerId);
+      var pos = wbCanvasPos(e);
+      wbLastX = pos.x; wbLastY = pos.y;
+      wbCtx.beginPath();
+      wbCtx.arc(pos.x, pos.y, wbWidth / 2, 0, Math.PI * 2);
+      wbCtx.fillStyle = wbColor;
+      wbCtx.fill();
+    });
+    wbCanvas.addEventListener("pointermove", function(e){
+      if(!wbDrawing || !wbCtx) return;
+      var pos = wbCanvasPos(e);
+      wbCtx.strokeStyle = wbColor;
+      wbCtx.lineWidth = wbWidth;
+      wbCtx.lineCap = "round";
+      wbCtx.lineJoin = "round";
+      wbCtx.beginPath();
+      wbCtx.moveTo(wbLastX, wbLastY);
+      wbCtx.lineTo(pos.x, pos.y);
+      wbCtx.stroke();
+      wbLastX = pos.x; wbLastY = pos.y;
+    });
+    function endStroke(){
+      if(!wbDrawing) return;
+      wbDrawing = false;
+      scheduleWhiteboardSave();
+    }
+    wbCanvas.addEventListener("pointerup", endStroke);
+    wbCanvas.addEventListener("pointerleave", endStroke);
+    wbCanvas.addEventListener("pointercancel", endStroke);
+
+    window.addEventListener("resize", function(){
+      if(activeSection === "whiteboard") resizeWhiteboardCanvas();
+    });
+
+    document.getElementById("wbColorPicker").addEventListener("input", function(){
+      wbColor = this.value;
+      document.querySelectorAll(".wb-swatch").forEach(function(s){ s.classList.remove("sel"); });
+    });
+    document.getElementById("wbWidthInput").addEventListener("input", function(){
+      wbWidth = Number(this.value);
+    });
+    document.getElementById("wbClearBtn").addEventListener("click", function(){
+      if(!wbCtx) return;
+      wbCtx.fillStyle = "#ffffff";
+      wbCtx.fillRect(0, 0, wbCanvas.width, wbCanvas.height);
+      scheduleWhiteboardSave();
+    });
+
+    var swatchColors = ["#1A1A1A","#FB6666","#4ADE80","#5FA8FF","#FF9F45","#A78BFA","#FFFFFF"];
+    document.getElementById("wbColorSwatches").innerHTML = swatchColors.map(function(c){
+      return '<button class="wb-swatch" style="background:' + c + '" data-color="' + c + '" type="button" aria-label="Color ' + c + '"></button>';
+    }).join("");
+    document.getElementById("wbColorSwatches").addEventListener("click", function(e){
+      var btn = e.target.closest(".wb-swatch");
+      if(!btn) return;
+      wbColor = btn.dataset.color;
+      document.getElementById("wbColorPicker").value = wbColor;
+      document.querySelectorAll(".wb-swatch").forEach(function(s){ s.classList.toggle("sel", s===btn); });
+    });
+
+    document.getElementById("wbConnectBtn").addEventListener("click", function(){
+      setWbConnectMode(!wbConnectMode);
+    });
+
+    wireWhiteboardDrag();
+  }
+  initWhiteboard();
+
   /* ---------------- Journal ---------------- */
   document.getElementById("journalDateInput").value = todayStr();
   document.getElementById("saveJournalBtn").addEventListener("click", async function(){
@@ -1469,7 +2609,7 @@
       var monthKey = d.toLocaleDateString(undefined, { month:"long", year:"numeric" });
       var head = "";
       if(!monthsSeen[monthKey]){ monthsSeen[monthKey] = true; head = '<div class="journal-month-head">' + monthKey + '</div>'; }
-      return head + '<div class="journal-entry">' +
+      return head + '<div class="journal-entry" data-kind="journal" data-id="' + entry.id + '">' +
         '<div class="journal-entry-top"><span class="journal-entry-date">' + d.toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" }) + '</span>' +
         '<button class="icon-btn" data-action="del-journal" data-id="' + entry.id + '" aria-label="Delete entry">&times;</button></div>' +
         '<div class="journal-entry-text">' + escapeHtml(entry.text) + '</div>' +
@@ -1481,11 +2621,7 @@
   document.getElementById("journalEntries").addEventListener("click", async function(e){
     var del = e.target.closest('[data-action="del-journal"]');
     if(!del) return;
-    var entryId = del.dataset.id;
-    state.journal = state.journal.filter(function(x){ return x.id !== entryId; });
-    renderAll();
-    var r = await sb.from("journal").delete().eq("id", entryId);
-    if(r.error) console.error(r.error);
+    await deleteJournalEntry(del.dataset.id);
   });
 
   /* ---------------- People ---------------- */
@@ -1493,7 +2629,7 @@
     var f = filters.people;
     var list = state.people.filter(function(p){ return f === "all" || p.relationship === f; });
     document.getElementById("peopleGrid").innerHTML = list.map(function(p){
-      return '<div class="person-card">' +
+      return '<div class="person-card" data-kind="person" data-id="' + p.id + '" draggable="true">' +
         '<div class="person-top"><div><div class="person-name">' + escapeHtml(p.name) + '</div>' +
         '<span class="person-relation">' + p.relationship + '</span></div>' +
         '<button class="icon-btn" data-action="del-person" data-id="' + p.id + '" aria-label="Delete person">&times;</button></div>' +
@@ -1506,11 +2642,375 @@
   document.getElementById("peopleGrid").addEventListener("click", async function(e){
     var del = e.target.closest('[data-action="del-person"]');
     if(!del) return;
-    var personId = del.dataset.id;
-    state.people = state.people.filter(function(x){ return x.id !== personId; });
+    await deletePerson(del.dataset.id);
+  });
+
+  /* ---------------- Tracker ---------------- */
+  var trackerRangeStart = (function(){ var d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() - 6); return d; })();
+  var trackerSelectedDate = todayStr();
+  document.getElementById("trackerSummaryDateInput").value = trackerSelectedDate;
+
+  function trackerRangeDates(){
+    var out = [];
+    for(var i=0;i<7;i++){
+      var d = new Date(trackerRangeStart);
+      d.setDate(d.getDate() + i);
+      out.push(d.toISOString().slice(0,10));
+    }
+    return out;
+  }
+  function trackerEntryFor(variableId, date){
+    return state.trackerEntries.find(function(e){ return e.variableId === variableId && e.date === date; });
+  }
+  function trackerDayFor(date){
+    return state.trackerDays.find(function(d){ return d.date === date; });
+  }
+  function trackerFmtRangeLabel(dates){
+    var first = new Date(dates[0] + "T00:00:00");
+    var last = new Date(dates[dates.length-1] + "T00:00:00");
+    return first.toLocaleDateString(undefined, { month:"short", day:"numeric" }) + " – " + last.toLocaleDateString(undefined, { month:"short", day:"numeric", year:"numeric" });
+  }
+  function trackerContrastColor(hex){
+    if(!hex) return "";
+    var c = hex.replace("#","");
+    if(c.length === 3) c = c.split("").map(function(ch){ return ch+ch; }).join("");
+    var r = parseInt(c.substr(0,2),16), g = parseInt(c.substr(2,2),16), b = parseInt(c.substr(4,2),16);
+    var lum = (0.299*r + 0.587*g + 0.114*b) / 255;
+    return lum > 0.6 ? "#0B0E14" : "#FFFFFF";
+  }
+
+  function trackerRenderCell(v, date, value){
+    if(v.type === "boolean"){
+      var on = value === "true";
+      return '<td class="tracker-cell"><button class="day-box' + (on?' on':'') + '" data-action="tracker-toggle-bool" data-var="' + v.id + '" data-date="' + date + '" aria-label="Toggle"></button></td>';
+    }
+    if(v.type === "scale"){
+      var max = v.scaleMax || 5;
+      var cur = value === "" ? 0 : Number(value);
+      var dots = "";
+      for(var i=1;i<=max;i++){
+        dots += '<button class="tracker-scale-dot' + (i<=cur?' on':'') + '" data-action="tracker-set-scale" data-var="' + v.id + '" data-date="' + date + '" data-val="' + i + '" aria-label="Set ' + i + '"></button>';
+      }
+      return '<td class="tracker-cell"><div class="tracker-scale">' + dots + '</div></td>';
+    }
+    if(v.type === "category"){
+      var cats = v.categories || [];
+      var active = cats.find(function(c){ return c.label === value; });
+      var styleAttr = active ? ' style="background:' + active.color + ';color:' + trackerContrastColor(active.color) + ';"' : '';
+      var options = '<option value="">—</option>' + cats.map(function(c){
+        return '<option value="' + escapeHtml(c.label) + '"' + (c.label===value?' selected':'') + '>' + escapeHtml(c.label) + '</option>';
+      }).join("");
+      return '<td class="tracker-cell"><select class="tracker-cell-input tracker-cat-select" data-action="tracker-cat-select" data-var="' + v.id + '" data-date="' + date + '"' + styleAttr + '>' + options + '</select></td>';
+    }
+    if(v.type === "text"){
+      return '<td class="tracker-cell"><input type="text" class="tracker-cell-input" data-action="tracker-text-input" data-var="' + v.id + '" data-date="' + date + '" value="' + escapeHtml(value) + '"></td>';
+    }
+    return '<td class="tracker-cell"><input type="number" step="any" class="tracker-cell-input" data-action="tracker-num-input" data-var="' + v.id + '" data-date="' + date + '" value="' + escapeHtml(value) + '"></td>';
+  }
+
+  function renderTracker(){
+    var dates = trackerRangeDates();
+    document.getElementById("trackerRangeLabel").textContent = trackerFmtRangeLabel(dates);
+
+    var vars = state.trackerVars.slice().sort(function(a,b){ return (a.position||0) - (b.position||0); });
+    var table = document.getElementById("trackerTable");
+    document.getElementById("trackerEmptyState").style.display = vars.length ? "none" : "";
+    table.style.display = vars.length ? "" : "none";
+    if(!vars.length){ table.innerHTML = ""; return; }
+
+    var todayS = todayStr();
+    var head = '<tr><th class="tracker-row-head">variable</th>' + dates.map(function(d){
+      var dd = new Date(d + "T00:00:00");
+      var cls = "tracker-col-head" + (d===todayS?" today":"") + (d===trackerSelectedDate?" sel":"");
+      return '<th class="' + cls + '" data-action="pick-tracker-day" data-date="' + d + '">' +
+        '<div>' + dd.toLocaleDateString(undefined,{weekday:"short"}) + '</div><div>' + dd.getDate() + '</div>' +
+      '</th>';
+    }).join("") + '</tr>';
+
+    var rows = vars.map(function(v){
+      var values = dates.map(function(d){ var e = trackerEntryFor(v.id, d); return e ? e.value : ""; });
+      var spark = "";
+      if(v.type === "number" || v.type === "scale"){
+        var nums = values.map(function(x){ return x === "" ? null : Number(x); });
+        var present = nums.filter(function(n){ return n !== null && !isNaN(n); });
+        var max = present.length ? Math.max.apply(null, present) : 0;
+        var min = present.length ? Math.min.apply(null, present) : 0;
+        spark = '<div class="tracker-sparkline">' + nums.map(function(n){
+          var h = 2;
+          if(n !== null && !isNaN(n)){ h = (max > min) ? (2 + Math.round(((n - min) / (max - min)) * 14)) : 16; }
+          return '<div class="tracker-spark-bar" style="height:' + h + 'px"></div>';
+        }).join("") + '</div>';
+      }
+      var nameCell = '<th class="tracker-row-head" data-var-id="' + v.id + '"><div class="tv-name">' + escapeHtml(v.name) + (v.unit ? '<span class="tv-unit">' + escapeHtml(v.unit) + '</span>' : '') + '</div>' + spark + '</th>';
+      var cells = dates.map(function(d, i){ return trackerRenderCell(v, d, values[i]); }).join("");
+      return '<tr>' + nameCell + cells + '</tr>';
+    }).join("");
+
+    table.innerHTML = head + rows;
+  }
+
+  async function trackerSaveValue(variableId, date, rawValue){
+    var existing = trackerEntryFor(variableId, date);
+    if(rawValue === "" || rawValue === null || rawValue === undefined){
+      if(existing){
+        state.trackerEntries = state.trackerEntries.filter(function(e){ return e !== existing; });
+        renderTracker();
+        var rDel = await sb.from("tracker_entries").delete().eq("id", existing.id);
+        if(rDel.error) console.error(rDel.error);
+      }
+      return;
+    }
+    if(existing){
+      existing.value = rawValue;
+      renderTracker();
+      var rU = await sb.from("tracker_entries").update({ value: rawValue }).eq("id", existing.id);
+      if(rU.error) console.error(rU.error);
+    } else {
+      var res = await sb.from("tracker_entries").insert({ date: date, variable_id: variableId, value: rawValue }).select().single();
+      if(res.error){ console.error(res.error); return; }
+      var r = res.data;
+      state.trackerEntries.push({ id:r.id, date:r.date, variableId:r.variable_id, value:r.value });
+      renderTracker();
+    }
+  }
+
+  function trackerLoadSummaryIntoInput(){
+    var d = trackerDayFor(trackerSelectedDate);
+    document.getElementById("trackerSummaryInput").value = d ? d.summary : "";
+  }
+
+  document.getElementById("trackerTable").addEventListener("click", function(e){
+    var head = e.target.closest('[data-action="pick-tracker-day"]');
+    if(head){
+      trackerSelectedDate = head.dataset.date;
+      document.getElementById("trackerSummaryDateInput").value = trackerSelectedDate;
+      trackerLoadSummaryIntoInput();
+      renderTracker();
+      return;
+    }
+    var boolBtn = e.target.closest('[data-action="tracker-toggle-bool"]');
+    if(boolBtn){
+      trackerSaveValue(boolBtn.dataset.var, boolBtn.dataset.date, boolBtn.classList.contains("on") ? "" : "true");
+      return;
+    }
+    var scaleBtn = e.target.closest('[data-action="tracker-set-scale"]');
+    if(scaleBtn){
+      var existing = trackerEntryFor(scaleBtn.dataset.var, scaleBtn.dataset.date);
+      var newVal = scaleBtn.dataset.val;
+      if(existing && existing.value === newVal) newVal = "";
+      trackerSaveValue(scaleBtn.dataset.var, scaleBtn.dataset.date, newVal);
+      return;
+    }
+  });
+  document.getElementById("trackerTable").addEventListener("change", function(e){
+    var t = e.target;
+    if(t.dataset && (t.dataset.action === "tracker-text-input" || t.dataset.action === "tracker-num-input" || t.dataset.action === "tracker-cat-select")){
+      trackerSaveValue(t.dataset.var, t.dataset.date, t.value.trim());
+    }
+  });
+
+  /* ---------------- Tracker variable context menu (right-click a row header) ---------------- */
+  var trackerCtxVarId = null;
+  function openTrackerCtxMenu(x, y, varId){
+    trackerCtxVarId = varId;
+    var menu = document.getElementById("trackerVarCtxMenu");
+    menu.hidden = false;
+    var maxX = window.innerWidth - menu.offsetWidth - 8;
+    var maxY = window.innerHeight - menu.offsetHeight - 8;
+    menu.style.left = Math.max(4, Math.min(x, maxX)) + "px";
+    menu.style.top = Math.max(4, Math.min(y, maxY)) + "px";
+  }
+  function closeTrackerCtxMenu(){
+    document.getElementById("trackerVarCtxMenu").hidden = true;
+    trackerCtxVarId = null;
+  }
+  document.getElementById("trackerTable").addEventListener("contextmenu", function(e){
+    var head = e.target.closest("[data-var-id]");
+    if(!head) return;
+    e.preventDefault();
+    openTrackerCtxMenu(e.clientX, e.clientY, head.dataset.varId);
+  });
+  document.addEventListener("click", function(e){
+    var menu = document.getElementById("trackerVarCtxMenu");
+    if(!menu.hidden && !menu.contains(e.target)) closeTrackerCtxMenu();
+  });
+  document.getElementById("trackerVarCtxMenu").addEventListener("click", async function(e){
+    var btn = e.target.closest("[data-ctx]");
+    if(!btn || !trackerCtxVarId) return;
+    var id = trackerCtxVarId;
+    var action = btn.dataset.ctx;
+    closeTrackerCtxMenu();
+    var v = state.trackerVars.find(function(x){ return x.id === id; });
+    if(!v) return;
+    if(action === "edit"){
+      editingTrackerVarId = id;
+      document.getElementById("tvNameInput").value = v.name;
+      document.getElementById("tvUnitInput").value = v.unit || "";
+      document.getElementById("tvScaleMaxInput").value = v.scaleMax || 5;
+      tvCategoriesDraft = (v.categories || []).slice();
+      renderTvCatList();
+      setChip(document.getElementById("tvTypeSelect"), "t", v.type);
+      trackerUpdateVarFormFields();
+      document.getElementById("tvSaveBtn").textContent = "save changes";
+      document.getElementById("tvCancelEditBtn").style.display = "";
+      openModal("trackerVarsModalOverlay");
+      document.getElementById("tvNameInput").focus();
+      return;
+    }
+    if(action === "delete"){
+      state.trackerVars = state.trackerVars.filter(function(x){ return x.id !== id; });
+      state.trackerEntries = state.trackerEntries.filter(function(x){ return x.variableId !== id; });
+      if(editingTrackerVarId === id) resetTrackerVarForm();
+      renderTracker();
+      var rDel = await sb.from("tracker_variables").delete().eq("id", id);
+      if(rDel.error) console.error(rDel.error);
+      return;
+    }
+    if(action === "up" || action === "down"){
+      var vars = state.trackerVars.slice().sort(function(a,b){ return (a.position||0) - (b.position||0); });
+      var idx = vars.findIndex(function(x){ return x.id === id; });
+      var swapIdx = action === "up" ? idx - 1 : idx + 1;
+      if(swapIdx < 0 || swapIdx >= vars.length) return;
+      var va = vars[idx], vb = vars[swapIdx];
+      var posA = va.position, posB = vb.position;
+      va.position = posB; vb.position = posA;
+      renderTracker();
+      var r1 = await sb.from("tracker_variables").update({ position: va.position }).eq("id", va.id);
+      var r2 = await sb.from("tracker_variables").update({ position: vb.position }).eq("id", vb.id);
+      if(r1.error) console.error(r1.error);
+      if(r2.error) console.error(r2.error);
+      return;
+    }
+  });
+
+  document.getElementById("trackerPrevBtn").addEventListener("click", function(){
+    trackerRangeStart.setDate(trackerRangeStart.getDate() - 7);
+    renderTracker();
+  });
+  document.getElementById("trackerNextBtn").addEventListener("click", function(){
+    trackerRangeStart.setDate(trackerRangeStart.getDate() + 7);
+    renderTracker();
+  });
+  document.getElementById("trackerTodayBtn").addEventListener("click", function(){
+    var d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() - 6);
+    trackerRangeStart = d;
+    renderTracker();
+  });
+
+  document.getElementById("trackerSummaryDateInput").addEventListener("change", function(){
+    trackerSelectedDate = this.value || todayStr();
+    trackerLoadSummaryIntoInput();
+    renderTracker();
+  });
+  document.getElementById("saveTrackerSummaryBtn").addEventListener("click", async function(){
+    var text = document.getElementById("trackerSummaryInput").value.trim();
+    var date = trackerSelectedDate;
+    var existing = trackerDayFor(date);
+    this.disabled = true;
+    var res = existing
+      ? await sb.from("tracker_days").update({ summary: text }).eq("id", existing.id).select().single()
+      : await sb.from("tracker_days").insert({ date: date, summary: text }).select().single();
+    this.disabled = false;
+    if(res.error){ alert(res.error.message); return; }
+    var r = res.data;
+    var mapped = { id:r.id, date:r.date, summary:r.summary };
+    if(existing){
+      var idx = state.trackerDays.findIndex(function(x){ return x.id === existing.id; });
+      if(idx !== -1) state.trackerDays[idx] = mapped;
+    } else {
+      state.trackerDays.push(mapped);
+    }
+  });
+
+  /* ---------------- Tracker variable management ---------------- */
+  var editingTrackerVarId = null;
+  var tvCategoriesDraft = [];
+
+  function trackerUpdateVarFormFields(){
+    var t = chipValue(document.getElementById("tvTypeSelect"), "t");
+    document.getElementById("tvUnitField").style.display = (t === "number") ? "" : "none";
+    document.getElementById("tvScaleField").style.display = (t === "scale") ? "" : "none";
+    document.getElementById("tvCategoriesField").style.display = (t === "category") ? "" : "none";
+  }
+  function resetTrackerVarForm(){
+    editingTrackerVarId = null;
+    document.getElementById("tvNameInput").value = "";
+    document.getElementById("tvUnitInput").value = "";
+    document.getElementById("tvScaleMaxInput").value = "5";
+    document.getElementById("tvCatLabelInput").value = "";
+    document.getElementById("tvCatColorInput").value = "#52E7C0";
+    tvCategoriesDraft = [];
+    renderTvCatList();
+    setChip(document.getElementById("tvTypeSelect"), "t", "number");
+    trackerUpdateVarFormFields();
+    document.getElementById("tvSaveBtn").textContent = "add variable";
+    document.getElementById("tvCancelEditBtn").style.display = "none";
+  }
+  function renderTvCatList(){
+    document.getElementById("tvCatList").innerHTML = tvCategoriesDraft.length ? tvCategoriesDraft.map(function(c, i){
+      return '<span class="tv-cat-chip" style="background:' + c.color + ';color:' + trackerContrastColor(c.color) + ';">' +
+        escapeHtml(c.label) + '<button type="button" data-idx="' + i + '" aria-label="Remove">&times;</button></span>';
+    }).join("") : '<p class="panel-hint" style="margin:0;">No categories yet — add at least one below.</p>';
+  }
+  document.getElementById("tvCatList").addEventListener("click", function(e){
+    var btn = e.target.closest("button[data-idx]");
+    if(!btn) return;
+    tvCategoriesDraft.splice(Number(btn.dataset.idx), 1);
+    renderTvCatList();
+  });
+  document.getElementById("tvCatAddBtn").addEventListener("click", function(){
+    var label = document.getElementById("tvCatLabelInput").value.trim();
+    if(!label) return;
+    if(tvCategoriesDraft.some(function(c){ return c.label.toLowerCase() === label.toLowerCase(); })) return;
+    tvCategoriesDraft.push({ label: label, color: document.getElementById("tvCatColorInput").value });
+    document.getElementById("tvCatLabelInput").value = "";
+    renderTvCatList();
+  });
+  document.getElementById("tvCatLabelInput").addEventListener("keydown", function(e){
+    if(e.key === "Enter"){ e.preventDefault(); document.getElementById("tvCatAddBtn").click(); }
+  });
+
+  document.getElementById("tvTypeSelect").addEventListener("click", function(){ trackerUpdateVarFormFields(); });
+
+  document.getElementById("openTrackerVarsModalBtn").addEventListener("click", function(){
+    resetTrackerVarForm();
+    openModal("trackerVarsModalOverlay");
+  });
+
+  document.getElementById("tvCancelEditBtn").addEventListener("click", function(){ resetTrackerVarForm(); closeModal("trackerVarsModalOverlay"); });
+
+  document.getElementById("tvSaveBtn").addEventListener("click", async function(){
+    var name = document.getElementById("tvNameInput").value.trim();
+    if(!name) return;
+    var type = chipValue(document.getElementById("tvTypeSelect"), "t");
+    var unit = type === "number" ? document.getElementById("tvUnitInput").value.trim() : "";
+    var scaleMax = type === "scale" ? (Number(document.getElementById("tvScaleMaxInput").value) || 5) : null;
+    var categories = type === "category" ? tvCategoriesDraft : null;
+    this.disabled = true;
+    var isEdit = !!editingTrackerVarId;
+    var payload = { name:name, type:type, unit: unit || null, scale_max: scaleMax, categories: categories };
+    var res;
+    if(isEdit){
+      res = await sb.from("tracker_variables").update(payload).eq("id", editingTrackerVarId).select().single();
+    } else {
+      var nextPos = state.trackerVars.length ? Math.max.apply(null, state.trackerVars.map(function(v){ return v.position || 0; })) + 1 : 0;
+      payload.position = nextPos;
+      res = await sb.from("tracker_variables").insert(payload).select().single();
+    }
+    this.disabled = false;
+    if(res.error){ alert(res.error.message); return; }
+    var r = res.data;
+    var mapped = { id:r.id, name:r.name, type:r.type, unit:r.unit, scaleMax:r.scale_max, categories:r.categories || [], position:r.position };
+    if(isEdit){
+      var idx = state.trackerVars.findIndex(function(x){ return x.id === editingTrackerVarId; });
+      if(idx !== -1) state.trackerVars[idx] = mapped;
+    } else {
+      state.trackerVars.push(mapped);
+    }
+    var wasEdit = isEdit;
+    resetTrackerVarForm();
+    if(wasEdit) closeModal("trackerVarsModalOverlay");
     renderAll();
-    var r = await sb.from("people").delete().eq("id", personId);
-    if(r.error) console.error(r.error);
   });
 
   /* ---------------- Calendar / Google Calendar ---------------- */
@@ -1724,10 +3224,10 @@
     try{
       if(name === "create_goal"){
         var ongoing1 = !!input.ongoing;
-        var res = await sb.from("goals").insert({ title:input.title, priority:input.priority, category:input.category, due: ongoing1 ? null : (input.due || null), ongoing: ongoing1 }).select().single();
+        var res = await safeInsert("goals", { title:input.title, priority:input.priority, category:input.category, due: ongoing1 ? null : (input.due || null), ongoing: ongoing1 }, state.goals);
         if(res.error) return { error: res.error.message };
         var r = res.data;
-        state.goals.push({ id:r.id, title:r.title, priority:r.priority, category:r.category, due:r.due, ongoing:r.ongoing });
+        state.goals.push({ id:r.id, title:r.title, priority:r.priority, category:r.category, due:r.due, ongoing:r.ongoing, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:null, icon:null, wbX:null, wbY:null });
         renderAll(); return { ok:true, id:r.id };
       }
       if(name === "edit_goal"){
@@ -1740,14 +3240,14 @@
         if(res2.error) return { error: res2.error.message };
         var r2 = res2.data;
         var i2 = state.goals.findIndex(function(x){ return x.id === input.id; });
-        if(i2 !== -1) state.goals[i2] = { id:r2.id, title:r2.title, priority:r2.priority, category:r2.category, due:r2.due, ongoing:r2.ongoing };
+        if(i2 !== -1){ state.goals[i2].title = r2.title; state.goals[i2].priority = r2.priority; state.goals[i2].category = r2.category; state.goals[i2].due = r2.due; state.goals[i2].ongoing = r2.ongoing; }
         renderAll(); return { ok:true };
       }
       if(name === "create_project"){
-        var res3 = await sb.from("projects").insert({ goal_id: input.goal_id || null, title:input.title, priority:input.priority, due: input.due || null, hours: input.hours || 0, done:false }).select().single();
+        var res3 = await safeInsert("projects", { goal_id: input.goal_id || null, title:input.title, priority:input.priority, due: input.due || null, hours: input.hours || 0, done:false }, state.projects);
         if(res3.error) return { error: res3.error.message };
         var r3 = res3.data;
-        state.projects.push({ id:r3.id, goalId:r3.goal_id, title:r3.title, priority:r3.priority, due:r3.due, hours:Number(r3.hours), done:r3.done });
+        state.projects.push({ id:r3.id, goalId:r3.goal_id, title:r3.title, priority:r3.priority, due:r3.due, hours:Number(r3.hours), done:r3.done, position:r3.position||0, healthOverride:null, healthPctOverride:null, icon:null, wbX:null, wbY:null });
         renderAll(); return { ok:true, id:r3.id };
       }
       if(name === "edit_project"){
@@ -1768,10 +3268,10 @@
         renderAll(); return { ok:true };
       }
       if(name === "create_habit"){
-        var res5 = await sb.from("habits").insert({ goal_id: input.goal_id || null, title:input.title, priority:input.priority, frequency:input.frequency, days:{} }).select().single();
+        var res5 = await safeInsert("habits", { goal_id: input.goal_id || null, title:input.title, priority:input.priority, frequency:input.frequency, days:{} }, state.habits);
         if(res5.error) return { error: res5.error.message };
         var r5 = res5.data;
-        state.habits.push({ id:r5.id, goalId:r5.goal_id, title:r5.title, priority:r5.priority, frequency:r5.frequency, days:r5.days || {} });
+        state.habits.push({ id:r5.id, goalId:r5.goal_id, title:r5.title, priority:r5.priority, frequency:r5.frequency, days:r5.days || {}, position:r5.position||0 });
         renderAll(); return { ok:true, id:r5.id };
       }
       if(name === "edit_habit"){
@@ -1791,10 +3291,10 @@
       }
       if(name === "create_action"){
         var pt7 = input.parent_type || "none";
-        var res7 = await sb.from("actions").insert({ title:input.title, type:input.type, priority:input.priority, parent_type:pt7, parent_id: pt7 === "none" ? null : (input.parent_id || null), date: input.date || null, done:false }).select().single();
+        var res7 = await safeInsert("actions", { title:input.title, type:input.type, priority:input.priority, parent_type:pt7, parent_id: pt7 === "none" ? null : (input.parent_id || null), date: input.date || null, done:false }, state.actions);
         if(res7.error) return { error: res7.error.message };
         var r7 = res7.data;
-        state.actions.push({ id:r7.id, parentType:r7.parent_type, parentId:r7.parent_id, title:r7.title, type:r7.type, priority:r7.priority, date:r7.date, done:r7.done });
+        state.actions.push({ id:r7.id, parentType:r7.parent_type, parentId:r7.parent_id, title:r7.title, type:r7.type, priority:r7.priority, date:r7.date, done:r7.done, position:r7.position||0 });
         renderAll(); return { ok:true, id:r7.id };
       }
       if(name === "edit_action"){
@@ -1823,10 +3323,10 @@
         renderAll(); return { ok:true, id:r9.id };
       }
       if(name === "create_person"){
-        var res10 = await sb.from("people").insert({ name:input.name, relationship:input.relationship, contact:input.contact || "", notes:input.notes || "" }).select().single();
+        var res10 = await safeInsert("people", { name:input.name, relationship:input.relationship, contact:input.contact || "", notes:input.notes || "" }, state.people);
         if(res10.error) return { error: res10.error.message };
         var r10 = res10.data;
-        state.people.push({ id:r10.id, name:r10.name, relationship:r10.relationship, contact:r10.contact, notes:r10.notes });
+        state.people.push({ id:r10.id, name:r10.name, relationship:r10.relationship, contact:r10.contact, notes:r10.notes, position:r10.position||0 });
         renderAll(); return { ok:true, id:r10.id };
       }
       if(name === "edit_person"){
@@ -1847,28 +3347,44 @@
     }
   }
 
-  async function callClaude(messages){
-    var apiKey = safeGet(window.localStorage, "anthropicApiKey");
+  function toGeminiSchema(schema){
+    if(!schema || typeof schema !== "object") return schema;
+    var out = {};
+    for(var k in schema){
+      if(k === "type"){
+        out.type = String(schema[k]).toUpperCase();
+      } else if(k === "properties"){
+        out.properties = {};
+        for(var pk in schema.properties){ out.properties[pk] = toGeminiSchema(schema.properties[pk]); }
+      } else if(k === "items"){
+        out.items = toGeminiSchema(schema.items);
+      } else {
+        out[k] = schema[k];
+      }
+    }
+    return out;
+  }
+
+  var GEMINI_TOOLS = [{ functionDeclarations: AGENT_TOOLS.map(function(t){
+    return { name: t.name, description: t.description, parameters: toGeminiSchema(t.input_schema) };
+  }) }];
+
+  async function callGemini(contents){
+    var apiKey = safeGet(window.localStorage, "geminiApiKey");
     if(!apiKey) throw new Error("no_api_key");
-    var resp = await fetch("https://api.anthropic.com/v1/messages", {
+    var model = "gemini-3.5-flash";
+    var resp = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + encodeURIComponent(apiKey), {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true"
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "claude-sonnet-5",
-        max_tokens: 1024,
-        system: buildAgentSystemPrompt(),
-        messages: messages,
-        tools: AGENT_TOOLS
+        system_instruction: { parts: [{ text: buildAgentSystemPrompt() }] },
+        contents: contents,
+        tools: GEMINI_TOOLS
       })
     });
     if(!resp.ok){
       var errBody = await resp.text();
-      throw new Error("Claude API error " + resp.status + ": " + errBody.slice(0,300));
+      throw new Error("Gemini API error " + resp.status + ": " + errBody.slice(0,300));
     }
     return await resp.json();
   }
@@ -1897,7 +3413,9 @@
     renderChatMessages();
     await persistChatMessage("user", userText);
 
-    var working = chatMessages.filter(function(m){ return !m.pending; }).map(function(m){ return { role:m.role, content:m.content }; });
+    var working = chatMessages.filter(function(m){ return !m.pending; }).map(function(m){
+      return { role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] };
+    });
 
     var finalText = "";
     var safety = 0;
@@ -1905,28 +3423,29 @@
       safety++;
       var data;
       try{
-        data = await callClaude(working);
+        data = await callGemini(working);
       }catch(e){
         finalText = e.message === "no_api_key"
-          ? 'No Claude API key set yet — click "api key" above to add one.'
-          : ("Something went wrong talking to Claude: " + e.message);
+          ? 'No Gemini API key set yet — click "api key" above to add one.'
+          : ("Something went wrong talking to Gemini: " + e.message);
         break;
       }
-      var content = data.content || [];
-      var toolUses = content.filter(function(b){ return b.type === "tool_use"; });
-      if(data.stop_reason === "tool_use" && toolUses.length){
-        working.push({ role:"assistant", content: content });
-        var toolResults = [];
-        for(var i=0;i<toolUses.length;i++){
-          var tu = toolUses[i];
-          var result = await executeAgentTool(tu.name, tu.input || {});
-          toolResults.push({ type:"tool_result", tool_use_id: tu.id, content: JSON.stringify(result) });
+      var candidate = (data.candidates && data.candidates[0]) || {};
+      var parts = (candidate.content && candidate.content.parts) || [];
+      var functionCalls = parts.filter(function(p){ return p.functionCall; });
+      if(functionCalls.length){
+        working.push({ role:"model", parts: parts });
+        var responseParts = [];
+        for(var i=0;i<functionCalls.length;i++){
+          var fc = functionCalls[i].functionCall;
+          var result = await executeAgentTool(fc.name, fc.args || {});
+          responseParts.push({ functionResponse: { name: fc.name, response: result } });
         }
-        working.push({ role:"user", content: toolResults });
+        working.push({ role:"user", parts: responseParts });
         continue;
       }
-      var textBlocks = content.filter(function(b){ return b.type === "text"; });
-      finalText = textBlocks.map(function(b){ return b.text; }).join("\n").trim() || "Done.";
+      var textParts = parts.filter(function(p){ return typeof p.text === "string"; });
+      finalText = textParts.map(function(p){ return p.text; }).join("\n").trim() || "Done.";
       break;
     }
 
@@ -1952,16 +3471,16 @@
     }
   });
   document.getElementById("agentKeyBtn").addEventListener("click", function(){
-    document.getElementById("agentApiKeyInput").value = safeGet(window.localStorage, "anthropicApiKey") || "";
+    document.getElementById("agentApiKeyInput").value = safeGet(window.localStorage, "geminiApiKey") || "";
     openModal("agentKeyModalOverlay");
   });
   document.getElementById("agentKeySaveBtn").addEventListener("click", function(){
     var key = document.getElementById("agentApiKeyInput").value.trim();
-    if(key) safeSet(window.localStorage, "anthropicApiKey", key);
+    if(key) safeSet(window.localStorage, "geminiApiKey", key);
     closeModal("agentKeyModalOverlay");
   });
   document.getElementById("agentKeyClearBtn").addEventListener("click", function(){
-    safeRemove(window.localStorage, "anthropicApiKey");
+    safeRemove(window.localStorage, "geminiApiKey");
     document.getElementById("agentApiKeyInput").value = "";
     closeModal("agentKeyModalOverlay");
   });
@@ -1975,6 +3494,8 @@
   document.addEventListener("keydown", function(e){
     if(e.key !== "Escape") return;
     document.querySelectorAll(".modal-overlay").forEach(function(ov){ ov.hidden = true; });
+    closeTrackerCtxMenu();
+    closeGlobalCtxMenu();
   });
 
   function fillGoalSelect(sel){
@@ -1984,7 +3505,10 @@
 
   // Goal modal
   var editingGoalId = null;
-  function openGoalModal(editGoalObj){
+  var goalIconDraft = null;
+  var setGoalIconPreview = wireIconUploader("goal", function(v){ goalIconDraft = v; }, function(){ return chipValue(document.getElementById("goalCatSelect"), "c"); });
+  document.getElementById("goalCatSelect").addEventListener("click", function(){ if(goalIconDraft) setGoalIconPreview(goalIconDraft); });
+  function openGoalModal(editGoalObj, presetCategory){
     editingGoalId = editGoalObj ? editGoalObj.id : null;
     document.getElementById("goalModalTitle").textContent = editGoalObj ? "edit_goal.json" : "new_goal.json";
     document.getElementById("goalTitleInput").value = editGoalObj ? editGoalObj.title : "";
@@ -1992,7 +3516,11 @@
     document.getElementById("goalDueInput").disabled = editGoalObj ? !!editGoalObj.ongoing : false;
     document.getElementById("goalInfiniteCheckbox").checked = editGoalObj ? !!editGoalObj.ongoing : false;
     setChip(document.getElementById("goalPrioSelect"), "p", editGoalObj ? editGoalObj.priority : "P1");
-    setChip(document.getElementById("goalCatSelect"), "c", editGoalObj ? editGoalObj.category : "Career");
+    setChip(document.getElementById("goalCatSelect"), "c", editGoalObj ? editGoalObj.category : (presetCategory || "Career"));
+    setChip(document.getElementById("goalHealthLevelSelect"), "hl", editGoalObj ? (editGoalObj.healthOverride || "") : "");
+    document.getElementById("goalHealthPctInput").value = editGoalObj && editGoalObj.healthPctOverride != null ? editGoalObj.healthPctOverride : "";
+    goalIconDraft = editGoalObj ? (editGoalObj.icon || null) : null;
+    setGoalIconPreview(goalIconDraft);
     openModal("goalModalOverlay");
     document.getElementById("goalTitleInput").focus();
   }
@@ -2005,22 +3533,26 @@
     var title = document.getElementById("goalTitleInput").value.trim();
     if(!title) return;
     var ongoing = document.getElementById("goalInfiniteCheckbox").checked;
+    var healthPctRaw = document.getElementById("goalHealthPctInput").value;
     var payload = {
       title: title,
       priority: chipValue(document.getElementById("goalPrioSelect"), "p"),
       category: chipValue(document.getElementById("goalCatSelect"), "c"),
       due: ongoing ? null : (document.getElementById("goalDueInput").value || null),
-      ongoing: ongoing
+      ongoing: ongoing,
+      health_override: chipValue(document.getElementById("goalHealthLevelSelect"), "hl") || null,
+      health_pct_override: healthPctRaw === "" ? null : Math.max(0, Math.min(100, Math.round(Number(healthPctRaw)))),
+      icon: goalIconDraft
     };
     this.disabled = true;
     var isEdit = !!editingGoalId;
     var res = isEdit
-      ? await sb.from("goals").update(payload).eq("id", editingGoalId).select().single()
-      : await sb.from("goals").insert(payload).select().single();
+      ? await safeUpdate("goals", editingGoalId, payload)
+      : await safeInsert("goals", payload, state.goals);
     this.disabled = false;
     if(res.error){ alert(res.error.message); return; }
     var r = res.data;
-    var mapped = { id:r.id, title:r.title, priority:r.priority, category:r.category, due:r.due, ongoing:r.ongoing };
+    var mapped = { id:r.id, title:r.title, priority:r.priority, category:r.category, due:r.due, ongoing:r.ongoing, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null) };
     if(isEdit){
       var idx = state.goals.findIndex(function(x){ return x.id === editingGoalId; });
       if(idx !== -1) state.goals[idx] = mapped;
@@ -2028,10 +3560,17 @@
       state.goals.push(mapped);
     }
     renderAll(); closeModal("goalModalOverlay");
+    warnDroppedFields(res.droppedFields);
   });
 
   // Project modal
   var editingProjectId = null;
+  var projectIconDraft = null;
+  var setProjectIconPreview = wireIconUploader("project", function(v){ projectIconDraft = v; }, function(){
+    var g = goalById(document.getElementById("projectGoalSelect").value);
+    return g ? g.category : null;
+  });
+  document.getElementById("projectGoalSelect").addEventListener("change", function(){ if(projectIconDraft) setProjectIconPreview(projectIconDraft); });
   function openProjectModal(presetGoalId, editProjectObj){
     editingProjectId = editProjectObj ? editProjectObj.id : null;
     document.getElementById("projectModalTitle").textContent = editProjectObj ? "edit_project.json" : "new_project.json";
@@ -2042,6 +3581,8 @@
     var goalToSelect = editProjectObj ? (editProjectObj.goalId || "") : (presetGoalId || "");
     document.getElementById("projectGoalSelect").value = goalToSelect;
     setChip(document.getElementById("projectPrioSelect"), "p", editProjectObj ? editProjectObj.priority : "P2");
+    projectIconDraft = editProjectObj ? (editProjectObj.icon || null) : null;
+    setProjectIconPreview(projectIconDraft);
     openModal("projectModalOverlay");
     document.getElementById("projectTitleInput").focus();
   }
@@ -2053,21 +3594,22 @@
       goal_id: document.getElementById("projectGoalSelect").value || null,
       title: title, priority: chipValue(document.getElementById("projectPrioSelect"), "p"),
       due: document.getElementById("projectDueInput").value || null,
-      hours: parseFloat(document.getElementById("projectHoursInput").value) || 0
+      hours: parseFloat(document.getElementById("projectHoursInput").value) || 0,
+      icon: projectIconDraft
     };
     this.disabled = true;
     var isEdit = !!editingProjectId;
     var res;
     if(isEdit){
-      res = await sb.from("projects").update(payload).eq("id", editingProjectId).select().single();
+      res = await safeUpdate("projects", editingProjectId, payload);
     } else {
       payload.done = false;
-      res = await sb.from("projects").insert(payload).select().single();
+      res = await safeInsert("projects", payload, state.projects);
     }
     this.disabled = false;
     if(res.error){ alert(res.error.message); return; }
     var r = res.data;
-    var mapped = { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done };
+    var mapped = { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null) };
     if(isEdit){
       var idx = state.projects.findIndex(function(x){ return x.id === editingProjectId; });
       if(idx !== -1) state.projects[idx] = mapped;
@@ -2075,6 +3617,7 @@
       state.projects.push(mapped);
     }
     renderAll(); closeModal("projectModalOverlay");
+    warnDroppedFields(res.droppedFields);
   });
 
   // Habit modal
@@ -2107,12 +3650,12 @@
       res = await sb.from("habits").update(payload).eq("id", editingHabitId).select().single();
     } else {
       payload.days = {};
-      res = await sb.from("habits").insert(payload).select().single();
+      res = await safeInsert("habits", payload, state.habits);
     }
     this.disabled = false;
     if(res.error){ alert(res.error.message); return; }
     var r = res.data;
-    var mapped = { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, frequency:r.frequency, days:r.days || {} };
+    var mapped = { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, frequency:r.frequency, days:r.days || {}, position:r.position||0 };
     if(isEdit){
       var idx = state.habits.findIndex(function(x){ return x.id === editingHabitId; });
       if(idx !== -1) state.habits[idx] = mapped;
@@ -2182,12 +3725,12 @@
       res = await sb.from("actions").update(payload).eq("id", editingActionId).select().single();
     } else {
       payload.done = false;
-      res = await sb.from("actions").insert(payload).select().single();
+      res = await safeInsert("actions", payload, state.actions);
     }
     this.disabled = false;
     if(res.error){ alert(res.error.message); return; }
     var r = res.data;
-    var mapped = { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done };
+    var mapped = { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0 };
     if(isEdit){
       var idx = state.actions.findIndex(function(x){ return x.id === editingActionId; });
       if(idx !== -1) state.actions[idx] = mapped;
@@ -2217,11 +3760,11 @@
       notes: document.getElementById("personNotesInput").value.trim()
     };
     this.disabled = true;
-    var res = await sb.from("people").insert(payload).select().single();
+    var res = await safeInsert("people", payload, state.people);
     this.disabled = false;
     if(res.error){ alert(res.error.message); return; }
     var r = res.data;
-    state.people.push({ id:r.id, name:r.name, relationship:r.relationship, contact:r.contact, notes:r.notes });
+    state.people.push({ id:r.id, name:r.name, relationship:r.relationship, contact:r.contact, notes:r.notes, position:r.position||0 });
     renderAll(); closeModal("personModalOverlay");
   });
 
@@ -2229,6 +3772,7 @@
   function renderAll(){
     renderStats();
     renderGoals();
+    renderAreas();
     renderProjects();
     renderHabits();
     renderActions();
@@ -2236,6 +3780,9 @@
     renderJournal();
     renderPeople();
     renderChatMessages();
+    renderTracker();
+    renderGoalDetail();
+    renderAreaDetail();
   }
 })();
 </script>
