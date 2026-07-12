@@ -96,7 +96,7 @@
   .user-email{ font-family:var(--mono); font-size:10.5px; color:var(--text-faint); margin-bottom:8px; word-break:break-all; }
 
   /* ===== MAIN ===== */
-  .main{ padding:32px 40px 70px; max-width:1040px; }
+  .main{ padding:32px 40px 70px; max-width:none; width:100%; }
   .main-header{ display:flex; justify-content:space-between; align-items:flex-end; gap:20px; flex-wrap:wrap; margin-bottom:4px; }
   h1{ font-family:var(--mono); font-size:23px; font-weight:700; margin:0; letter-spacing:-0.01em; }
   h1 .path-sep{ color:var(--text-faint); font-weight:400; }
@@ -255,9 +255,38 @@
   .matrix-tile{ aspect-ratio:1; border-radius:6px; position:relative; overflow:hidden; cursor:pointer; border:2px solid var(--border); background:var(--bg-inset); transition:transform .12s ease, border-color .12s ease; }
   .matrix-tile:hover{ transform:translateY(-2px); border-color:var(--border-bright); }
   .matrix-tile-initial{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:26px; font-weight:700; opacity:0.35; }
-  .matrix-tile-icon-img{ position:absolute; inset:0; width:100%; height:100%; display:block; mask-size:65%; -webkit-mask-size:65%; mask-repeat:no-repeat; -webkit-mask-repeat:no-repeat; mask-position:center; -webkit-mask-position:center; opacity:0.9; }
+  .matrix-tile-icon-img{ position:absolute; inset:0; width:100%; height:100%; display:block; mask-size:100% 100%; -webkit-mask-size:100% 100%; mask-repeat:no-repeat; -webkit-mask-repeat:no-repeat; mask-position:center; -webkit-mask-position:center; }
+  .area-tile{ display:flex; flex-direction:column; gap:7px; cursor:pointer; }
+  .area-tile-caption{ display:flex; flex-direction:column; gap:3px; }
+  .area-tile-title{ font-family:var(--sans); font-size:11.5px; font-weight:600; color:var(--text); line-height:1.3; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .area-tile-attrs{ display:flex; align-items:center; gap:5px; flex-wrap:wrap; font-family:var(--mono); font-size:9.5px; color:var(--text-faint); }
+  .area-tile-attrs .prio-badge{ font-size:9px; padding:1px 5px; }
+  .area-tile-attr.warn{ color:var(--p1); }
+  .area-tile-attr.critical{ color:var(--p0); }
   .icon-upload-row{ display:flex; align-items:center; gap:10px; }
   .icon-preview{ width:40px; height:40px; border-radius:6px; background-color:var(--bg-inset); border:1px solid var(--border); flex-shrink:0; mask-size:contain; -webkit-mask-size:contain; mask-repeat:no-repeat; -webkit-mask-repeat:no-repeat; mask-position:center; -webkit-mask-position:center; }
+
+  /* ===== SLEEP ===== */
+  .goal-integration-block{ margin-top:28px; padding-top:20px; border-top:1px solid var(--border); }
+  .integration-block-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:4px; }
+  .integration-block-head h2{ font-size:15px; margin:0; }
+  .sleep-entry-row{ display:flex; align-items:center; gap:10px; margin:18px 0 14px; flex-wrap:wrap; }
+  .sleep-entry-row input[type="date"]{ width:auto; }
+  .sleep-entry-row input[type="number"]{ width:120px; }
+  .sleep-import-panel{ margin-bottom:18px; padding:12px; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg-raised); }
+  .sleep-list{ display:flex; flex-direction:column; gap:4px; }
+  .sleep-row{ display:flex; align-items:center; gap:10px; padding:7px 10px; border:1px solid var(--border); border-radius:6px; background:var(--bg-raised); cursor:pointer; }
+  .sleep-row:hover{ border-color:var(--border-bright); }
+  .sleep-row-date{ font-family:var(--mono); font-size:11px; color:var(--text-dim); width:88px; flex-shrink:0; }
+  .sleep-row-bar-track{ flex:1; height:8px; background:var(--bg-inset); border-radius:4px; overflow:hidden; }
+  .sleep-row-bar-fill{ height:100%; background:var(--accent); }
+  .sleep-row-bar-fill.fair{ background:var(--p1); }
+  .sleep-row-bar-fill.poor{ background:var(--p0); }
+  .sleep-row-score{ font-family:var(--mono); font-size:12px; font-weight:700; width:34px; text-align:right; color:var(--text); flex-shrink:0; }
+  .sleep-row-count{ font-family:var(--mono); font-size:9px; color:var(--text-faint); width:38px; flex-shrink:0; }
+  .sleep-row-source{ font-family:var(--mono); font-size:9px; text-transform:uppercase; padding:2px 6px; border-radius:4px; color:var(--text-faint); background:var(--bg-inset); flex-shrink:0; }
+  .sleep-row-source.garmin{ color:var(--accent); }
+  .sleep-gap{ font-family:var(--mono); font-size:9.5px; color:var(--text-faint); text-align:center; padding:3px 0; opacity:0.6; }
 
   /* ===== WHITEBOARD ===== */
   .wb-toolbar{ display:flex; align-items:center; gap:14px; margin:18px 0 14px; flex-wrap:wrap; }
@@ -287,6 +316,13 @@
   .wb-goal-node.Growth{ border-left-color:var(--cat-growth); }
   .wb-goal-node.Relationships{ border-left-color:var(--cat-relationships); }
   .wb-goal-node.Life{ border-left-color:var(--cat-life); }
+  .wb-goal-node.Health .wb-goal-node-initial{ background:var(--cat-health); color:var(--bg); }
+  .wb-goal-node.Finance .wb-goal-node-initial{ background:var(--cat-finance); color:var(--bg); }
+  .wb-goal-node.Career .wb-goal-node-initial{ background:var(--cat-career); color:var(--bg); }
+  .wb-goal-node.Maintenance .wb-goal-node-initial{ background:var(--cat-maintenance); color:var(--bg); }
+  .wb-goal-node.Growth .wb-goal-node-initial{ background:var(--cat-growth); color:var(--bg); }
+  .wb-goal-node.Relationships .wb-goal-node-initial{ background:var(--cat-relationships); color:var(--bg); }
+  .wb-goal-node.Life .wb-goal-node-initial{ background:var(--cat-life); color:var(--bg); }
   .wb-goal-node-top{ display:flex; align-items:center; gap:7px; }
   .wb-goal-node-icon{ width:20px; height:20px; border-radius:4px; display:block; flex-shrink:0; mask-size:contain; -webkit-mask-size:contain; mask-repeat:no-repeat; -webkit-mask-repeat:no-repeat; mask-position:center; -webkit-mask-position:center; }
   .wb-goal-node-initial{ width:20px; height:20px; border-radius:4px; display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:11px; font-weight:700; background:var(--bg-inset); color:var(--text-dim); flex-shrink:0; }
@@ -349,6 +385,12 @@
   .habit-foot{ display:flex; align-items:center; justify-content:space-between; gap:14px; margin-top:12px; flex-wrap:wrap; }
   .streak-tag{ font-family:var(--mono); font-size:11px; color:var(--text-dim); }
   .streak-tag b{ color:var(--accent); }
+  .time-pick-row{ display:flex; gap:8px; align-items:center; }
+  .time-pick-row input[type="time"]{ flex:1; }
+  .time-pick-panel{ margin-top:8px; max-height:170px; overflow-y:auto; display:grid; grid-template-columns:repeat(4,1fr); gap:4px; padding:8px; border:1px solid var(--border); border-radius:6px; background:var(--bg-inset); }
+  .time-pick-opt{ font-family:var(--mono); font-size:10.5px; padding:6px 4px; border:1px solid var(--border); border-radius:4px; background:transparent; color:var(--text-dim); cursor:pointer; }
+  .time-pick-opt:hover{ border-color:var(--border-bright); color:var(--text); }
+  .time-pick-opt.sel{ background:var(--accent-glow); border-color:var(--accent-dim); color:var(--accent); }
 
   /* ===== CALENDAR ===== */
   .cal-toolbar{ display:flex; align-items:center; justify-content:space-between; gap:16px; margin-top:22px; flex-wrap:wrap; }
@@ -369,6 +411,86 @@
   .cal-entry{ display:flex; align-items:center; gap:4px; font-size:10px; line-height:1.3; overflow:hidden; }
   .cal-entry .cal-dot{ width:6px; height:6px; border-radius:2px; flex-shrink:0; }
   .cal-entry .cal-entry-text{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text-dim); }
+
+  /* ===== TODAY ===== */
+  .today-timeline{ margin:18px 0 26px; }
+  /* One unified widget, divided into horizontal rows by type (day/night, habits, actions) and by
+     time horizontally within every row — the row labels live in their own column outside the
+     bordered box so they never shift each row's 0-100% time axis out of alignment with the others,
+     and the "now" line is a direct child of the box so it spans all rows as one continuous line. */
+  .today-timeline-body{ display:flex; gap:8px; align-items:stretch; }
+  .today-timeline-row-labels{ display:flex; flex-direction:column; width:50px; flex-shrink:0; }
+  .today-timeline-row-labels span{ flex:1; display:flex; align-items:center; font-family:var(--mono); font-size:8.5px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-faint); }
+  .today-timeline-main{ flex:1; min-width:0; }
+  .today-timeline-unified{ position:relative; display:flex; flex-direction:column; height:90px; border:1px solid var(--border); border-radius:6px; overflow:hidden; background:var(--bg-raised); }
+  .today-timeline-row{ position:relative; flex:1; touch-action:none; }
+  .today-timeline-row + .today-timeline-row{ border-top:1px solid var(--border); }
+  .today-timeline-daynight{ position:absolute; inset:0; transition:background 1s ease; }
+  .today-timeline-now{ position:absolute; top:0; bottom:0; width:2px; background:var(--p0); box-shadow:0 0 6px var(--p0); z-index:5; }
+  .today-timeline-now-label{ position:absolute; top:-17px; left:50%; transform:translateX(-50%); font-family:var(--mono); font-size:9px; font-weight:700; color:var(--p0); white-space:nowrap; }
+  .today-timeline-labels{ display:flex; justify-content:space-between; margin-top:5px; font-family:var(--mono); font-size:9px; color:var(--text-faint); }
+  .today-timeline-labels span:first-child{ text-align:left; }
+  .today-timeline-labels span:last-child{ text-align:right; }
+  .today-daynight{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:10px; flex-wrap:wrap; }
+  .daynight-badge{ display:inline-block; width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+  .daynight-badge.day{ background:#FDE047; box-shadow:0 0 6px rgba(253,224,71,0.6); }
+  .daynight-badge.night{ background:#5FA8FF; box-shadow:0 0 6px rgba(95,168,255,0.6); }
+  .daynight-times{ font-family:var(--mono); font-size:9.5px; color:var(--text-faint); }
+  .timeline-block{ position:absolute; top:2px; bottom:2px; min-width:10px; border-radius:4px; border-left:3px solid var(--border-bright); background:var(--bg-raised); border-top:1px solid var(--border-bright); border-right:1px solid var(--border-bright); border-bottom:1px solid var(--border-bright); cursor:grab; overflow:hidden; padding:0 5px; display:flex; align-items:center; user-select:none; touch-action:none; }
+  .timeline-block:hover{ border-color:var(--accent-dim); z-index:2; }
+  .timeline-block.dragging{ cursor:grabbing; z-index:3; box-shadow:0 4px 14px rgba(0,0,0,0.4); }
+  .timeline-block-title{ font-family:var(--mono); font-size:9.5px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .timeline-block.done{ opacity:0.5; }
+  .timeline-block.Health{ border-left-color:var(--cat-health); }
+  .timeline-block.Finance{ border-left-color:var(--cat-finance); }
+  .timeline-block.Career{ border-left-color:var(--cat-career); }
+  .timeline-block.Maintenance{ border-left-color:var(--cat-maintenance); }
+  .timeline-block.Growth{ border-left-color:var(--cat-growth); }
+  .timeline-block.Relationships{ border-left-color:var(--cat-relationships); }
+  .timeline-block.Life{ border-left-color:var(--cat-life); }
+  .today-layout{ display:grid; grid-template-columns:1fr 320px; gap:28px; align-items:start; margin-top:18px; }
+  .today-date-nav{ display:flex; align-items:center; gap:10px; margin-bottom:22px; }
+  .today-section-block{ margin-bottom:26px; }
+  .today-section-block-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; }
+  .today-section-block-head h2{ font-family:var(--mono); font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-faint); margin:0; font-weight:700; }
+  .today-section-block h2{ font-family:var(--mono); font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-faint); margin:0 0 10px; font-weight:700; }
+  .today-row-list{ display:flex; flex-direction:column; gap:6px; }
+  .today-row{ display:flex; align-items:center; gap:10px; padding:8px 10px; border:1px solid var(--border); border-radius:6px; background:var(--bg-raised); }
+  .today-row-title{ flex:1; font-family:var(--sans); font-size:12.5px; color:var(--text); }
+  .today-row-title.done{ color:var(--text-faint); text-decoration:line-through; }
+  .today-row-meta{ font-family:var(--mono); font-size:10px; color:var(--text-faint); flex-shrink:0; }
+  .today-empty-note{ font-family:var(--mono); font-size:11px; color:var(--text-faint); display:none; }
+  .today-row .day-box{ flex-shrink:0; }
+  .today-row .tracker-scale{ padding:0; flex-shrink:0; }
+  .today-row .tracker-cell-input{ width:auto; max-width:110px; min-width:56px; flex-shrink:0; background:var(--bg-inset); border:1px solid var(--border); border-radius:4px; padding:5px 7px; }
+  .today-row-value-label{ font-family:var(--mono); font-size:10.5px; font-weight:700; color:var(--text-faint); flex-shrink:0; width:24px; }
+  .today-row-value-label.on{ color:var(--accent); }
+  .today-habit-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(190px,1fr)); gap:8px; }
+  .today-habit-tile{ display:flex; flex-direction:column; gap:8px; padding:10px 12px; border:1px solid var(--border); border-left:3px solid var(--border-bright); border-radius:6px; background:var(--bg-raised); }
+  .today-habit-tile.Health{ border-left-color:var(--cat-health); background:linear-gradient(135deg, var(--cat-health-bg), var(--bg-raised) 65%); }
+  .today-habit-tile.Finance{ border-left-color:var(--cat-finance); background:linear-gradient(135deg, var(--cat-finance-bg), var(--bg-raised) 65%); }
+  .today-habit-tile.Career{ border-left-color:var(--cat-career); background:linear-gradient(135deg, var(--cat-career-bg), var(--bg-raised) 65%); }
+  .today-habit-tile.Maintenance{ border-left-color:var(--cat-maintenance); background:linear-gradient(135deg, var(--cat-maintenance-bg), var(--bg-raised) 65%); }
+  .today-habit-tile.Growth{ border-left-color:var(--cat-growth); background:linear-gradient(135deg, var(--cat-growth-bg), var(--bg-raised) 65%); }
+  .today-habit-tile.Relationships{ border-left-color:var(--cat-relationships); background:linear-gradient(135deg, var(--cat-relationships-bg), var(--bg-raised) 65%); }
+  .today-habit-tile.Life{ border-left-color:var(--cat-life); background:linear-gradient(135deg, var(--cat-life-bg), var(--bg-raised) 65%); }
+  .today-habit-tile-top{ display:flex; align-items:center; gap:8px; }
+  .today-habit-tile-title{ flex:1; font-family:var(--sans); font-size:12.5px; color:var(--text); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .today-habit-tile-title.done{ color:var(--text-faint); text-decoration:line-through; }
+  .today-habit-tile-meta{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-family:var(--mono); font-size:10px; color:var(--text-faint); }
+  .today-habit-tile-time{ font-weight:700; color:var(--text-dim); }
+  .today-habit-tile-actions{ display:flex; justify-content:flex-end; gap:4px; }
+  .today-habit-tile .day-box{ flex-shrink:0; }
+  .today-habit-tile .tracker-scale{ padding:0; flex-shrink:0; }
+  .today-habit-tile .tracker-cell-input{ width:auto; max-width:110px; min-width:0; flex:1; flex-shrink:1; background:var(--bg-inset); border:1px solid var(--border); border-radius:4px; padding:5px 7px; }
+  .cal-grid.mini{ margin-top:10px; }
+  .cal-grid.mini .cal-day{ min-height:36px; padding:4px; cursor:pointer; gap:2px; }
+  .cal-grid.mini .cal-day.clickable:hover{ box-shadow:inset 0 0 0 1px var(--border-bright); }
+  .cal-grid.mini .cal-day.selected{ box-shadow:inset 0 0 0 1.5px var(--accent); }
+  .cal-grid.mini .cal-day.selected .cal-day-num{ color:var(--accent); font-weight:700; }
+  .cal-dot-mini-row{ display:flex; gap:2px; flex-wrap:wrap; }
+  .cal-dot-mini{ width:4px; height:4px; border-radius:50%; background:var(--accent); }
+  @media (max-width:900px){ .today-layout{ grid-template-columns:1fr; } }
   .cal-entry.google .cal-dot{ background:var(--accent); }
   .cal-entry.project .cal-dot{ background:var(--violet); }
   .cal-entry.action .cal-dot{ background:var(--p1); }
@@ -477,6 +599,13 @@
   .chip-opt.sel[data-c="Growth"]{ background:var(--cat-growth-bg); color:var(--cat-growth); border-color:var(--cat-growth); }
   .chip-opt.sel[data-c="Relationships"]{ background:var(--cat-relationships-bg); color:var(--cat-relationships); border-color:var(--cat-relationships); }
   .chip-opt.sel[data-c="Life"]{ background:var(--cat-life-bg); color:var(--cat-life); border-color:var(--cat-life); }
+  .chip-opt.sel[data-ar="Health"]{ background:var(--cat-health-bg); color:var(--cat-health); border-color:var(--cat-health); }
+  .chip-opt.sel[data-ar="Finance"]{ background:var(--cat-finance-bg); color:var(--cat-finance); border-color:var(--cat-finance); }
+  .chip-opt.sel[data-ar="Career"]{ background:var(--cat-career-bg); color:var(--cat-career); border-color:var(--cat-career); }
+  .chip-opt.sel[data-ar="Maintenance"]{ background:var(--cat-maintenance-bg); color:var(--cat-maintenance); border-color:var(--cat-maintenance); }
+  .chip-opt.sel[data-ar="Growth"]{ background:var(--cat-growth-bg); color:var(--cat-growth); border-color:var(--cat-growth); }
+  .chip-opt.sel[data-ar="Relationships"]{ background:var(--cat-relationships-bg); color:var(--cat-relationships); border-color:var(--cat-relationships); }
+  .chip-opt.sel[data-ar="Life"]{ background:var(--cat-life-bg); color:var(--cat-life); border-color:var(--cat-life); }
   .chip-opt.sel[data-r]{ background:var(--violet-glow); color:var(--violet); border-color:var(--violet); }
   .infinite-toggle{ display:flex; align-items:center; gap:7px; margin-top:9px; cursor:pointer; user-select:none; }
   .infinite-toggle input{ width:14px; height:14px; accent-color:var(--violet); cursor:pointer; }
@@ -531,6 +660,7 @@
       <nav class="side-nav" id="sideNav">
         <button class="side-link active" data-section="agent" type="button"><span class="sl-glyph">◈</span>Agent</button>
         <button class="side-link" data-section="areas" type="button"><span class="sl-glyph">◆</span>Areas</button>
+        <button class="side-link" data-section="today" type="button"><span class="sl-glyph">◷</span>Today</button>
         <button class="side-link" data-section="planner" type="button"><span class="sl-glyph">▤</span>Planner</button>
         <button class="side-link" data-section="tracker" type="button"><span class="sl-glyph">▥</span>Tracker</button>
         <button class="side-link" data-section="whiteboard" type="button"><span class="sl-glyph">▧</span>Whiteboard</button>
@@ -554,6 +684,79 @@
   </aside>
 
   <main class="main">
+    <!-- ===== TODAY SECTION ===== -->
+    <section id="todaySection" style="display:none;">
+      <div class="main-header">
+        <div>
+          <h1>today</h1>
+        </div>
+      </div>
+
+      <div class="today-timeline">
+        <div class="today-timeline-body">
+          <div class="today-timeline-row-labels"><span></span><span>habits</span><span>actions</span></div>
+          <div class="today-timeline-main">
+            <div class="today-timeline-unified" id="todayTimelineUnified">
+              <div class="today-timeline-row">
+                <div class="today-timeline-daynight" id="todayTimelineDayNight"></div>
+              </div>
+              <div class="today-timeline-row" id="todayTimelineHabitsTrack"></div>
+              <div class="today-timeline-row" id="todayTimelineActionsTrack"></div>
+              <div class="today-timeline-now" id="todayTimelineNow"><span class="today-timeline-now-label" id="todayTimelineNowLabel"></span></div>
+            </div>
+            <div class="today-timeline-labels">
+              <span>12am</span><span>3am</span><span>6am</span><span>9am</span><span>12pm</span><span>3pm</span><span>6pm</span><span>9pm</span><span>12am</span>
+            </div>
+          </div>
+        </div>
+        <div class="today-daynight" id="todayDayNight"></div>
+      </div>
+
+      <div class="today-section-block">
+        <div class="today-section-block-head"><h2>active projects</h2></div>
+        <div class="ms-grid" id="todayProjectsGrid"></div>
+        <p class="today-empty-note" id="todayProjectsEmpty">No active projects.</p>
+      </div>
+
+      <div class="today-layout">
+        <div class="today-main">
+          <div class="today-date-nav">
+            <button class="cal-nav-btn" id="todayPrevDayBtn" type="button" aria-label="Previous day">‹</button>
+            <span class="cal-month-label" id="todayDateLabel"></span>
+            <button class="cal-nav-btn" id="todayNextDayBtn" type="button" aria-label="Next day">›</button>
+            <button class="btn" id="todayJumpTodayBtn" type="button">today</button>
+          </div>
+
+          <div class="today-section-block">
+            <div class="today-section-block-head"><h2>habits scheduled today</h2>
+              <button class="btn" id="addTodayHabitBtn" type="button">+ habit</button>
+            </div>
+            <div class="today-habit-grid" id="todayHabitsList"></div>
+            <p class="today-empty-note" id="todayHabitsEmpty">No habits yet.</p>
+          </div>
+
+          <div class="today-section-block">
+            <div class="today-section-block-head"><h2>actions</h2>
+              <button class="btn" id="addTodayActionBtn" type="button">+ action</button>
+            </div>
+            <div class="today-row-list" id="todayActionsList"></div>
+            <p class="today-empty-note" id="todayActionsEmpty">Nothing scheduled for this day.</p>
+          </div>
+        </div>
+
+        <div class="today-cal-panel">
+          <div class="cal-toolbar" style="margin-top:0;">
+            <div class="cal-nav-group">
+              <button class="cal-nav-btn" id="todayCalPrevBtn" type="button" aria-label="Previous month">‹</button>
+              <span class="cal-month-label" id="todayCalMonthLabel"></span>
+              <button class="cal-nav-btn" id="todayCalNextBtn" type="button" aria-label="Next month">›</button>
+            </div>
+          </div>
+          <div class="cal-grid mini" id="todayCalGrid"></div>
+        </div>
+      </div>
+    </section>
+
     <!-- ===== PLANNER SECTION ===== -->
     <section id="plannerSection" style="display:none;">
       <div class="main-header">
@@ -687,6 +890,36 @@
         </div>
       </div>
       <div id="goalDetailBody"></div>
+
+      <div class="goal-integration-block" id="sleepIntegrationBlock" style="display:none;">
+        <div class="integration-block-head">
+          <h2>sleep data</h2>
+          <div class="sub-view-toggle" id="sleepViewToggle">
+            <button class="sub-view-tab active" data-sub="daily" type="button">daily</button>
+            <button class="sub-view-tab" data-sub="weekly" type="button">weekly</button>
+            <button class="sub-view-tab" data-sub="monthly" type="button">monthly</button>
+          </div>
+        </div>
+
+        <div class="sleep-entry-row">
+          <input type="date" id="sleepDateInput">
+          <input type="number" min="0" max="100" id="sleepScoreInput" placeholder="score 0-100">
+          <button class="btn btn-accent" id="saveSleepBtn" type="button">save</button>
+          <button class="btn" id="clearSleepFormBtn" type="button">clear</button>
+          <button class="btn" id="toggleSleepImportBtn" type="button" style="margin-left:auto;">import from Garmin</button>
+        </div>
+
+        <div class="sleep-import-panel" id="sleepImportPanel" style="display:none;">
+          <p class="panel-hint">Paste lines as <code>date,score</code> (extra comma-separated fields like quality/seconds are ignored). Matching dates are overwritten and tagged as Garmin-sourced.</p>
+          <textarea id="sleepImportInput" class="journal-textarea" rows="6" placeholder="2026-05-12,82"></textarea>
+          <div class="modal-actions"><button class="btn btn-accent" id="runSleepImportBtn" type="button">import</button></div>
+        </div>
+
+        <div class="sleep-list" id="sleepList"></div>
+        <div class="empty-state" id="sleepEmptyState" style="display:none;">
+          <div class="glyph">☾</div><h3>no sleep data yet</h3><p>Add a score manually, or import from Garmin above.</p>
+        </div>
+      </div>
     </section>
 
     <!-- ===== AGENT SECTION ===== -->
@@ -777,6 +1010,7 @@
         <button class="ctx-menu-item danger" data-ctx="delete" type="button">delete</button>
       </div>
     </section>
+
 
     <!-- ===== WHITEBOARD SECTION ===== -->
     <section id="whiteboardSection" style="display:none;">
@@ -895,6 +1129,12 @@
     <div class="modal-head"><span class="dot g"></span><h2 id="projectModalTitle">new_project.json</h2></div>
     <div class="modal-inner">
       <div class="field"><label for="projectTitleInput">project</label><input type="text" id="projectTitleInput" placeholder="e.g. Redesign onboarding flow"></div>
+      <div class="field"><label>area(s)</label><div class="chip-select" id="projectAreaSelect">
+        <div class="chip-opt" data-ar="Health">✚ Health</div><div class="chip-opt" data-ar="Finance">$ Finance</div><div class="chip-opt" data-ar="Career">▲ Career</div>
+        <div class="chip-opt" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" data-ar="Growth">↑ Growth</div><div class="chip-opt" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" data-ar="Life">◐ Life</div>
+      </div>
+        <p class="panel-hint">Select one or more to narrow the parent goal list below — leave all selected to see every goal.</p>
+      </div>
       <div class="field"><label for="projectGoalSelect">parent goal</label><select id="projectGoalSelect"></select></div>
       <div class="field-row">
         <div class="field"><label>priority</label><div class="chip-select" id="projectPrioSelect">
@@ -922,15 +1162,38 @@
     <div class="modal-head"><span class="dot g"></span><h2 id="habitModalTitle">new_habit.json</h2></div>
     <div class="modal-inner">
       <div class="field"><label for="habitTitleInput">habit</label><input type="text" id="habitTitleInput" placeholder="e.g. Read for 20 minutes"></div>
+      <div class="field"><label>area</label><div class="chip-select" id="habitAreaSelect">
+        <div class="chip-opt" data-ar="Health">✚ Health</div><div class="chip-opt" data-ar="Finance">$ Finance</div><div class="chip-opt sel" data-ar="Career">▲ Career</div>
+        <div class="chip-opt" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" data-ar="Growth">↑ Growth</div><div class="chip-opt" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" data-ar="Life">◐ Life</div>
+      </div></div>
       <div class="field"><label for="habitGoalSelect">parent goal</label><select id="habitGoalSelect"></select></div>
       <div class="field-row">
         <div class="field"><label>priority</label><div class="chip-select" id="habitPrioSelect">
           <div class="chip-opt" data-p="P0">P0</div><div class="chip-opt" data-p="P1">P1</div><div class="chip-opt sel" data-p="P2">P2</div><div class="chip-opt" data-p="P3">P3</div>
         </div></div>
         <div class="field"><label>frequency</label><div class="chip-select" id="habitFreqSelect">
-          <div class="chip-opt sel" data-f="daily">daily</div><div class="chip-opt" data-f="weekly">weekly</div>
+          <div class="chip-opt sel" data-f="daily">daily</div><div class="chip-opt" data-f="weekly">weekly</div><div class="chip-opt" data-f="custom">custom</div>
         </div></div>
+        <div class="field"><label for="habitTimeInput">time (optional)</label>
+          <div class="time-pick-row">
+            <input type="time" id="habitTimeInput">
+            <button class="btn" id="habitTimePickBtn" type="button">pick ▾</button>
+          </div>
+          <div class="time-pick-panel" id="habitTimePickPanel" hidden></div>
+        </div>
+        <div class="field"><label for="habitDurationInput">duration (min)</label><input type="number" min="0" step="5" id="habitDurationInput" placeholder="e.g. 15"></div>
       </div>
+      <div class="field" id="habitWeekdaysField" style="display:none;"><label>which day(s)</label><div class="chip-select" id="habitWeekdaysSelect">
+        <div class="chip-opt" data-wd="Mon">Mon</div><div class="chip-opt" data-wd="Tue">Tue</div><div class="chip-opt" data-wd="Wed">Wed</div><div class="chip-opt" data-wd="Thu">Thu</div>
+        <div class="chip-opt" data-wd="Fri">Fri</div><div class="chip-opt" data-wd="Sat">Sat</div><div class="chip-opt" data-wd="Sun">Sun</div>
+      </div></div>
+      <div class="field-row">
+        <div class="field"><label>tracking type</label><div class="chip-select" id="habitTypeSelect">
+          <div class="chip-opt sel" data-ty="boolean">yes/no</div><div class="chip-opt" data-ty="number">number</div><div class="chip-opt" data-ty="scale">scale</div><div class="chip-opt" data-ty="text">text</div>
+        </div></div>
+        <div class="field" id="habitScaleField" style="display:none;"><label for="habitScaleMaxInput">scale max</label><input type="number" id="habitScaleMaxInput" min="2" max="10" value="5"></div>
+      </div>
+      <p class="panel-hint">Each habit gets its own row in the Tracker tab — this is what marking it done actually writes to.</p>
       <div class="modal-actions"><button class="btn" id="cancelHabitModalBtn" type="button">cancel</button><button class="btn btn-accent" id="saveHabitBtn" type="button">save habit</button></div>
     </div>
   </div>
@@ -948,11 +1211,25 @@
           <div class="chip-opt" data-p="P0">P0</div><div class="chip-opt sel" data-p="P1">P1</div><div class="chip-opt" data-p="P2">P2</div><div class="chip-opt" data-p="P3">P3</div>
         </div></div>
       </div>
+      <div class="field" id="actionAreaField"><label>area</label><div class="chip-select" id="actionAreaSelect">
+        <div class="chip-opt" data-ar="Health">✚ Health</div><div class="chip-opt" data-ar="Finance">$ Finance</div><div class="chip-opt sel" data-ar="Career">▲ Career</div>
+        <div class="chip-opt" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" data-ar="Growth">↑ Growth</div><div class="chip-opt" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" data-ar="Life">◐ Life</div>
+      </div></div>
       <div class="field"><label>belongs to</label><div class="chip-select" id="actionParentTypeSelect">
         <div class="chip-opt sel" data-pt="goal">Goal</div><div class="chip-opt" data-pt="project">Project</div><div class="chip-opt" data-pt="none">None</div>
       </div></div>
       <div class="field" id="actionParentField"><label for="actionParentSelect">parent</label><select id="actionParentSelect"></select></div>
-      <div class="field"><label for="actionDateInput">date</label><input type="date" id="actionDateInput"></div>
+      <div class="field-row">
+        <div class="field"><label for="actionDateInput">date</label><input type="date" id="actionDateInput"></div>
+        <div class="field"><label for="actionTimeInput">time (optional)</label>
+          <div class="time-pick-row">
+            <input type="time" id="actionTimeInput">
+            <button class="btn" id="actionTimePickBtn" type="button">pick ▾</button>
+          </div>
+          <div class="time-pick-panel" id="actionTimePickPanel" hidden></div>
+        </div>
+        <div class="field"><label for="actionDurationInput">duration (min)</label><input type="number" min="0" step="5" id="actionDurationInput" placeholder="e.g. 30"></div>
+      </div>
       <div class="modal-actions"><button class="btn" id="cancelActionModalBtn" type="button">cancel</button><button class="btn btn-accent" id="saveActionBtn" type="button">save action</button></div>
     </div>
   </div>
@@ -1128,7 +1405,9 @@
   var DROPPED_FIELD_LABELS = {
     health_override: "health status", health_pct_override: "health %",
     icon: "icon image", position: "custom order",
-    whiteboard_x: "whiteboard position", whiteboard_y: "whiteboard position"
+    whiteboard_x: "whiteboard position", whiteboard_y: "whiteboard position",
+    weekdays: "habit day selection", tracker_variable_id: "habit's tracker link", time_of_day: "scheduled time",
+    duration_minutes: "duration"
   };
   function warnDroppedFields(dropped){
     if(!dropped || !dropped.length) return;
@@ -1138,14 +1417,24 @@
   }
   function todayStr(){ return new Date().toISOString().slice(0,10); }
   function fmtDate(d){ return d ? new Date(d + "T00:00:00").toLocaleDateString(undefined, { month:"short", day:"numeric" }) : ""; }
+  function fmtTimeOfDay(t){
+    if(!t) return "";
+    return new Date("2000-01-01T" + t).toLocaleTimeString(undefined, { hour:"numeric", minute:"2-digit" });
+  }
   function escapeHtml(s){
     return String(s).replace(/[&<>"']/g, function(c){ return { "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]; });
   }
   // Reads an uploaded image file, center-crops it to a square, downsizes it, and returns a PNG
   // data URI — small enough to store directly in a text column (no Storage bucket needed for a
-  // personal-scale app like this). PNG (not JPEG) specifically to keep alpha transparency, since
-  // icons are rendered as a CSS mask tinted with the area color (see iconMaskHtml) — that only
-  // works if the glyph has a transparent background.
+  // personal-scale app like this).
+  //
+  // Icons render as a CSS mask tinted with the area color (see iconMaskHtml), which only reveals
+  // the color where the mask image is opaque. Uploaded icons are typically a black glyph on an
+  // *opaque* white background (not a transparent PNG), so we can't just rely on the source's own
+  // alpha channel — that would mask the whole square solid, not just the glyph. Instead we rewrite
+  // every pixel's alpha to its darkness (black -> opaque -> visible in the mask, white -> fully
+  // transparent -> hidden), so only the dark strokes ever show through, regardless of whether the
+  // original file had transparency at all.
   function readImageAsIcon(file, size){
     size = size || 96;
     return new Promise(function(resolve, reject){
@@ -1161,6 +1450,15 @@
           canvas.width = size; canvas.height = size;
           var ctx = canvas.getContext("2d");
           ctx.drawImage(img, sx, sy, cropSize, cropSize, 0, 0, size, size);
+          var imgData = ctx.getImageData(0, 0, size, size);
+          var d = imgData.data;
+          for(var i = 0; i < d.length; i += 4){
+            var luminance = 0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2];
+            var darkness = 255 - luminance;
+            d[i] = 0; d[i+1] = 0; d[i+2] = 0;
+            d[i+3] = Math.round((d[i+3] * darkness) / 255);
+          }
+          ctx.putImageData(imgData, 0, 0);
           resolve(canvas.toDataURL("image/png"));
         };
         img.src = reader.result;
@@ -1200,7 +1498,7 @@
     return setPreview;
   }
 
-  var state = { goals:[], projects:[], habits:[], actions:[], journal:[], people:[], trackerVars:[], trackerEntries:[], trackerDays:[], wbConnections:[] };
+  var state = { goals:[], projects:[], habits:[], actions:[], journal:[], people:[], trackerVars:[], trackerEntries:[], trackerDays:[], wbConnections:[], sleepScores:[] };
   var currentUser = null;
 
   function goalById(id){ return state.goals.find(function(g){ return g.id === id; }); }
@@ -1292,7 +1590,8 @@
       sb.from("chat_messages").select("*").order("created_at"),
       sb.from("tracker_variables").select("*").order("position", { ascending:true }),
       sb.from("tracker_entries").select("*"),
-      sb.from("tracker_days").select("*")
+      sb.from("tracker_days").select("*"),
+      sb.from("sleep_scores").select("*").order("date", { ascending:false })
     ]);
     results.forEach(function(r){ if(r.error) console.error(r.error); });
     // position defaults to 0 (via ||0) when the migration_positions.sql column doesn't exist yet —
@@ -1302,9 +1601,9 @@
     state.goals.sort(function(a,b){ return a.position - b.position; });
     state.projects = (results[1].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null) }; });
     state.projects.sort(function(a,b){ return a.position - b.position; });
-    state.habits = (results[2].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, frequency:r.frequency, days:r.days || {}, position:r.position||0 }; });
+    state.habits = (results[2].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || null, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0 }; });
     state.habits.sort(function(a,b){ return a.position - b.position; });
-    state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0 }; });
+    state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null }; });
     state.actions.sort(function(a,b){ return a.position - b.position; });
     state.journal = (results[4].data || []).map(function(r){ return { id:r.id, date:r.date, text:r.text }; });
     state.people = (results[5].data || []).map(function(r){ return { id:r.id, name:r.name, relationship:r.relationship, contact:r.contact, notes:r.notes, position:r.position||0 }; });
@@ -1313,13 +1612,48 @@
     state.trackerVars = (results[7].data || []).map(function(r){ return { id:r.id, name:r.name, type:r.type, unit:r.unit, scaleMax:r.scale_max, categories:r.categories || [], position:r.position }; });
     state.trackerEntries = (results[8].data || []).map(function(r){ return { id:r.id, date:r.date, variableId:r.variable_id, value:r.value }; });
     state.trackerDays = (results[9].data || []).map(function(r){ return { id:r.id, date:r.date, summary:r.summary }; });
+    state.sleepScores = (results[10].data || []).map(function(r){ return { id:r.id, date:r.date, score:r.score, source:r.source||"manual" }; });
+    await backfillLegacyHabitTrackers();
+  }
+  // One-time-per-session upgrade path: any habit created before habits got their own linked
+  // Tracker variable (e.g. from before this feature existed) gets a "yes/no" variable created for
+  // it now, with its historical days-based completion carried over as tracker entries. Bails out
+  // (without leaving orphaned variables behind) the first time it hits a habit it can't actually
+  // link back to — that means migration_habit_tracker_link.sql hasn't run yet, so there's no point
+  // repeating this for every other legacy habit this session.
+  var habitTrackerBackfillDone = false;
+  async function backfillLegacyHabitTrackers(){
+    if(habitTrackerBackfillDone) return;
+    habitTrackerBackfillDone = true;
+    var legacyHabits = state.habits.filter(function(h){ return !h.trackerVariableId; });
+    for(var i=0;i<legacyHabits.length;i++){
+      var h = legacyHabits[i];
+      var varRes = await sb.from("tracker_variables").insert({ name:h.title, type:"boolean" }).select().single();
+      if(varRes.error){ console.error(varRes.error); return; }
+      var v = varRes.data;
+      var mappedVar = { id:v.id, name:v.name, type:v.type, unit:v.unit, scaleMax:v.scale_max, categories:v.categories||[], position:v.position };
+      var linkRes = await sb.from("habits").update({ tracker_variable_id: v.id }).eq("id", h.id);
+      if(linkRes.error){
+        console.error(linkRes.error);
+        await sb.from("tracker_variables").delete().eq("id", v.id);
+        return;
+      }
+      state.trackerVars.push(mappedVar);
+      h.trackerVariableId = v.id;
+      var doneDates = Object.keys(h.days || {}).filter(function(d){ return h.days[d]; });
+      for(var j=0;j<doneDates.length;j++){
+        var er = await sb.from("tracker_entries").insert({ date:doneDates[j], variable_id:v.id, value:"true" }).select().single();
+        if(!er.error) state.trackerEntries.push({ id:er.data.id, date:er.data.date, variableId:er.data.variable_id, value:er.data.value });
+      }
+    }
+    if(legacyHabits.length) renderAll();
   }
 
   /* ---------------- Top-level + planner tabs ---------------- */
   var activeSection = "agent";
   var activePlannerTab = "goals";
   var filters = { goals:"all", projects:"all", habits:"all", actions:"all", people:"all" };
-  var views = { goals:"list", projects:"matrix", habits:"matrix", actions:"matrix" };
+  var views = { goals:"list", projects:"matrix", habits:"matrix", actions:"matrix", sleep:"daily" };
 
   function wireSubViewToggle(containerId, panelKey, renderFn){
     var el = document.getElementById(containerId);
@@ -1332,7 +1666,7 @@
     });
   }
 
-  var ALL_SECTION_IDS = ["plannerSection","areasSection","trackerSection","whiteboardSection","agentSection","calendarSection","journalSection","peopleSection","goalDetailSection","areaDetailSection"];
+  var ALL_SECTION_IDS = ["todaySection","plannerSection","areasSection","trackerSection","whiteboardSection","agentSection","calendarSection","journalSection","peopleSection","goalDetailSection","areaDetailSection"];
   function showSection(name){
     activeSection = name;
     document.querySelectorAll(".side-link").forEach(function(l){ l.classList.toggle("active", l.dataset.section === name); });
@@ -1340,6 +1674,7 @@
       document.getElementById(id).style.display = (id === name + "Section") ? "" : "none";
     });
     if(name === "whiteboard") activateWhiteboard();
+    if(name === "today") renderToday();
   }
   document.getElementById("sideNav").addEventListener("click", function(e){
     var btn = e.target.closest(".side-link");
@@ -1413,9 +1748,26 @@
   function setChip(container, attr, value){
     container.querySelectorAll(".chip-opt").forEach(function(o){ o.classList.toggle("sel", o.dataset[attr] === value); });
   }
+  // Multi-select variant (projects can span more than one area) — each chip toggles independently
+  // instead of being mutually exclusive.
+  function wireMultiChipSelect(container){
+    container.addEventListener("click", function(e){
+      var opt = e.target.closest(".chip-opt");
+      if(!opt) return;
+      opt.classList.toggle("sel");
+    });
+  }
+  function multiChipValues(container, attr){
+    return Array.prototype.map.call(container.querySelectorAll(".chip-opt.sel"), function(o){ return o.dataset[attr]; });
+  }
+  function setMultiChip(container, attr, values){
+    var set = {};
+    (values || []).forEach(function(v){ set[v] = true; });
+    container.querySelectorAll(".chip-opt").forEach(function(o){ o.classList.toggle("sel", !!set[o.dataset[attr]]); });
+  }
 
   [["goalPrioSelect","p"],["projectPrioSelect","p"],["habitPrioSelect","p"],["habitFreqSelect","f"],
-   ["actionPrioSelect","p"],["actionParentTypeSelect","pt"],["goalCatSelect","c"],["personRelSelect","r"],["tvTypeSelect","t"],["goalHealthLevelSelect","hl"]]
+   ["actionPrioSelect","p"],["actionParentTypeSelect","pt"],["actionAreaSelect","ar"],["goalCatSelect","c"],["personRelSelect","r"],["tvTypeSelect","t"],["goalHealthLevelSelect","hl"],["habitTypeSelect","ty"],["habitAreaSelect","ar"]]
    .forEach(function(pair){ wireChipSelect(document.getElementById(pair[0]), pair[1]); });
 
   /* ---------------- Stats ---------------- */
@@ -1514,13 +1866,56 @@
     if(r.error){ console.error(r.error); toast("Could not save health %: " + r.error.message); return; }
     warnDroppedFields(r.droppedFields);
   }
+  // Completion now lives in the linked tracker_variable's entries, not habits.days — habits.days
+  // is kept only as a fallback for the brief window before a habit's tracker link exists (e.g.
+  // migration_habit_tracker_link.sql hasn't run yet on this account).
+  function habitVarType(h){
+    var v = state.trackerVars.find(function(x){ return x.id === h.trackerVariableId; });
+    return v ? v.type : "boolean";
+  }
+  function habitValueForDate(h, date){
+    if(!h.trackerVariableId) return h.days[date] ? "true" : "";
+    var e = trackerEntryFor(h.trackerVariableId, date);
+    return e ? e.value : "";
+  }
+  function habitDoneForDate(h, date){
+    return !!habitValueForDate(h, date);
+  }
+  async function handleHabitMarkClick(habitId, date){
+    var h = state.habits.find(function(x){ return x.id === habitId; });
+    if(!h) return;
+    var type = habitVarType(h);
+    if(type === "boolean"){
+      var current = habitValueForDate(h, date);
+      if(h.trackerVariableId){
+        await trackerSaveValue(h.trackerVariableId, date, current ? "" : "true");
+      } else {
+        h.days[date] = !h.days[date];
+        renderAll();
+        var r = await sb.from("habits").update({ days: h.days }).eq("id", h.id);
+        if(r.error) console.error(r.error);
+      }
+      return;
+    }
+    if(!h.trackerVariableId){ alert("This habit's tracker link isn't ready yet — reopen it to edit, or try again in a moment."); return; }
+    var v = state.trackerVars.find(function(x){ return x.id === h.trackerVariableId; });
+    var current2 = habitValueForDate(h, date);
+    var label = (type === "scale" ? "Value (1-" + ((v && v.scaleMax) || 5) + ")" : "Value") + " for \"" + h.title + "\" on " + date + " — blank to clear:";
+    var input = prompt(label, current2 || "");
+    if(input === null) return;
+    await trackerSaveValue(h.trackerVariableId, date, input.trim());
+  }
   function habitStreak(h){
     var streak = 0, d = new Date();
     while(true){
       var key = d.toISOString().slice(0,10);
-      if(h.days[key]){ streak++; d.setDate(d.getDate()-1); } else break;
+      if(habitDoneForDate(h, key)){ streak++; d.setDate(d.getDate()-1); } else break;
     }
     return streak;
+  }
+  function habitScheduleLabel(h){
+    if(h.frequency === "weekly" && h.weekdays && h.weekdays.length) return "weekly · " + h.weekdays.join(", ");
+    return h.frequency;
   }
 
   function renderStats(){
@@ -1530,7 +1925,7 @@
     var behindProjects = state.projects.filter(function(p){ return !p.done && p.due && p.due < todayStr(); }).length;
     var behindActions = state.actions.filter(function(a){ return !a.done && a.date && a.date < todayStr(); }).length;
     var today = todayStr();
-    var habitsToday = state.habits.filter(function(h){ return h.days[today]; }).length;
+    var habitsToday = state.habits.filter(function(h){ return habitDoneForDate(h, today); }).length;
 
     document.getElementById("statActive").textContent = active;
     document.getElementById("statDone").textContent = done;
@@ -1668,10 +2063,21 @@
     if(r.error) console.error(r.error);
   }
   async function deleteHabit(id){
+    var h = state.habits.find(function(x){ return x.id === id; });
+    var varId = h ? h.trackerVariableId : null;
     state.habits = state.habits.filter(function(x){ return x.id !== id; });
+    if(varId){
+      state.trackerVars = state.trackerVars.filter(function(v){ return v.id !== varId; });
+      state.trackerEntries = state.trackerEntries.filter(function(e){ return e.variableId !== varId; });
+    }
     renderAll();
     var r = await sb.from("habits").delete().eq("id", id);
     if(r.error) console.error(r.error);
+    // the habit's own tracker variable only existed for its sake — clean it up too (cascades entries)
+    if(varId){
+      var rv = await sb.from("tracker_variables").delete().eq("id", varId);
+      if(rv.error) console.error(rv.error);
+    }
   }
   async function deleteGoal(goalId){
     // deleting a goal orphans its projects/habits/actions rather than deleting them —
@@ -1867,11 +2273,24 @@
     showSection(goalDetailReturnSection);
     goalDetailId = null;
   }
+  // Individually-designed goal pages: specific goals (matched by title, for now) get their own
+  // hand-built dashboard block on their detail page instead of a generic user-facing setting.
+  // Sleep is the first one; more goals will get their own dedicated block the same way over time.
+  function isSleepGoal(g){
+    return !!g.title && g.title.trim().toLowerCase() === "sleep";
+  }
   function renderGoalDetail(){
     if(activeSection !== "goalDetail" || !goalDetailId) return;
     var g = goalById(goalDetailId);
     if(!g){ closeGoalDetailPage(); return; }
     document.getElementById("goalDetailBody").innerHTML = renderGoalCardHtml(g);
+    var sleepBlock = document.getElementById("sleepIntegrationBlock");
+    if(isSleepGoal(g)){
+      sleepBlock.style.display = "";
+      renderSleepChart(views.sleep);
+    } else {
+      sleepBlock.style.display = "none";
+    }
   }
   document.getElementById("goalDetailBackBtn").addEventListener("click", closeGoalDetailPage);
 
@@ -1934,12 +2353,21 @@
     var status = goalStatus(g);
     var health = goalHealth(g);
     var initial = g.title.trim().charAt(0).toUpperCase() || "?";
-    return '<div class="matrix-tile ' + g.category + '" data-action="open-goal-detail" data-kind="goal" data-id="' + g.id + '" title="' + escapeHtml(g.title) + '">' +
-      '<span class="matrix-tile-status ' + status + '"></span>' +
-      '<span class="matrix-tile-badge prio-badge ' + g.priority + '">' + g.priority + '</span>' +
-      (g.icon ? iconMaskHtml("matrix-tile-icon-img", g.icon, g.category) : '<span class="matrix-tile-initial">' + initial + '</span>') +
-      '<div class="matrix-tile-scrim"><div class="matrix-tile-title">' + escapeHtml(g.title) + '</div></div>' +
-      '<div class="matrix-tile-progress" title="health"><div class="matrix-tile-progress-fill ' + (status==="done"?"done":(health.level!=="good"?health.level:"")) + '" style="width:' + health.pct + '%"></div></div>' +
+    return '<div class="area-tile" data-action="open-goal-detail" data-kind="goal" data-id="' + g.id + '">' +
+      '<div class="matrix-tile ' + g.category + '" title="' + escapeHtml(g.title) + '">' +
+        '<span class="matrix-tile-status ' + status + '"></span>' +
+        '<span class="matrix-tile-badge prio-badge ' + g.priority + '">' + g.priority + '</span>' +
+        (g.icon ? iconMaskHtml("matrix-tile-icon-img", g.icon, g.category) : '<span class="matrix-tile-initial">' + initial + '</span>') +
+        '<div class="matrix-tile-progress" title="health"><div class="matrix-tile-progress-fill ' + (status==="done"?"done":(health.level!=="good"?health.level:"")) + '" style="width:' + health.pct + '%"></div></div>' +
+      '</div>' +
+      '<div class="area-tile-caption">' +
+        '<div class="area-tile-title">' + escapeHtml(g.title) + '</div>' +
+        '<div class="area-tile-attrs">' +
+          '<span class="prio-badge ' + g.priority + '">' + g.priority + '</span>' +
+          '<span class="area-tile-attr">' + (g.ongoing ? "∞ ongoing" : (g.due ? fmtDate(g.due) : "no due date")) + '</span>' +
+          '<span class="area-tile-attr' + (health.level!=="good"?" "+health.level:"") + '">' + health.pct + '% health</span>' +
+        '</div>' +
+      '</div>' +
     '</div>';
   }
 
@@ -2092,8 +2520,8 @@
     var today = todayStr();
     var list = state.habits.filter(function(h){
       if(f === "all") return true;
-      if(f === "today") return !!h.days[today];
-      if(f === "pending") return !h.days[today];
+      if(f === "today") return habitDoneForDate(h, today);
+      if(f === "pending") return !habitDoneForDate(h, today);
       if(f === "daily" || f === "weekly") return h.frequency === f;
       return true;
     });
@@ -2110,7 +2538,7 @@
       if(!items.length) return "";
       var tiles = items.map(function(h){
         var streak = habitStreak(h);
-        var on = !!h.days[today];
+        var on = habitDoneForDate(h, today);
         return '<div class="ms-tile" data-kind="habit" data-id="' + h.id + '">' +
           '<div class="ms-tile-top">' +
             '<button class="ms-check' + (on?' done':'') + '" data-action="toggle-habit-today" data-id="' + h.id + '" aria-label="Toggle today"></button>' +
@@ -2118,7 +2546,7 @@
             '<button class="icon-btn edit" data-action="edit-habit" data-id="' + h.id + '" aria-label="Edit habit">✎</button>' +
             '<button class="icon-btn" data-action="del-habit" data-id="' + h.id + '" aria-label="Delete habit">&times;</button>' +
           '</div>' +
-          '<div class="ms-tile-meta"><span class="prio-badge ' + h.priority + '">' + h.priority + '</span><span>' + h.frequency + '</span>' +
+          '<div class="ms-tile-meta"><span class="prio-badge ' + h.priority + '">' + h.priority + '</span><span>' + habitScheduleLabel(h) + '</span>' +
           '<span style="color:var(--accent)">' + streak + 'd streak</span></div>' +
         '</div>';
       }).join("");
@@ -2137,14 +2565,16 @@
       var streak = habitStreak(h);
       var boxes = dates.map(function(dt){
         var wd = new Date(dt + "T00:00:00").toLocaleDateString(undefined, { weekday:"narrow" });
-        var on = !!h.days[dt];
+        var val = habitValueForDate(h, dt);
+        var on = !!val;
+        var label = dt + (on ? (val === "true" ? " done" : " — " + val) : " not done");
         return '<div class="day-cell"><span class="day-cell-label">' + wd + '</span>' +
-          '<button type="button" class="day-box' + (on?' on':'') + (dt===today?' today':'') + '" data-habit="' + h.id + '" data-date="' + dt + '" aria-label="' + dt + (on?' done':' not done') + '"></button></div>';
+          '<button type="button" class="day-box' + (on?' on':'') + (dt===today?' today':'') + '" data-habit="' + h.id + '" data-date="' + dt + '" title="' + escapeHtml(label) + '" aria-label="' + escapeHtml(label) + '"></button></div>';
       }).join("");
       return '<div class="goal-card" data-kind="habit" data-id="' + h.id + '" draggable="true">' +
         '<div class="card-tab">' +
           '<span class="prio-badge ' + h.priority + '">' + h.priority + '</span><span class="sep">·</span>' +
-          '<span class="type-badge">' + h.frequency + '</span><span class="sep">·</span>' +
+          '<span class="type-badge">' + habitScheduleLabel(h) + '</span><span class="sep">·</span>' +
           '<span class="parent-tag">' + (g ? 'goal: <b>' + escapeHtml(g.title) + '</b>' : 'standalone') + '</span>' +
         '</div>' +
         '<div class="card-body">' +
@@ -2162,25 +2592,9 @@
   }
   document.getElementById("habitList").addEventListener("click", async function(e){
     var box = e.target.closest(".day-box");
-    if(box){
-      var h = state.habits.find(function(x){ return x.id === box.dataset.habit; });
-      if(h){
-        h.days[box.dataset.date] = !h.days[box.dataset.date]; renderAll();
-        var r1 = await sb.from("habits").update({ days: h.days }).eq("id", h.id);
-        if(r1.error) console.error(r1.error);
-      }
-      return;
-    }
+    if(box){ await handleHabitMarkClick(box.dataset.habit, box.dataset.date); return; }
     var todayBtn = e.target.closest('[data-action="toggle-habit-today"]');
-    if(todayBtn){
-      var h2 = state.habits.find(function(x){ return x.id === todayBtn.dataset.id; });
-      if(h2){
-        var key = todayStr(); h2.days[key] = !h2.days[key]; renderAll();
-        var r2 = await sb.from("habits").update({ days: h2.days }).eq("id", h2.id);
-        if(r2.error) console.error(r2.error);
-      }
-      return;
-    }
+    if(todayBtn){ await handleHabitMarkClick(todayBtn.dataset.id, todayStr()); return; }
     var editBtn = e.target.closest('[data-action="edit-habit"]');
     if(editBtn){ editHabit(editBtn.dataset.id); return; }
     var del = e.target.closest('[data-action="del-habit"]');
@@ -2269,6 +2683,143 @@
     if(t.dataset.action === "toggle-action") await toggleActionDone(t.dataset.id);
     else if(t.dataset.action === "edit-action") editAction(t.dataset.id);
     else if(t.dataset.action === "del-action") await deleteAction(t.dataset.id);
+  });
+
+  /* ---------------- Sleep (a goal integration — see renderGoalDetail) ---------------- */
+  function sleepTier(score){
+    if(score >= 80) return "good";
+    if(score >= 60) return "fair";
+    return "poor";
+  }
+  // Buckets state.sleepScores by day/week(Mon-start)/month, averaging the score within each
+  // bucket. "count" carries how many actual data points fed the average, since Garmin data is
+  // often sparse — a weekly/monthly average from 1 day should read differently than one from 7.
+  function sleepBuckets(mode){
+    if(mode === "weekly" || mode === "monthly"){
+      var buckets = {};
+      state.sleepScores.forEach(function(s){
+        var key;
+        if(mode === "monthly"){
+          key = s.date.slice(0, 7);
+        } else {
+          var d = new Date(s.date + "T00:00:00");
+          var day = d.getDay();
+          var diffToMonday = (day === 0 ? -6 : 1 - day);
+          d.setDate(d.getDate() + diffToMonday);
+          key = d.toISOString().slice(0, 10);
+        }
+        if(!buckets[key]) buckets[key] = { key:key, sum:0, count:0 };
+        buckets[key].sum += s.score;
+        buckets[key].count++;
+      });
+      return Object.keys(buckets).sort().reverse().map(function(k){
+        var b = buckets[k];
+        var label = mode === "monthly"
+          ? new Date(k + "-01T00:00:00").toLocaleDateString(undefined, { month:"short", year:"2-digit" })
+          : "wk " + fmtDate(k);
+        return { key:k, label:label, score:Math.round(b.sum / b.count), count:b.count, editable:false };
+      });
+    }
+    return state.sleepScores.slice().sort(function(a,b){ return a.date < b.date ? 1 : -1; }).map(function(s){
+      return { key:s.date, id:s.id, label:fmtDate(s.date), score:s.score, count:1, source:s.source, editable:true };
+    });
+  }
+  function renderSleepChart(mode){
+    var list = document.getElementById("sleepList");
+    if(!list) return;
+    mode = mode || "daily";
+    var rows = sleepBuckets(mode);
+    document.getElementById("sleepEmptyState").style.display = rows.length ? "none" : "";
+    var html = "";
+    for(var i = 0; i < rows.length; i++){
+      var row = rows[i];
+      var tier = sleepTier(row.score);
+      html += '<div class="sleep-row"' + (row.editable ? ' data-kind="sleep" data-id="' + row.id + '"' : "") + '>' +
+        '<span class="sleep-row-date">' + row.label + '</span>' +
+        '<div class="sleep-row-bar-track"><div class="sleep-row-bar-fill ' + (tier!=="good"?tier:"") + '" style="width:' + row.score + '%"></div></div>' +
+        '<span class="sleep-row-score">' + row.score + '</span>' +
+        (row.editable
+          ? '<span class="sleep-row-source ' + row.source + '">' + row.source + '</span>'
+          : '<span class="sleep-row-count">' + row.count + (mode==="weekly"?"/7d":" day"+(row.count===1?"":"s")) + '</span>') +
+      '</div>';
+      if(mode === "daily" && i < rows.length - 1){
+        var gapDays = Math.round((new Date(row.key+"T00:00:00") - new Date(rows[i+1].key+"T00:00:00")) / 86400000);
+        if(gapDays > 1){
+          html += '<div class="sleep-gap">' + (gapDays - 1) + ' day' + (gapDays - 1 === 1 ? "" : "s") + ' without data</div>';
+        }
+      }
+    }
+    list.innerHTML = html;
+  }
+  async function deleteSleepScore(id){
+    state.sleepScores = state.sleepScores.filter(function(x){ return x.id !== id; });
+    renderSleepChart(views.sleep);
+    var r = await sb.from("sleep_scores").delete().eq("id", id);
+    if(r.error) console.error(r.error);
+  }
+  DELETE_HANDLERS.sleep = deleteSleepScore;
+
+  function upsertLocalSleepScore(r){
+    var mapped = { id:r.id, date:r.date, score:r.score, source:r.source||"manual" };
+    var idx = state.sleepScores.findIndex(function(x){ return x.date === r.date; });
+    if(idx !== -1) state.sleepScores[idx] = mapped; else state.sleepScores.push(mapped);
+  }
+  document.getElementById("sleepDateInput").value = todayStr();
+  wireSubViewToggle("sleepViewToggle", "sleep", function(){ renderSleepChart(views.sleep); });
+  document.getElementById("sleepList").addEventListener("click", function(e){
+    var row = e.target.closest(".sleep-row");
+    if(!row || !row.dataset.id) return;
+    var s = state.sleepScores.find(function(x){ return x.id === row.dataset.id; });
+    if(!s) return;
+    document.getElementById("sleepDateInput").value = s.date;
+    document.getElementById("sleepScoreInput").value = s.score;
+    document.getElementById("sleepScoreInput").focus();
+  });
+  document.getElementById("clearSleepFormBtn").addEventListener("click", function(){
+    document.getElementById("sleepDateInput").value = todayStr();
+    document.getElementById("sleepScoreInput").value = "";
+  });
+  document.getElementById("saveSleepBtn").addEventListener("click", async function(){
+    var date = document.getElementById("sleepDateInput").value;
+    var scoreRaw = document.getElementById("sleepScoreInput").value;
+    if(!date || scoreRaw === "") return;
+    var score = Math.round(Number(scoreRaw));
+    if(isNaN(score)) return;
+    score = Math.max(0, Math.min(100, score));
+    this.disabled = true;
+    var res = await sb.from("sleep_scores").upsert({ date:date, score:score, source:"manual" }, { onConflict:"user_id,date" }).select().single();
+    this.disabled = false;
+    if(res.error){ alert(res.error.message); return; }
+    upsertLocalSleepScore(res.data);
+    document.getElementById("sleepScoreInput").value = "";
+    renderSleepChart(views.sleep);
+  });
+  document.getElementById("toggleSleepImportBtn").addEventListener("click", function(){
+    var panel = document.getElementById("sleepImportPanel");
+    panel.style.display = panel.style.display === "none" ? "" : "none";
+  });
+  document.getElementById("runSleepImportBtn").addEventListener("click", async function(){
+    var raw = document.getElementById("sleepImportInput").value.trim();
+    if(!raw) return;
+    var rows = [];
+    raw.split(/\n/).forEach(function(line){
+      var parts = line.split(",");
+      var date = (parts[0] || "").trim();
+      var score = Math.round(Number((parts[1] || "").trim()));
+      if(/^\d{4}-\d{2}-\d{2}$/.test(date) && !isNaN(score)){
+        rows.push({ date:date, score:Math.max(0, Math.min(100, score)), source:"garmin" });
+      }
+    });
+    if(!rows.length){ alert("No valid rows found. Expected lines like 2026-05-12,82"); return; }
+    this.disabled = true;
+    var res = await sb.from("sleep_scores").upsert(rows, { onConflict:"user_id,date" }).select();
+    this.disabled = false;
+    if(res.error){ alert(res.error.message); return; }
+    (res.data || []).forEach(upsertLocalSleepScore);
+    document.getElementById("sleepImportInput").value = "";
+    document.getElementById("sleepImportPanel").style.display = "none";
+    renderSleepChart(views.sleep);
+    toast("Imported " + rows.length + " day" + (rows.length === 1 ? "" : "s") + " of sleep data.");
   });
 
   /* ---------------- Whiteboard ---------------- */
@@ -2679,10 +3230,13 @@
     return lum > 0.6 ? "#0B0E14" : "#FFFFFF";
   }
 
-  function trackerRenderCell(v, date, value){
+  // The actual input control for one variable+date, independent of the Tracker table's <td>
+  // wrapper — reused as-is inside the Today page's habit rows, so "the tracker is where the value
+  // lives" holds literally: both surfaces edit the exact same tracker_entries row.
+  function trackerCellControlHtml(v, date, value){
     if(v.type === "boolean"){
       var on = value === "true";
-      return '<td class="tracker-cell"><button class="day-box' + (on?' on':'') + '" data-action="tracker-toggle-bool" data-var="' + v.id + '" data-date="' + date + '" aria-label="Toggle"></button></td>';
+      return '<button class="day-box' + (on?' on':'') + '" data-action="tracker-toggle-bool" data-var="' + v.id + '" data-date="' + date + '" aria-label="Toggle"></button>';
     }
     if(v.type === "scale"){
       var max = v.scaleMax || 5;
@@ -2691,7 +3245,7 @@
       for(var i=1;i<=max;i++){
         dots += '<button class="tracker-scale-dot' + (i<=cur?' on':'') + '" data-action="tracker-set-scale" data-var="' + v.id + '" data-date="' + date + '" data-val="' + i + '" aria-label="Set ' + i + '"></button>';
       }
-      return '<td class="tracker-cell"><div class="tracker-scale">' + dots + '</div></td>';
+      return '<div class="tracker-scale">' + dots + '</div>';
     }
     if(v.type === "category"){
       var cats = v.categories || [];
@@ -2700,12 +3254,15 @@
       var options = '<option value="">—</option>' + cats.map(function(c){
         return '<option value="' + escapeHtml(c.label) + '"' + (c.label===value?' selected':'') + '>' + escapeHtml(c.label) + '</option>';
       }).join("");
-      return '<td class="tracker-cell"><select class="tracker-cell-input tracker-cat-select" data-action="tracker-cat-select" data-var="' + v.id + '" data-date="' + date + '"' + styleAttr + '>' + options + '</select></td>';
+      return '<select class="tracker-cell-input tracker-cat-select" data-action="tracker-cat-select" data-var="' + v.id + '" data-date="' + date + '"' + styleAttr + '>' + options + '</select>';
     }
     if(v.type === "text"){
-      return '<td class="tracker-cell"><input type="text" class="tracker-cell-input" data-action="tracker-text-input" data-var="' + v.id + '" data-date="' + date + '" value="' + escapeHtml(value) + '"></td>';
+      return '<input type="text" class="tracker-cell-input" data-action="tracker-text-input" data-var="' + v.id + '" data-date="' + date + '" value="' + escapeHtml(value) + '">';
     }
-    return '<td class="tracker-cell"><input type="number" step="any" class="tracker-cell-input" data-action="tracker-num-input" data-var="' + v.id + '" data-date="' + date + '" value="' + escapeHtml(value) + '"></td>';
+    return '<input type="number" step="any" class="tracker-cell-input" data-action="tracker-num-input" data-var="' + v.id + '" data-date="' + date + '" value="' + escapeHtml(value) + '">';
+  }
+  function trackerRenderCell(v, date, value){
+    return '<td class="tracker-cell">' + trackerCellControlHtml(v, date, value) + '</td>';
   }
 
   function renderTracker(){
@@ -2754,7 +3311,7 @@
     if(rawValue === "" || rawValue === null || rawValue === undefined){
       if(existing){
         state.trackerEntries = state.trackerEntries.filter(function(e){ return e !== existing; });
-        renderTracker();
+        renderTracker(); renderToday();
         var rDel = await sb.from("tracker_entries").delete().eq("id", existing.id);
         if(rDel.error) console.error(rDel.error);
       }
@@ -2762,7 +3319,7 @@
     }
     if(existing){
       existing.value = rawValue;
-      renderTracker();
+      renderTracker(); renderToday();
       var rU = await sb.from("tracker_entries").update({ value: rawValue }).eq("id", existing.id);
       if(rU.error) console.error(rU.error);
     } else {
@@ -2770,7 +3327,7 @@
       if(res.error){ console.error(res.error); return; }
       var r = res.data;
       state.trackerEntries.push({ id:r.id, date:r.date, variableId:r.variable_id, value:r.value });
-      renderTracker();
+      renderTracker(); renderToday();
     }
   }
 
@@ -2779,6 +3336,32 @@
     document.getElementById("trackerSummaryInput").value = d ? d.summary : "";
   }
 
+  // Shared by the Tracker table and the Today page's habit rows — both edit the same
+  // tracker_entries rows through the same controls (see trackerCellControlHtml).
+  function handleTrackerCellClick(e){
+    var boolBtn = e.target.closest('[data-action="tracker-toggle-bool"]');
+    if(boolBtn){
+      trackerSaveValue(boolBtn.dataset.var, boolBtn.dataset.date, boolBtn.classList.contains("on") ? "" : "true");
+      return true;
+    }
+    var scaleBtn = e.target.closest('[data-action="tracker-set-scale"]');
+    if(scaleBtn){
+      var existing = trackerEntryFor(scaleBtn.dataset.var, scaleBtn.dataset.date);
+      var newVal = scaleBtn.dataset.val;
+      if(existing && existing.value === newVal) newVal = "";
+      trackerSaveValue(scaleBtn.dataset.var, scaleBtn.dataset.date, newVal);
+      return true;
+    }
+    return false;
+  }
+  function handleTrackerCellChange(e){
+    var t = e.target;
+    if(t.dataset && (t.dataset.action === "tracker-text-input" || t.dataset.action === "tracker-num-input" || t.dataset.action === "tracker-cat-select")){
+      trackerSaveValue(t.dataset.var, t.dataset.date, t.value.trim());
+      return true;
+    }
+    return false;
+  }
   document.getElementById("trackerTable").addEventListener("click", function(e){
     var head = e.target.closest('[data-action="pick-tracker-day"]');
     if(head){
@@ -2788,26 +3371,9 @@
       renderTracker();
       return;
     }
-    var boolBtn = e.target.closest('[data-action="tracker-toggle-bool"]');
-    if(boolBtn){
-      trackerSaveValue(boolBtn.dataset.var, boolBtn.dataset.date, boolBtn.classList.contains("on") ? "" : "true");
-      return;
-    }
-    var scaleBtn = e.target.closest('[data-action="tracker-set-scale"]');
-    if(scaleBtn){
-      var existing = trackerEntryFor(scaleBtn.dataset.var, scaleBtn.dataset.date);
-      var newVal = scaleBtn.dataset.val;
-      if(existing && existing.value === newVal) newVal = "";
-      trackerSaveValue(scaleBtn.dataset.var, scaleBtn.dataset.date, newVal);
-      return;
-    }
+    handleTrackerCellClick(e);
   });
-  document.getElementById("trackerTable").addEventListener("change", function(e){
-    var t = e.target;
-    if(t.dataset && (t.dataset.action === "tracker-text-input" || t.dataset.action === "tracker-num-input" || t.dataset.action === "tracker-cat-select")){
-      trackerSaveValue(t.dataset.var, t.dataset.date, t.value.trim());
-    }
-  });
+  document.getElementById("trackerTable").addEventListener("change", handleTrackerCellChange);
 
   /* ---------------- Tracker variable context menu (right-click a row header) ---------------- */
   var trackerCtxVarId = null;
@@ -3152,6 +3718,378 @@
     if(googleAccessToken) loadGoogleEventsForMonth(calendarMonth);
   });
 
+  /* ---------------- Today ---------------- */
+  var todaySelectedDate = todayStr();
+  var todayCalMonth = (function(){ var d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d; })();
+
+  function fmtDateLong(dateStr){
+    return new Date(dateStr + "T00:00:00").toLocaleDateString(undefined, { weekday:"long", month:"long", day:"numeric", year:"numeric" });
+  }
+
+  // Real sunrise/sunset for Berlin (52.52°N, 13.405°E), via the classic Sunrise Equation (Almanac
+  // for Computers, as popularized by NOAA/USNO) — computed locally so this has no external API
+  // dependency. Accurate to within a few minutes, which is plenty for a day/night indicator.
+  var BERLIN_LAT = 52.5200, BERLIN_LON = 13.4050;
+  function sunTimeUTC(year, month, day, lat, lon, isSunrise){
+    var zenith = 90.833;
+    var N = Math.floor((Date.UTC(year, month-1, day) - Date.UTC(year, 0, 1)) / 86400000) + 1;
+    var lngHour = lon / 15;
+    var t = isSunrise ? N + ((6 - lngHour) / 24) : N + ((18 - lngHour) / 24);
+    var M = (0.9856 * t) - 3.289;
+    var L = M + (1.916 * Math.sin(M*Math.PI/180)) + (0.020 * Math.sin(2*M*Math.PI/180)) + 282.634;
+    L = ((L % 360) + 360) % 360;
+    var RA = Math.atan(0.91764 * Math.tan(L*Math.PI/180)) * 180/Math.PI;
+    RA = ((RA % 360) + 360) % 360;
+    var Lq = Math.floor(L/90)*90, RAq = Math.floor(RA/90)*90;
+    RA = (RA + (Lq - RAq)) / 15;
+    var sinDec = 0.39782 * Math.sin(L*Math.PI/180);
+    var cosDec = Math.cos(Math.asin(sinDec));
+    var cosH = (Math.cos(zenith*Math.PI/180) - (sinDec * Math.sin(lat*Math.PI/180))) / (cosDec * Math.cos(lat*Math.PI/180));
+    if(cosH > 1 || cosH < -1) return null; // polar day/night — doesn't happen at Berlin's latitude
+    var H = isSunrise ? 360 - Math.acos(cosH)*180/Math.PI : Math.acos(cosH)*180/Math.PI;
+    H = H / 15;
+    var T = H + RA - (0.06571 * t) - 6.622;
+    return ((T - lngHour) % 24 + 24) % 24;
+  }
+  function berlinTodayParts(){
+    var parts = new Intl.DateTimeFormat("en-CA", { timeZone:"Europe/Berlin", year:"numeric", month:"2-digit", day:"2-digit" }).formatToParts(new Date());
+    var out = {};
+    parts.forEach(function(p){ if(p.type !== "literal") out[p.type] = Number(p.value); });
+    return out;
+  }
+  function utcHourToBerlinLabel(utcHour, y, m, d){
+    if(utcHour == null) return "—";
+    var h = Math.floor(utcHour), min = Math.round((utcHour - h) * 60);
+    return new Date(Date.UTC(y, m-1, d, h, min)).toLocaleTimeString(undefined, { hour:"numeric", minute:"2-digit", timeZone:"Europe/Berlin" });
+  }
+  // Fraction (0-1) through Berlin's calendar day that a given UTC-hour moment falls at — this is
+  // what actually places sunrise/sunset correctly on the timeline, since the bar represents a
+  // Berlin day, not the viewer's local day.
+  function berlinHourFraction(utcHour, y, m, d){
+    if(utcHour == null) return null;
+    var h = Math.floor(utcHour), min = Math.round((utcHour - h) * 60);
+    var dt = new Date(Date.UTC(y, m-1, d, h, min));
+    return berlinClockFraction(dt);
+  }
+  function berlinClockFraction(dt){
+    var parts = new Intl.DateTimeFormat("en-GB", { timeZone:"Europe/Berlin", hour:"2-digit", minute:"2-digit", hour12:false }).formatToParts(dt);
+    var hh = 0, mm = 0;
+    parts.forEach(function(p){ if(p.type === "hour") hh = Number(p.value); if(p.type === "minute") mm = Number(p.value); });
+    if(hh === 24) hh = 0;
+    return (hh + mm / 60) / 24;
+  }
+  // The whole timeline is anchored to Berlin's clock (matching the sunrise/sunset data), not the
+  // viewer's local time — so the "now" line and the day/night band always line up correctly
+  // regardless of what timezone the browser itself is in.
+  function renderTodayTimelineDayNight(){
+    var overlay = document.getElementById("todayTimelineDayNight");
+    if(!overlay) return null;
+    var bp = berlinTodayParts();
+    var sunrise = sunTimeUTC(bp.year, bp.month, bp.day, BERLIN_LAT, BERLIN_LON, true);
+    var sunset = sunTimeUTC(bp.year, bp.month, bp.day, BERLIN_LAT, BERLIN_LON, false);
+    var night = "rgba(95,168,255,0.28)", day = "rgba(253,224,71,0.28)";
+    if(sunrise == null || sunset == null){
+      // polar day/night — doesn't happen at Berlin's latitude, but stay correct just in case
+      overlay.style.background = night;
+      return { sunrise:sunrise, sunset:sunset, bp:bp };
+    }
+    var sunriseFrac = berlinHourFraction(sunrise, bp.year, bp.month, bp.day) * 100;
+    var sunsetFrac = berlinHourFraction(sunset, bp.year, bp.month, bp.day) * 100;
+    var tw = 2.5; // ~36min twilight blend on each side of sunrise/sunset
+    var stops = [
+      night + " 0%",
+      night + " " + Math.max(0, sunriseFrac - tw) + "%",
+      day + " " + Math.min(100, sunriseFrac + tw) + "%",
+      day + " " + Math.max(0, sunsetFrac - tw) + "%",
+      night + " " + Math.min(100, sunsetFrac + tw) + "%",
+      night + " 100%"
+    ];
+    overlay.style.background = "linear-gradient(90deg, " + stops.join(", ") + ")";
+    return { sunrise:sunrise, sunset:sunset, bp:bp };
+  }
+  function renderTodayDayNight(){
+    var el = document.getElementById("todayDayNight");
+    var sun = renderTodayTimelineDayNight();
+    if(!el || !sun) return;
+    var utcNow = new Date();
+    var nowUTCHours = utcNow.getUTCHours() + utcNow.getUTCMinutes()/60;
+    var isDay = (sun.sunrise != null && sun.sunset != null) ? (nowUTCHours >= sun.sunrise && nowUTCHours < sun.sunset) : true;
+    el.innerHTML =
+      '<span class="daynight-badge ' + (isDay ? "day" : "night") + '"></span>' +
+      '<span class="daynight-times">Berlin — sunrise ' + utcHourToBerlinLabel(sun.sunrise, sun.bp.year, sun.bp.month, sun.bp.day) + ' · sunset ' + utcHourToBerlinLabel(sun.sunset, sun.bp.year, sun.bp.month, sun.bp.day) + '</span>';
+  }
+  // 24-hour strip with a live "now" marker (Berlin time) — this is the base layer of what's meant
+  // to become a multi-layer widget over time (habit times, action blocks, etc. stacking on top).
+  function renderTodayTimeline(){
+    var marker = document.getElementById("todayTimelineNow");
+    if(!marker) return;
+    var now = new Date();
+    marker.style.left = (berlinClockFraction(now) * 100) + "%";
+    var label = document.getElementById("todayTimelineNowLabel");
+    if(label) label.textContent = now.toLocaleTimeString(undefined, { hour:"numeric", minute:"2-digit", timeZone:"Europe/Berlin" });
+    renderTodayDayNight();
+  }
+  setInterval(function(){ if(activeSection === "today") renderTodayTimeline(); }, 60000);
+
+  // ---- Timeline layers: habits and actions plotted (and draggable) against the same 24h scale.
+  // Only items with a time actually set get a block — untimed ones still show in the grid/list
+  // below as before, they just don't have a slot on the clock.
+  function timeToFraction(hhmm){
+    if(!hhmm) return null;
+    var parts = hhmm.split(":");
+    return (Number(parts[0]) * 60 + Number(parts[1])) / 1440;
+  }
+  function minutesToTime(totalMin){
+    totalMin = Math.max(0, Math.min(1435, totalMin));
+    var h = Math.floor(totalMin / 60), m = totalMin % 60;
+    return String(h).padStart(2,"0") + ":" + String(m).padStart(2,"0");
+  }
+  function renderTodayTimelineHabits(){
+    var track = document.getElementById("todayTimelineHabitsTrack");
+    if(!track) return;
+    var timed = state.habits.filter(function(h){ return !!h.timeOfDay; });
+    track.innerHTML = timed.map(function(h){
+      var startFrac = timeToFraction(h.timeOfDay) * 100;
+      var widthFrac = Math.max(1.2, ((h.durationMinutes || 15) / 1440) * 100);
+      var goal = h.goalId ? goalById(h.goalId) : null;
+      var catClass = goal ? " " + goal.category : "";
+      return '<div class="timeline-block' + catClass + '" data-kind="habit" data-id="' + h.id + '" style="left:' + startFrac + '%; width:' + widthFrac + '%;" title="' + escapeHtml(h.title) + ' — ' + fmtTimeOfDay(h.timeOfDay) + '">' +
+        '<span class="timeline-block-title">' + escapeHtml(h.title) + '</span>' +
+      '</div>';
+    }).join("");
+  }
+  function renderTodayTimelineActions(){
+    var track = document.getElementById("todayTimelineActionsTrack");
+    if(!track) return;
+    var timed = state.actions.filter(function(a){ return a.date === todaySelectedDate && !!a.timeOfDay; });
+    track.innerHTML = timed.map(function(a){
+      var startFrac = timeToFraction(a.timeOfDay) * 100;
+      var widthFrac = Math.max(1.2, ((a.durationMinutes || 15) / 1440) * 100);
+      var goalId = resolveGoalIdForAction(a);
+      var goal = goalId ? goalById(goalId) : null;
+      var catClass = goal ? " " + goal.category : "";
+      return '<div class="timeline-block' + catClass + (a.done?' done':'') + '" data-kind="action" data-id="' + a.id + '" style="left:' + startFrac + '%; width:' + widthFrac + '%;" title="' + escapeHtml(a.title) + ' — ' + fmtTimeOfDay(a.timeOfDay) + '">' +
+        '<span class="timeline-block-title">' + escapeHtml(a.title) + '</span>' +
+      '</div>';
+    }).join("");
+  }
+  // Dragging a block left/right updates its time-of-day (snapped to 5 min) — this is what "moving
+  // it along the timeline updates its properties" means. Clicking without dragging is a no-op here;
+  // use the existing right-click menu (already wired globally via data-kind/data-id) to edit/delete.
+  function wireTimelineLayerDrag(trackId, kind){
+    var track = document.getElementById(trackId);
+    var dragEl = null, dragId = null, moved = false;
+    track.addEventListener("pointerdown", function(e){
+      var block = e.target.closest(".timeline-block");
+      if(!block) return;
+      dragEl = block; dragId = block.dataset.id; moved = false;
+      block.setPointerCapture(e.pointerId);
+      block.classList.add("dragging");
+    });
+    track.addEventListener("pointermove", function(e){
+      if(!dragEl) return;
+      moved = true;
+      var rect = track.getBoundingClientRect();
+      var x = Math.min(rect.width, Math.max(0, e.clientX - rect.left));
+      var totalMin = Math.round(((x / rect.width) * 1440) / 5) * 5;
+      var newTime = minutesToTime(totalMin);
+      dragEl.style.left = (totalMin / 1440 * 100) + "%";
+      dragEl.dataset.pendingTime = newTime;
+    });
+    track.addEventListener("pointerup", async function(){
+      if(!dragEl) return;
+      var el = dragEl, id = dragId, newTime = el.dataset.pendingTime;
+      dragEl = null; dragId = null;
+      el.classList.remove("dragging");
+      if(!moved || !newTime) return;
+      if(kind === "habit"){
+        var h = state.habits.find(function(x){ return x.id === id; });
+        if(h) h.timeOfDay = newTime;
+        var r = await safeUpdate("habits", id, { time_of_day: newTime });
+        if(r.error) console.error(r.error); else warnDroppedFields(r.droppedFields);
+      } else {
+        var a = state.actions.find(function(x){ return x.id === id; });
+        if(a) a.timeOfDay = newTime;
+        var r2 = await safeUpdate("actions", id, { time_of_day: newTime });
+        if(r2.error) console.error(r2.error); else warnDroppedFields(r2.droppedFields);
+      }
+      renderToday();
+    });
+    track.addEventListener("pointercancel", function(){
+      if(dragEl) dragEl.classList.remove("dragging");
+      dragEl = null; dragId = null;
+    });
+  }
+  wireTimelineLayerDrag("todayTimelineHabitsTrack", "habit");
+  wireTimelineLayerDrag("todayTimelineActionsTrack", "action");
+
+  function renderToday(){
+    if(activeSection !== "today") return;
+    renderTodayTimeline();
+    renderTodayTimelineHabits();
+    renderTodayTimelineActions();
+    document.getElementById("todayDateLabel").textContent = fmtDateLong(todaySelectedDate) + (todaySelectedDate === todayStr() ? " (today)" : "");
+
+    // Active projects aren't tied to the selected day — they're a persistent strip of whatever's
+    // currently in flight, independent of which day the calendar below has picked.
+    var activeProjects = state.projects.filter(function(p){ return !p.done; });
+    document.getElementById("todayProjectsEmpty").style.display = activeProjects.length ? "none" : "";
+    document.getElementById("todayProjectsGrid").innerHTML = activeProjects.map(function(p){
+      var overdue = p.due && p.due < todayStr();
+      return '<div class="ms-tile" data-kind="project" data-id="' + p.id + '">' +
+        '<div class="ms-tile-top">' +
+          '<button class="ms-check" data-action="toggle-proj" data-id="' + p.id + '" aria-label="Toggle done"></button>' +
+          '<span class="ms-tile-title">' + escapeHtml(p.title) + '</span>' +
+          '<button class="icon-btn edit" data-action="edit-proj" data-id="' + p.id + '" aria-label="Edit project">✎</button>' +
+          '<button class="icon-btn" data-action="del-proj" data-id="' + p.id + '" aria-label="Delete project">&times;</button>' +
+        '</div>' +
+        '<div class="ms-tile-meta"><span class="prio-badge ' + p.priority + '">' + p.priority + '</span>' +
+        (p.due ? '<span style="color:' + (overdue?'var(--p0)':'var(--text-faint)') + '">' + fmtDate(p.due) + '</span>' : '') +
+        '<span>' + p.hours + 'h</span></div>' +
+      '</div>';
+    }).join("");
+
+    // Earliest-to-latest by time of day; untimed habits sort after every timed one, then fall
+    // back to their manual drag order among themselves.
+    var habits = state.habits.slice().sort(function(x,y){
+      if(x.timeOfDay && y.timeOfDay) return x.timeOfDay < y.timeOfDay ? -1 : (x.timeOfDay > y.timeOfDay ? 1 : 0);
+      if(x.timeOfDay && !y.timeOfDay) return -1;
+      if(!x.timeOfDay && y.timeOfDay) return 1;
+      return x.position - y.position;
+    });
+    document.getElementById("todayHabitsEmpty").style.display = habits.length ? "none" : "";
+    document.getElementById("todayHabitsList").innerHTML = habits.map(function(h){
+      var v = state.trackerVars.find(function(x){ return x.id === h.trackerVariableId; }) || { id:h.trackerVariableId, type:"boolean", scaleMax:5 };
+      var value = habitValueForDate(h, todaySelectedDate);
+      var on = !!value;
+      var valueLabel = v.type === "boolean" ? '<span class="today-row-value-label' + (on?' on':'') + '">' + (on?"yes":"no") + '</span>' : "";
+      var goal = h.goalId ? goalById(h.goalId) : null;
+      var catClass = goal ? " " + goal.category : "";
+      return '<div class="today-habit-tile' + catClass + '" data-kind="habit" data-id="' + h.id + '">' +
+        '<div class="today-habit-tile-top">' +
+          trackerCellControlHtml(v, todaySelectedDate, value) +
+          valueLabel +
+          '<span class="today-habit-tile-title' + (on?' done':'') + '">' + escapeHtml(h.title) + '</span>' +
+        '</div>' +
+        '<div class="today-habit-tile-meta">' +
+          (h.timeOfDay ? '<span class="today-habit-tile-time">' + fmtTimeOfDay(h.timeOfDay) + '</span>' : '') +
+          '<span class="prio-badge ' + h.priority + '">' + h.priority + '</span>' +
+          '<span>' + habitScheduleLabel(h) + '</span>' +
+        '</div>' +
+        '<div class="today-habit-tile-actions">' +
+          '<button class="icon-btn edit" data-action="edit-habit" data-id="' + h.id + '" aria-label="Edit habit">✎</button>' +
+          '<button class="icon-btn" data-action="del-habit" data-id="' + h.id + '" aria-label="Delete habit">&times;</button>' +
+        '</div>' +
+      '</div>';
+    }).join("");
+
+    var actionsToday = state.actions.filter(function(a){ return a.date === todaySelectedDate; });
+    document.getElementById("todayActionsEmpty").style.display = actionsToday.length ? "none" : "";
+    document.getElementById("todayActionsList").innerHTML = actionsToday.map(function(a){
+      return '<div class="today-row" data-kind="action" data-id="' + a.id + '">' +
+        '<button class="ms-check' + (a.done?' done':'') + '" data-action="toggle-action" data-id="' + a.id + '" aria-label="Toggle done"></button>' +
+        '<span class="today-row-title' + (a.done?' done':'') + '">' + escapeHtml(a.title) + '</span>' +
+        '<span class="prio-badge ' + a.priority + '">' + a.priority + '</span>' +
+        (a.parentType !== "none" ? '<span class="today-row-meta">via ' + escapeHtml(parentTitle(a)) + '</span>' : '') +
+        '<button class="icon-btn edit" data-action="edit-action" data-id="' + a.id + '" aria-label="Edit action">✎</button>' +
+        '<button class="icon-btn" data-action="del-action" data-id="' + a.id + '" aria-label="Delete action">&times;</button>' +
+      '</div>';
+    }).join("");
+
+    renderTodayCalGrid();
+  }
+
+  // A compact, clickable month calendar for picking which day's schedule to view/edit — separate
+  // from the main Calendar tab's grid (which is read-only) so clicking a day here doesn't change
+  // that tab's behavior.
+  function renderTodayCalGrid(){
+    document.getElementById("todayCalMonthLabel").textContent = todayCalMonth.toLocaleDateString(undefined, { month:"long", year:"numeric" });
+    var year = todayCalMonth.getFullYear(), month = todayCalMonth.getMonth();
+    var firstOfMonth = new Date(year, month, 1);
+    var startOffset = (firstOfMonth.getDay() + 6) % 7;
+    var gridStart = new Date(year, month, 1 - startOffset);
+    var todayKey = todayStr();
+    var gEvents = googleEventsCache[monthKey(todayCalMonth)] || [];
+    var weekdayLabels = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+    var html = weekdayLabels.map(function(w){ return '<div class="cal-weekday">' + w + '</div>'; }).join("");
+    for(var i=0;i<42;i++){
+      var cellDate = new Date(gridStart); cellDate.setDate(gridStart.getDate() + i);
+      var cellKey = cellDate.getFullYear() + "-" + String(cellDate.getMonth()+1).padStart(2,"0") + "-" + String(cellDate.getDate()).padStart(2,"0");
+      var inMonth = cellDate.getMonth() === month;
+      var hasStuff = gEvents.some(function(ev){ return ev.date === cellKey; }) ||
+        state.projects.some(function(p){ return p.due === cellKey; }) ||
+        state.actions.some(function(a){ return a.date === cellKey; });
+      html += '<div class="cal-day clickable' + (inMonth?'':' other-month') + (cellKey===todayKey?' today':'') + (cellKey===todaySelectedDate?' selected':'') + '" data-date="' + cellKey + '">' +
+        '<div class="cal-day-num">' + cellDate.getDate() + '</div>' +
+        (hasStuff ? '<span class="cal-dot-mini"></span>' : '') +
+      '</div>';
+    }
+    document.getElementById("todayCalGrid").innerHTML = html;
+  }
+  document.getElementById("todayCalGrid").addEventListener("click", function(e){
+    var cell = e.target.closest(".cal-day[data-date]");
+    if(!cell) return;
+    todaySelectedDate = cell.dataset.date;
+    renderToday();
+  });
+  document.getElementById("todayCalPrevBtn").addEventListener("click", function(){
+    todayCalMonth.setMonth(todayCalMonth.getMonth()-1);
+    renderTodayCalGrid();
+    if(googleAccessToken) loadGoogleEventsForMonth(todayCalMonth);
+  });
+  document.getElementById("todayCalNextBtn").addEventListener("click", function(){
+    todayCalMonth.setMonth(todayCalMonth.getMonth()+1);
+    renderTodayCalGrid();
+    if(googleAccessToken) loadGoogleEventsForMonth(todayCalMonth);
+  });
+  function shiftTodaySelectedDate(deltaDays){
+    var d = new Date(todaySelectedDate + "T00:00:00");
+    d.setDate(d.getDate() + deltaDays);
+    todaySelectedDate = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+    if(d.getMonth() !== todayCalMonth.getMonth() || d.getFullYear() !== todayCalMonth.getFullYear()){
+      todayCalMonth = new Date(d.getFullYear(), d.getMonth(), 1);
+      if(googleAccessToken) loadGoogleEventsForMonth(todayCalMonth);
+    }
+    renderToday();
+  }
+  document.getElementById("todayPrevDayBtn").addEventListener("click", function(){ shiftTodaySelectedDate(-1); });
+  document.getElementById("todayNextDayBtn").addEventListener("click", function(){ shiftTodaySelectedDate(1); });
+  document.getElementById("todayJumpTodayBtn").addEventListener("click", function(){
+    todaySelectedDate = todayStr();
+    todayCalMonth = (function(){ var d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d; })();
+    renderToday();
+    if(googleAccessToken) loadGoogleEventsForMonth(todayCalMonth);
+  });
+  document.getElementById("todayActionsList").addEventListener("click", async function(e){
+    var t = e.target.closest("[data-action]");
+    if(!t) return;
+    if(t.dataset.action === "toggle-action") await toggleActionDone(t.dataset.id);
+    else if(t.dataset.action === "edit-action") editAction(t.dataset.id);
+    else if(t.dataset.action === "del-action") await deleteAction(t.dataset.id);
+  });
+  document.getElementById("todayHabitsList").addEventListener("click", async function(e){
+    if(handleTrackerCellClick(e)) return;
+    var t = e.target.closest("[data-action]");
+    if(!t) return;
+    if(t.dataset.action === "edit-habit") editHabit(t.dataset.id);
+    else if(t.dataset.action === "del-habit") await deleteHabit(t.dataset.id);
+  });
+  document.getElementById("todayHabitsList").addEventListener("change", handleTrackerCellChange);
+  document.getElementById("todayProjectsGrid").addEventListener("click", async function(e){
+    var t = e.target.closest("[data-action]");
+    if(!t) return;
+    if(t.dataset.action === "toggle-proj") await toggleProjectDone(t.dataset.id);
+    else if(t.dataset.action === "edit-proj") editProject(t.dataset.id);
+    else if(t.dataset.action === "del-proj") await deleteProject(t.dataset.id);
+  });
+  document.getElementById("addTodayActionBtn").addEventListener("click", function(){
+    openActionModal(null, null);
+    document.getElementById("actionDateInput").value = todaySelectedDate;
+  });
+  document.getElementById("addTodayHabitBtn").addEventListener("click", function(){
+    openHabitModal(null, null);
+  });
+
   /* ---------------- Agent ---------------- */
   var AGENT_TOOLS = [
     { name:"create_goal", description:"Create a new goal.", input_schema:{ type:"object", properties:{
@@ -3268,10 +4206,17 @@
         renderAll(); return { ok:true };
       }
       if(name === "create_habit"){
-        var res5 = await safeInsert("habits", { goal_id: input.goal_id || null, title:input.title, priority:input.priority, frequency:input.frequency, days:{} }, state.habits);
+        var habitVarRes = await safeInsert("tracker_variables", { name: input.title, type: "boolean" }, state.trackerVars);
+        var habitVarId = null;
+        if(!habitVarRes.error){
+          var hv = habitVarRes.data;
+          state.trackerVars.push({ id:hv.id, name:hv.name, type:hv.type, unit:hv.unit, scaleMax:hv.scale_max, categories:hv.categories||[], position:hv.position });
+          habitVarId = hv.id;
+        }
+        var res5 = await safeInsert("habits", { goal_id: input.goal_id || null, title:input.title, priority:input.priority, frequency:input.frequency, tracker_variable_id: habitVarId, days:{} }, state.habits);
         if(res5.error) return { error: res5.error.message };
         var r5 = res5.data;
-        state.habits.push({ id:r5.id, goalId:r5.goal_id, title:r5.title, priority:r5.priority, frequency:r5.frequency, days:r5.days || {}, position:r5.position||0 });
+        state.habits.push({ id:r5.id, goalId:r5.goal_id, title:r5.title, priority:r5.priority, frequency:r5.frequency, weekdays:r5.weekdays || [], trackerVariableId:r5.tracker_variable_id || habitVarId, timeOfDay:r5.time_of_day ? r5.time_of_day.slice(0,5) : null, durationMinutes:r5.duration_minutes||null, days:r5.days || {}, position:r5.position||0 });
         renderAll(); return { ok:true, id:r5.id };
       }
       if(name === "edit_habit"){
@@ -3286,7 +4231,14 @@
         if(res6.error) return { error: res6.error.message };
         var r6 = res6.data;
         var i6 = state.habits.findIndex(function(x){ return x.id === input.id; });
-        if(i6 !== -1) state.habits[i6] = { id:r6.id, goalId:r6.goal_id, title:r6.title, priority:r6.priority, frequency:r6.frequency, days:r6.days || {} };
+        if(i6 !== -1){ state.habits[i6].title = r6.title; state.habits[i6].goalId = r6.goal_id; state.habits[i6].priority = r6.priority; state.habits[i6].frequency = r6.frequency; }
+        if(input.title !== undefined && h.trackerVariableId){
+          var vUpd = await sb.from("tracker_variables").update({ name: input.title }).eq("id", h.trackerVariableId);
+          if(!vUpd.error){
+            var tv = state.trackerVars.find(function(x){ return x.id === h.trackerVariableId; });
+            if(tv) tv.name = input.title;
+          }
+        }
         renderAll(); return { ok:true };
       }
       if(name === "create_action"){
@@ -3294,7 +4246,7 @@
         var res7 = await safeInsert("actions", { title:input.title, type:input.type, priority:input.priority, parent_type:pt7, parent_id: pt7 === "none" ? null : (input.parent_id || null), date: input.date || null, done:false }, state.actions);
         if(res7.error) return { error: res7.error.message };
         var r7 = res7.data;
-        state.actions.push({ id:r7.id, parentType:r7.parent_type, parentId:r7.parent_id, title:r7.title, type:r7.type, priority:r7.priority, date:r7.date, done:r7.done, position:r7.position||0 });
+        state.actions.push({ id:r7.id, parentType:r7.parent_type, parentId:r7.parent_id, title:r7.title, type:r7.type, priority:r7.priority, date:r7.date, done:r7.done, position:r7.position||0, timeOfDay:r7.time_of_day ? r7.time_of_day.slice(0,5) : null, durationMinutes:r7.duration_minutes||null });
         renderAll(); return { ok:true, id:r7.id };
       }
       if(name === "edit_action"){
@@ -3312,7 +4264,7 @@
         if(res8.error) return { error: res8.error.message };
         var r8 = res8.data;
         var i8 = state.actions.findIndex(function(x){ return x.id === input.id; });
-        if(i8 !== -1) state.actions[i8] = { id:r8.id, parentType:r8.parent_type, parentId:r8.parent_id, title:r8.title, type:r8.type, priority:r8.priority, date:r8.date, done:r8.done };
+        if(i8 !== -1){ state.actions[i8].parentType = r8.parent_type; state.actions[i8].parentId = r8.parent_id; state.actions[i8].title = r8.title; state.actions[i8].type = r8.type; state.actions[i8].priority = r8.priority; state.actions[i8].date = r8.date; state.actions[i8].done = r8.done; }
         renderAll(); return { ok:true };
       }
       if(name === "add_journal_entry"){
@@ -3571,14 +4523,28 @@
     return g ? g.category : null;
   });
   document.getElementById("projectGoalSelect").addEventListener("change", function(){ if(projectIconDraft) setProjectIconPreview(projectIconDraft); });
+  // Parent goal options are scoped to whichever area(s) are checked — a goal shows if its category
+  // is among the selected areas. No areas selected means no filter (show every goal).
+  function fillProjectGoalSelect(){
+    var areas = multiChipValues(document.getElementById("projectAreaSelect"), "ar");
+    var sel = document.getElementById("projectGoalSelect");
+    var currentValue = sel.value;
+    var filtered = areas.length ? state.goals.filter(function(g){ return areas.indexOf(g.category) !== -1; }) : state.goals;
+    sel.innerHTML = '<option value="">— no parent goal —</option>' + filtered.map(function(g){ return '<option value="' + g.id + '">' + escapeHtml(g.title) + '</option>'; }).join("");
+    if(currentValue && filtered.some(function(g){ return g.id === currentValue; })) sel.value = currentValue;
+  }
+  wireMultiChipSelect(document.getElementById("projectAreaSelect"));
+  document.getElementById("projectAreaSelect").addEventListener("click", function(){ fillProjectGoalSelect(); });
   function openProjectModal(presetGoalId, editProjectObj){
     editingProjectId = editProjectObj ? editProjectObj.id : null;
     document.getElementById("projectModalTitle").textContent = editProjectObj ? "edit_project.json" : "new_project.json";
     document.getElementById("projectTitleInput").value = editProjectObj ? editProjectObj.title : "";
     document.getElementById("projectDueInput").value = editProjectObj && editProjectObj.due ? editProjectObj.due : "";
     document.getElementById("projectHoursInput").value = editProjectObj ? editProjectObj.hours : "";
-    fillGoalSelect(document.getElementById("projectGoalSelect"));
     var goalToSelect = editProjectObj ? (editProjectObj.goalId || "") : (presetGoalId || "");
+    var goalForArea = goalToSelect ? goalById(goalToSelect) : null;
+    setMultiChip(document.getElementById("projectAreaSelect"), "ar", goalForArea ? [goalForArea.category] : CATEGORIES.slice());
+    fillProjectGoalSelect();
     document.getElementById("projectGoalSelect").value = goalToSelect;
     setChip(document.getElementById("projectPrioSelect"), "p", editProjectObj ? editProjectObj.priority : "P2");
     projectIconDraft = editProjectObj ? (editProjectObj.icon || null) : null;
@@ -3622,15 +4588,83 @@
 
   // Habit modal
   var editingHabitId = null;
+  wireMultiChipSelect(document.getElementById("habitWeekdaysSelect"));
+  // Day-of-week picker only makes sense for "weekly" for now — daily is every day by definition,
+  // and "custom" is left as a plain label until its own scheme is defined.
+  document.getElementById("habitFreqSelect").addEventListener("click", function(){
+    document.getElementById("habitWeekdaysField").style.display = chipValue(this, "f") === "weekly" ? "" : "none";
+  });
+  document.getElementById("habitTypeSelect").addEventListener("click", function(){
+    document.getElementById("habitScaleField").style.display = chipValue(this, "ty") === "scale" ? "" : "none";
+  });
+  // Parent goal options are scoped to the selected area, same filtering as the Action modal.
+  function fillHabitGoalSelect(){
+    var area = chipValue(document.getElementById("habitAreaSelect"), "ar");
+    var sel = document.getElementById("habitGoalSelect");
+    var currentValue = sel.value;
+    var filtered = state.goals.filter(function(g){ return g.category === area; });
+    sel.innerHTML = '<option value="">— no parent goal —</option>' + filtered.map(function(g){ return '<option value="' + g.id + '">' + escapeHtml(g.title) + '</option>'; }).join("");
+    if(currentValue && filtered.some(function(g){ return g.id === currentValue; })) sel.value = currentValue;
+  }
+  document.getElementById("habitAreaSelect").addEventListener("click", function(){ fillHabitGoalSelect(); });
+  // Mouse-clickable time picker (30-min increments) alongside a native <input type="time">, so
+  // setting a time doesn't require typing. Generic — used for both the habit and action modals.
+  var TIME_PICK_OPTIONS = (function(){
+    var opts = [];
+    for(var h=0; h<24; h++){
+      for(var m=0; m<60; m+=30){
+        opts.push(String(h).padStart(2,"0") + ":" + String(m).padStart(2,"0"));
+      }
+    }
+    return opts;
+  })();
+  function wireTimePicker(inputId, btnId, panelId){
+    var input = document.getElementById(inputId);
+    var btn = document.getElementById(btnId);
+    var panel = document.getElementById(panelId);
+    function renderPanel(){
+      panel.innerHTML = TIME_PICK_OPTIONS.map(function(t){
+        return '<button type="button" class="time-pick-opt' + (t===input.value?' sel':'') + '" data-time="' + t + '">' + fmtTimeOfDay(t) + '</button>';
+      }).join("");
+    }
+    btn.addEventListener("click", function(e){
+      e.stopPropagation();
+      if(panel.hidden){ renderPanel(); panel.hidden = false; } else panel.hidden = true;
+    });
+    panel.addEventListener("click", function(e){
+      var opt = e.target.closest(".time-pick-opt");
+      if(!opt) return;
+      input.value = opt.dataset.time;
+      panel.hidden = true;
+    });
+    document.addEventListener("click", function(e){
+      if(!panel.hidden && !panel.contains(e.target) && e.target !== btn) panel.hidden = true;
+    });
+  }
+  wireTimePicker("habitTimeInput", "habitTimePickBtn", "habitTimePickPanel");
+  wireTimePicker("actionTimeInput", "actionTimePickBtn", "actionTimePickPanel");
   function openHabitModal(presetGoalId, editHabitObj){
     editingHabitId = editHabitObj ? editHabitObj.id : null;
     document.getElementById("habitModalTitle").textContent = editHabitObj ? "edit_habit.json" : "new_habit.json";
     document.getElementById("habitTitleInput").value = editHabitObj ? editHabitObj.title : "";
-    fillGoalSelect(document.getElementById("habitGoalSelect"));
     var goalToSelect = editHabitObj ? (editHabitObj.goalId || "") : (presetGoalId || "");
+    var areaGoal = goalToSelect ? goalById(goalToSelect) : null;
+    setChip(document.getElementById("habitAreaSelect"), "ar", areaGoal ? areaGoal.category : "Career");
+    fillHabitGoalSelect();
     document.getElementById("habitGoalSelect").value = goalToSelect;
     setChip(document.getElementById("habitPrioSelect"), "p", editHabitObj ? editHabitObj.priority : "P2");
-    setChip(document.getElementById("habitFreqSelect"), "f", editHabitObj ? editHabitObj.frequency : "daily");
+    var freq = editHabitObj ? editHabitObj.frequency : "daily";
+    setChip(document.getElementById("habitFreqSelect"), "f", freq);
+    setMultiChip(document.getElementById("habitWeekdaysSelect"), "wd", editHabitObj ? (editHabitObj.weekdays || []) : []);
+    document.getElementById("habitWeekdaysField").style.display = freq === "weekly" ? "" : "none";
+    var linkedVar = editHabitObj ? state.trackerVars.find(function(v){ return v.id === editHabitObj.trackerVariableId; }) : null;
+    var type = linkedVar ? linkedVar.type : "boolean";
+    setChip(document.getElementById("habitTypeSelect"), "ty", type);
+    document.getElementById("habitScaleMaxInput").value = (linkedVar && linkedVar.scaleMax) || 5;
+    document.getElementById("habitScaleField").style.display = type === "scale" ? "" : "none";
+    document.getElementById("habitTimeInput").value = editHabitObj ? (editHabitObj.timeOfDay || "") : "";
+    document.getElementById("habitDurationInput").value = editHabitObj && editHabitObj.durationMinutes != null ? editHabitObj.durationMinutes : "";
+    document.getElementById("habitTimePickPanel").hidden = true;
     openModal("habitModalOverlay");
     document.getElementById("habitTitleInput").focus();
   }
@@ -3638,16 +4672,40 @@
   document.getElementById("saveHabitBtn").addEventListener("click", async function(){
     var title = document.getElementById("habitTitleInput").value.trim();
     if(!title) return;
+    var freq = chipValue(document.getElementById("habitFreqSelect"), "f");
+    var type = chipValue(document.getElementById("habitTypeSelect"), "ty");
+    var scaleMaxRaw = document.getElementById("habitScaleMaxInput").value;
+    this.disabled = true;
+    var isEdit = !!editingHabitId;
+    var existingHabit = isEdit ? state.habits.find(function(x){ return x.id === editingHabitId; }) : null;
+
+    // Every habit owns exactly one tracker_variables row — create it on first save, keep its
+    // name/type in sync with the habit on every later save. This is what "marking done" writes to.
+    var varPayload = {
+      name: title, type: type,
+      scale_max: type === "scale" ? Math.max(2, Math.min(10, Math.round(Number(scaleMaxRaw)) || 5)) : null
+    };
+    var varRes = (existingHabit && existingHabit.trackerVariableId)
+      ? await safeUpdate("tracker_variables", existingHabit.trackerVariableId, varPayload)
+      : await safeInsert("tracker_variables", varPayload, state.trackerVars);
+    if(varRes.error){ this.disabled = false; alert(varRes.error.message); return; }
+    var vr = varRes.data;
+    var mappedVar = { id:vr.id, name:vr.name, type:vr.type, unit:vr.unit, scaleMax:vr.scale_max, categories:vr.categories||[], position:vr.position };
+    var vIdx = state.trackerVars.findIndex(function(x){ return x.id === mappedVar.id; });
+    if(vIdx !== -1) state.trackerVars[vIdx] = mappedVar; else state.trackerVars.push(mappedVar);
+
     var payload = {
       goal_id: document.getElementById("habitGoalSelect").value || null,
       title: title, priority: chipValue(document.getElementById("habitPrioSelect"), "p"),
-      frequency: chipValue(document.getElementById("habitFreqSelect"), "f")
+      frequency: freq,
+      weekdays: freq === "weekly" ? multiChipValues(document.getElementById("habitWeekdaysSelect"), "wd") : [],
+      tracker_variable_id: mappedVar.id,
+      time_of_day: document.getElementById("habitTimeInput").value || null,
+      duration_minutes: document.getElementById("habitDurationInput").value ? Math.max(0, Math.round(Number(document.getElementById("habitDurationInput").value))) : null
     };
-    this.disabled = true;
-    var isEdit = !!editingHabitId;
     var res;
     if(isEdit){
-      res = await sb.from("habits").update(payload).eq("id", editingHabitId).select().single();
+      res = await safeUpdate("habits", editingHabitId, payload);
     } else {
       payload.days = {};
       res = await safeInsert("habits", payload, state.habits);
@@ -3655,7 +4713,7 @@
     this.disabled = false;
     if(res.error){ alert(res.error.message); return; }
     var r = res.data;
-    var mapped = { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, frequency:r.frequency, days:r.days || {}, position:r.position||0 };
+    var mapped = { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || mappedVar.id, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0 };
     if(isEdit){
       var idx = state.habits.findIndex(function(x){ return x.id === editingHabitId; });
       if(idx !== -1) state.habits[idx] = mapped;
@@ -3663,26 +4721,42 @@
       state.habits.push(mapped);
     }
     renderAll(); closeModal("habitModalOverlay");
+    warnDroppedFields(res.droppedFields);
   });
 
   // Action modal
   var actionTypeSel = document.getElementById("actionTypeSelect");
   ACTION_TYPES.forEach(function(t){ var o = document.createElement("option"); o.textContent = t; actionTypeSel.appendChild(o); });
 
+  // Parent options are scoped to the selected area — a goal has to match it directly, a project
+  // matches if its own linked goal is in that area (a project with no goal isn't tied to any one
+  // area, so it's always eligible regardless of which area is picked).
   function fillActionParentSelect(){
     var pt = chipValue(document.getElementById("actionParentTypeSelect"), "pt");
+    var area = chipValue(document.getElementById("actionAreaSelect"), "ar");
     var fieldEl = document.getElementById("actionParentField");
+    var areaFieldEl = document.getElementById("actionAreaField");
     var sel = document.getElementById("actionParentSelect");
     if(pt === "none"){
       fieldEl.style.display = "none";
+      areaFieldEl.style.display = "none";
       sel.innerHTML = "";
       return;
     }
     fieldEl.style.display = "";
-    if(pt === "goal") sel.innerHTML = state.goals.map(function(g){ return '<option value="' + g.id + '">' + escapeHtml(g.title) + '</option>'; }).join("");
-    else sel.innerHTML = state.projects.map(function(p){ return '<option value="' + p.id + '">' + escapeHtml(p.title) + '</option>'; }).join("");
+    areaFieldEl.style.display = "";
+    if(pt === "goal"){
+      sel.innerHTML = state.goals.filter(function(g){ return g.category === area; })
+        .map(function(g){ return '<option value="' + g.id + '">' + escapeHtml(g.title) + '</option>'; }).join("");
+    } else {
+      sel.innerHTML = state.projects.filter(function(p){
+        var g = p.goalId ? goalById(p.goalId) : null;
+        return !g || g.category === area;
+      }).map(function(p){ return '<option value="' + p.id + '">' + escapeHtml(p.title) + '</option>'; }).join("");
+    }
   }
   document.getElementById("actionParentTypeSelect").addEventListener("click", function(){ fillActionParentSelect(); });
+  document.getElementById("actionAreaSelect").addEventListener("click", function(){ fillActionParentSelect(); });
 
   var editingActionId = null;
   function openActionModal(presetGoalId, editActionObj){
@@ -3695,11 +4769,18 @@
     var defaultPt = editActionObj ? editActionObj.parentType
       : (presetGoalId ? "goal" : (state.goals.length ? "goal" : (state.projects.length ? "project" : "none")));
     setChip(document.getElementById("actionParentTypeSelect"), "pt", defaultPt);
+    var presetArea = "Career";
+    var areaGoal = editActionObj ? goalById(resolveGoalIdForAction(editActionObj)) : (presetGoalId ? goalById(presetGoalId) : null);
+    if(areaGoal) presetArea = areaGoal.category;
+    setChip(document.getElementById("actionAreaSelect"), "ar", presetArea);
     fillActionParentSelect();
     if(defaultPt !== "none"){
       var parentIdToSelect = editActionObj ? editActionObj.parentId : presetGoalId;
       if(parentIdToSelect) document.getElementById("actionParentSelect").value = parentIdToSelect;
     }
+    document.getElementById("actionTimeInput").value = editActionObj ? (editActionObj.timeOfDay || "") : "";
+    document.getElementById("actionDurationInput").value = editActionObj && editActionObj.durationMinutes != null ? editActionObj.durationMinutes : "";
+    document.getElementById("actionTimePickPanel").hidden = true;
     openModal("actionModalOverlay");
     document.getElementById("actionTitleInput").focus();
   }
@@ -3716,13 +4797,15 @@
       priority: chipValue(document.getElementById("actionPrioSelect"), "p"),
       parent_type: pt,
       parent_id: pt === "none" ? null : parentSelect.value,
-      date: document.getElementById("actionDateInput").value || null
+      date: document.getElementById("actionDateInput").value || null,
+      time_of_day: document.getElementById("actionTimeInput").value || null,
+      duration_minutes: document.getElementById("actionDurationInput").value ? Math.max(0, Math.round(Number(document.getElementById("actionDurationInput").value))) : null
     };
     this.disabled = true;
     var isEdit = !!editingActionId;
     var res;
     if(isEdit){
-      res = await sb.from("actions").update(payload).eq("id", editingActionId).select().single();
+      res = await safeUpdate("actions", editingActionId, payload);
     } else {
       payload.done = false;
       res = await safeInsert("actions", payload, state.actions);
@@ -3730,7 +4813,7 @@
     this.disabled = false;
     if(res.error){ alert(res.error.message); return; }
     var r = res.data;
-    var mapped = { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0 };
+    var mapped = { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null };
     if(isEdit){
       var idx = state.actions.findIndex(function(x){ return x.id === editingActionId; });
       if(idx !== -1) state.actions[idx] = mapped;
@@ -3738,6 +4821,7 @@
       state.actions.push(mapped);
     }
     renderAll(); closeModal("actionModalOverlay");
+    warnDroppedFields(res.droppedFields);
   });
 
   // Person modal
@@ -3781,6 +4865,7 @@
     renderPeople();
     renderChatMessages();
     renderTracker();
+    renderToday();
     renderGoalDetail();
     renderAreaDetail();
   }
