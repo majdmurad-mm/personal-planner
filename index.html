@@ -437,7 +437,7 @@
   .today-timeline-row-labels{ display:flex; flex-direction:column; width:50px; flex-shrink:0; }
   .today-timeline-row-labels span{ flex:1; display:flex; align-items:center; font-family:var(--mono); font-size:8.5px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-faint); }
   .today-timeline-main{ flex:1; min-width:0; }
-  .today-timeline-unified{ position:relative; display:flex; flex-direction:column; height:90px; border:1px solid var(--border); border-radius:6px; overflow:hidden; background:var(--bg-raised); }
+  .today-timeline-unified{ position:relative; display:flex; flex-direction:column; height:118px; border:1px solid var(--border); border-radius:6px; overflow:hidden; background:var(--bg-raised); }
   .today-timeline-row{ position:relative; flex:1; touch-action:none; }
   .today-timeline-row + .today-timeline-row{ border-top:1px solid var(--border); }
   .today-timeline-daynight{ position:absolute; inset:0; transition:background 1s ease; }
@@ -524,6 +524,9 @@
   .journal-composer{ background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-top:20px; margin-bottom:22px; }
   .journal-composer-top{ display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:10px; }
   .journal-composer-top input{ width:auto; }
+  .journal-composer-meta{ display:flex; flex-wrap:wrap; align-items:center; gap:10px; flex:1; }
+  .journal-composer-meta .time-pick-row{ width:auto; }
+  .journal-composer-meta .time-pick-row input[type="time"]{ width:auto; flex:none; }
   .journal-textarea{ width:100%; font-size:14px; line-height:1.5; min-height:70px; }
   .journal-month-head{ font-family:var(--mono); font-size:10.5px; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-faint); margin:20px 0 10px; padding-bottom:7px; border-bottom:1px solid var(--border); }
   .journal-month-head:first-child{ margin-top:0; }
@@ -531,6 +534,13 @@
   .journal-entry-top{ display:flex; justify-content:space-between; align-items:center; margin-bottom:7px; }
   .journal-entry-date{ font-family:var(--mono); font-size:10.5px; color:var(--accent); }
   .journal-entry-text{ font-size:13.5px; line-height:1.55; color:var(--text); white-space:pre-wrap; }
+  .journal-entry.Health{ border-left-color:var(--cat-health); background:var(--cat-health-bg); }
+  .journal-entry.Finance{ border-left-color:var(--cat-finance); background:var(--cat-finance-bg); }
+  .journal-entry.Career{ border-left-color:var(--cat-career); background:var(--cat-career-bg); }
+  .journal-entry.Maintenance{ border-left-color:var(--cat-maintenance); background:var(--cat-maintenance-bg); }
+  .journal-entry.Growth{ border-left-color:var(--cat-growth); background:var(--cat-growth-bg); }
+  .journal-entry.Relationships{ border-left-color:var(--cat-relationships); background:var(--cat-relationships-bg); }
+  .journal-entry.Life{ border-left-color:var(--cat-life); background:var(--cat-life-bg); }
 
   /* ===== PEOPLE ===== */
   .people-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(230px,1fr)); gap:12px; margin-top:20px; }
@@ -708,7 +718,7 @@
 
       <div class="today-timeline">
         <div class="today-timeline-body">
-          <div class="today-timeline-row-labels"><span></span><span>habits</span><span>actions</span></div>
+          <div class="today-timeline-row-labels"><span></span><span>habits</span><span>actions</span><span>notes</span></div>
           <div class="today-timeline-main">
             <div class="today-timeline-unified" id="todayTimelineUnified">
               <div class="today-timeline-row">
@@ -716,6 +726,7 @@
               </div>
               <div class="today-timeline-row" id="todayTimelineHabitsTrack"></div>
               <div class="today-timeline-row" id="todayTimelineActionsTrack"></div>
+              <div class="today-timeline-row" id="todayTimelineNotesTrack"></div>
               <div class="today-timeline-now" id="todayTimelineNow"><span class="today-timeline-now-label" id="todayTimelineNowLabel"></span></div>
             </div>
             <div class="today-timeline-labels">
@@ -1067,9 +1078,20 @@
       </div>
       <div class="journal-composer">
         <div class="journal-composer-top">
-          <input type="date" id="journalDateInput">
+          <div class="journal-composer-meta">
+            <input type="date" id="journalDateInput">
+            <div class="time-pick-row">
+              <input type="time" id="journalTimeInput">
+              <button class="btn" id="journalTimePickBtn" type="button">pick ▾</button>
+            </div>
+            <div class="chip-select" id="journalAreaSelect">
+              <div class="chip-opt" data-ar="Health">✚ Health</div><div class="chip-opt" data-ar="Finance">$ Finance</div><div class="chip-opt sel" data-ar="Career">▲ Career</div>
+              <div class="chip-opt" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" data-ar="Growth">↑ Growth</div><div class="chip-opt" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" data-ar="Life">◐ Life</div>
+            </div>
+          </div>
           <button class="btn btn-accent" id="saveJournalBtn" type="button">+ add entry</button>
         </div>
+        <div class="time-pick-panel" id="journalTimePickPanel" hidden></div>
         <textarea id="journalTextInput" class="journal-textarea" placeholder="Write today's entry…" rows="3"></textarea>
       </div>
       <div id="journalEntries"></div>
@@ -1626,7 +1648,7 @@
     state.habits.sort(function(a,b){ return a.position - b.position; });
     state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null }; });
     state.actions.sort(function(a,b){ return a.position - b.position; });
-    state.journal = (results[4].data || []).map(function(r){ return { id:r.id, date:r.date, text:r.text }; });
+    state.journal = (results[4].data || []).map(function(r){ return { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null }; });
     state.people = (results[5].data || []).map(function(r){ return { id:r.id, name:r.name, relationship:r.relationship, contact:r.contact, notes:r.notes, position:r.position||0 }; });
     state.people.sort(function(a,b){ return a.position - b.position; });
     chatMessages = (results[6].data || []).map(function(r){ return { role:r.role, content:r.content }; });
@@ -1788,7 +1810,7 @@
   }
 
   [["goalPrioSelect","p"],["projectPrioSelect","p"],["habitPrioSelect","p"],["habitFreqSelect","f"],
-   ["actionPrioSelect","p"],["actionParentTypeSelect","pt"],["actionAreaSelect","ar"],["goalCatSelect","c"],["personRelSelect","r"],["tvTypeSelect","t"],["goalHealthLevelSelect","hl"],["habitTypeSelect","ty"],["habitAreaSelect","ar"]]
+   ["actionPrioSelect","p"],["actionParentTypeSelect","pt"],["actionAreaSelect","ar"],["goalCatSelect","c"],["personRelSelect","r"],["tvTypeSelect","t"],["goalHealthLevelSelect","hl"],["habitTypeSelect","ty"],["habitAreaSelect","ar"],["journalAreaSelect","ar"]]
    .forEach(function(pair){ wireChipSelect(document.getElementById(pair[0]), pair[1]); });
 
   /* ---------------- Stats ---------------- */
@@ -1937,6 +1959,14 @@
   function habitScheduleLabel(h){
     if(h.frequency === "weekly" && h.weekdays && h.weekdays.length) return "weekly · " + h.weekdays.join(", ");
     return h.frequency;
+  }
+  var WEEKDAY_ABBR = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  // Whether a habit's repetition pattern lands on the given date — "daily" always does, "weekly"
+  // only on its checked day(s) (none checked means it never lands, same as no schedule set), and
+  // "custom" has no day-of-week scheme defined yet so it's treated as landing every day for now.
+  function habitOccursOnDate(h, dateStr){
+    if(h.frequency === "weekly") return (h.weekdays || []).indexOf(WEEKDAY_ABBR[new Date(dateStr + "T00:00:00").getDay()]) !== -1;
+    return true;
   }
 
   function renderStats(){
@@ -3270,18 +3300,26 @@
 
   /* ---------------- Journal ---------------- */
   document.getElementById("journalDateInput").value = todayStr();
+  wireTimePicker("journalTimeInput", "journalTimePickBtn", "journalTimePickPanel");
   document.getElementById("saveJournalBtn").addEventListener("click", async function(){
     var date = document.getElementById("journalDateInput").value || todayStr();
     var text = document.getElementById("journalTextInput").value.trim();
     if(!text) return;
+    var payload = {
+      date: date, text: text,
+      time_of_day: document.getElementById("journalTimeInput").value || null,
+      category: chipValue(document.getElementById("journalAreaSelect"), "ar") || null
+    };
     this.disabled = true;
-    var res = await sb.from("journal").insert({ date: date, text: text }).select().single();
+    var res = await safeWrite(function(p){ return sb.from("journal").insert(p).select().single(); }, payload);
     this.disabled = false;
     if(res.error){ alert(res.error.message); return; }
     var r = res.data;
-    state.journal.push({ id:r.id, date:r.date, text:r.text });
+    state.journal.push({ id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null });
     document.getElementById("journalTextInput").value = "";
+    document.getElementById("journalTimeInput").value = "";
     renderAll();
+    warnDroppedFields(res.droppedFields);
   });
   function renderJournal(){
     var sorted = state.journal.slice().sort(function(a,b){ return b.date.localeCompare(a.date); });
@@ -3291,8 +3329,9 @@
       var monthKey = d.toLocaleDateString(undefined, { month:"long", year:"numeric" });
       var head = "";
       if(!monthsSeen[monthKey]){ monthsSeen[monthKey] = true; head = '<div class="journal-month-head">' + monthKey + '</div>'; }
-      return head + '<div class="journal-entry" data-kind="journal" data-id="' + entry.id + '">' +
-        '<div class="journal-entry-top"><span class="journal-entry-date">' + d.toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" }) + '</span>' +
+      var catClass = entry.category ? " " + entry.category : "";
+      return head + '<div class="journal-entry' + catClass + '" data-kind="journal" data-id="' + entry.id + '">' +
+        '<div class="journal-entry-top"><span class="journal-entry-date">' + d.toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" }) + (entry.timeOfDay ? " · " + fmtTimeOfDay(entry.timeOfDay) : "") + '</span>' +
         '<button class="icon-btn" data-action="del-journal" data-id="' + entry.id + '" aria-label="Delete entry">&times;</button></div>' +
         '<div class="journal-entry-text">' + escapeHtml(entry.text) + '</div>' +
       '</div>';
@@ -3978,7 +4017,7 @@
   function renderTodayTimelineHabits(){
     var track = document.getElementById("todayTimelineHabitsTrack");
     if(!track) return;
-    var timed = state.habits.filter(function(h){ return !!h.timeOfDay; });
+    var timed = state.habits.filter(function(h){ return !!h.timeOfDay && habitOccursOnDate(h, todaySelectedDate); });
     track.innerHTML = timed.map(function(h){
       var startFrac = timeToFraction(h.timeOfDay) * 100;
       var widthFrac = Math.max(1.2, ((h.durationMinutes || 15) / 1440) * 100);
@@ -4000,6 +4039,21 @@
       var catClass = cat ? " " + cat : "";
       return '<div class="timeline-block' + catClass + (a.done?' done':'') + '" data-kind="action" data-id="' + a.id + '" style="left:' + startFrac + '%; width:' + widthFrac + '%;" title="' + escapeHtml(a.title) + ' — ' + fmtTimeOfDay(a.timeOfDay) + '">' +
         '<span class="timeline-block-title">' + escapeHtml(a.title) + '</span>' +
+      '</div>';
+    }).join("");
+  }
+  // Notes are a point in time, not a span — no duration field, so every block is the same small
+  // fixed width, positioned by time_of_day like habits/actions.
+  function renderTodayTimelineNotes(){
+    var track = document.getElementById("todayTimelineNotesTrack");
+    if(!track) return;
+    var timed = state.journal.filter(function(n){ return n.date === todaySelectedDate && !!n.timeOfDay; });
+    track.innerHTML = timed.map(function(n){
+      var startFrac = timeToFraction(n.timeOfDay) * 100;
+      var catClass = n.category ? " " + n.category : "";
+      var preview = n.text.length > 60 ? n.text.slice(0, 60) + "…" : n.text;
+      return '<div class="timeline-block' + catClass + '" data-kind="journal" data-id="' + n.id + '" style="left:' + startFrac + '%; width:1.4%;" title="' + escapeHtml(preview) + ' — ' + fmtTimeOfDay(n.timeOfDay) + '">' +
+        '<span class="timeline-block-title">✎ ' + escapeHtml(preview) + '</span>' +
       '</div>';
     }).join("");
   }
@@ -4037,6 +4091,11 @@
         if(h) h.timeOfDay = newTime;
         var r = await safeUpdate("habits", id, { time_of_day: newTime });
         if(r.error) console.error(r.error); else warnDroppedFields(r.droppedFields);
+      } else if(kind === "journal"){
+        var n = state.journal.find(function(x){ return x.id === id; });
+        if(n) n.timeOfDay = newTime;
+        var r3 = await safeUpdate("journal", id, { time_of_day: newTime });
+        if(r3.error) console.error(r3.error); else warnDroppedFields(r3.droppedFields);
       } else {
         var a = state.actions.find(function(x){ return x.id === id; });
         if(a) a.timeOfDay = newTime;
@@ -4052,12 +4111,34 @@
   }
   wireTimelineLayerDrag("todayTimelineHabitsTrack", "habit");
   wireTimelineLayerDrag("todayTimelineActionsTrack", "action");
+  wireTimelineLayerDrag("todayTimelineNotesTrack", "journal");
+
+  // Clicking empty space in the notes row (not an existing block, which is handled by the drag
+  // wiring above) quick-creates a note at that time on whichever day the Today page is showing.
+  document.getElementById("todayTimelineNotesTrack").addEventListener("click", async function(e){
+    if(e.target.closest(".timeline-block")) return;
+    var rect = this.getBoundingClientRect();
+    var x = Math.min(rect.width, Math.max(0, e.clientX - rect.left));
+    var totalMin = Math.round(((x / rect.width) * 1440) / 5) * 5;
+    var newTime = minutesToTime(totalMin);
+    var text = prompt("New note at " + fmtTimeOfDay(newTime) + ":");
+    if(!text || !text.trim()) return;
+    var payload = { date: todaySelectedDate, text: text.trim(), time_of_day: newTime, category: null };
+    var res = await safeWrite(function(p){ return sb.from("journal").insert(p).select().single(); }, payload);
+    if(res.error){ alert(res.error.message); return; }
+    var r = res.data;
+    state.journal.push({ id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null });
+    renderToday();
+    renderJournal();
+    warnDroppedFields(res.droppedFields);
+  });
 
   function renderToday(){
     if(activeSection !== "today") return;
     renderTodayTimeline();
     renderTodayTimelineHabits();
     renderTodayTimelineActions();
+    renderTodayTimelineNotes();
     document.getElementById("todayDateLabel").textContent = fmtDateLong(todaySelectedDate) + (todaySelectedDate === todayStr() ? " (today)" : "");
 
     // Active projects grid is removed from the page for now — guarded rather than deleted so it's
