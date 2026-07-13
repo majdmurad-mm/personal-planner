@@ -1056,7 +1056,10 @@
           <h1>tracker</h1>
           <p class="subhead">Daily variables you track over time — mood, sleep, water, whatever moves the needle — laid out like a spreadsheet.</p>
         </div>
-        <button class="btn btn-accent" id="openTrackerVarsModalBtn" type="button">+ manage variables</button>
+        <div>
+          <button class="btn" id="cleanupDuplicateVarsBtn" type="button" style="display:none;">clean up duplicate trackers</button>
+          <button class="btn btn-accent" id="openTrackerVarsModalBtn" type="button">+ manage variables</button>
+        </div>
       </div>
 
       <div class="cal-toolbar">
@@ -1289,6 +1292,7 @@
         <div class="chip-opt" data-wd="Mon">Mon</div><div class="chip-opt" data-wd="Tue">Tue</div><div class="chip-opt" data-wd="Wed">Wed</div><div class="chip-opt" data-wd="Thu">Thu</div>
         <div class="chip-opt" data-wd="Fri">Fri</div><div class="chip-opt" data-wd="Sat">Sat</div><div class="chip-opt" data-wd="Sun">Sun</div>
       </div></div>
+      <div class="field" id="habitCustomIntervalField" style="display:none;"><label for="habitCustomIntervalInput">repeat every N days (from when it's created)</label><input type="number" min="1" step="1" id="habitCustomIntervalInput" placeholder="e.g. 3"></div>
       <div class="field-row">
         <div class="field"><label>tracking type</label><div class="chip-select" id="habitTypeSelect">
           <div class="chip-opt sel" data-ty="boolean">yes/no</div><div class="chip-opt" data-ty="number">number</div><div class="chip-opt" data-ty="scale">scale</div><div class="chip-opt" data-ty="text">text</div>
@@ -1350,6 +1354,31 @@
       <div class="field"><label for="personContactInput">contact (optional)</label><input type="text" id="personContactInput" placeholder="email, phone, or handle"></div>
       <div class="field"><label for="personNotesInput">notes</label><textarea id="personNotesInput" rows="3" placeholder="Anything worth remembering…"></textarea></div>
       <div class="modal-actions"><button class="btn" id="cancelPersonModalBtn" type="button">cancel</button><button class="btn btn-accent" id="savePersonBtn" type="button">save person</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== JOURNAL ENTRY MODAL ===== -->
+<div class="modal-overlay" id="journalModalOverlay" hidden>
+  <div class="modal">
+    <div class="modal-head"><span class="dot g"></span><h2>edit_note.json</h2></div>
+    <div class="modal-inner">
+      <div class="field-row">
+        <div class="field"><label for="journalEditDateInput">date</label><input type="date" id="journalEditDateInput"></div>
+        <div class="field"><label for="journalEditTimeInput">time (optional)</label>
+          <div class="time-pick-row">
+            <input type="time" id="journalEditTimeInput">
+            <button class="btn" id="journalEditTimePickBtn" type="button">pick ▾</button>
+          </div>
+          <div class="time-pick-panel" id="journalEditTimePickPanel" hidden></div>
+        </div>
+      </div>
+      <div class="field"><label>area</label><div class="chip-select" id="journalEditAreaSelect">
+        <div class="chip-opt" data-ar="Health">✚ Health</div><div class="chip-opt" data-ar="Finance">$ Finance</div><div class="chip-opt sel" data-ar="Career">▲ Career</div>
+        <div class="chip-opt" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" data-ar="Growth">↑ Growth</div><div class="chip-opt" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" data-ar="Life">◐ Life</div>
+      </div></div>
+      <div class="field"><label for="journalEditTextInput">note</label><textarea id="journalEditTextInput" class="journal-textarea" rows="5"></textarea></div>
+      <div class="modal-actions"><button class="btn" id="cancelJournalModalBtn" type="button">cancel</button><button class="btn btn-accent" id="saveJournalEditBtn" type="button">save note</button></div>
     </div>
   </div>
 </div>
@@ -1534,7 +1563,8 @@
     icon: "icon image", position: "custom order",
     whiteboard_x: "whiteboard position", whiteboard_y: "whiteboard position",
     weekdays: "habit day selection", tracker_variable_id: "habit's tracker link", time_of_day: "scheduled time",
-    duration_minutes: "duration", category: "area", skip_dates: "skipped habit days"
+    duration_minutes: "duration", category: "area", skip_dates: "skipped habit days",
+    categories: "area(s)", custom_interval_days: "custom repeat interval"
   };
   function warnDroppedFields(dropped){
     if(!dropped || !dropped.length) return;
@@ -1731,9 +1761,9 @@
     // the migration runs and real position values exist.
     state.goals = (results[0].data || []).map(function(r){ return { id:r.id, title:r.title, priority:r.priority, category:r.category, due:r.due, ongoing:r.ongoing, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null) }; });
     state.goals.sort(function(a,b){ return a.position - b.position; });
-    state.projects = (results[1].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null) }; });
+    state.projects = (results[1].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), categories:r.categories||[] }; });
     state.projects.sort(function(a,b){ return a.position - b.position; });
-    state.habits = (results[2].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || null, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [] }; });
+    state.habits = (results[2].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || null, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [], customIntervalDays:r.custom_interval_days||null }; });
     state.habits.sort(function(a,b){ return a.position - b.position; });
     state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null }; });
     state.actions.sort(function(a,b){ return a.position - b.position; });
@@ -1900,7 +1930,7 @@
   }
 
   [["goalPrioSelect","p"],["projectPrioSelect","p"],["habitPrioSelect","p"],["habitFreqSelect","f"],
-   ["actionPrioSelect","p"],["actionParentTypeSelect","pt"],["actionAreaSelect","ar"],["goalCatSelect","c"],["personRelSelect","r"],["tvTypeSelect","t"],["goalHealthLevelSelect","hl"],["habitTypeSelect","ty"],["habitAreaSelect","ar"],["journalAreaSelect","ar"]]
+   ["actionPrioSelect","p"],["actionParentTypeSelect","pt"],["actionAreaSelect","ar"],["goalCatSelect","c"],["personRelSelect","r"],["tvTypeSelect","t"],["goalHealthLevelSelect","hl"],["habitTypeSelect","ty"],["habitAreaSelect","ar"],["journalAreaSelect","ar"],["journalEditAreaSelect","ar"]]
    .forEach(function(pair){ wireChipSelect(document.getElementById(pair[0]), pair[1]); });
 
   /* ---------------- Stats ---------------- */
@@ -2054,21 +2084,28 @@
   }
   function habitScheduleLabel(h){
     if(h.frequency === "weekly" && h.weekdays && h.weekdays.length) return "weekly · " + h.weekdays.join(", ");
+    if(h.frequency === "custom") return "every " + (h.customIntervalDays || 1) + " day" + ((h.customIntervalDays||1) === 1 ? "" : "s");
     return h.frequency;
   }
   var WEEKDAY_ABBR = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
   // Whether a habit's repetition pattern lands on the given date — "daily" always does, "weekly"
   // only on its checked day(s) (none checked means it never lands, same as no schedule set), and
-  // "custom" has no day-of-week scheme defined yet so it's treated as landing every day for now.
-  // A habit never occurs before the day it was created — its recurrence starts from creation
-  // onwards, not retroactively (matters most on the Timeline page, which can be scrolled decades
-  // into the past). Individual dates can also be explicitly skipped (see skipHabitInstance) without
-  // touching the habit's own pattern — that's what "delete" means for a single day's instance shown
-  // on Today/Timeline, as opposed to deleting the habit itself from the Planner tab.
+  // "custom" repeats every customIntervalDays days counted from the habit's own creation date (day
+  // 0 — the creation day itself — always counts). A habit never occurs before the day it was
+  // created — its recurrence starts from creation onwards, not retroactively (matters most on the
+  // Timeline page, which can be scrolled decades into the past). Individual dates can also be
+  // explicitly skipped (see skipHabitInstance) without touching the habit's own pattern — that's
+  // what "delete" means for a single day's instance shown on Today/Timeline, as opposed to deleting
+  // the habit itself from the Planner tab.
   function habitOccursOnDate(h, dateStr){
     if(h.createdAt && dateStr < h.createdAt) return false;
     if(h.skipDates && h.skipDates.indexOf(dateStr) !== -1) return false;
     if(h.frequency === "weekly") return (h.weekdays || []).indexOf(WEEKDAY_ABBR[new Date(dateStr + "T00:00:00").getDay()]) !== -1;
+    if(h.frequency === "custom" && h.createdAt){
+      var interval = h.customIntervalDays || 1;
+      var daysSince = Math.round((new Date(dateStr + "T00:00:00") - new Date(h.createdAt + "T00:00:00")) / 86400000);
+      return daysSince % interval === 0;
+    }
     return true;
   }
 
@@ -2260,7 +2297,7 @@
     });
   }
   function habitPayload(snapshot){
-    return { id:snapshot.id, goal_id:snapshot.goalId, title:snapshot.title, priority:snapshot.priority, frequency:snapshot.frequency, weekdays:snapshot.weekdays, tracker_variable_id:snapshot.trackerVariableId, time_of_day:snapshot.timeOfDay, duration_minutes:snapshot.durationMinutes, days:snapshot.days, position:snapshot.position, skip_dates:snapshot.skipDates, created_at:snapshot.createdAt };
+    return { id:snapshot.id, goal_id:snapshot.goalId, title:snapshot.title, priority:snapshot.priority, frequency:snapshot.frequency, weekdays:snapshot.weekdays, tracker_variable_id:snapshot.trackerVariableId, time_of_day:snapshot.timeOfDay, duration_minutes:snapshot.durationMinutes, days:snapshot.days, position:snapshot.position, skip_dates:snapshot.skipDates, created_at:snapshot.createdAt, custom_interval_days:snapshot.customIntervalDays };
   }
   async function deleteHabit(id){
     // Full deletion of the habit definition itself — only reachable from the Planner tab's own
@@ -2424,7 +2461,8 @@
     project: editProject,
     habit: editHabit,
     "habit-instance": editHabit,
-    action: editAction
+    action: editAction,
+    journal: editJournalEntry
   };
   var globalCtxTarget = null;
   function openGlobalCtxMenu(x, y, kind, id, date){
@@ -2596,7 +2634,9 @@
   function computeAreaData(cat){
     var goals = state.goals.filter(function(g){ return g.category === cat; });
     var goalIds = {}; goals.forEach(function(g){ goalIds[g.id] = true; });
-    var projects = state.projects.filter(function(p){ return p.goalId && goalIds[p.goalId]; });
+    // A project belongs here if this area is among its own (possibly multiple) areas — not just via
+    // a linked goal — so a goal-less project with its own area now shows up too.
+    var projects = state.projects.filter(function(p){ return projectCategories(p).indexOf(cat) !== -1; });
     var habits = state.habits.filter(function(h){ return h.goalId && goalIds[h.goalId]; });
     var projectIds = {}; projects.forEach(function(p){ projectIds[p.id] = true; });
     var actions = state.actions.filter(function(a){
@@ -2688,7 +2728,7 @@
     // Parentless projects/habits have no goal to trace an area back through. Actions count as
     // uncategorized if they sit directly on no parent, or on a project that is itself uncategorized —
     // otherwise they're already covered above via their (categorized) parent project.
-    var uProjects = state.projects.filter(function(p){ return !p.goalId; });
+    var uProjects = state.projects.filter(function(p){ return !projectCategories(p).length; });
     var uHabits = state.habits.filter(function(h){ return !h.goalId; });
     var uActions = state.actions.filter(function(a){
       if(a.parentType === "project") return !categorizedProjectIds[a.parentId];
@@ -2720,6 +2760,18 @@
   }
 
   /* ---------------- Projects ---------------- */
+  // A project's own area(s) — it can span more than one, set from the modal's multi-area picker —
+  // falling back to its linked goal's single category for projects saved before this existed (or
+  // ones that were never given an area of their own and have no goal either, which resolve to []).
+  function projectCategories(p){
+    if(p.categories && p.categories.length) return p.categories;
+    var g = p.goalId ? goalById(p.goalId) : null;
+    return g ? [g.category] : [];
+  }
+  function projectCategory(p){
+    var cats = projectCategories(p);
+    return cats.length ? cats[0] : null;
+  }
   function renderProjects(){
     var f = filters.projects;
     var list = state.projects.filter(function(p){
@@ -2740,7 +2792,8 @@
       if(!items.length) return "";
       var tiles = items.map(function(p){
         var overdue = !p.done && p.due && p.due < todayStr();
-        return '<div class="ms-tile" data-kind="project" data-id="' + p.id + '">' +
+        var cat = projectCategory(p);
+        return '<div class="ms-tile' + (cat ? ' ' + cat : '') + '" data-kind="project" data-id="' + p.id + '">' +
           '<div class="ms-tile-top">' +
             '<button class="ms-check' + (p.done?' done':'') + '" data-action="toggle-proj" data-id="' + p.id + '" aria-label="Toggle done"></button>' +
             '<span class="ms-tile-title' + (p.done?' done':'') + '">' + escapeHtml(p.title) + '</span>' +
@@ -2764,7 +2817,8 @@
       var g = goalById(p.goalId);
       var overdue = !p.done && p.due && p.due < todayStr();
       var health = projectHealth(p);
-      return '<div class="goal-card" data-kind="project" data-id="' + p.id + '" draggable="true">' +
+      var cat = projectCategory(p);
+      return '<div class="goal-card' + (cat ? ' ' + cat : '') + '" data-kind="project" data-id="' + p.id + '" draggable="true">' +
         '<div class="card-tab">' +
           '<span class="prio-badge ' + p.priority + '">' + p.priority + '</span><span class="sep">·</span>' +
           '<span class="parent-tag">' + (g ? 'goal: <b>' + escapeHtml(g.title) + '</b>' : 'standalone') + '</span>' +
@@ -2773,7 +2827,7 @@
         '</div>' +
         '<div class="card-body">' +
           '<div class="goal-body-head">' +
-            (p.icon ? iconMaskHtml("entity-icon-img", p.icon, g ? g.category : null) : '') +
+            (p.icon ? iconMaskHtml("entity-icon-img", p.icon, cat) : '') +
             '<h3 class="goal-title' + (p.done?' completed':'') + '" style="' + (p.done?'color:var(--text-faint);text-decoration:line-through;':'') + '">' + escapeHtml(p.title) + '</h3>' +
             '<div class="entity-actions">' +
               '<button class="icon-btn toggle" data-action="toggle-proj" data-id="' + p.id + '" aria-label="Toggle done">' + (p.done?'↺':'✓') + '</button>' +
@@ -3202,8 +3256,7 @@
   }
   function wbNodeHtml(type, item, index){
     var pos = wbNodePosition(item, index);
-    var linkedGoal = type === "project" ? goalById(item.goalId) : null;
-    var category = type === "goal" ? item.category : (linkedGoal ? linkedGoal.category : null);
+    var category = type === "goal" ? item.category : projectCategory(item);
     var health = type === "goal" ? goalHealth(item) : projectHealth(item);
     var initial = (item.title || "?").trim().charAt(0).toUpperCase() || "?";
     return '<div class="wb-goal-node' + (category ? " " + category : "") + (type === "project" ? " is-project" : "") + '" data-type="' + type + '" data-id="' + item.id + '" style="left:' + pos.x + 'px; top:' + pos.y + 'px;">' +
@@ -3579,7 +3632,10 @@
       var catClass = entry.category ? " " + entry.category : "";
       return head + '<div class="journal-entry' + catClass + '" data-kind="journal" data-id="' + entry.id + '">' +
         '<div class="journal-entry-top"><span class="journal-entry-date">' + d.toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" }) + (entry.timeOfDay ? " · " + fmtTimeOfDay(entry.timeOfDay) : "") + '</span>' +
-        '<button class="icon-btn" data-action="del-journal" data-id="' + entry.id + '" aria-label="Delete entry">&times;</button></div>' +
+        '<div class="entity-actions">' +
+          '<button class="icon-btn edit" data-action="edit-journal" data-id="' + entry.id + '" aria-label="Edit entry">✎</button>' +
+          '<button class="icon-btn" data-action="del-journal" data-id="' + entry.id + '" aria-label="Delete entry">&times;</button>' +
+        '</div></div>' +
         '<div class="journal-entry-text">' + escapeHtml(entry.text) + '</div>' +
       '</div>';
     }).join("");
@@ -3587,9 +3643,48 @@
     document.getElementById("journalEmptyState").style.display = sorted.length ? "none" : "";
   }
   document.getElementById("journalEntries").addEventListener("click", async function(e){
+    var editBtn = e.target.closest('[data-action="edit-journal"]');
+    if(editBtn){ editJournalEntry(editBtn.dataset.id); return; }
     var del = e.target.closest('[data-action="del-journal"]');
-    if(!del) return;
-    await deleteJournalEntry(del.dataset.id);
+    if(del) await deleteJournalEntry(del.dataset.id);
+  });
+
+  // Journal entry edit modal — same field set as the composer (date/time/area/text), opened via the
+  // entry list's edit button or the generic right-click menu (EDIT_HANDLERS.journal).
+  var editingJournalId = null;
+  wireTimePicker("journalEditTimeInput", "journalEditTimePickBtn", "journalEditTimePickPanel");
+  function editJournalEntry(id){
+    var n = state.journal.find(function(x){ return x.id === id; });
+    if(!n) return;
+    editingJournalId = id;
+    document.getElementById("journalEditDateInput").value = n.date || todayStr();
+    document.getElementById("journalEditTimeInput").value = n.timeOfDay || "";
+    setChip(document.getElementById("journalEditAreaSelect"), "ar", n.category || "Career");
+    document.getElementById("journalEditTextInput").value = n.text || "";
+    document.getElementById("journalEditTimePickPanel").hidden = true;
+    openModal("journalModalOverlay");
+    document.getElementById("journalEditTextInput").focus();
+  }
+  document.getElementById("cancelJournalModalBtn").addEventListener("click", function(){ closeModal("journalModalOverlay"); });
+  document.getElementById("saveJournalEditBtn").addEventListener("click", async function(){
+    if(!editingJournalId) return;
+    var text = document.getElementById("journalEditTextInput").value.trim();
+    if(!text) return;
+    var payload = {
+      date: document.getElementById("journalEditDateInput").value || todayStr(),
+      text: text,
+      time_of_day: document.getElementById("journalEditTimeInput").value || null,
+      category: chipValue(document.getElementById("journalEditAreaSelect"), "ar") || null
+    };
+    this.disabled = true;
+    var res = await safeUpdate("journal", editingJournalId, payload);
+    this.disabled = false;
+    if(res.error){ alert(res.error.message); return; }
+    var r = res.data;
+    var idx = state.journal.findIndex(function(x){ return x.id === editingJournalId; });
+    if(idx !== -1) state.journal[idx] = { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null };
+    renderAll(); closeModal("journalModalOverlay");
+    warnDroppedFields(res.droppedFields);
   });
 
   /* ---------------- People ---------------- */
@@ -3721,7 +3816,61 @@
     }).join("");
 
     table.innerHTML = head + rows;
+
+    var dupBtn = document.getElementById("cleanupDuplicateVarsBtn");
+    if(dupBtn){
+      var dups = findDuplicateHabitTrackerVars();
+      dupBtn.style.display = dups.length ? "" : "none";
+      dupBtn.textContent = "clean up " + dups.length + " duplicate tracker" + (dups.length===1?"":"s");
+    }
   }
+  // Tracker variables that were auto-created for a habit but are no longer linked to any habit
+  // (habits.tracker_variable_id), and whose name still matches a habit's title — near-certain
+  // leftover duplicates from before the habit save flow was hardened against creating a second
+  // tracker_variables row for the same habit on every edit.
+  function findDuplicateHabitTrackerVars(){
+    var linkedIds = {};
+    state.habits.forEach(function(h){ if(h.trackerVariableId) linkedIds[h.trackerVariableId] = true; });
+    var habitTitles = {};
+    state.habits.forEach(function(h){ habitTitles[h.title.trim().toLowerCase()] = true; });
+    return state.trackerVars.filter(function(v){
+      return !linkedIds[v.id] && habitTitles[(v.name||"").trim().toLowerCase()];
+    });
+  }
+  document.getElementById("cleanupDuplicateVarsBtn").addEventListener("click", async function(){
+    var dups = findDuplicateHabitTrackerVars();
+    if(!dups.length) return;
+    var names = dups.map(function(v){ return v.name; }).join(", ");
+    if(!confirm("Delete " + dups.length + " unlinked tracker variable" + (dups.length===1?"":"s") + " that duplicate a habit name (" + names + ")? Their values will be deleted too. This can be undone with Ctrl+Z.")) return;
+    var snapshots = dups.map(function(v){ return Object.assign({}, v); });
+    var entrySnapshots = {};
+    dups.forEach(function(v){
+      entrySnapshots[v.id] = state.trackerEntries.filter(function(e){ return e.variableId === v.id; }).map(function(e){ return Object.assign({}, e); });
+    });
+    var dupIds = dups.map(function(v){ return v.id; });
+    state.trackerVars = state.trackerVars.filter(function(v){ return dupIds.indexOf(v.id) === -1; });
+    state.trackerEntries = state.trackerEntries.filter(function(e){ return dupIds.indexOf(e.variableId) === -1; });
+    renderAll();
+    for(var i=0;i<dupIds.length;i++){
+      var r = await sb.from("tracker_variables").delete().eq("id", dupIds[i]);
+      if(r.error) console.error(r.error);
+    }
+    pushUndo("delete " + dups.length + " duplicate tracker variable" + (dups.length===1?"":"s"), async function(){
+      for(var i2=0;i2<snapshots.length;i2++){
+        var vSnapshot = snapshots[i2];
+        var rvi = await sb.from("tracker_variables").insert({ id:vSnapshot.id, name:vSnapshot.name, type:vSnapshot.type, unit:vSnapshot.unit, scale_max:vSnapshot.scaleMax, categories:vSnapshot.categories, position:vSnapshot.position }).select().single();
+        if(rvi.error){ console.error(rvi.error); continue; }
+        state.trackerVars.push(vSnapshot);
+        var ents = entrySnapshots[vSnapshot.id] || [];
+        for(var j=0;j<ents.length;j++){
+          var es = ents[j];
+          var rei = await sb.from("tracker_entries").insert({ id:es.id, date:es.date, variable_id:es.variableId, value:es.value }).select().single();
+          if(!rei.error) state.trackerEntries.push(es);
+        }
+      }
+      renderAll();
+    });
+  });
 
   async function trackerSaveValue(variableId, date, rawValue){
     var existing = trackerEntryFor(variableId, date);
@@ -4753,9 +4902,10 @@
       }).join("");
     }
 
-    // Earliest-to-latest by time of day; untimed habits sort after every timed one, then fall
-    // back to their manual drag order among themselves.
-    var habits = state.habits.slice().sort(function(x,y){
+    // Only habits actually scheduled for this day (same rule the Today timeline and the Timeline
+    // page already use) — earliest-to-latest by time of day, untimed habits after every timed one,
+    // then falling back to their manual drag order among themselves.
+    var habits = state.habits.filter(function(h){ return habitOccursOnDate(h, todaySelectedDate); }).sort(function(x,y){
       if(x.timeOfDay && y.timeOfDay) return x.timeOfDay < y.timeOfDay ? -1 : (x.timeOfDay > y.timeOfDay ? 1 : 0);
       if(x.timeOfDay && !y.timeOfDay) return -1;
       if(!x.timeOfDay && y.timeOfDay) return 1;
@@ -4902,17 +5052,21 @@
     }, required:["id"] } },
     { name:"create_project", description:"Create a new project, optionally attached to a goal.", input_schema:{ type:"object", properties:{
       title:{ type:"string" }, goal_id:{ type:"string", description:"id of the parent goal, omit for no parent" },
-      priority:{ type:"string", enum:PRIORITIES }, due:{ type:"string" }, hours:{ type:"number" }
+      priority:{ type:"string", enum:PRIORITIES }, due:{ type:"string" }, hours:{ type:"number" },
+      categories:{ type:"array", items:{ type:"string", enum:CATEGORIES }, description:"the project's own area(s) — a project can span more than one; omit to fall back to the parent goal's area" }
     }, required:["title","priority"] } },
     { name:"edit_project", description:"Edit an existing project by id.", input_schema:{ type:"object", properties:{
       id:{ type:"string" }, title:{ type:"string" }, goal_id:{ type:"string" }, priority:{ type:"string", enum:PRIORITIES },
-      due:{ type:"string" }, hours:{ type:"number" }, done:{ type:"boolean" }
+      due:{ type:"string" }, hours:{ type:"number" }, done:{ type:"boolean" },
+      categories:{ type:"array", items:{ type:"string", enum:CATEGORIES } }
     }, required:["id"] } },
     { name:"create_habit", description:"Create a new recurring habit, optionally attached to a goal.", input_schema:{ type:"object", properties:{
-      title:{ type:"string" }, goal_id:{ type:"string" }, priority:{ type:"string", enum:PRIORITIES }, frequency:{ type:"string", enum:["daily","weekly"] }
+      title:{ type:"string" }, goal_id:{ type:"string" }, priority:{ type:"string", enum:PRIORITIES }, frequency:{ type:"string", enum:["daily","weekly","custom"] },
+      custom_interval_days:{ type:"number", description:"required when frequency is custom — repeat every N days from creation" }
     }, required:["title","priority","frequency"] } },
     { name:"edit_habit", description:"Edit an existing habit by id.", input_schema:{ type:"object", properties:{
-      id:{ type:"string" }, title:{ type:"string" }, goal_id:{ type:"string" }, priority:{ type:"string", enum:PRIORITIES }, frequency:{ type:"string", enum:["daily","weekly"] }
+      id:{ type:"string" }, title:{ type:"string" }, goal_id:{ type:"string" }, priority:{ type:"string", enum:PRIORITIES }, frequency:{ type:"string", enum:["daily","weekly","custom"] },
+      custom_interval_days:{ type:"number" }
     }, required:["id"] } },
     { name:"create_action", description:"Create a new quick, single-shot action, optionally attached to a goal or project.", input_schema:{ type:"object", properties:{
       title:{ type:"string" }, type:{ type:"string", enum:ACTION_TYPES }, priority:{ type:"string", enum:PRIORITIES },
@@ -4944,11 +5098,11 @@
     lines.push("Current goals (id | title | priority | category | due | ongoing):");
     state.goals.forEach(function(g){ lines.push("- " + g.id + " | " + g.title + " | " + g.priority + " | " + g.category + " | " + (g.due||"—") + " | " + (g.ongoing?"ongoing":"has end date")); });
     lines.push("");
-    lines.push("Current projects (id | title | goalId | priority | due | hours | done):");
-    state.projects.forEach(function(p){ lines.push("- " + p.id + " | " + p.title + " | " + (p.goalId||"none") + " | " + p.priority + " | " + (p.due||"—") + " | " + p.hours + "h | " + (p.done?"done":"open")); });
+    lines.push("Current projects (id | title | goalId | priority | due | hours | done | categories):");
+    state.projects.forEach(function(p){ lines.push("- " + p.id + " | " + p.title + " | " + (p.goalId||"none") + " | " + p.priority + " | " + (p.due||"—") + " | " + p.hours + "h | " + (p.done?"done":"open") + " | " + (p.categories && p.categories.length ? p.categories.join(",") : "none")); });
     lines.push("");
     lines.push("Current habits (id | title | goalId | priority | frequency):");
-    state.habits.forEach(function(h){ lines.push("- " + h.id + " | " + h.title + " | " + (h.goalId||"none") + " | " + h.priority + " | " + h.frequency); });
+    state.habits.forEach(function(h){ lines.push("- " + h.id + " | " + h.title + " | " + (h.goalId||"none") + " | " + h.priority + " | " + h.frequency + (h.frequency==="custom" ? " (every " + (h.customIntervalDays||1) + " days)" : "")); });
     lines.push("");
     lines.push("Current actions (id | title | type | priority | parentType | parentId | date | done):");
     state.actions.forEach(function(a){ lines.push("- " + a.id + " | " + a.title + " | " + a.type + " | " + a.priority + " | " + a.parentType + " | " + (a.parentId||"—") + " | " + (a.date||"—") + " | " + (a.done?"done":"open")); });
@@ -4982,10 +5136,10 @@
         renderAll(); return { ok:true };
       }
       if(name === "create_project"){
-        var res3 = await safeInsert("projects", { goal_id: input.goal_id || null, title:input.title, priority:input.priority, due: input.due || null, hours: input.hours || 0, done:false }, state.projects);
+        var res3 = await safeInsert("projects", { goal_id: input.goal_id || null, title:input.title, priority:input.priority, due: input.due || null, hours: input.hours || 0, done:false, categories: input.categories || [] }, state.projects);
         if(res3.error) return { error: res3.error.message };
         var r3 = res3.data;
-        state.projects.push({ id:r3.id, goalId:r3.goal_id, title:r3.title, priority:r3.priority, due:r3.due, hours:Number(r3.hours), done:r3.done, position:r3.position||0, healthOverride:null, healthPctOverride:null, icon:null, wbX:null, wbY:null });
+        state.projects.push({ id:r3.id, goalId:r3.goal_id, title:r3.title, priority:r3.priority, due:r3.due, hours:Number(r3.hours), done:r3.done, position:r3.position||0, healthOverride:null, healthPctOverride:null, icon:null, wbX:null, wbY:null, categories:r3.categories||[] });
         renderAll(); return { ok:true, id:r3.id };
       }
       if(name === "edit_project"){
@@ -4998,11 +5152,19 @@
         if(input.due !== undefined) pp.due = input.due || null;
         if(input.hours !== undefined) pp.hours = input.hours;
         if(input.done !== undefined) pp.done = input.done;
+        if(input.categories !== undefined) pp.categories = input.categories;
         var res4 = await sb.from("projects").update(pp).eq("id", input.id).select().single();
         if(res4.error) return { error: res4.error.message };
         var r4 = res4.data;
+        // Merge field-by-field onto the existing object rather than replacing it outright — a full
+        // replacement here would silently wipe position/health/icon/whiteboard-position/categories
+        // on every agent-driven edit (this was a pre-existing bug fixed while adding categories).
         var i4 = state.projects.findIndex(function(x){ return x.id === input.id; });
-        if(i4 !== -1) state.projects[i4] = { id:r4.id, goalId:r4.goal_id, title:r4.title, priority:r4.priority, due:r4.due, hours:Number(r4.hours), done:r4.done };
+        if(i4 !== -1){
+          state.projects[i4].goalId = r4.goal_id; state.projects[i4].title = r4.title; state.projects[i4].priority = r4.priority;
+          state.projects[i4].due = r4.due; state.projects[i4].hours = Number(r4.hours); state.projects[i4].done = r4.done;
+          state.projects[i4].categories = r4.categories || [];
+        }
         renderAll(); return { ok:true };
       }
       if(name === "create_habit"){
@@ -5013,10 +5175,10 @@
           state.trackerVars.push({ id:hv.id, name:hv.name, type:hv.type, unit:hv.unit, scaleMax:hv.scale_max, categories:hv.categories||[], position:hv.position });
           habitVarId = hv.id;
         }
-        var res5 = await safeInsert("habits", { goal_id: input.goal_id || null, title:input.title, priority:input.priority, frequency:input.frequency, tracker_variable_id: habitVarId, days:{} }, state.habits);
+        var res5 = await safeInsert("habits", { goal_id: input.goal_id || null, title:input.title, priority:input.priority, frequency:input.frequency, tracker_variable_id: habitVarId, days:{}, custom_interval_days: input.frequency === "custom" ? Math.max(1, Math.round(input.custom_interval_days) || 1) : null }, state.habits);
         if(res5.error) return { error: res5.error.message };
         var r5 = res5.data;
-        state.habits.push({ id:r5.id, goalId:r5.goal_id, title:r5.title, priority:r5.priority, frequency:r5.frequency, weekdays:r5.weekdays || [], trackerVariableId:r5.tracker_variable_id || habitVarId, timeOfDay:r5.time_of_day ? r5.time_of_day.slice(0,5) : null, durationMinutes:r5.duration_minutes||null, days:r5.days || {}, position:r5.position||0, createdAt:r5.created_at ? r5.created_at.slice(0,10) : null, skipDates:r5.skip_dates || [] });
+        state.habits.push({ id:r5.id, goalId:r5.goal_id, title:r5.title, priority:r5.priority, frequency:r5.frequency, weekdays:r5.weekdays || [], trackerVariableId:r5.tracker_variable_id || habitVarId, timeOfDay:r5.time_of_day ? r5.time_of_day.slice(0,5) : null, durationMinutes:r5.duration_minutes||null, days:r5.days || {}, position:r5.position||0, createdAt:r5.created_at ? r5.created_at.slice(0,10) : null, skipDates:r5.skip_dates || [], customIntervalDays:r5.custom_interval_days||null });
         renderAll(); return { ok:true, id:r5.id };
       }
       if(name === "edit_habit"){
@@ -5027,11 +5189,12 @@
         if(input.goal_id !== undefined) hp.goal_id = input.goal_id || null;
         if(input.priority !== undefined) hp.priority = input.priority;
         if(input.frequency !== undefined) hp.frequency = input.frequency;
+        if(input.custom_interval_days !== undefined) hp.custom_interval_days = input.custom_interval_days;
         var res6 = await sb.from("habits").update(hp).eq("id", input.id).select().single();
         if(res6.error) return { error: res6.error.message };
         var r6 = res6.data;
         var i6 = state.habits.findIndex(function(x){ return x.id === input.id; });
-        if(i6 !== -1){ state.habits[i6].title = r6.title; state.habits[i6].goalId = r6.goal_id; state.habits[i6].priority = r6.priority; state.habits[i6].frequency = r6.frequency; }
+        if(i6 !== -1){ state.habits[i6].title = r6.title; state.habits[i6].goalId = r6.goal_id; state.habits[i6].priority = r6.priority; state.habits[i6].frequency = r6.frequency; state.habits[i6].customIntervalDays = r6.custom_interval_days||null; }
         if(input.title !== undefined && h.trackerVariableId){
           var vUpd = await sb.from("tracker_variables").update({ name: input.title }).eq("id", h.trackerVariableId);
           if(!vUpd.error){
@@ -5343,7 +5506,12 @@
     document.getElementById("projectHoursInput").value = editProjectObj ? editProjectObj.hours : "";
     var goalToSelect = editProjectObj ? (editProjectObj.goalId || "") : (presetGoalId || "");
     var goalForArea = goalToSelect ? goalById(goalToSelect) : null;
-    setMultiChip(document.getElementById("projectAreaSelect"), "ar", goalForArea ? [goalForArea.category] : CATEGORIES.slice());
+    // An existing project's own saved area(s) win; otherwise seed from the parent goal (or every
+    // area, unfiltered, if there's neither) — same as before, just no longer discarded on save.
+    var initialAreas = (editProjectObj && editProjectObj.categories && editProjectObj.categories.length)
+      ? editProjectObj.categories
+      : (goalForArea ? [goalForArea.category] : CATEGORIES.slice());
+    setMultiChip(document.getElementById("projectAreaSelect"), "ar", initialAreas);
     fillProjectGoalSelect();
     document.getElementById("projectGoalSelect").value = goalToSelect;
     setChip(document.getElementById("projectPrioSelect"), "p", editProjectObj ? editProjectObj.priority : "P2");
@@ -5361,7 +5529,8 @@
       title: title, priority: chipValue(document.getElementById("projectPrioSelect"), "p"),
       due: document.getElementById("projectDueInput").value || null,
       hours: parseFloat(document.getElementById("projectHoursInput").value) || 0,
-      icon: projectIconDraft
+      icon: projectIconDraft,
+      categories: multiChipValues(document.getElementById("projectAreaSelect"), "ar")
     };
     this.disabled = true;
     var isEdit = !!editingProjectId;
@@ -5375,7 +5544,7 @@
     this.disabled = false;
     if(res.error){ alert(res.error.message); return; }
     var r = res.data;
-    var mapped = { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null) };
+    var mapped = { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), categories:r.categories||[] };
     if(isEdit){
       var idx = state.projects.findIndex(function(x){ return x.id === editingProjectId; });
       if(idx !== -1) state.projects[idx] = mapped;
@@ -5389,10 +5558,12 @@
   // Habit modal
   var editingHabitId = null;
   wireMultiChipSelect(document.getElementById("habitWeekdaysSelect"));
-  // Day-of-week picker only makes sense for "weekly" for now — daily is every day by definition,
-  // and "custom" is left as a plain label until its own scheme is defined.
+  // Day-of-week picker only makes sense for "weekly" — daily is every day by definition. "custom"
+  // means "every N days, counted from the habit's creation date" (see habitOccursOnDate).
   document.getElementById("habitFreqSelect").addEventListener("click", function(){
-    document.getElementById("habitWeekdaysField").style.display = chipValue(this, "f") === "weekly" ? "" : "none";
+    var freq = chipValue(this, "f");
+    document.getElementById("habitWeekdaysField").style.display = freq === "weekly" ? "" : "none";
+    document.getElementById("habitCustomIntervalField").style.display = freq === "custom" ? "" : "none";
   });
   document.getElementById("habitTypeSelect").addEventListener("click", function(){
     document.getElementById("habitScaleField").style.display = chipValue(this, "ty") === "scale" ? "" : "none";
@@ -5457,6 +5628,8 @@
     setChip(document.getElementById("habitFreqSelect"), "f", freq);
     setMultiChip(document.getElementById("habitWeekdaysSelect"), "wd", editHabitObj ? (editHabitObj.weekdays || []) : []);
     document.getElementById("habitWeekdaysField").style.display = freq === "weekly" ? "" : "none";
+    document.getElementById("habitCustomIntervalInput").value = editHabitObj && editHabitObj.customIntervalDays ? editHabitObj.customIntervalDays : "";
+    document.getElementById("habitCustomIntervalField").style.display = freq === "custom" ? "" : "none";
     var linkedVar = editHabitObj ? state.trackerVars.find(function(v){ return v.id === editHabitObj.trackerVariableId; }) : null;
     var type = linkedVar ? linkedVar.type : "boolean";
     setChip(document.getElementById("habitTypeSelect"), "ty", type);
@@ -5509,7 +5682,8 @@
       weekdays: freq === "weekly" ? multiChipValues(document.getElementById("habitWeekdaysSelect"), "wd") : [],
       tracker_variable_id: mappedVar.id,
       time_of_day: document.getElementById("habitTimeInput").value || null,
-      duration_minutes: document.getElementById("habitDurationInput").value ? Math.max(0, Math.round(Number(document.getElementById("habitDurationInput").value))) : null
+      duration_minutes: document.getElementById("habitDurationInput").value ? Math.max(0, Math.round(Number(document.getElementById("habitDurationInput").value))) : null,
+      custom_interval_days: freq === "custom" ? Math.max(1, Math.round(Number(document.getElementById("habitCustomIntervalInput").value)) || 1) : null
     };
     var res;
     if(isEdit){
@@ -5521,7 +5695,7 @@
     this.disabled = false;
     if(res.error){ alert(res.error.message); return; }
     var r = res.data;
-    var mapped = { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || mappedVar.id, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [] };
+    var mapped = { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || mappedVar.id, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [], customIntervalDays:r.custom_interval_days||null };
     if(isEdit){
       var idx = state.habits.findIndex(function(x){ return x.id === editingHabitId; });
       if(idx !== -1) state.habits[idx] = mapped;
@@ -5556,8 +5730,7 @@
         .map(function(g){ return '<option value="' + g.id + '">' + escapeHtml(g.title) + '</option>'; }).join("");
     } else {
       sel.innerHTML = state.projects.filter(function(p){
-        var g = p.goalId ? goalById(p.goalId) : null;
-        return g && g.category === area;
+        return projectCategories(p).indexOf(area) !== -1;
       }).map(function(p){ return '<option value="' + p.id + '">' + escapeHtml(p.title) + '</option>'; }).join("");
     }
   }
