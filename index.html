@@ -465,6 +465,28 @@
   .timeline-block.Growth{ border-left-color:var(--cat-growth); background:var(--cat-growth-bg); }
   .timeline-block.Relationships{ border-left-color:var(--cat-relationships); background:var(--cat-relationships-bg); }
   .timeline-block.Life{ border-left-color:var(--cat-life); background:var(--cat-life-bg); }
+
+  /* ===== TIMELINE PAGE ===== */
+  /* Fixed-pixel row heights (not flex:1) so the row-labels column and the scrollable world column
+     stay aligned purely by using the same heights in the same order — no shared-container trick
+     needed since neither side scrolls vertically. */
+  .tl-body{ display:flex; gap:8px; align-items:flex-start; margin-top:18px; }
+  .tl-row-labels{ display:flex; flex-direction:column; width:56px; flex-shrink:0; }
+  .tl-row-labels span{ display:flex; align-items:center; font-family:var(--mono); font-size:8.5px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-faint); }
+  .tl-h-daylabels{ height:26px; flex:none; }
+  .tl-h-daynight{ height:18px; flex:none; }
+  .tl-h-track{ height:42px; flex:none; }
+  .tl-viewport{ position:relative; flex:1; min-width:0; overflow-x:auto; overflow-y:hidden; border:1px solid var(--border); border-radius:6px; background:var(--bg-raised); cursor:grab; touch-action:pan-x; }
+  .tl-viewport.panning{ cursor:grabbing; }
+  .tl-world{ position:relative; display:flex; flex-direction:column; }
+  .tl-world .tl-h-track{ position:relative; border-top:1px solid var(--border); }
+  .tl-world .tl-h-daynight{ position:relative; }
+  .tl-day-label{ position:absolute; top:0; bottom:0; display:flex; align-items:center; padding:0 6px; font-family:var(--mono); font-size:9.5px; color:var(--text-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; border-right:1px solid var(--border); box-sizing:border-box; }
+  .tl-day-label.today{ color:var(--accent); font-weight:700; background:var(--accent-glow); }
+  .tl-day-label.weekend{ color:var(--text-faint); }
+  .tl-daynight-seg{ position:absolute; top:0; bottom:0; border-right:1px solid var(--border); box-sizing:border-box; }
+  .tl-now{ position:absolute; top:0; bottom:0; width:2px; background:var(--p0); box-shadow:0 0 6px var(--p0); z-index:5; pointer-events:none; }
+
   .today-layout{ display:grid; grid-template-columns:1fr 320px; gap:28px; align-items:start; margin-top:18px; }
   .today-date-nav{ display:flex; align-items:center; gap:10px; margin-bottom:22px; }
   .today-section-block{ margin-bottom:26px; }
@@ -689,6 +711,7 @@
         <button class="side-link" data-section="tracker" type="button"><span class="sl-glyph">▥</span>Tracker</button>
         <button class="side-link" data-section="whiteboard" type="button"><span class="sl-glyph">▧</span>Whiteboard</button>
         <button class="side-link" data-section="calendar" type="button"><span class="sl-glyph">▦</span>Calendar</button>
+        <button class="side-link" data-section="timeline" type="button"><span class="sl-glyph">↔</span>Timeline</button>
         <button class="side-link" data-section="journal" type="button"><span class="sl-glyph">✎</span>Journal</button>
         <button class="side-link" data-section="people" type="button"><span class="sl-glyph">☺</span>People</button>
       </nav>
@@ -988,6 +1011,42 @@
       </div>
 
       <div class="cal-grid" id="calGrid"></div>
+    </section>
+
+    <!-- ===== TIMELINE SECTION ===== -->
+    <section id="timelineSection" style="display:none;">
+      <div class="main-header">
+        <div>
+          <h1>timeline</h1>
+          <p class="subhead">Every scheduled habit, action, and note — laid out on one zoomable, scrollable clock.</p>
+        </div>
+      </div>
+      <div class="wb-toolbar">
+        <div class="wb-zoom-group">
+          <button class="cal-nav-btn" id="tlZoomOutBtn" type="button" aria-label="Zoom out">−</button>
+          <span class="wb-zoom-label" id="tlZoomLabel"></span>
+          <button class="cal-nav-btn" id="tlZoomInBtn" type="button" aria-label="Zoom in">+</button>
+        </div>
+        <button class="btn" id="tlJumpTodayBtn" type="button">jump to today</button>
+      </div>
+      <p class="panel-hint">Scroll (or drag empty space) to move through time. Zoom: scroll the timeline, or the +/− buttons. Drag a block to reschedule it.</p>
+      <div class="tl-body">
+        <div class="tl-row-labels">
+          <span class="tl-h-daylabels"></span><span class="tl-h-daynight"></span>
+          <span class="tl-h-track">habits</span><span class="tl-h-track">actions</span>
+          <span class="tl-h-track">notes</span>
+        </div>
+        <div class="tl-viewport" id="tlViewport">
+          <div class="tl-world" id="tlWorld">
+            <div class="tl-h-daylabels" id="tlDayLabelsRow"></div>
+            <div class="tl-h-daynight" id="tlDayNightRow"></div>
+            <div class="tl-h-track" id="tlHabitsTrack"></div>
+            <div class="tl-h-track" id="tlActionsTrack"></div>
+            <div class="tl-h-track" id="tlNotesTrack"></div>
+            <div class="tl-now" id="tlNowMarker"></div>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- ===== TRACKER SECTION ===== -->
@@ -1460,6 +1519,11 @@
   }
   function todayStr(){ return new Date().toISOString().slice(0,10); }
   function fmtDate(d){ return d ? new Date(d + "T00:00:00").toLocaleDateString(undefined, { month:"short", day:"numeric" }) : ""; }
+  function addDaysToDateStr(dateStr, n){
+    var d = new Date(dateStr + "T00:00:00");
+    d.setDate(d.getDate() + n);
+    return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+  }
   function fmtTimeOfDay(t){
     if(!t) return "";
     return new Date("2000-01-01T" + t).toLocaleTimeString(undefined, { hour:"numeric", minute:"2-digit" });
@@ -1644,7 +1708,7 @@
     state.goals.sort(function(a,b){ return a.position - b.position; });
     state.projects = (results[1].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null) }; });
     state.projects.sort(function(a,b){ return a.position - b.position; });
-    state.habits = (results[2].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || null, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0 }; });
+    state.habits = (results[2].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || null, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null }; });
     state.habits.sort(function(a,b){ return a.position - b.position; });
     state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null }; });
     state.actions.sort(function(a,b){ return a.position - b.position; });
@@ -1709,7 +1773,7 @@
     });
   }
 
-  var ALL_SECTION_IDS = ["todaySection","plannerSection","areasSection","trackerSection","whiteboardSection","agentSection","calendarSection","journalSection","peopleSection","goalDetailSection","areaDetailSection"];
+  var ALL_SECTION_IDS = ["todaySection","plannerSection","areasSection","trackerSection","whiteboardSection","agentSection","calendarSection","timelineSection","journalSection","peopleSection","goalDetailSection","areaDetailSection"];
   function showSection(name){
     activeSection = name;
     document.querySelectorAll(".side-link").forEach(function(l){ l.classList.toggle("active", l.dataset.section === name); });
@@ -1718,6 +1782,7 @@
     });
     if(name === "whiteboard") activateWhiteboard();
     if(name === "today") renderToday();
+    if(name === "timeline") activateTimeline();
   }
   document.getElementById("sideNav").addEventListener("click", function(e){
     var btn = e.target.closest(".side-link");
@@ -1964,7 +2029,11 @@
   // Whether a habit's repetition pattern lands on the given date — "daily" always does, "weekly"
   // only on its checked day(s) (none checked means it never lands, same as no schedule set), and
   // "custom" has no day-of-week scheme defined yet so it's treated as landing every day for now.
+  // A habit never occurs before the day it was created — its recurrence starts from creation
+  // onwards, not retroactively (matters most on the Timeline page, which can be scrolled decades
+  // into the past).
   function habitOccursOnDate(h, dateStr){
+    if(h.createdAt && dateStr < h.createdAt) return false;
     if(h.frequency === "weekly") return (h.weekdays || []).indexOf(WEEKDAY_ABBR[new Date(dateStr + "T00:00:00").getDay()]) !== -1;
     return true;
   }
@@ -4133,6 +4202,320 @@
     warnDroppedFields(res.droppedFields);
   });
 
+  /* ---------------- Timeline page ---------------- */
+  // Same visual language as the Today page's 24h bar (timeToFraction/minutesToTime, the day/night
+  // gradient math, timeline-block styling), just repeated across many days side by side inside a
+  // horizontally scrollable/zoomable strip instead of one fixed 24h box. Zoom changes pixels-per-day
+  // (not a CSS transform) so text and blocks stay crisp at any zoom level — re-render on every zoom
+  // step, same as recomputing a chart's scale.
+  // Fixed date range (not a rolling window around today) — spans decades, so the day-by-day rows
+  // are virtualized: only the days actually scrolled into view (plus a one-viewport-wide buffer on
+  // each side) ever get built into the DOM. Without that, a daily-repeating habit alone would mean
+  // tens of thousands of blocks rendered at once.
+  var TL_RANGE_START = "1991-02-21";
+  var TL_RANGE_END = "2030-01-01";
+  var tlRangeStart = TL_RANGE_START;
+  var TL_TOTAL_DAYS = Math.round((new Date(TL_RANGE_END + "T00:00:00") - new Date(TL_RANGE_START + "T00:00:00")) / 86400000) + 1;
+  var TL_MIN_PX_PER_DAY = 2, TL_MAX_PX_PER_DAY = 400;
+  var tlPxPerDay = 260;
+  var tlInitialized = false;
+  function tlDateIndexOf(dateStr){
+    var a = new Date(tlRangeStart + "T00:00:00"), b = new Date(dateStr + "T00:00:00");
+    var idx = Math.round((b - a) / 86400000);
+    return (idx >= 0 && idx < TL_TOTAL_DAYS) ? idx : null;
+  }
+  // Which day-index range is actually worth building DOM for right now — the visible viewport plus
+  // one extra viewport-width of buffer on each side, so scrolling doesn't show blank gaps before the
+  // next render catches up.
+  var TL_MAX_RENDERED_DAYS = 400; // hard cap so extreme zoom-out on a wide monitor can't balloon the buffer window into thousands of day-columns
+  function tlVisibleRange(){
+    var viewport = document.getElementById("tlViewport");
+    var vw = (viewport && viewport.clientWidth) || 900;
+    var scrollLeft = viewport ? viewport.scrollLeft : 0;
+    var startPx = Math.max(0, scrollLeft - vw);
+    var endPx = scrollLeft + vw + vw;
+    var start = Math.max(0, Math.floor(startPx / tlPxPerDay));
+    var end = Math.min(TL_TOTAL_DAYS - 1, Math.ceil(endPx / tlPxPerDay));
+    if(end - start + 1 > TL_MAX_RENDERED_DAYS) end = start + TL_MAX_RENDERED_DAYS - 1;
+    return { start: start, end: end };
+  }
+  function tlDayNightGradientCss(y, m, d){
+    var night = "rgba(95,168,255,0.28)", day = "rgba(253,224,71,0.28)";
+    var sunrise = sunTimeUTC(y, m, d, BERLIN_LAT, BERLIN_LON, true);
+    var sunset = sunTimeUTC(y, m, d, BERLIN_LAT, BERLIN_LON, false);
+    if(sunrise == null || sunset == null) return night;
+    var sunriseFrac = berlinHourFraction(sunrise, y, m, d) * 100;
+    var sunsetFrac = berlinHourFraction(sunset, y, m, d) * 100;
+    var tw = 2.5;
+    var stops = [ night+" 0%", night+" "+Math.max(0,sunriseFrac-tw)+"%", day+" "+Math.min(100,sunriseFrac+tw)+"%",
+                  day+" "+Math.max(0,sunsetFrac-tw)+"%", night+" "+Math.min(100,sunsetFrac+tw)+"%", night+" 100%" ];
+    return "linear-gradient(90deg, " + stops.join(", ") + ")";
+  }
+  function renderTlDayLabels(range){
+    var track = document.getElementById("tlDayLabelsRow");
+    if(!track) return;
+    var todayKey = todayStr();
+    var html = "";
+    for(var i=range.start; i<=range.end; i++){
+      var dateStr = addDaysToDateStr(tlRangeStart, i);
+      var d = new Date(dateStr + "T00:00:00");
+      var dow = d.getDay();
+      var label = d.toLocaleDateString(undefined, { weekday:"short", day:"numeric", month: (d.getDate()===1 ? "short" : undefined) });
+      var cls = (dateStr===todayKey ? " today" : "") + ((dow===0||dow===6) ? " weekend" : "");
+      html += '<div class="tl-day-label' + cls + '" style="left:' + (i*tlPxPerDay) + 'px; width:' + tlPxPerDay + 'px;">' + escapeHtml(label) + '</div>';
+    }
+    track.innerHTML = html;
+  }
+  function renderTlDayNight(range){
+    var track = document.getElementById("tlDayNightRow");
+    if(!track) return;
+    var html = "";
+    for(var i=range.start; i<=range.end; i++){
+      var dateStr = addDaysToDateStr(tlRangeStart, i);
+      var d = new Date(dateStr + "T00:00:00");
+      var css = tlDayNightGradientCss(d.getFullYear(), d.getMonth()+1, d.getDate());
+      html += '<div class="tl-daynight-seg" style="left:' + (i*tlPxPerDay) + 'px; width:' + tlPxPerDay + 'px; background:' + css + ';"></div>';
+    }
+    track.innerHTML = html;
+  }
+  function renderTlHabitsTrack(range){
+    var track = document.getElementById("tlHabitsTrack");
+    if(!track) return;
+    var html = "";
+    for(var i=range.start; i<=range.end; i++){
+      var dateStr = addDaysToDateStr(tlRangeStart, i);
+      state.habits.filter(function(h){ return !!h.timeOfDay && habitOccursOnDate(h, dateStr); }).forEach(function(h){
+        var leftPx = i*tlPxPerDay + timeToFraction(h.timeOfDay)*tlPxPerDay;
+        var widthPx = Math.max(10, ((h.durationMinutes || 15) / 1440) * tlPxPerDay);
+        var goal = h.goalId ? goalById(h.goalId) : null;
+        var catClass = goal ? " " + goal.category : "";
+        html += '<div class="timeline-block' + catClass + '" data-kind="habit" data-id="' + h.id + '" data-day-index="' + i + '" style="left:' + leftPx + 'px; width:' + widthPx + 'px;" title="' + escapeHtml(h.title) + ' — ' + fmtTimeOfDay(h.timeOfDay) + '">' +
+          '<span class="timeline-block-title">' + escapeHtml(h.title) + '</span></div>';
+      });
+    }
+    track.innerHTML = html;
+  }
+  function renderTlActionsTrack(range){
+    var track = document.getElementById("tlActionsTrack");
+    if(!track) return;
+    var html = "";
+    for(var i=range.start; i<=range.end; i++){
+      var dateStr = addDaysToDateStr(tlRangeStart, i);
+      state.actions.filter(function(a){ return a.date === dateStr && !!a.timeOfDay; }).forEach(function(a){
+        var leftPx = i*tlPxPerDay + timeToFraction(a.timeOfDay)*tlPxPerDay;
+        var widthPx = Math.max(10, ((a.durationMinutes || 15) / 1440) * tlPxPerDay);
+        var cat = actionCategory(a);
+        var catClass = cat ? " " + cat : "";
+        html += '<div class="timeline-block' + catClass + (a.done?' done':'') + '" data-kind="action" data-id="' + a.id + '" data-day-index="' + i + '" style="left:' + leftPx + 'px; width:' + widthPx + 'px;" title="' + escapeHtml(a.title) + ' — ' + fmtTimeOfDay(a.timeOfDay) + '">' +
+          '<span class="timeline-block-title">' + escapeHtml(a.title) + '</span></div>';
+      });
+    }
+    track.innerHTML = html;
+  }
+  function renderTlNotesTrack(range){
+    var track = document.getElementById("tlNotesTrack");
+    if(!track) return;
+    var html = "";
+    for(var i=range.start; i<=range.end; i++){
+      var dateStr = addDaysToDateStr(tlRangeStart, i);
+      state.journal.filter(function(n){ return n.date === dateStr && !!n.timeOfDay; }).forEach(function(n){
+        var leftPx = i*tlPxPerDay + timeToFraction(n.timeOfDay)*tlPxPerDay;
+        var widthPx = Math.max(10, tlPxPerDay * 0.02);
+        var catClass = n.category ? " " + n.category : "";
+        var preview = n.text.length > 60 ? n.text.slice(0, 60) + "…" : n.text;
+        html += '<div class="timeline-block' + catClass + '" data-kind="journal" data-id="' + n.id + '" data-day-index="' + i + '" style="left:' + leftPx + 'px; width:' + widthPx + 'px;" title="' + escapeHtml(preview) + ' — ' + fmtTimeOfDay(n.timeOfDay) + '">' +
+          '<span class="timeline-block-title">✎ ' + escapeHtml(preview) + '</span></div>';
+      });
+    }
+    track.innerHTML = html;
+  }
+  function renderTlNowMarker(){
+    var marker = document.getElementById("tlNowMarker");
+    if(!marker) return;
+    var bp = berlinTodayParts();
+    var todayBerlinStr = bp.year + "-" + String(bp.month).padStart(2,"0") + "-" + String(bp.day).padStart(2,"0");
+    var dayIndex = tlDateIndexOf(todayBerlinStr);
+    if(dayIndex == null){ marker.style.display = "none"; return; }
+    marker.style.display = "";
+    marker.style.left = (dayIndex*tlPxPerDay + berlinClockFraction(new Date())*tlPxPerDay) + "px";
+  }
+  // Track what's actually been built as DOM (in world-space px) so the scroll listener can tell
+  // whether the currently rendered buffer still covers the viewport, instead of tearing down and
+  // rebuilding all 5 tracks on every single scroll event — that full-rebuild-per-frame is what made
+  // continuous scrolling/dragging feel slow, not the size of any one render.
+  var tlLastRenderedWidth = null;
+  var tlRenderedStartPx = 0, tlRenderedEndPx = 0;
+  function renderTimeline(){
+    if(activeSection !== "timeline") return;
+    var world = document.getElementById("tlWorld");
+    if(!world) return;
+    var width = TL_TOTAL_DAYS * tlPxPerDay;
+    if(tlLastRenderedWidth !== width){ world.style.width = width + "px"; tlLastRenderedWidth = width; }
+    var range = tlVisibleRange();
+    renderTlDayLabels(range);
+    renderTlDayNight(range);
+    renderTlHabitsTrack(range);
+    renderTlActionsTrack(range);
+    renderTlNotesTrack(range);
+    renderTlNowMarker();
+    tlRenderedStartPx = range.start * tlPxPerDay;
+    tlRenderedEndPx = (range.end + 1) * tlPxPerDay;
+  }
+  setInterval(function(){ if(activeSection === "timeline") renderTlNowMarker(); }, 60000);
+  // Only rebuild the tracks once the viewport scrolls near the edge of what's already rendered
+  // (inside a 25%-of-viewport margin), not on every scroll event — the "now" marker doesn't depend
+  // on scroll position at all so it never needs touching here.
+  var tlScrollRenderScheduled = false;
+  document.getElementById("tlViewport").addEventListener("scroll", function(){
+    if(tlScrollRenderScheduled) return;
+    tlScrollRenderScheduled = true;
+    requestAnimationFrame(function(){
+      tlScrollRenderScheduled = false;
+      var viewport = document.getElementById("tlViewport");
+      if(!viewport) return;
+      var margin = viewport.clientWidth * 0.25;
+      if(viewport.scrollLeft < tlRenderedStartPx + margin || viewport.scrollLeft + viewport.clientWidth > tlRenderedEndPx - margin){
+        renderTimeline();
+      }
+    });
+  });
+  function activateTimeline(){
+    var world = document.getElementById("tlWorld");
+    var viewport = document.getElementById("tlViewport");
+    // Size the world and jump to today's scroll position BEFORE the first real content render, so
+    // the very first paint lands directly on today instead of briefly rendering near 1991-02-21
+    // (scrollLeft's default of 0) and then immediately re-rendering again once the jump lands.
+    if(!tlInitialized){
+      tlInitialized = true;
+      if(world) world.style.width = (TL_TOTAL_DAYS * tlPxPerDay) + "px";
+      tlLastRenderedWidth = TL_TOTAL_DAYS * tlPxPerDay;
+      var idx = tlDateIndexOf(todayStr());
+      if(viewport && idx != null) viewport.scrollLeft = Math.max(0, idx*tlPxPerDay - viewport.clientWidth/2 + tlPxPerDay/2);
+    }
+    renderTimeline();
+    document.getElementById("tlZoomLabel").textContent = Math.round(tlPxPerDay) + "px/day";
+  }
+  function tlSetZoom(newPx, viewportX){
+    var viewport = document.getElementById("tlViewport");
+    if(!viewport) return;
+    newPx = Math.max(TL_MIN_PX_PER_DAY, Math.min(TL_MAX_PX_PER_DAY, newPx));
+    var vx = viewportX != null ? viewportX : viewport.clientWidth / 2;
+    var worldX = viewport.scrollLeft + vx;
+    var ratio = newPx / tlPxPerDay;
+    tlPxPerDay = newPx;
+    // Resize the world and settle scroll position BEFORE rendering, so the one render that follows
+    // already reflects the final (zoomed, re-centered) view instead of rendering once at the old
+    // scroll position and again after the scroll jump lands.
+    var world = document.getElementById("tlWorld");
+    var width = TL_TOTAL_DAYS * tlPxPerDay;
+    if(world){ world.style.width = width + "px"; tlLastRenderedWidth = width; }
+    viewport.scrollLeft = worldX * ratio - vx;
+    renderTimeline();
+    document.getElementById("tlZoomLabel").textContent = Math.round(tlPxPerDay) + "px/day";
+  }
+  document.getElementById("tlZoomInBtn").addEventListener("click", function(){ tlSetZoom(tlPxPerDay * 1.25); });
+  document.getElementById("tlZoomOutBtn").addEventListener("click", function(){ tlSetZoom(tlPxPerDay / 1.25); });
+  document.getElementById("tlJumpTodayBtn").addEventListener("click", function(){
+    var viewport = document.getElementById("tlViewport");
+    var idx = tlDateIndexOf(todayStr());
+    if(viewport && idx != null) viewport.scrollLeft = Math.max(0, idx*tlPxPerDay - viewport.clientWidth/2 + tlPxPerDay/2);
+    renderTimeline();
+  });
+  document.getElementById("tlViewport").addEventListener("wheel", function(e){
+    e.preventDefault();
+    var rect = this.getBoundingClientRect();
+    var factor = e.deltaY < 0 ? 1.15 : (1 / 1.15);
+    tlSetZoom(tlPxPerDay * factor, e.clientX - rect.left);
+  }, { passive:false });
+  // Drag empty space to pan horizontally (in addition to the native scrollbar/trackpad scroll that
+  // overflow-x:auto already gives for free). Guarded off whenever the drag actually starts on a
+  // block, so it never fights with that block's own drag-to-reschedule handling below.
+  (function(){
+    var viewport = document.getElementById("tlViewport");
+    var panning = false, panPointerId = null, panStartClientX = 0, panStartScrollLeft = 0;
+    viewport.addEventListener("pointerdown", function(e){
+      if(e.target.closest(".timeline-block")) return;
+      panning = true; panPointerId = e.pointerId; panStartClientX = e.clientX; panStartScrollLeft = viewport.scrollLeft;
+      viewport.setPointerCapture(e.pointerId);
+      viewport.classList.add("panning");
+    });
+    viewport.addEventListener("pointermove", function(e){
+      if(!panning || e.pointerId !== panPointerId) return;
+      viewport.scrollLeft = panStartScrollLeft - (e.clientX - panStartClientX);
+    });
+    function endPan(e){
+      if(!panning || (e.pointerId !== undefined && e.pointerId !== panPointerId)) return;
+      panning = false; panPointerId = null;
+      viewport.classList.remove("panning");
+    }
+    viewport.addEventListener("pointerup", endPan);
+    viewport.addEventListener("pointercancel", endPan);
+  })();
+  // Dragging a block updates its time-of-day (snapped to 5 min); for actions/notes, dragging across
+  // a day boundary also moves it to that day (habits recur on a weekday pattern, not a single date,
+  // so a habit's block is clamped to its own day column — only its time-of-day can change here).
+  function wireTlLayerDrag(trackId, kind){
+    var track = document.getElementById(trackId);
+    var dragEl = null, dragId = null, moved = false, startDayIndex = 0;
+    track.addEventListener("pointerdown", function(e){
+      var block = e.target.closest(".timeline-block");
+      if(!block) return;
+      dragEl = block; dragId = block.dataset.id; moved = false;
+      startDayIndex = Number(block.dataset.dayIndex);
+      block.setPointerCapture(e.pointerId);
+      block.classList.add("dragging");
+    });
+    track.addEventListener("pointermove", function(e){
+      if(!dragEl) return;
+      moved = true;
+      var worldRect = document.getElementById("tlWorld").getBoundingClientRect();
+      var xInWorld = e.clientX - worldRect.left;
+      var totalMin = Math.round(((xInWorld / tlPxPerDay) * 1440) / 5) * 5;
+      if(kind === "habit"){
+        var dayStartMin = startDayIndex * 1440;
+        var clamped = Math.max(dayStartMin, Math.min(dayStartMin + 1435, totalMin));
+        var withinDay = clamped - dayStartMin;
+        dragEl.style.left = (startDayIndex*tlPxPerDay + (withinDay/1440)*tlPxPerDay) + "px";
+        dragEl.dataset.pendingTime = minutesToTime(withinDay);
+      } else {
+        var newDayIndex = Math.max(0, Math.min(TL_TOTAL_DAYS-1, Math.floor(totalMin/1440)));
+        var withinDayMin = totalMin - newDayIndex*1440;
+        dragEl.style.left = (newDayIndex*tlPxPerDay + (withinDayMin/1440)*tlPxPerDay) + "px";
+        dragEl.dataset.pendingTime = minutesToTime(withinDayMin);
+        dragEl.dataset.pendingDayIndex = newDayIndex;
+      }
+    });
+    track.addEventListener("pointerup", async function(){
+      if(!dragEl) return;
+      var el = dragEl, id = dragId, newTime = el.dataset.pendingTime, newDayIndex = el.dataset.pendingDayIndex;
+      dragEl = null; dragId = null;
+      el.classList.remove("dragging");
+      if(!moved || !newTime) return;
+      if(kind === "habit"){
+        var h = state.habits.find(function(x){ return x.id === id; });
+        if(h) h.timeOfDay = newTime;
+        var r = await safeUpdate("habits", id, { time_of_day: newTime });
+        if(r.error) console.error(r.error); else warnDroppedFields(r.droppedFields);
+      } else {
+        var newDateStr = addDaysToDateStr(tlRangeStart, Number(newDayIndex));
+        var table = kind === "journal" ? "journal" : "actions";
+        var arr = kind === "journal" ? state.journal : state.actions;
+        var item = arr.find(function(x){ return x.id === id; });
+        if(item){ item.timeOfDay = newTime; item.date = newDateStr; }
+        var r2 = await safeUpdate(table, id, { time_of_day: newTime, date: newDateStr });
+        if(r2.error) console.error(r2.error); else warnDroppedFields(r2.droppedFields);
+      }
+      renderTimeline();
+    });
+    track.addEventListener("pointercancel", function(){
+      if(dragEl) dragEl.classList.remove("dragging");
+      dragEl = null; dragId = null;
+    });
+  }
+  wireTlLayerDrag("tlHabitsTrack", "habit");
+  wireTlLayerDrag("tlActionsTrack", "action");
+  wireTlLayerDrag("tlNotesTrack", "journal");
+
   function renderToday(){
     if(activeSection !== "today") return;
     renderTodayTimeline();
@@ -4425,7 +4808,7 @@
         var res5 = await safeInsert("habits", { goal_id: input.goal_id || null, title:input.title, priority:input.priority, frequency:input.frequency, tracker_variable_id: habitVarId, days:{} }, state.habits);
         if(res5.error) return { error: res5.error.message };
         var r5 = res5.data;
-        state.habits.push({ id:r5.id, goalId:r5.goal_id, title:r5.title, priority:r5.priority, frequency:r5.frequency, weekdays:r5.weekdays || [], trackerVariableId:r5.tracker_variable_id || habitVarId, timeOfDay:r5.time_of_day ? r5.time_of_day.slice(0,5) : null, durationMinutes:r5.duration_minutes||null, days:r5.days || {}, position:r5.position||0 });
+        state.habits.push({ id:r5.id, goalId:r5.goal_id, title:r5.title, priority:r5.priority, frequency:r5.frequency, weekdays:r5.weekdays || [], trackerVariableId:r5.tracker_variable_id || habitVarId, timeOfDay:r5.time_of_day ? r5.time_of_day.slice(0,5) : null, durationMinutes:r5.duration_minutes||null, days:r5.days || {}, position:r5.position||0, createdAt:r5.created_at ? r5.created_at.slice(0,10) : null });
         renderAll(); return { ok:true, id:r5.id };
       }
       if(name === "edit_habit"){
@@ -4930,7 +5313,7 @@
     this.disabled = false;
     if(res.error){ alert(res.error.message); return; }
     var r = res.data;
-    var mapped = { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || mappedVar.id, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0 };
+    var mapped = { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || mappedVar.id, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null };
     if(isEdit){
       var idx = state.habits.findIndex(function(x){ return x.id === editingHabitId; });
       if(idx !== -1) state.habits[idx] = mapped;
@@ -5086,6 +5469,7 @@
     renderChatMessages();
     renderTracker();
     renderToday();
+    renderTimeline();
     renderGoalDetail();
     renderAreaDetail();
   }
