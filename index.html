@@ -297,8 +297,16 @@
   .wb-width-label{ font-family:var(--mono); font-size:11px; color:var(--text-dim); display:flex; align-items:center; gap:6px; }
   .wb-save-status{ margin-left:auto; font-family:var(--mono); font-size:10px; color:var(--text-faint); }
   #wbConnectBtn.on{ background:var(--accent); color:var(--bg); border-color:var(--accent); }
-  .wb-canvas-wrap{ position:relative; border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; touch-action:none; }
-  #wbCanvas{ display:block; width:100%; height:60vh; background:#fff; cursor:crosshair; }
+  .wb-zoom-group{ display:flex; align-items:center; gap:6px; }
+  .wb-zoom-label{ font-family:var(--mono); font-size:10.5px; color:var(--text-dim); min-width:34px; text-align:center; }
+  /* .wb-canvas-wrap is the fixed viewport (clips); .wb-world is the large pannable/zoomable
+     surface inside it — sized and transformed from JS (see WB_WORLD_W/H, applyWbTransform). */
+  .wb-canvas-wrap{ position:relative; border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; touch-action:none; height:60vh; background:var(--bg-inset); cursor:crosshair; }
+  .wb-canvas-wrap.space-down, .wb-canvas-wrap.panning{ cursor:grab; }
+  .wb-canvas-wrap.panning{ cursor:grabbing; }
+  .wb-canvas-wrap:fullscreen{ height:100vh; border-radius:0; border:none; }
+  .wb-world{ position:absolute; top:0; left:0; transform-origin:0 0; }
+  #wbCanvas{ display:block; background:#fff; }
   .wb-conn-svg{ position:absolute; inset:0; width:100%; height:100%; pointer-events:none; overflow:visible; }
   .wb-conn-hit{ pointer-events:stroke; cursor:pointer; }
   .wb-conn-line{ stroke:var(--text-faint); stroke-width:1.5; pointer-events:none; }
@@ -355,12 +363,19 @@
 
   /* ===== MATRIX VIEW (projects/habits/actions, grouped by goal) ===== */
   .ms-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(160px,1fr)); gap:8px; }
-  .ms-tile{ background:var(--bg-inset); border:1px solid var(--border); border-radius:4px; padding:9px 10px; display:flex; flex-direction:column; gap:6px; transition:border-color .15s ease; }
+  .ms-tile{ background:var(--bg-inset); border:1px solid var(--border); border-left:3px solid var(--border-bright); border-radius:4px; padding:9px 10px; display:flex; flex-direction:column; gap:6px; transition:border-color .15s ease; }
   .ms-tile:hover{ border-color:var(--border-bright); }
   .ms-tile-top{ display:flex; align-items:center; gap:6px; }
   .ms-tile-title{ flex:1; font-size:12px; font-weight:600; color:var(--text); line-height:1.3; }
   .ms-tile-title.done{ text-decoration:line-through; color:var(--text-faint); }
   .ms-tile-meta{ display:flex; flex-wrap:wrap; align-items:center; gap:6px; font-family:var(--mono); font-size:9.5px; color:var(--text-faint); }
+  .ms-tile.Health{ border-left-color:var(--cat-health); background:var(--cat-health-bg); }
+  .ms-tile.Finance{ border-left-color:var(--cat-finance); background:var(--cat-finance-bg); }
+  .ms-tile.Career{ border-left-color:var(--cat-career); background:var(--cat-career-bg); }
+  .ms-tile.Maintenance{ border-left-color:var(--cat-maintenance); background:var(--cat-maintenance-bg); }
+  .ms-tile.Growth{ border-left-color:var(--cat-growth); background:var(--cat-growth-bg); }
+  .ms-tile.Relationships{ border-left-color:var(--cat-relationships); background:var(--cat-relationships-bg); }
+  .ms-tile.Life{ border-left-color:var(--cat-life); background:var(--cat-life-bg); }
 
   /* ===== FORM ELEMENTS ===== */
   input[type="text"], input[type="date"], input[type="number"], input[type="email"], input[type="password"], select, textarea{
@@ -439,15 +454,17 @@
   .timeline-block{ position:absolute; top:2px; bottom:2px; min-width:10px; border-radius:4px; border-left:3px solid var(--border-bright); background:var(--bg-raised); border-top:1px solid var(--border-bright); border-right:1px solid var(--border-bright); border-bottom:1px solid var(--border-bright); cursor:grab; overflow:hidden; padding:0 5px; display:flex; align-items:center; user-select:none; touch-action:none; }
   .timeline-block:hover{ border-color:var(--accent-dim); z-index:2; }
   .timeline-block.dragging{ cursor:grabbing; z-index:3; box-shadow:0 4px 14px rgba(0,0,0,0.4); }
-  .timeline-block-title{ font-family:var(--mono); font-size:9.5px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .timeline-block-title{ font-family:var(--mono); font-size:9.5px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; z-index:1; }
   .timeline-block.done{ opacity:0.5; }
-  .timeline-block.Health{ border-left-color:var(--cat-health); }
-  .timeline-block.Finance{ border-left-color:var(--cat-finance); }
-  .timeline-block.Career{ border-left-color:var(--cat-career); }
-  .timeline-block.Maintenance{ border-left-color:var(--cat-maintenance); }
-  .timeline-block.Growth{ border-left-color:var(--cat-growth); }
-  .timeline-block.Relationships{ border-left-color:var(--cat-relationships); }
-  .timeline-block.Life{ border-left-color:var(--cat-life); }
+  /* Filled area tint, not just a border accent — these blocks are often too narrow (short
+     duration) for a thin left-border to read as "colored" at a glance. */
+  .timeline-block.Health{ border-left-color:var(--cat-health); background:var(--cat-health-bg); }
+  .timeline-block.Finance{ border-left-color:var(--cat-finance); background:var(--cat-finance-bg); }
+  .timeline-block.Career{ border-left-color:var(--cat-career); background:var(--cat-career-bg); }
+  .timeline-block.Maintenance{ border-left-color:var(--cat-maintenance); background:var(--cat-maintenance-bg); }
+  .timeline-block.Growth{ border-left-color:var(--cat-growth); background:var(--cat-growth-bg); }
+  .timeline-block.Relationships{ border-left-color:var(--cat-relationships); background:var(--cat-relationships-bg); }
+  .timeline-block.Life{ border-left-color:var(--cat-life); background:var(--cat-life-bg); }
   .today-layout{ display:grid; grid-template-columns:1fr 320px; gap:28px; align-items:start; margin-top:18px; }
   .today-date-nav{ display:flex; align-items:center; gap:10px; margin-bottom:22px; }
   .today-section-block{ margin-bottom:26px; }
@@ -455,34 +472,31 @@
   .today-section-block-head h2{ font-family:var(--mono); font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-faint); margin:0; font-weight:700; }
   .today-section-block h2{ font-family:var(--mono); font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-faint); margin:0 0 10px; font-weight:700; }
   .today-row-list{ display:flex; flex-direction:column; gap:6px; }
-  .today-row{ display:flex; align-items:center; gap:10px; padding:8px 10px; border:1px solid var(--border); border-radius:6px; background:var(--bg-raised); }
+  .today-row{ display:flex; align-items:center; gap:10px; padding:8px 10px; border:1px solid var(--border); border-left:3px solid var(--border-bright); border-radius:6px; background:var(--bg-raised); }
+  .today-row.Health{ border-left-color:var(--cat-health); }
+  .today-row.Finance{ border-left-color:var(--cat-finance); }
+  .today-row.Career{ border-left-color:var(--cat-career); }
+  .today-row.Maintenance{ border-left-color:var(--cat-maintenance); }
+  .today-row.Growth{ border-left-color:var(--cat-growth); }
+  .today-row.Relationships{ border-left-color:var(--cat-relationships); }
+  .today-row.Life{ border-left-color:var(--cat-life); }
   .today-row-title{ flex:1; font-family:var(--sans); font-size:12.5px; color:var(--text); }
   .today-row-title.done{ color:var(--text-faint); text-decoration:line-through; }
   .today-row-meta{ font-family:var(--mono); font-size:10px; color:var(--text-faint); flex-shrink:0; }
   .today-empty-note{ font-family:var(--mono); font-size:11px; color:var(--text-faint); display:none; }
-  .today-row .day-box{ flex-shrink:0; }
-  .today-row .tracker-scale{ padding:0; flex-shrink:0; }
-  .today-row .tracker-cell-input{ width:auto; max-width:110px; min-width:56px; flex-shrink:0; background:var(--bg-inset); border:1px solid var(--border); border-radius:4px; padding:5px 7px; }
-  .today-row-value-label{ font-family:var(--mono); font-size:10.5px; font-weight:700; color:var(--text-faint); flex-shrink:0; width:24px; }
-  .today-row-value-label.on{ color:var(--accent); }
-  .today-habit-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(190px,1fr)); gap:8px; }
-  .today-habit-tile{ display:flex; flex-direction:column; gap:8px; padding:10px 12px; border:1px solid var(--border); border-left:3px solid var(--border-bright); border-radius:6px; background:var(--bg-raised); }
-  .today-habit-tile.Health{ border-left-color:var(--cat-health); background:linear-gradient(135deg, var(--cat-health-bg), var(--bg-raised) 65%); }
-  .today-habit-tile.Finance{ border-left-color:var(--cat-finance); background:linear-gradient(135deg, var(--cat-finance-bg), var(--bg-raised) 65%); }
-  .today-habit-tile.Career{ border-left-color:var(--cat-career); background:linear-gradient(135deg, var(--cat-career-bg), var(--bg-raised) 65%); }
-  .today-habit-tile.Maintenance{ border-left-color:var(--cat-maintenance); background:linear-gradient(135deg, var(--cat-maintenance-bg), var(--bg-raised) 65%); }
-  .today-habit-tile.Growth{ border-left-color:var(--cat-growth); background:linear-gradient(135deg, var(--cat-growth-bg), var(--bg-raised) 65%); }
-  .today-habit-tile.Relationships{ border-left-color:var(--cat-relationships); background:linear-gradient(135deg, var(--cat-relationships-bg), var(--bg-raised) 65%); }
-  .today-habit-tile.Life{ border-left-color:var(--cat-life); background:linear-gradient(135deg, var(--cat-life-bg), var(--bg-raised) 65%); }
-  .today-habit-tile-top{ display:flex; align-items:center; gap:8px; }
-  .today-habit-tile-title{ flex:1; font-family:var(--sans); font-size:12.5px; color:var(--text); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .today-habit-tile-title.done{ color:var(--text-faint); text-decoration:line-through; }
-  .today-habit-tile-meta{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-family:var(--mono); font-size:10px; color:var(--text-faint); }
-  .today-habit-tile-time{ font-weight:700; color:var(--text-dim); }
-  .today-habit-tile-actions{ display:flex; justify-content:flex-end; gap:4px; }
-  .today-habit-tile .day-box{ flex-shrink:0; }
-  .today-habit-tile .tracker-scale{ padding:0; flex-shrink:0; }
-  .today-habit-tile .tracker-cell-input{ width:auto; max-width:110px; min-width:0; flex:1; flex-shrink:1; background:var(--bg-inset); border:1px solid var(--border); border-radius:4px; padding:5px 7px; }
+  /* Square tiles, same visual language as goal matrix tiles (icon/initial + area color +
+     bottom scrim title) — reuses .matrix-tile-status/.matrix-tile-icon-img/.matrix-tile-initial/
+     .matrix-tile-scrim/.matrix-tile-title directly instead of duplicating them. */
+  .today-habit-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(96px,1fr)); gap:10px; }
+  .today-habit-tile{ aspect-ratio:1; position:relative; border-radius:6px; overflow:hidden; cursor:pointer; border:2px solid var(--border); background:var(--bg-inset); transition:transform .12s ease, border-color .12s ease; }
+  .today-habit-tile:hover{ transform:translateY(-2px); border-color:var(--border-bright); }
+  .today-habit-tile.Health{ background:var(--cat-health-bg); }
+  .today-habit-tile.Finance{ background:var(--cat-finance-bg); }
+  .today-habit-tile.Career{ background:var(--cat-career-bg); }
+  .today-habit-tile.Maintenance{ background:var(--cat-maintenance-bg); }
+  .today-habit-tile.Growth{ background:var(--cat-growth-bg); }
+  .today-habit-tile.Relationships{ background:var(--cat-relationships-bg); }
+  .today-habit-tile.Life{ background:var(--cat-life-bg); }
   .cal-grid.mini{ margin-top:10px; }
   .cal-grid.mini .cal-day{ min-height:36px; padding:4px; cursor:pointer; gap:2px; }
   .cal-grid.mini .cal-day.clickable:hover{ box-shadow:inset 0 0 0 1px var(--border-bright); }
@@ -712,11 +726,8 @@
         <div class="today-daynight" id="todayDayNight"></div>
       </div>
 
-      <div class="today-section-block">
-        <div class="today-section-block-head"><h2>active projects</h2></div>
-        <div class="ms-grid" id="todayProjectsGrid"></div>
-        <p class="today-empty-note" id="todayProjectsEmpty">No active projects.</p>
-      </div>
+      <!-- Active projects grid removed for now — see renderToday(), guarded so it's a quick
+           re-add later rather than a rewrite. -->
 
       <div class="today-layout">
         <div class="today-main">
@@ -1026,13 +1037,23 @@
         <label class="wb-width-label">width <input type="range" id="wbWidthInput" min="1" max="24" value="3"></label>
         <button class="btn" id="wbClearBtn" type="button">clear drawing</button>
         <button class="btn" id="wbConnectBtn" type="button" title="Click two cards in a row to link them">🔗 connect</button>
+        <div class="wb-zoom-group">
+          <button class="cal-nav-btn" id="wbZoomOutBtn" type="button" aria-label="Zoom out">−</button>
+          <span class="wb-zoom-label" id="wbZoomLabel">100%</span>
+          <button class="cal-nav-btn" id="wbZoomInBtn" type="button" aria-label="Zoom in">+</button>
+          <button class="btn" id="wbZoomResetBtn" type="button">reset view</button>
+        </div>
+        <button class="btn" id="wbFullscreenBtn" type="button">⤢ fullscreen</button>
         <span class="wb-save-status" id="wbSaveStatus"></span>
       </div>
       <p class="panel-hint" id="wbConnectHint" style="display:none;">Connect mode on — click a card, then click another to link them. Click the same card again to cancel. Right-click a line to remove it.</p>
+      <p class="panel-hint">Pan: hold space and drag, or drag with the middle mouse button. Zoom: scroll, or the +/− buttons.</p>
       <div class="wb-canvas-wrap" id="wbCanvasWrap">
-        <canvas id="wbCanvas"></canvas>
-        <svg class="wb-conn-svg" id="wbConnSvg"></svg>
-        <div class="wb-overlay" id="wbOverlay"></div>
+        <div class="wb-world" id="wbWorld">
+          <canvas id="wbCanvas"></canvas>
+          <svg class="wb-conn-svg" id="wbConnSvg"></svg>
+          <div class="wb-overlay" id="wbOverlay"></div>
+        </div>
       </div>
     </section>
 
@@ -1407,7 +1428,7 @@
     icon: "icon image", position: "custom order",
     whiteboard_x: "whiteboard position", whiteboard_y: "whiteboard position",
     weekdays: "habit day selection", tracker_variable_id: "habit's tracker link", time_of_day: "scheduled time",
-    duration_minutes: "duration"
+    duration_minutes: "duration", category: "area"
   };
   function warnDroppedFields(dropped){
     if(!dropped || !dropped.length) return;
@@ -1603,7 +1624,7 @@
     state.projects.sort(function(a,b){ return a.position - b.position; });
     state.habits = (results[2].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || null, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0 }; });
     state.habits.sort(function(a,b){ return a.position - b.position; });
-    state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null }; });
+    state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null }; });
     state.actions.sort(function(a,b){ return a.position - b.position; });
     state.journal = (results[4].data || []).map(function(r){ return { id:r.id, date:r.date, text:r.text }; });
     state.people = (results[5].data || []).map(function(r){ return { id:r.id, name:r.name, relationship:r.relationship, contact:r.contact, notes:r.notes, position:r.position||0 }; });
@@ -2612,6 +2633,14 @@
     if(a.parentType === "project"){ var p = projectById(a.parentId); return p ? p.goalId : null; }
     return null;
   }
+  // An action's area is now its own stored field (set from the modal's area picker, independent
+  // of whether it has a parent) — falls back to the parent goal's category only for actions saved
+  // before this existed.
+  function actionCategory(a){
+    if(a.category) return a.category;
+    var g = goalById(resolveGoalIdForAction(a));
+    return g ? g.category : null;
+  }
 
   function renderActions(){
     var f = filters.actions;
@@ -2633,7 +2662,8 @@
       if(!items.length) return "";
       var tiles = items.map(function(a){
         var overdue = !a.done && a.date && a.date < todayStr();
-        return '<div class="ms-tile" data-kind="action" data-id="' + a.id + '">' +
+        var cat = actionCategory(a);
+        return '<div class="ms-tile' + (cat ? ' ' + cat : '') + '" data-kind="action" data-id="' + a.id + '">' +
           '<div class="ms-tile-top">' +
             '<button class="ms-check' + (a.done?' done':'') + '" data-action="toggle-action" data-id="' + a.id + '" aria-label="Toggle done"></button>' +
             '<span class="ms-tile-title' + (a.done?' done':'') + '">' + escapeHtml(a.title) + '</span>' +
@@ -2656,7 +2686,8 @@
   function renderActionsList(list){
     document.getElementById("actionList").innerHTML = list.map(function(a){
       var overdue = !a.done && a.date && a.date < todayStr();
-      return '<div class="goal-card" data-kind="action" data-id="' + a.id + '" draggable="true">' +
+      var cat = actionCategory(a);
+      return '<div class="goal-card' + (cat ? ' ' + cat : '') + '" data-kind="action" data-id="' + a.id + '" draggable="true">' +
         '<div class="card-tab">' +
           '<span class="prio-badge ' + a.priority + '">' + a.priority + '</span><span class="sep">·</span>' +
           '<span class="type-badge">' + a.type + '</span><span class="sep">·</span>' +
@@ -2823,42 +2854,63 @@
   });
 
   /* ---------------- Whiteboard ---------------- */
-  var wbCanvas, wbCtx;
+  var wbCanvas, wbCtx, wbWorldEl, wbWrapEl;
   var wbDrawing = false;
   var wbColor = "#1A1A1A";
   var wbWidth = 3;
   var wbLastX = 0, wbLastY = 0;
   var wbSaveTimer = null;
   var wbLoadStarted = false;
+  // The board is a large fixed-size surface you pan/zoom around within a small viewport — not
+  // literally infinite, but big enough (roughly a wall-sized whiteboard) that it reads as one.
+  var WB_WORLD_W = 4000, WB_WORLD_H = 2800;
+  var wbPanX = 0, wbPanY = 0, wbZoom = 1;
 
+  function applyWbTransform(){
+    if(wbWorldEl) wbWorldEl.style.transform = "translate(" + wbPanX + "px, " + wbPanY + "px) scale(" + wbZoom + ")";
+    var label = document.getElementById("wbZoomLabel");
+    if(label) label.textContent = Math.round(wbZoom * 100) + "%";
+  }
+  function wbZoomAt(newZoom, viewportX, viewportY){
+    newZoom = Math.max(0.25, Math.min(3, newZoom));
+    var worldX = (viewportX - wbPanX) / wbZoom;
+    var worldY = (viewportY - wbPanY) / wbZoom;
+    wbZoom = newZoom;
+    wbPanX = viewportX - worldX * wbZoom;
+    wbPanY = viewportY - worldY * wbZoom;
+    applyWbTransform();
+  }
+  // Converts a pointer event into WORLD coordinates (i.e. canvas-internal pixel coordinates),
+  // independent of the current pan/zoom — this is what drawing and node-dragging both need.
   function wbCanvasPos(e){
-    var rect = wbCanvas.getBoundingClientRect();
-    var scaleX = wbCanvas.width / rect.width;
-    var scaleY = wbCanvas.height / rect.height;
-    return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
+    var rect = wbWrapEl.getBoundingClientRect();
+    var viewportX = e.clientX - rect.left, viewportY = e.clientY - rect.top;
+    return { x: (viewportX - wbPanX) / wbZoom, y: (viewportY - wbPanY) / wbZoom };
   }
 
-  function resizeWhiteboardCanvas(){
-    if(!wbCtx) return;
-    var rect = wbCanvas.getBoundingClientRect();
-    var newW = Math.max(1, Math.round(rect.width));
-    var newH = Math.max(1, Math.round(rect.height));
-    if(newW === wbCanvas.width && newH === wbCanvas.height) return;
+  // The canvas backing store is sized once to the full world size — it doesn't get resized on
+  // window resize any more (pan/zoom handle fitting it to whatever viewport size you have).
+  function initWbCanvasSize(){
+    if(!wbCtx || wbCanvas.width === WB_WORLD_W) return;
     var hadContent = wbCanvas.width > 0 && wbCanvas.height > 0;
     var prev = hadContent ? wbCanvas.toDataURL() : null;
-    wbCanvas.width = newW;
-    wbCanvas.height = newH;
+    wbCanvas.width = WB_WORLD_W;
+    wbCanvas.height = WB_WORLD_H;
+    wbWorldEl.style.width = WB_WORLD_W + "px";
+    wbWorldEl.style.height = WB_WORLD_H + "px";
     wbCtx.fillStyle = "#ffffff";
     wbCtx.fillRect(0, 0, wbCanvas.width, wbCanvas.height);
     if(prev){
       var img = new Image();
-      img.onload = function(){ wbCtx.drawImage(img, 0, 0, wbCanvas.width, wbCanvas.height); };
+      // Drawn at natural size (not stretched) — old boards were saved at whatever the viewport
+      // happened to be, and this keeps them legible instead of blowing them up to fill 4000x2800.
+      img.onload = function(){ wbCtx.drawImage(img, 0, 0); };
       img.src = prev;
     }
   }
 
   function activateWhiteboard(){
-    resizeWhiteboardCanvas();
+    initWbCanvasSize();
     if(!wbLoadStarted){ wbLoadStarted = true; loadWhiteboard(); loadWbConnections(); }
     renderWhiteboardNodes();
   }
@@ -3004,7 +3056,9 @@
     });
     overlay.addEventListener("pointermove", function(e){
       if(!dragEl || e.pointerId !== dragPointerId) return;
-      var dx = e.clientX - startClientX, dy = e.clientY - startClientY;
+      // Viewport-pixel deltas have to be scaled back down by the current zoom to get the right
+      // world-space movement, since style.left/top live in the (untransformed) world coordinates.
+      var dx = (e.clientX - startClientX) / wbZoom, dy = (e.clientY - startClientY) / wbZoom;
       if(Math.abs(dx) > 3 || Math.abs(dy) > 3) moved = true;
       dragEl.style.left = (startLeft + dx) + "px";
       dragEl.style.top = (startTop + dy) + "px";
@@ -3057,7 +3111,8 @@
     if(res.error){ console.error(res.error); return; }
     if(wbCtx && res.data && res.data.image){
       var img = new Image();
-      img.onload = function(){ wbCtx.drawImage(img, 0, 0, wbCanvas.width, wbCanvas.height); };
+      // Natural size, not stretched to fill the (much larger) world canvas — see initWbCanvasSize.
+      img.onload = function(){ wbCtx.drawImage(img, 0, 0); };
       img.src = res.data.image;
     }
   }
@@ -3065,6 +3120,8 @@
   function initWhiteboard(){
     wbCanvas = document.getElementById("wbCanvas");
     wbCtx = wbCanvas.getContext("2d");
+    wbWorldEl = document.getElementById("wbWorld");
+    wbWrapEl = document.getElementById("wbCanvasWrap");
 
     wbCanvas.addEventListener("pointerdown", function(e){
       if(!wbCtx) return;
@@ -3099,9 +3156,83 @@
     wbCanvas.addEventListener("pointerleave", endStroke);
     wbCanvas.addEventListener("pointercancel", endStroke);
 
-    window.addEventListener("resize", function(){
-      if(activeSection === "whiteboard") resizeWhiteboardCanvas();
+    // Panning: hold space and drag, or drag with the middle mouse button. Runs in the capture
+    // phase so it can claim the gesture before the canvas's own draw-stroke listener (or a node's
+    // drag listener) sees it — stopPropagation() is what keeps those from firing at the same time.
+    var wbPanning = false, wbPanPointerId = null, wbPanStartClientX, wbPanStartClientY, wbPanStartX, wbPanStartY;
+    wbWrapEl.addEventListener("pointerdown", function(e){
+      if(e.button === 1 || (e.button === 0 && wbSpaceDown)){
+        e.preventDefault();
+        e.stopPropagation();
+        wbPanning = true;
+        wbPanPointerId = e.pointerId;
+        wbPanStartClientX = e.clientX; wbPanStartClientY = e.clientY;
+        wbPanStartX = wbPanX; wbPanStartY = wbPanY;
+        wbWrapEl.setPointerCapture(e.pointerId);
+        wbWrapEl.classList.add("panning");
+      }
+    }, true);
+    wbWrapEl.addEventListener("pointermove", function(e){
+      if(!wbPanning || e.pointerId !== wbPanPointerId) return;
+      wbPanX = wbPanStartX + (e.clientX - wbPanStartClientX);
+      wbPanY = wbPanStartY + (e.clientY - wbPanStartClientY);
+      applyWbTransform();
+    }, true);
+    function endWbPan(e){
+      if(!wbPanning || (e.pointerId !== undefined && e.pointerId !== wbPanPointerId)) return;
+      wbPanning = false; wbPanPointerId = null;
+      wbWrapEl.classList.remove("panning");
+    }
+    wbWrapEl.addEventListener("pointerup", endWbPan, true);
+    wbWrapEl.addEventListener("pointercancel", endWbPan, true);
+
+    var wbSpaceDown = false;
+    document.addEventListener("keydown", function(e){
+      if(e.code === "Space" && activeSection === "whiteboard" && !/^(INPUT|TEXTAREA|SELECT)$/.test((e.target && e.target.tagName) || "")){
+        wbSpaceDown = true;
+        wbWrapEl.classList.add("space-down");
+      }
     });
+    document.addEventListener("keyup", function(e){
+      if(e.code === "Space"){ wbSpaceDown = false; wbWrapEl.classList.remove("space-down"); }
+    });
+
+    // Zooming: scroll wheel (zooms toward the cursor), or the +/- buttons (zoom toward center).
+    wbWrapEl.addEventListener("wheel", function(e){
+      e.preventDefault();
+      var rect = wbWrapEl.getBoundingClientRect();
+      var factor = e.deltaY < 0 ? 1.1 : 0.9;
+      wbZoomAt(wbZoom * factor, e.clientX - rect.left, e.clientY - rect.top);
+    }, { passive:false });
+    document.getElementById("wbZoomInBtn").addEventListener("click", function(){
+      var rect = wbWrapEl.getBoundingClientRect();
+      wbZoomAt(wbZoom * 1.25, rect.width / 2, rect.height / 2);
+    });
+    document.getElementById("wbZoomOutBtn").addEventListener("click", function(){
+      var rect = wbWrapEl.getBoundingClientRect();
+      wbZoomAt(wbZoom / 1.25, rect.width / 2, rect.height / 2);
+    });
+    document.getElementById("wbZoomResetBtn").addEventListener("click", function(){
+      wbZoom = 1; wbPanX = 0; wbPanY = 0;
+      applyWbTransform();
+    });
+    applyWbTransform();
+
+    var wbFullscreenBtn = document.getElementById("wbFullscreenBtn");
+    // Fullscreen API isn't guaranteed everywhere (some iframes/webviews lack it) — hide the
+    // control entirely rather than offer a button that would silently fail.
+    if(!document.fullscreenEnabled || !wbWrapEl.requestFullscreen){
+      wbFullscreenBtn.style.display = "none";
+    } else {
+      wbFullscreenBtn.addEventListener("click", function(){
+        if(!document.fullscreenElement) wbWrapEl.requestFullscreen().catch(function(err){ console.error(err); });
+        else document.exitFullscreen();
+      });
+      document.addEventListener("fullscreenchange", function(){
+        var isFs = document.fullscreenElement === wbWrapEl;
+        wbFullscreenBtn.textContent = isFs ? "⤡ exit fullscreen" : "⤢ fullscreen";
+      });
+    }
 
     document.getElementById("wbColorPicker").addEventListener("input", function(){
       wbColor = this.value;
@@ -3865,9 +3996,8 @@
     track.innerHTML = timed.map(function(a){
       var startFrac = timeToFraction(a.timeOfDay) * 100;
       var widthFrac = Math.max(1.2, ((a.durationMinutes || 15) / 1440) * 100);
-      var goalId = resolveGoalIdForAction(a);
-      var goal = goalId ? goalById(goalId) : null;
-      var catClass = goal ? " " + goal.category : "";
+      var cat = actionCategory(a);
+      var catClass = cat ? " " + cat : "";
       return '<div class="timeline-block' + catClass + (a.done?' done':'') + '" data-kind="action" data-id="' + a.id + '" style="left:' + startFrac + '%; width:' + widthFrac + '%;" title="' + escapeHtml(a.title) + ' — ' + fmtTimeOfDay(a.timeOfDay) + '">' +
         '<span class="timeline-block-title">' + escapeHtml(a.title) + '</span>' +
       '</div>';
@@ -3930,24 +4060,27 @@
     renderTodayTimelineActions();
     document.getElementById("todayDateLabel").textContent = fmtDateLong(todaySelectedDate) + (todaySelectedDate === todayStr() ? " (today)" : "");
 
-    // Active projects aren't tied to the selected day — they're a persistent strip of whatever's
-    // currently in flight, independent of which day the calendar below has picked.
-    var activeProjects = state.projects.filter(function(p){ return !p.done; });
-    document.getElementById("todayProjectsEmpty").style.display = activeProjects.length ? "none" : "";
-    document.getElementById("todayProjectsGrid").innerHTML = activeProjects.map(function(p){
-      var overdue = p.due && p.due < todayStr();
-      return '<div class="ms-tile" data-kind="project" data-id="' + p.id + '">' +
-        '<div class="ms-tile-top">' +
-          '<button class="ms-check" data-action="toggle-proj" data-id="' + p.id + '" aria-label="Toggle done"></button>' +
-          '<span class="ms-tile-title">' + escapeHtml(p.title) + '</span>' +
-          '<button class="icon-btn edit" data-action="edit-proj" data-id="' + p.id + '" aria-label="Edit project">✎</button>' +
-          '<button class="icon-btn" data-action="del-proj" data-id="' + p.id + '" aria-label="Delete project">&times;</button>' +
-        '</div>' +
-        '<div class="ms-tile-meta"><span class="prio-badge ' + p.priority + '">' + p.priority + '</span>' +
-        (p.due ? '<span style="color:' + (overdue?'var(--p0)':'var(--text-faint)') + '">' + fmtDate(p.due) + '</span>' : '') +
-        '<span>' + p.hours + 'h</span></div>' +
-      '</div>';
-    }).join("");
+    // Active projects grid is removed from the page for now — guarded rather than deleted so it's
+    // a one-line re-add (just restore the HTML block) instead of rewriting this.
+    var todayProjectsGridEl = document.getElementById("todayProjectsGrid");
+    if(todayProjectsGridEl){
+      var activeProjects = state.projects.filter(function(p){ return !p.done; });
+      document.getElementById("todayProjectsEmpty").style.display = activeProjects.length ? "none" : "";
+      todayProjectsGridEl.innerHTML = activeProjects.map(function(p){
+        var overdue = p.due && p.due < todayStr();
+        return '<div class="ms-tile" data-kind="project" data-id="' + p.id + '">' +
+          '<div class="ms-tile-top">' +
+            '<button class="ms-check" data-action="toggle-proj" data-id="' + p.id + '" aria-label="Toggle done"></button>' +
+            '<span class="ms-tile-title">' + escapeHtml(p.title) + '</span>' +
+            '<button class="icon-btn edit" data-action="edit-proj" data-id="' + p.id + '" aria-label="Edit project">✎</button>' +
+            '<button class="icon-btn" data-action="del-proj" data-id="' + p.id + '" aria-label="Delete project">&times;</button>' +
+          '</div>' +
+          '<div class="ms-tile-meta"><span class="prio-badge ' + p.priority + '">' + p.priority + '</span>' +
+          (p.due ? '<span style="color:' + (overdue?'var(--p0)':'var(--text-faint)') + '">' + fmtDate(p.due) + '</span>' : '') +
+          '<span>' + p.hours + 'h</span></div>' +
+        '</div>';
+      }).join("");
+    }
 
     // Earliest-to-latest by time of day; untimed habits sort after every timed one, then fall
     // back to their manual drag order among themselves.
@@ -3958,35 +4091,31 @@
       return x.position - y.position;
     });
     document.getElementById("todayHabitsEmpty").style.display = habits.length ? "none" : "";
+    // Squares, matching the same icon-forward visual language as goal matrix tiles: the habit
+    // takes on its parent goal's icon (or the goal's initial, or its own if there's no goal) and
+    // area color. Click toggles/prompts for the value (see handleHabitMarkClick); right-click
+    // still edits/deletes via the app's generic data-kind/data-id system.
     document.getElementById("todayHabitsList").innerHTML = habits.map(function(h){
-      var v = state.trackerVars.find(function(x){ return x.id === h.trackerVariableId; }) || { id:h.trackerVariableId, type:"boolean", scaleMax:5 };
       var value = habitValueForDate(h, todaySelectedDate);
       var on = !!value;
-      var valueLabel = v.type === "boolean" ? '<span class="today-row-value-label' + (on?' on':'') + '">' + (on?"yes":"no") + '</span>' : "";
       var goal = h.goalId ? goalById(h.goalId) : null;
       var catClass = goal ? " " + goal.category : "";
-      return '<div class="today-habit-tile' + catClass + '" data-kind="habit" data-id="' + h.id + '">' +
-        '<div class="today-habit-tile-top">' +
-          trackerCellControlHtml(v, todaySelectedDate, value) +
-          valueLabel +
-          '<span class="today-habit-tile-title' + (on?' done':'') + '">' + escapeHtml(h.title) + '</span>' +
-        '</div>' +
-        '<div class="today-habit-tile-meta">' +
-          (h.timeOfDay ? '<span class="today-habit-tile-time">' + fmtTimeOfDay(h.timeOfDay) + '</span>' : '') +
-          '<span class="prio-badge ' + h.priority + '">' + h.priority + '</span>' +
-          '<span>' + habitScheduleLabel(h) + '</span>' +
-        '</div>' +
-        '<div class="today-habit-tile-actions">' +
-          '<button class="icon-btn edit" data-action="edit-habit" data-id="' + h.id + '" aria-label="Edit habit">✎</button>' +
-          '<button class="icon-btn" data-action="del-habit" data-id="' + h.id + '" aria-label="Delete habit">&times;</button>' +
-        '</div>' +
+      var initial = ((goal ? goal.title : h.title) || "?").trim().charAt(0).toUpperCase() || "?";
+      var icon = goal && goal.icon;
+      var titleAttr = escapeHtml(h.title) + (h.timeOfDay ? " — " + fmtTimeOfDay(h.timeOfDay) : "") + (value ? " — " + value : "");
+      return '<div class="today-habit-tile' + catClass + '" data-kind="habit" data-id="' + h.id + '" title="' + titleAttr + '">' +
+        '<span class="matrix-tile-status' + (on?' on-track':'') + '"></span>' +
+        (icon ? iconMaskHtml("matrix-tile-icon-img", icon, goal.category) : '<span class="matrix-tile-initial">' + initial + '</span>') +
+        '<div class="matrix-tile-scrim"><div class="matrix-tile-title">' + escapeHtml(h.title) + '</div></div>' +
       '</div>';
     }).join("");
 
     var actionsToday = state.actions.filter(function(a){ return a.date === todaySelectedDate; });
     document.getElementById("todayActionsEmpty").style.display = actionsToday.length ? "none" : "";
     document.getElementById("todayActionsList").innerHTML = actionsToday.map(function(a){
-      return '<div class="today-row" data-kind="action" data-id="' + a.id + '">' +
+      var aCat = actionCategory(a);
+      var aCatClass = aCat ? " " + aCat : "";
+      return '<div class="today-row' + aCatClass + '" data-kind="action" data-id="' + a.id + '">' +
         '<button class="ms-check' + (a.done?' done':'') + '" data-action="toggle-action" data-id="' + a.id + '" aria-label="Toggle done"></button>' +
         '<span class="today-row-title' + (a.done?' done':'') + '">' + escapeHtml(a.title) + '</span>' +
         '<span class="prio-badge ' + a.priority + '">' + a.priority + '</span>' +
@@ -4068,20 +4197,19 @@
     else if(t.dataset.action === "del-action") await deleteAction(t.dataset.id);
   });
   document.getElementById("todayHabitsList").addEventListener("click", async function(e){
-    if(handleTrackerCellClick(e)) return;
-    var t = e.target.closest("[data-action]");
-    if(!t) return;
-    if(t.dataset.action === "edit-habit") editHabit(t.dataset.id);
-    else if(t.dataset.action === "del-habit") await deleteHabit(t.dataset.id);
+    var tile = e.target.closest(".today-habit-tile");
+    if(!tile) return;
+    await handleHabitMarkClick(tile.dataset.id, todaySelectedDate);
   });
-  document.getElementById("todayHabitsList").addEventListener("change", handleTrackerCellChange);
-  document.getElementById("todayProjectsGrid").addEventListener("click", async function(e){
-    var t = e.target.closest("[data-action]");
-    if(!t) return;
-    if(t.dataset.action === "toggle-proj") await toggleProjectDone(t.dataset.id);
-    else if(t.dataset.action === "edit-proj") editProject(t.dataset.id);
-    else if(t.dataset.action === "del-proj") await deleteProject(t.dataset.id);
-  });
+  if(document.getElementById("todayProjectsGrid")){
+    document.getElementById("todayProjectsGrid").addEventListener("click", async function(e){
+      var t = e.target.closest("[data-action]");
+      if(!t) return;
+      if(t.dataset.action === "toggle-proj") await toggleProjectDone(t.dataset.id);
+      else if(t.dataset.action === "edit-proj") editProject(t.dataset.id);
+      else if(t.dataset.action === "del-proj") await deleteProject(t.dataset.id);
+    });
+  }
   document.getElementById("addTodayActionBtn").addEventListener("click", function(){
     openActionModal(null, null);
     document.getElementById("actionDateInput").value = todaySelectedDate;
@@ -4246,7 +4374,7 @@
         var res7 = await safeInsert("actions", { title:input.title, type:input.type, priority:input.priority, parent_type:pt7, parent_id: pt7 === "none" ? null : (input.parent_id || null), date: input.date || null, done:false }, state.actions);
         if(res7.error) return { error: res7.error.message };
         var r7 = res7.data;
-        state.actions.push({ id:r7.id, parentType:r7.parent_type, parentId:r7.parent_id, title:r7.title, type:r7.type, priority:r7.priority, date:r7.date, done:r7.done, position:r7.position||0, timeOfDay:r7.time_of_day ? r7.time_of_day.slice(0,5) : null, durationMinutes:r7.duration_minutes||null });
+        state.actions.push({ id:r7.id, parentType:r7.parent_type, parentId:r7.parent_id, title:r7.title, type:r7.type, priority:r7.priority, date:r7.date, done:r7.done, position:r7.position||0, timeOfDay:r7.time_of_day ? r7.time_of_day.slice(0,5) : null, durationMinutes:r7.duration_minutes||null, category:r7.category||null });
         renderAll(); return { ok:true, id:r7.id };
       }
       if(name === "edit_action"){
@@ -4681,12 +4809,20 @@
 
     // Every habit owns exactly one tracker_variables row — create it on first save, keep its
     // name/type in sync with the habit on every later save. This is what "marking done" writes to.
+    // The existing link is checked against the live DB row (not just local state) right before
+    // deciding insert-vs-update, so a stale/out-of-sync local habit object can never cause a
+    // second tracker_variables row to get created for the same habit.
+    var linkedVarId = existingHabit ? existingHabit.trackerVariableId : null;
+    if(isEdit){
+      var freshHabitRes = await sb.from("habits").select("tracker_variable_id").eq("id", editingHabitId).maybeSingle();
+      if(!freshHabitRes.error && freshHabitRes.data) linkedVarId = freshHabitRes.data.tracker_variable_id || null;
+    }
     var varPayload = {
       name: title, type: type,
       scale_max: type === "scale" ? Math.max(2, Math.min(10, Math.round(Number(scaleMaxRaw)) || 5)) : null
     };
-    var varRes = (existingHabit && existingHabit.trackerVariableId)
-      ? await safeUpdate("tracker_variables", existingHabit.trackerVariableId, varPayload)
+    var varRes = linkedVarId
+      ? await safeUpdate("tracker_variables", linkedVarId, varPayload)
       : await safeInsert("tracker_variables", varPayload, state.trackerVars);
     if(varRes.error){ this.disabled = false; alert(varRes.error.message); return; }
     var vr = varRes.data;
@@ -4728,30 +4864,28 @@
   var actionTypeSel = document.getElementById("actionTypeSelect");
   ACTION_TYPES.forEach(function(t){ var o = document.createElement("option"); o.textContent = t; actionTypeSel.appendChild(o); });
 
-  // Parent options are scoped to the selected area — a goal has to match it directly, a project
-  // matches if its own linked goal is in that area (a project with no goal isn't tied to any one
-  // area, so it's always eligible regardless of which area is picked).
+  // Area is always selectable, even when the action belongs to nothing (pt === "none") — an
+  // action's area is its own field, independent of whether it has a parent. Parent options (when
+  // there is a parent) are scoped to that area exactly like the goal picker: a goal has to match
+  // the area directly, and a project has to match it via its own linked goal's area.
   function fillActionParentSelect(){
     var pt = chipValue(document.getElementById("actionParentTypeSelect"), "pt");
     var area = chipValue(document.getElementById("actionAreaSelect"), "ar");
     var fieldEl = document.getElementById("actionParentField");
-    var areaFieldEl = document.getElementById("actionAreaField");
     var sel = document.getElementById("actionParentSelect");
     if(pt === "none"){
       fieldEl.style.display = "none";
-      areaFieldEl.style.display = "none";
       sel.innerHTML = "";
       return;
     }
     fieldEl.style.display = "";
-    areaFieldEl.style.display = "";
     if(pt === "goal"){
       sel.innerHTML = state.goals.filter(function(g){ return g.category === area; })
         .map(function(g){ return '<option value="' + g.id + '">' + escapeHtml(g.title) + '</option>'; }).join("");
     } else {
       sel.innerHTML = state.projects.filter(function(p){
         var g = p.goalId ? goalById(p.goalId) : null;
-        return !g || g.category === area;
+        return g && g.category === area;
       }).map(function(p){ return '<option value="' + p.id + '">' + escapeHtml(p.title) + '</option>'; }).join("");
     }
   }
@@ -4770,8 +4904,12 @@
       : (presetGoalId ? "goal" : (state.goals.length ? "goal" : (state.projects.length ? "project" : "none")));
     setChip(document.getElementById("actionParentTypeSelect"), "pt", defaultPt);
     var presetArea = "Career";
-    var areaGoal = editActionObj ? goalById(resolveGoalIdForAction(editActionObj)) : (presetGoalId ? goalById(presetGoalId) : null);
-    if(areaGoal) presetArea = areaGoal.category;
+    if(editActionObj && editActionObj.category){
+      presetArea = editActionObj.category;
+    } else {
+      var areaGoal = editActionObj ? goalById(resolveGoalIdForAction(editActionObj)) : (presetGoalId ? goalById(presetGoalId) : null);
+      if(areaGoal) presetArea = areaGoal.category;
+    }
     setChip(document.getElementById("actionAreaSelect"), "ar", presetArea);
     fillActionParentSelect();
     if(defaultPt !== "none"){
@@ -4799,7 +4937,8 @@
       parent_id: pt === "none" ? null : parentSelect.value,
       date: document.getElementById("actionDateInput").value || null,
       time_of_day: document.getElementById("actionTimeInput").value || null,
-      duration_minutes: document.getElementById("actionDurationInput").value ? Math.max(0, Math.round(Number(document.getElementById("actionDurationInput").value))) : null
+      duration_minutes: document.getElementById("actionDurationInput").value ? Math.max(0, Math.round(Number(document.getElementById("actionDurationInput").value))) : null,
+      category: chipValue(document.getElementById("actionAreaSelect"), "ar") || null
     };
     this.disabled = true;
     var isEdit = !!editingActionId;
@@ -4813,7 +4952,7 @@
     this.disabled = false;
     if(res.error){ alert(res.error.message); return; }
     var r = res.data;
-    var mapped = { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null };
+    var mapped = { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null };
     if(isEdit){
       var idx = state.actions.findIndex(function(x){ return x.id === editingActionId; });
       if(idx !== -1) state.actions[idx] = mapped;
