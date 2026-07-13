@@ -1504,12 +1504,37 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(function(){ el.style.display = "none"; }, 4500);
   }
+  // Ctrl/Cmd+Z undo — a plain stack of {label, undo} entries pushed by deletes and toggles (the
+  // actions people actually regret misclicking). Each undo() closure carries its own snapshot of
+  // whatever it needs to restore, so popping the stack is self-contained — no separate "redo" model,
+  // no diffing. Capped so it can't grow unbounded over a long session.
+  var undoStack = [];
+  var UNDO_STACK_MAX = 30;
+  function pushUndo(label, undoFn){
+    undoStack.push({ label: label, undo: undoFn });
+    if(undoStack.length > UNDO_STACK_MAX) undoStack.shift();
+  }
+  async function performUndo(){
+    var entry = undoStack.pop();
+    if(!entry) { toast("Nothing to undo"); return; }
+    try{ await entry.undo(); } catch(e){ console.error(e); toast("Undo failed: " + e.message); return; }
+    toast("Undone: " + entry.label);
+  }
+  document.addEventListener("keydown", function(e){
+    if((e.key !== "z" && e.key !== "Z") || !(e.ctrlKey || e.metaKey) || e.shiftKey) return;
+    var ae = document.activeElement;
+    // Typing in a text field keeps the browser's own native undo — only intercept Ctrl+Z when
+    // focus isn't in an editable field, same spirit as the existing space-to-pan guard.
+    if(ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable)) return;
+    e.preventDefault();
+    performUndo();
+  });
   var DROPPED_FIELD_LABELS = {
     health_override: "health status", health_pct_override: "health %",
     icon: "icon image", position: "custom order",
     whiteboard_x: "whiteboard position", whiteboard_y: "whiteboard position",
     weekdays: "habit day selection", tracker_variable_id: "habit's tracker link", time_of_day: "scheduled time",
-    duration_minutes: "duration", category: "area"
+    duration_minutes: "duration", category: "area", skip_dates: "skipped habit days"
   };
   function warnDroppedFields(dropped){
     if(!dropped || !dropped.length) return;
@@ -1708,7 +1733,7 @@
     state.goals.sort(function(a,b){ return a.position - b.position; });
     state.projects = (results[1].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null) }; });
     state.projects.sort(function(a,b){ return a.position - b.position; });
-    state.habits = (results[2].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || null, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null }; });
+    state.habits = (results[2].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || null, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [] }; });
     state.habits.sort(function(a,b){ return a.position - b.position; });
     state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null }; });
     state.actions.sort(function(a,b){ return a.position - b.position; });
@@ -1999,9 +2024,15 @@
         await trackerSaveValue(h.trackerVariableId, date, current ? "" : "true");
       } else {
         h.days[date] = !h.days[date];
+        var newVal = h.days[date];
         renderAll();
         var r = await sb.from("habits").update({ days: h.days }).eq("id", h.id);
-        if(r.error) console.error(r.error);
+        if(r.error){ console.error(r.error); return; }
+        pushUndo((newVal ? "mark" : "unmark") + " \"" + h.title + "\" on " + date, async function(){
+          h.days[date] = !newVal;
+          renderAll();
+          await sb.from("habits").update({ days: h.days }).eq("id", h.id);
+        });
       }
       return;
     }
@@ -2031,9 +2062,12 @@
   // "custom" has no day-of-week scheme defined yet so it's treated as landing every day for now.
   // A habit never occurs before the day it was created — its recurrence starts from creation
   // onwards, not retroactively (matters most on the Timeline page, which can be scrolled decades
-  // into the past).
+  // into the past). Individual dates can also be explicitly skipped (see skipHabitInstance) without
+  // touching the habit's own pattern — that's what "delete" means for a single day's instance shown
+  // on Today/Timeline, as opposed to deleting the habit itself from the Planner tab.
   function habitOccursOnDate(h, dateStr){
     if(h.createdAt && dateStr < h.createdAt) return false;
+    if(h.skipDates && h.skipDates.indexOf(dateStr) !== -1) return false;
     if(h.frequency === "weekly") return (h.weekdays || []).indexOf(WEEKDAY_ABBR[new Date(dateStr + "T00:00:00").getDay()]) !== -1;
     return true;
   }
@@ -2153,11 +2187,22 @@
   async function toggleProjectDone(id){
     var p = projectById(id);
     if(!p) return;
+    var prev = p.done;
     p.done = !p.done; renderAll();
     var r = await sb.from("projects").update({ done: p.done }).eq("id", p.id);
-    if(r.error) console.error(r.error);
+    if(r.error){ console.error(r.error); return; }
+    pushUndo((prev ? "reopen" : "complete") + " project \"" + p.title + "\"", async function(){
+      p.done = prev; renderAll();
+      await sb.from("projects").update({ done: prev }).eq("id", p.id);
+    });
   }
+  function wbConnPayload(c){ return { id:c.id, from_type:c.fromType, from_id:c.fromId, to_type:c.toType, to_id:c.toId }; }
   async function deleteProject(id){
+    var p = state.projects.find(function(x){ return x.id === id; });
+    if(!p) return;
+    var snapshot = Object.assign({}, p);
+    var orphanedIds = state.actions.filter(function(x){ return x.parentType==="project" && x.parentId===id; }).map(function(x){ return x.id; });
+    var removedConns = state.wbConnections.filter(function(c){ return (c.fromType==="project"&&c.fromId===id)||(c.toType==="project"&&c.toId===id); });
     // orphans this project's actions rather than deleting them
     state.actions.forEach(function(x){ if(x.parentType==="project" && x.parentId===id){ x.parentType="none"; x.parentId=null; } });
     state.projects = state.projects.filter(function(x){ return x.id !== id; });
@@ -2167,24 +2212,67 @@
     await sb.from("whiteboard_connections").delete().eq("from_id", id);
     await sb.from("whiteboard_connections").delete().eq("to_id", id);
     var r = await sb.from("projects").delete().eq("id", id);
-    if(r.error) console.error(r.error);
+    if(r.error){ console.error(r.error); return; }
+    pushUndo("delete project \"" + snapshot.title + "\"", async function(){
+      var payload = { id:snapshot.id, goal_id:snapshot.goalId, title:snapshot.title, priority:snapshot.priority, due:snapshot.due, hours:snapshot.hours, done:snapshot.done, position:snapshot.position, health_override:snapshot.healthOverride, health_pct_override:snapshot.healthPctOverride, icon:snapshot.icon, whiteboard_x:snapshot.wbX, whiteboard_y:snapshot.wbY };
+      var ri = await sb.from("projects").insert(payload).select().single();
+      if(ri.error){ console.error(ri.error); toast("Could not restore project: " + ri.error.message); return; }
+      state.projects.push(snapshot);
+      if(orphanedIds.length){
+        await sb.from("actions").update({ parent_type:"project", parent_id:id }).in("id", orphanedIds);
+        state.actions.forEach(function(x){ if(orphanedIds.indexOf(x.id) !== -1){ x.parentType="project"; x.parentId=id; } });
+      }
+      for(var i=0;i<removedConns.length;i++){
+        var rc = await sb.from("whiteboard_connections").insert(wbConnPayload(removedConns[i])).select().single();
+        if(!rc.error) state.wbConnections.push(removedConns[i]);
+      }
+      renderAll();
+    });
   }
   async function toggleActionDone(id){
     var a = state.actions.find(function(x){ return x.id === id; });
     if(!a) return;
+    var prev = a.done;
     a.done = !a.done; renderAll();
     var r = await sb.from("actions").update({ done: a.done }).eq("id", a.id);
-    if(r.error) console.error(r.error);
+    if(r.error){ console.error(r.error); return; }
+    pushUndo((prev ? "reopen" : "complete") + " action \"" + a.title + "\"", async function(){
+      a.done = prev; renderAll();
+      await sb.from("actions").update({ done: prev }).eq("id", a.id);
+    });
+  }
+  function actionPayload(snapshot){
+    return { id:snapshot.id, parent_type:snapshot.parentType, parent_id:snapshot.parentId, title:snapshot.title, type:snapshot.type, priority:snapshot.priority, date:snapshot.date, done:snapshot.done, position:snapshot.position, time_of_day:snapshot.timeOfDay, duration_minutes:snapshot.durationMinutes, category:snapshot.category };
   }
   async function deleteAction(id){
+    var a = state.actions.find(function(x){ return x.id === id; });
+    if(!a) return;
+    var snapshot = Object.assign({}, a);
     state.actions = state.actions.filter(function(x){ return x.id !== id; });
     renderAll();
     var r = await sb.from("actions").delete().eq("id", id);
-    if(r.error) console.error(r.error);
+    if(r.error){ console.error(r.error); return; }
+    pushUndo("delete action \"" + snapshot.title + "\"", async function(){
+      var ri = await sb.from("actions").insert(actionPayload(snapshot)).select().single();
+      if(ri.error){ console.error(ri.error); toast("Could not restore action: " + ri.error.message); return; }
+      state.actions.push(snapshot);
+      renderAll();
+    });
+  }
+  function habitPayload(snapshot){
+    return { id:snapshot.id, goal_id:snapshot.goalId, title:snapshot.title, priority:snapshot.priority, frequency:snapshot.frequency, weekdays:snapshot.weekdays, tracker_variable_id:snapshot.trackerVariableId, time_of_day:snapshot.timeOfDay, duration_minutes:snapshot.durationMinutes, days:snapshot.days, position:snapshot.position, skip_dates:snapshot.skipDates, created_at:snapshot.createdAt };
   }
   async function deleteHabit(id){
+    // Full deletion of the habit definition itself — only reachable from the Planner tab's own
+    // habit list/matrix (data-kind="habit"). A single day's occurrence, shown on Today/Timeline
+    // (data-kind="habit-instance"), goes through skipHabitInstance instead and never reaches here.
     var h = state.habits.find(function(x){ return x.id === id; });
-    var varId = h ? h.trackerVariableId : null;
+    if(!h) return;
+    var snapshot = Object.assign({}, h);
+    var varId = h.trackerVariableId;
+    var varSnapshot = varId ? state.trackerVars.find(function(v){ return v.id === varId; }) : null;
+    varSnapshot = varSnapshot ? Object.assign({}, varSnapshot) : null;
+    var entrySnapshots = varId ? state.trackerEntries.filter(function(e){ return e.variableId === varId; }).map(function(e){ return Object.assign({}, e); }) : [];
     state.habits = state.habits.filter(function(x){ return x.id !== id; });
     if(varId){
       state.trackerVars = state.trackerVars.filter(function(v){ return v.id !== varId; });
@@ -2192,14 +2280,57 @@
     }
     renderAll();
     var r = await sb.from("habits").delete().eq("id", id);
-    if(r.error) console.error(r.error);
+    if(r.error){ console.error(r.error); return; }
     // the habit's own tracker variable only existed for its sake — clean it up too (cascades entries)
     if(varId){
       var rv = await sb.from("tracker_variables").delete().eq("id", varId);
       if(rv.error) console.error(rv.error);
     }
+    pushUndo("delete habit \"" + snapshot.title + "\"", async function(){
+      if(varSnapshot){
+        var rvi = await sb.from("tracker_variables").insert({ id:varSnapshot.id, name:varSnapshot.name, type:varSnapshot.type, unit:varSnapshot.unit, scale_max:varSnapshot.scaleMax, categories:varSnapshot.categories, position:varSnapshot.position }).select().single();
+        if(!rvi.error){
+          state.trackerVars.push(varSnapshot);
+          for(var i=0;i<entrySnapshots.length;i++){
+            var es = entrySnapshots[i];
+            var rei = await sb.from("tracker_entries").insert({ id:es.id, date:es.date, variable_id:es.variableId, value:es.value }).select().single();
+            if(!rei.error) state.trackerEntries.push(es);
+          }
+        }
+      }
+      var ri = await sb.from("habits").insert(habitPayload(snapshot)).select().single();
+      if(ri.error){ console.error(ri.error); toast("Could not restore habit: " + ri.error.message); return; }
+      state.habits.push(snapshot);
+      renderAll();
+    });
+  }
+  // Deleting a single day's occurrence of a recurring habit (Today tiles, Today's timeline blocks,
+  // the Timeline page) never touches the habit definition — it just adds that date to the habit's
+  // skip_dates, which habitOccursOnDate checks. The habit keeps recurring on every other day.
+  async function skipHabitInstance(id, dateStr){
+    var h = state.habits.find(function(x){ return x.id === id; });
+    if(!h || !dateStr) return;
+    if(h.skipDates.indexOf(dateStr) !== -1) return;
+    var prevSkipDates = h.skipDates.slice();
+    h.skipDates = prevSkipDates.concat([dateStr]);
+    renderAll();
+    var r = await safeUpdate("habits", id, { skip_dates: h.skipDates });
+    if(r.error){ console.error(r.error); h.skipDates = prevSkipDates; renderAll(); return; }
+    warnDroppedFields(r.droppedFields);
+    pushUndo("skip \"" + h.title + "\" on " + dateStr, async function(){
+      h.skipDates = h.skipDates.filter(function(d){ return d !== dateStr; });
+      renderAll();
+      await safeUpdate("habits", id, { skip_dates: h.skipDates });
+    });
   }
   async function deleteGoal(goalId){
+    var g = state.goals.find(function(x){ return x.id === goalId; });
+    if(!g) return;
+    var snapshot = Object.assign({}, g);
+    var orphanedProjectIds = state.projects.filter(function(x){ return x.goalId === goalId; }).map(function(x){ return x.id; });
+    var orphanedHabitIds = state.habits.filter(function(x){ return x.goalId === goalId; }).map(function(x){ return x.id; });
+    var orphanedActionIds = state.actions.filter(function(x){ return x.parentType==="goal" && x.parentId===goalId; }).map(function(x){ return x.id; });
+    var removedConns = state.wbConnections.filter(function(c){ return (c.fromType==="goal"&&c.fromId===goalId)||(c.toType==="goal"&&c.toId===goalId); });
     // deleting a goal orphans its projects/habits/actions rather than deleting them —
     // parent links are optional, so children keep existing on their own.
     state.projects.forEach(function(x){ if(x.goalId === goalId) x.goalId = null; });
@@ -2214,19 +2345,60 @@
     await sb.from("whiteboard_connections").delete().eq("from_id", goalId);
     await sb.from("whiteboard_connections").delete().eq("to_id", goalId);
     var r3 = await sb.from("goals").delete().eq("id", goalId);
-    if(r3.error) console.error(r3.error);
+    if(r3.error){ console.error(r3.error); return; }
+    pushUndo("delete goal \"" + snapshot.title + "\"", async function(){
+      var payload = { id:snapshot.id, title:snapshot.title, priority:snapshot.priority, category:snapshot.category, due:snapshot.due, ongoing:snapshot.ongoing, position:snapshot.position, health_override:snapshot.healthOverride, health_pct_override:snapshot.healthPctOverride, icon:snapshot.icon, whiteboard_x:snapshot.wbX, whiteboard_y:snapshot.wbY };
+      var ri = await sb.from("goals").insert(payload).select().single();
+      if(ri.error){ console.error(ri.error); toast("Could not restore goal: " + ri.error.message); return; }
+      state.goals.push(snapshot);
+      if(orphanedProjectIds.length){
+        await sb.from("projects").update({ goal_id: goalId }).in("id", orphanedProjectIds);
+        state.projects.forEach(function(x){ if(orphanedProjectIds.indexOf(x.id) !== -1) x.goalId = goalId; });
+      }
+      if(orphanedHabitIds.length){
+        await sb.from("habits").update({ goal_id: goalId }).in("id", orphanedHabitIds);
+        state.habits.forEach(function(x){ if(orphanedHabitIds.indexOf(x.id) !== -1) x.goalId = goalId; });
+      }
+      if(orphanedActionIds.length){
+        await sb.from("actions").update({ parent_type:"goal", parent_id:goalId }).in("id", orphanedActionIds);
+        state.actions.forEach(function(x){ if(orphanedActionIds.indexOf(x.id) !== -1){ x.parentType="goal"; x.parentId=goalId; } });
+      }
+      for(var i=0;i<removedConns.length;i++){
+        var rc = await sb.from("whiteboard_connections").insert(wbConnPayload(removedConns[i])).select().single();
+        if(!rc.error) state.wbConnections.push(removedConns[i]);
+      }
+      renderAll();
+    });
   }
   async function deleteJournalEntry(id){
+    var n = state.journal.find(function(x){ return x.id === id; });
+    if(!n) return;
+    var snapshot = Object.assign({}, n);
     state.journal = state.journal.filter(function(x){ return x.id !== id; });
     renderAll();
     var r = await sb.from("journal").delete().eq("id", id);
-    if(r.error) console.error(r.error);
+    if(r.error){ console.error(r.error); return; }
+    pushUndo("delete note", async function(){
+      var ri = await sb.from("journal").insert({ id:snapshot.id, date:snapshot.date, text:snapshot.text, time_of_day:snapshot.timeOfDay, category:snapshot.category }).select().single();
+      if(ri.error){ console.error(ri.error); toast("Could not restore note: " + ri.error.message); return; }
+      state.journal.push(snapshot);
+      renderAll();
+    });
   }
   async function deletePerson(id){
+    var pe = state.people.find(function(x){ return x.id === id; });
+    if(!pe) return;
+    var snapshot = Object.assign({}, pe);
     state.people = state.people.filter(function(x){ return x.id !== id; });
     renderAll();
     var r = await sb.from("people").delete().eq("id", id);
-    if(r.error) console.error(r.error);
+    if(r.error){ console.error(r.error); return; }
+    pushUndo("delete person \"" + snapshot.name + "\"", async function(){
+      var ri = await sb.from("people").insert({ id:snapshot.id, name:snapshot.name, relationship:snapshot.relationship, contact:snapshot.contact, notes:snapshot.notes, position:snapshot.position }).select().single();
+      if(ri.error){ console.error(ri.error); toast("Could not restore person: " + ri.error.message); return; }
+      state.people.push(snapshot);
+      renderAll();
+    });
   }
   function editGoal(id){ var g = goalById(id); if(g) openGoalModal(g); }
   function editProject(id){ var p = projectById(id); if(p) openProjectModal(null, p); }
@@ -2234,10 +2406,15 @@
   function editAction(id){ var a = state.actions.find(function(x){ return x.id === id; }); if(a) openActionModal(null, a); }
 
   /* ---------------- Generic right-click edit/delete (goals, projects, habits, actions, journal, people) ---------------- */
+  // "habit-instance" is a distinct kind from "habit": it's what Today/Timeline render for a single
+  // day's occurrence of a recurring habit, so deleting it only skips that one day (skipHabitInstance)
+  // instead of deleting the whole recurring habit (deleteHabit) — that only happens from the Planner
+  // tab's own habit list/matrix, which still renders with data-kind="habit".
   var DELETE_HANDLERS = {
     goal: deleteGoal,
     project: deleteProject,
     habit: deleteHabit,
+    "habit-instance": function(id, date){ return skipHabitInstance(id, date); },
     action: deleteAction,
     journal: deleteJournalEntry,
     person: deletePerson
@@ -2246,11 +2423,12 @@
     goal: editGoal,
     project: editProject,
     habit: editHabit,
+    "habit-instance": editHabit,
     action: editAction
   };
   var globalCtxTarget = null;
-  function openGlobalCtxMenu(x, y, kind, id){
-    globalCtxTarget = { kind:kind, id:id };
+  function openGlobalCtxMenu(x, y, kind, id, date){
+    globalCtxTarget = { kind:kind, id:id, date:date };
     var menu = document.getElementById("globalCtxMenu");
     menu.querySelector('[data-ctx="edit"]').style.display = EDIT_HANDLERS[kind] ? "" : "none";
     menu.hidden = false;
@@ -2267,7 +2445,7 @@
     var el = e.target.closest("[data-kind][data-id]");
     if(!el || !DELETE_HANDLERS[el.dataset.kind]) return;
     e.preventDefault();
-    openGlobalCtxMenu(e.clientX, e.clientY, el.dataset.kind, el.dataset.id);
+    openGlobalCtxMenu(e.clientX, e.clientY, el.dataset.kind, el.dataset.id, el.dataset.date);
   });
   document.addEventListener("click", function(e){
     var menu = document.getElementById("globalCtxMenu");
@@ -2280,7 +2458,7 @@
     closeGlobalCtxMenu();
     if(btn.dataset.ctx === "delete"){
       var handler = DELETE_HANDLERS[target.kind];
-      if(handler) await handler(target.id);
+      if(handler) await handler(target.id, target.date);
     } else if(btn.dataset.ctx === "edit"){
       var editHandler = EDIT_HANDLERS[target.kind];
       if(editHandler) editHandler(target.id);
@@ -3547,12 +3725,16 @@
 
   async function trackerSaveValue(variableId, date, rawValue){
     var existing = trackerEntryFor(variableId, date);
+    var prevValue = existing ? existing.value : null;
+    var v = state.trackerVars.find(function(x){ return x.id === variableId; });
+    var label = (v ? v.name : "value") + " on " + date;
     if(rawValue === "" || rawValue === null || rawValue === undefined){
       if(existing){
         state.trackerEntries = state.trackerEntries.filter(function(e){ return e !== existing; });
         renderTracker(); renderToday();
         var rDel = await sb.from("tracker_entries").delete().eq("id", existing.id);
-        if(rDel.error) console.error(rDel.error);
+        if(rDel.error){ console.error(rDel.error); return; }
+        pushUndo("clear " + label, async function(){ await trackerSaveValue(variableId, date, prevValue); });
       }
       return;
     }
@@ -3560,13 +3742,15 @@
       existing.value = rawValue;
       renderTracker(); renderToday();
       var rU = await sb.from("tracker_entries").update({ value: rawValue }).eq("id", existing.id);
-      if(rU.error) console.error(rU.error);
+      if(rU.error){ console.error(rU.error); return; }
+      pushUndo("change " + label, async function(){ await trackerSaveValue(variableId, date, prevValue); });
     } else {
       var res = await sb.from("tracker_entries").insert({ date: date, variable_id: variableId, value: rawValue }).select().single();
       if(res.error){ console.error(res.error); return; }
       var r = res.data;
       state.trackerEntries.push({ id:r.id, date:r.date, variableId:r.variable_id, value:r.value });
       renderTracker(); renderToday();
+      pushUndo("set " + label, async function(){ await trackerSaveValue(variableId, date, null); });
     }
   }
 
@@ -3663,12 +3847,27 @@
       return;
     }
     if(action === "delete"){
+      var vSnapshot = state.trackerVars.find(function(x){ return x.id === id; });
+      if(!vSnapshot) return;
+      vSnapshot = Object.assign({}, vSnapshot);
+      var vEntrySnapshots = state.trackerEntries.filter(function(x){ return x.variableId === id; }).map(function(x){ return Object.assign({}, x); });
       state.trackerVars = state.trackerVars.filter(function(x){ return x.id !== id; });
       state.trackerEntries = state.trackerEntries.filter(function(x){ return x.variableId !== id; });
       if(editingTrackerVarId === id) resetTrackerVarForm();
       renderTracker();
       var rDel = await sb.from("tracker_variables").delete().eq("id", id);
-      if(rDel.error) console.error(rDel.error);
+      if(rDel.error){ console.error(rDel.error); return; }
+      pushUndo("delete tracker variable \"" + vSnapshot.name + "\"", async function(){
+        var rvi = await sb.from("tracker_variables").insert({ id:vSnapshot.id, name:vSnapshot.name, type:vSnapshot.type, unit:vSnapshot.unit, scale_max:vSnapshot.scaleMax, categories:vSnapshot.categories, position:vSnapshot.position }).select().single();
+        if(rvi.error){ console.error(rvi.error); toast("Could not restore tracker variable: " + rvi.error.message); return; }
+        state.trackerVars.push(vSnapshot);
+        for(var i=0;i<vEntrySnapshots.length;i++){
+          var es = vEntrySnapshots[i];
+          var rei = await sb.from("tracker_entries").insert({ id:es.id, date:es.date, variable_id:es.variableId, value:es.value }).select().single();
+          if(!rei.error) state.trackerEntries.push(es);
+        }
+        renderAll();
+      });
       return;
     }
     if(action === "up" || action === "down"){
@@ -4092,7 +4291,7 @@
       var widthFrac = Math.max(1.2, ((h.durationMinutes || 15) / 1440) * 100);
       var goal = h.goalId ? goalById(h.goalId) : null;
       var catClass = goal ? " " + goal.category : "";
-      return '<div class="timeline-block' + catClass + '" data-kind="habit" data-id="' + h.id + '" style="left:' + startFrac + '%; width:' + widthFrac + '%;" title="' + escapeHtml(h.title) + ' — ' + fmtTimeOfDay(h.timeOfDay) + '">' +
+      return '<div class="timeline-block' + catClass + '" data-kind="habit-instance" data-id="' + h.id + '" data-date="' + todaySelectedDate + '" style="left:' + startFrac + '%; width:' + widthFrac + '%;" title="' + escapeHtml(h.title) + ' — ' + fmtTimeOfDay(h.timeOfDay) + '">' +
         '<span class="timeline-block-title">' + escapeHtml(h.title) + '</span>' +
       '</div>';
     }).join("");
@@ -4289,7 +4488,7 @@
         var widthPx = Math.max(10, ((h.durationMinutes || 15) / 1440) * tlPxPerDay);
         var goal = h.goalId ? goalById(h.goalId) : null;
         var catClass = goal ? " " + goal.category : "";
-        html += '<div class="timeline-block' + catClass + '" data-kind="habit" data-id="' + h.id + '" data-day-index="' + i + '" style="left:' + leftPx + 'px; width:' + widthPx + 'px;" title="' + escapeHtml(h.title) + ' — ' + fmtTimeOfDay(h.timeOfDay) + '">' +
+        html += '<div class="timeline-block' + catClass + '" data-kind="habit-instance" data-id="' + h.id + '" data-day-index="' + i + '" data-date="' + dateStr + '" style="left:' + leftPx + 'px; width:' + widthPx + 'px;" title="' + escapeHtml(h.title) + ' — ' + fmtTimeOfDay(h.timeOfDay) + '">' +
           '<span class="timeline-block-title">' + escapeHtml(h.title) + '</span></div>';
       });
     }
@@ -4566,7 +4765,8 @@
     // Squares, matching the same icon-forward visual language as goal matrix tiles: the habit
     // takes on its parent goal's icon (or the goal's initial, or its own if there's no goal) and
     // area color. Click toggles/prompts for the value (see handleHabitMarkClick); right-click
-    // still edits/deletes via the app's generic data-kind/data-id system.
+    // still edits (full habit) / deletes (this day only — data-kind="habit-instance") via the
+    // app's generic data-kind/data-id system.
     document.getElementById("todayHabitsList").innerHTML = habits.map(function(h){
       var value = habitValueForDate(h, todaySelectedDate);
       var on = !!value;
@@ -4575,7 +4775,7 @@
       var initial = ((goal ? goal.title : h.title) || "?").trim().charAt(0).toUpperCase() || "?";
       var icon = goal && goal.icon;
       var titleAttr = escapeHtml(h.title) + (h.timeOfDay ? " — " + fmtTimeOfDay(h.timeOfDay) : "") + (value ? " — " + value : "");
-      return '<div class="today-habit-tile' + catClass + '" data-kind="habit" data-id="' + h.id + '" title="' + titleAttr + '">' +
+      return '<div class="today-habit-tile' + catClass + '" data-kind="habit-instance" data-id="' + h.id + '" data-date="' + todaySelectedDate + '" title="' + titleAttr + '">' +
         '<span class="matrix-tile-status' + (on?' on-track':'') + '"></span>' +
         (icon ? iconMaskHtml("matrix-tile-icon-img", icon, goal.category) : '<span class="matrix-tile-initial">' + initial + '</span>') +
         '<div class="matrix-tile-scrim"><div class="matrix-tile-title">' + escapeHtml(h.title) + '</div></div>' +
@@ -4816,7 +5016,7 @@
         var res5 = await safeInsert("habits", { goal_id: input.goal_id || null, title:input.title, priority:input.priority, frequency:input.frequency, tracker_variable_id: habitVarId, days:{} }, state.habits);
         if(res5.error) return { error: res5.error.message };
         var r5 = res5.data;
-        state.habits.push({ id:r5.id, goalId:r5.goal_id, title:r5.title, priority:r5.priority, frequency:r5.frequency, weekdays:r5.weekdays || [], trackerVariableId:r5.tracker_variable_id || habitVarId, timeOfDay:r5.time_of_day ? r5.time_of_day.slice(0,5) : null, durationMinutes:r5.duration_minutes||null, days:r5.days || {}, position:r5.position||0, createdAt:r5.created_at ? r5.created_at.slice(0,10) : null });
+        state.habits.push({ id:r5.id, goalId:r5.goal_id, title:r5.title, priority:r5.priority, frequency:r5.frequency, weekdays:r5.weekdays || [], trackerVariableId:r5.tracker_variable_id || habitVarId, timeOfDay:r5.time_of_day ? r5.time_of_day.slice(0,5) : null, durationMinutes:r5.duration_minutes||null, days:r5.days || {}, position:r5.position||0, createdAt:r5.created_at ? r5.created_at.slice(0,10) : null, skipDates:r5.skip_dates || [] });
         renderAll(); return { ok:true, id:r5.id };
       }
       if(name === "edit_habit"){
@@ -5321,7 +5521,7 @@
     this.disabled = false;
     if(res.error){ alert(res.error.message); return; }
     var r = res.data;
-    var mapped = { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || mappedVar.id, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null };
+    var mapped = { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || mappedVar.id, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [] };
     if(isEdit){
       var idx = state.habits.findIndex(function(x){ return x.id === editingHabitId; });
       if(idx !== -1) state.habits[idx] = mapped;
