@@ -94,6 +94,14 @@
 
   .user-foot{ border-top:1px solid var(--border); margin-top:20px; padding-top:14px; }
   .user-email{ font-family:var(--mono); font-size:10.5px; color:var(--text-faint); margin-bottom:8px; word-break:break-all; }
+  .user-foot-row{ display:flex; gap:6px; margin-bottom:8px; }
+  .user-foot-row .btn{ flex:1; font-size:10.5px; padding:7px 4px; }
+  .trash-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 0; border-bottom:1px solid var(--border); }
+  .trash-row:last-child{ border-bottom:none; }
+  .trash-row-main{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+  .trash-row-kind{ font-family:var(--mono); font-size:9px; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-faint); }
+  .trash-row-label{ font-size:13px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:280px; }
+  .trash-row-age{ font-family:var(--mono); font-size:9.5px; color:var(--text-faint); }
 
   /* ===== MAIN ===== */
   .main{ padding:32px 40px 70px; max-width:none; width:100%; min-width:0; }
@@ -725,6 +733,10 @@
 
       <div class="user-foot">
         <div class="user-email" id="userEmailLabel"></div>
+        <div class="user-foot-row">
+          <button class="btn" id="openTrashBtn" type="button">trash</button>
+          <button class="btn" id="exportDataBtn" type="button">export data</button>
+        </div>
         <button class="btn" id="signOutBtn" type="button" style="width:100%;">sign out</button>
       </div>
     </div>
@@ -1383,6 +1395,21 @@
   </div>
 </div>
 
+<!-- ===== TRASH MODAL ===== -->
+<div class="modal-overlay" id="trashModalOverlay" hidden>
+  <div class="modal">
+    <div class="modal-head"><span class="dot g"></span><h2>trash.json</h2></div>
+    <div class="modal-inner">
+      <p class="panel-hint">Anything deleted lands here for 30 days. Restoring brings the item itself back — anything it had (like a goal's projects) stays wherever it ended up, not automatically re-linked.</p>
+      <div id="trashList"></div>
+      <div class="empty-state" id="trashEmptyState" style="display:none;">
+        <div class="glyph">○</div><h3>trash is empty</h3><p>Deleted items show up here for 30 days.</p>
+      </div>
+      <div class="modal-actions"><button class="btn" id="closeTrashModalBtn" type="button">close</button></div>
+    </div>
+  </div>
+</div>
+
 <!-- ===== AGENT API KEY MODAL ===== -->
 <div class="modal-overlay" id="agentKeyModalOverlay" hidden>
   <div class="modal">
@@ -1558,6 +1585,83 @@
     e.preventDefault();
     performUndo();
   });
+  // Persistent trash — the in-session undo stack above is gone the moment the page reloads; this is
+  // the same safety net but durable, for TRASH_RETENTION_DAYS. A trash row stores the exact insert
+  // payload(s) needed to bring the row back (the primary table/payload, plus any "extra" rows a
+  // delete also removed, e.g. a habit's linked tracker variable + its entries) — restoring just
+  // re-inserts them and then does a full reload so state.* stays correct without hand-maintaining a
+  // second copy of every table's row-shape mapping. It does NOT re-link anything that was orphaned
+  // by the original deletion (e.g. a deleted goal's projects) since that context can go stale by the
+  // time someone restores from trash — only the deleted object itself comes back.
+  var TRASH_RETENTION_DAYS = 30;
+  var TRASH_TABLE_MAP = { goal:"goals", project:"projects", habit:"habits", action:"actions", journal:"journal", person:"people", tracker_variable:"tracker_variables" };
+  var trashLoaded = false;
+  async function writeTrash(kind, label, payload, extra){
+    var row = { kind: kind, label: label, snapshot: { table: TRASH_TABLE_MAP[kind], payload: payload, extra: extra || [] } };
+    var res = await sb.from("trash").insert(row).select().single();
+    if(res.error){ console.error(res.error); return; }
+    state.trash.unshift({ id:res.data.id, kind:res.data.kind, label:res.data.label, snapshot:res.data.snapshot, deletedAt:res.data.deleted_at });
+  }
+  async function loadTrash(){
+    var cutoff = new Date(Date.now() - TRASH_RETENTION_DAYS*86400000).toISOString();
+    await sb.from("trash").delete().lt("deleted_at", cutoff);
+    var res = await sb.from("trash").select("*").gte("deleted_at", cutoff).order("deleted_at", { ascending:false });
+    if(res.error){ console.error(res.error); return; }
+    state.trash = (res.data || []).map(function(r){ return { id:r.id, kind:r.kind, label:r.label, snapshot:r.snapshot, deletedAt:r.deleted_at }; });
+    trashLoaded = true;
+  }
+  async function restoreTrashItem(id){
+    var t = state.trash.find(function(x){ return x.id === id; });
+    if(!t) return;
+    var snap = t.snapshot;
+    var ri = await sb.from(snap.table).insert(snap.payload).select().single();
+    if(ri.error){ alert("Could not restore: " + ri.error.message); return; }
+    for(var i=0;i<(snap.extra||[]).length;i++){
+      var ex = snap.extra[i];
+      var rex = await sb.from(ex.table).insert(ex.payload).select().single();
+      if(rex.error) console.error(rex.error);
+    }
+    await sb.from("trash").delete().eq("id", id);
+    state.trash = state.trash.filter(function(x){ return x.id !== id; });
+    await loadAll();
+    renderAll();
+    renderTrashModal();
+    toast("Restored: " + t.label);
+  }
+  async function forgetTrashItem(id){
+    var r = await sb.from("trash").delete().eq("id", id);
+    if(r.error){ console.error(r.error); return; }
+    state.trash = state.trash.filter(function(x){ return x.id !== id; });
+    renderTrashModal();
+  }
+  function renderTrashModal(){
+    var list = document.getElementById("trashList");
+    if(!list) return;
+    document.getElementById("trashEmptyState").style.display = state.trash.length ? "none" : "";
+    list.innerHTML = state.trash.map(function(t){
+      var days = Math.max(0, Math.ceil((new Date(t.deletedAt).getTime() + TRASH_RETENTION_DAYS*86400000 - Date.now()) / 86400000));
+      return '<div class="trash-row">' +
+        '<div class="trash-row-main"><span class="trash-row-kind">' + t.kind.replace("_"," ") + '</span><span class="trash-row-label">' + escapeHtml(t.label) + '</span>' +
+        '<span class="trash-row-age">' + fmtDate(t.deletedAt.slice(0,10)) + ' · ' + days + 'd left</span></div>' +
+        '<div class="entity-actions">' +
+          '<button class="btn" data-action="restore-trash" data-id="' + t.id + '" type="button">restore</button>' +
+          '<button class="icon-btn" data-action="forget-trash" data-id="' + t.id + '" aria-label="Delete forever">&times;</button>' +
+        '</div>' +
+      '</div>';
+    }).join("");
+  }
+  document.getElementById("openTrashBtn").addEventListener("click", async function(){
+    openModal("trashModalOverlay");
+    if(!trashLoaded){ document.getElementById("trashEmptyState").textContent = "loading…"; document.getElementById("trashEmptyState").style.display = ""; await loadTrash(); }
+    renderTrashModal();
+  });
+  document.getElementById("closeTrashModalBtn").addEventListener("click", function(){ closeModal("trashModalOverlay"); });
+  document.getElementById("trashList").addEventListener("click", async function(e){
+    var restoreBtn = e.target.closest('[data-action="restore-trash"]');
+    if(restoreBtn){ restoreBtn.disabled = true; await restoreTrashItem(restoreBtn.dataset.id); return; }
+    var forgetBtn = e.target.closest('[data-action="forget-trash"]');
+    if(forgetBtn && confirm("Permanently delete this from trash? This cannot be undone.")) await forgetTrashItem(forgetBtn.dataset.id);
+  });
   var DROPPED_FIELD_LABELS = {
     health_override: "health status", health_pct_override: "health %",
     icon: "icon image", position: "custom order",
@@ -1660,7 +1764,7 @@
     return setPreview;
   }
 
-  var state = { goals:[], projects:[], habits:[], actions:[], journal:[], people:[], trackerVars:[], trackerEntries:[], trackerDays:[], wbConnections:[], sleepScores:[] };
+  var state = { goals:[], projects:[], habits:[], actions:[], journal:[], people:[], trackerVars:[], trackerEntries:[], trackerDays:[], wbConnections:[], sleepScores:[], trash:[] };
   var currentUser = null;
 
   function goalById(id){ return state.goals.find(function(g){ return g.id === id; }); }
@@ -1725,6 +1829,27 @@
 
   document.getElementById("signOutBtn").addEventListener("click", async function(){
     await sb.auth.signOut();
+  });
+  // Everything already loaded into state is the full dataset (loadAll fetches every table in
+  // full) — export it as-is rather than re-fetching, so this always reflects exactly what the app
+  // is currently showing.
+  document.getElementById("exportDataBtn").addEventListener("click", function(){
+    var payload = {
+      exportedAt: new Date().toISOString(),
+      goals: state.goals, projects: state.projects, habits: state.habits, actions: state.actions,
+      journal: state.journal, people: state.people, trackerVariables: state.trackerVars,
+      trackerEntries: state.trackerEntries, trackerDays: state.trackerDays, sleepScores: state.sleepScores,
+      whiteboardConnections: state.wbConnections
+    };
+    var blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "personal_system_backup_" + todayStr() + ".json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   });
 
   sb.auth.onAuthStateChange(function(event, session){
@@ -2234,11 +2359,15 @@
     });
   }
   function wbConnPayload(c){ return { id:c.id, from_type:c.fromType, from_id:c.fromId, to_type:c.toType, to_id:c.toId }; }
+  function projectPayload(snapshot){
+    return { id:snapshot.id, goal_id:snapshot.goalId, title:snapshot.title, priority:snapshot.priority, due:snapshot.due, hours:snapshot.hours, done:snapshot.done, position:snapshot.position, health_override:snapshot.healthOverride, health_pct_override:snapshot.healthPctOverride, icon:snapshot.icon, whiteboard_x:snapshot.wbX, whiteboard_y:snapshot.wbY, categories:snapshot.categories };
+  }
   async function deleteProject(id){
     var p = state.projects.find(function(x){ return x.id === id; });
     if(!p) return;
-    var snapshot = Object.assign({}, p);
     var orphanedIds = state.actions.filter(function(x){ return x.parentType==="project" && x.parentId===id; }).map(function(x){ return x.id; });
+    if(orphanedIds.length && !confirm("Delete project \"" + p.title + "\"? " + orphanedIds.length + " action" + (orphanedIds.length===1?"":"s") + " will be kept but unlinked from it. This can be undone with Ctrl+Z or from Trash.")) return;
+    var snapshot = Object.assign({}, p);
     var removedConns = state.wbConnections.filter(function(c){ return (c.fromType==="project"&&c.fromId===id)||(c.toType==="project"&&c.toId===id); });
     // orphans this project's actions rather than deleting them
     state.actions.forEach(function(x){ if(x.parentType==="project" && x.parentId===id){ x.parentType="none"; x.parentId=null; } });
@@ -2250,9 +2379,9 @@
     await sb.from("whiteboard_connections").delete().eq("to_id", id);
     var r = await sb.from("projects").delete().eq("id", id);
     if(r.error){ console.error(r.error); return; }
+    await writeTrash("project", snapshot.title, projectPayload(snapshot));
     pushUndo("delete project \"" + snapshot.title + "\"", async function(){
-      var payload = { id:snapshot.id, goal_id:snapshot.goalId, title:snapshot.title, priority:snapshot.priority, due:snapshot.due, hours:snapshot.hours, done:snapshot.done, position:snapshot.position, health_override:snapshot.healthOverride, health_pct_override:snapshot.healthPctOverride, icon:snapshot.icon, whiteboard_x:snapshot.wbX, whiteboard_y:snapshot.wbY };
-      var ri = await sb.from("projects").insert(payload).select().single();
+      var ri = await sb.from("projects").insert(projectPayload(snapshot)).select().single();
       if(ri.error){ console.error(ri.error); toast("Could not restore project: " + ri.error.message); return; }
       state.projects.push(snapshot);
       if(orphanedIds.length){
@@ -2289,6 +2418,7 @@
     renderAll();
     var r = await sb.from("actions").delete().eq("id", id);
     if(r.error){ console.error(r.error); return; }
+    await writeTrash("action", snapshot.title, actionPayload(snapshot));
     pushUndo("delete action \"" + snapshot.title + "\"", async function(){
       var ri = await sb.from("actions").insert(actionPayload(snapshot)).select().single();
       if(ri.error){ console.error(ri.error); toast("Could not restore action: " + ri.error.message); return; }
@@ -2298,6 +2428,12 @@
   }
   function habitPayload(snapshot){
     return { id:snapshot.id, goal_id:snapshot.goalId, title:snapshot.title, priority:snapshot.priority, frequency:snapshot.frequency, weekdays:snapshot.weekdays, tracker_variable_id:snapshot.trackerVariableId, time_of_day:snapshot.timeOfDay, duration_minutes:snapshot.durationMinutes, days:snapshot.days, position:snapshot.position, skip_dates:snapshot.skipDates, created_at:snapshot.createdAt, custom_interval_days:snapshot.customIntervalDays };
+  }
+  function trackerVarPayload(snapshot){
+    return { id:snapshot.id, name:snapshot.name, type:snapshot.type, unit:snapshot.unit, scale_max:snapshot.scaleMax, categories:snapshot.categories, position:snapshot.position };
+  }
+  function trackerEntryPayload(snapshot){
+    return { id:snapshot.id, date:snapshot.date, variable_id:snapshot.variableId, value:snapshot.value };
   }
   async function deleteHabit(id){
     // Full deletion of the habit definition itself — only reachable from the Planner tab's own
@@ -2323,14 +2459,18 @@
       var rv = await sb.from("tracker_variables").delete().eq("id", varId);
       if(rv.error) console.error(rv.error);
     }
+    var trashExtra = varSnapshot
+      ? [{ table:"tracker_variables", payload:trackerVarPayload(varSnapshot) }].concat(entrySnapshots.map(function(es){ return { table:"tracker_entries", payload:trackerEntryPayload(es) }; }))
+      : [];
+    await writeTrash("habit", snapshot.title, habitPayload(snapshot), trashExtra);
     pushUndo("delete habit \"" + snapshot.title + "\"", async function(){
       if(varSnapshot){
-        var rvi = await sb.from("tracker_variables").insert({ id:varSnapshot.id, name:varSnapshot.name, type:varSnapshot.type, unit:varSnapshot.unit, scale_max:varSnapshot.scaleMax, categories:varSnapshot.categories, position:varSnapshot.position }).select().single();
+        var rvi = await sb.from("tracker_variables").insert(trackerVarPayload(varSnapshot)).select().single();
         if(!rvi.error){
           state.trackerVars.push(varSnapshot);
           for(var i=0;i<entrySnapshots.length;i++){
             var es = entrySnapshots[i];
-            var rei = await sb.from("tracker_entries").insert({ id:es.id, date:es.date, variable_id:es.variableId, value:es.value }).select().single();
+            var rei = await sb.from("tracker_entries").insert(trackerEntryPayload(es)).select().single();
             if(!rei.error) state.trackerEntries.push(es);
           }
         }
@@ -2360,13 +2500,18 @@
       await safeUpdate("habits", id, { skip_dates: h.skipDates });
     });
   }
+  function goalPayload(snapshot){
+    return { id:snapshot.id, title:snapshot.title, priority:snapshot.priority, category:snapshot.category, due:snapshot.due, ongoing:snapshot.ongoing, position:snapshot.position, health_override:snapshot.healthOverride, health_pct_override:snapshot.healthPctOverride, icon:snapshot.icon, whiteboard_x:snapshot.wbX, whiteboard_y:snapshot.wbY };
+  }
   async function deleteGoal(goalId){
     var g = state.goals.find(function(x){ return x.id === goalId; });
     if(!g) return;
-    var snapshot = Object.assign({}, g);
     var orphanedProjectIds = state.projects.filter(function(x){ return x.goalId === goalId; }).map(function(x){ return x.id; });
     var orphanedHabitIds = state.habits.filter(function(x){ return x.goalId === goalId; }).map(function(x){ return x.id; });
     var orphanedActionIds = state.actions.filter(function(x){ return x.parentType==="goal" && x.parentId===goalId; }).map(function(x){ return x.id; });
+    var childCount = orphanedProjectIds.length + orphanedHabitIds.length + orphanedActionIds.length;
+    if(childCount && !confirm("Delete goal \"" + g.title + "\"? " + orphanedProjectIds.length + " project(s), " + orphanedHabitIds.length + " habit(s), and " + orphanedActionIds.length + " action(s) will be kept but unlinked from it. This can be undone with Ctrl+Z or from Trash.")) return;
+    var snapshot = Object.assign({}, g);
     var removedConns = state.wbConnections.filter(function(c){ return (c.fromType==="goal"&&c.fromId===goalId)||(c.toType==="goal"&&c.toId===goalId); });
     // deleting a goal orphans its projects/habits/actions rather than deleting them —
     // parent links are optional, so children keep existing on their own.
@@ -2383,9 +2528,9 @@
     await sb.from("whiteboard_connections").delete().eq("to_id", goalId);
     var r3 = await sb.from("goals").delete().eq("id", goalId);
     if(r3.error){ console.error(r3.error); return; }
+    await writeTrash("goal", snapshot.title, goalPayload(snapshot));
     pushUndo("delete goal \"" + snapshot.title + "\"", async function(){
-      var payload = { id:snapshot.id, title:snapshot.title, priority:snapshot.priority, category:snapshot.category, due:snapshot.due, ongoing:snapshot.ongoing, position:snapshot.position, health_override:snapshot.healthOverride, health_pct_override:snapshot.healthPctOverride, icon:snapshot.icon, whiteboard_x:snapshot.wbX, whiteboard_y:snapshot.wbY };
-      var ri = await sb.from("goals").insert(payload).select().single();
+      var ri = await sb.from("goals").insert(goalPayload(snapshot)).select().single();
       if(ri.error){ console.error(ri.error); toast("Could not restore goal: " + ri.error.message); return; }
       state.goals.push(snapshot);
       if(orphanedProjectIds.length){
@@ -2407,6 +2552,9 @@
       renderAll();
     });
   }
+  function journalPayload(snapshot){
+    return { id:snapshot.id, date:snapshot.date, text:snapshot.text, time_of_day:snapshot.timeOfDay, category:snapshot.category };
+  }
   async function deleteJournalEntry(id){
     var n = state.journal.find(function(x){ return x.id === id; });
     if(!n) return;
@@ -2415,12 +2563,16 @@
     renderAll();
     var r = await sb.from("journal").delete().eq("id", id);
     if(r.error){ console.error(r.error); return; }
+    await writeTrash("journal", snapshot.text.length > 60 ? snapshot.text.slice(0,60) + "…" : snapshot.text, journalPayload(snapshot));
     pushUndo("delete note", async function(){
-      var ri = await sb.from("journal").insert({ id:snapshot.id, date:snapshot.date, text:snapshot.text, time_of_day:snapshot.timeOfDay, category:snapshot.category }).select().single();
+      var ri = await sb.from("journal").insert(journalPayload(snapshot)).select().single();
       if(ri.error){ console.error(ri.error); toast("Could not restore note: " + ri.error.message); return; }
       state.journal.push(snapshot);
       renderAll();
     });
+  }
+  function personPayload(snapshot){
+    return { id:snapshot.id, name:snapshot.name, relationship:snapshot.relationship, contact:snapshot.contact, notes:snapshot.notes, position:snapshot.position };
   }
   async function deletePerson(id){
     var pe = state.people.find(function(x){ return x.id === id; });
@@ -2430,8 +2582,9 @@
     renderAll();
     var r = await sb.from("people").delete().eq("id", id);
     if(r.error){ console.error(r.error); return; }
+    await writeTrash("person", snapshot.name, personPayload(snapshot));
     pushUndo("delete person \"" + snapshot.name + "\"", async function(){
-      var ri = await sb.from("people").insert({ id:snapshot.id, name:snapshot.name, relationship:snapshot.relationship, contact:snapshot.contact, notes:snapshot.notes, position:snapshot.position }).select().single();
+      var ri = await sb.from("people").insert(personPayload(snapshot)).select().single();
       if(ri.error){ console.error(ri.error); toast("Could not restore person: " + ri.error.message); return; }
       state.people.push(snapshot);
       renderAll();
@@ -3855,16 +4008,20 @@
       var r = await sb.from("tracker_variables").delete().eq("id", dupIds[i]);
       if(r.error) console.error(r.error);
     }
+    for(var i3=0;i3<snapshots.length;i3++){
+      var snap = snapshots[i3];
+      await writeTrash("tracker_variable", snap.name, trackerVarPayload(snap), (entrySnapshots[snap.id] || []).map(function(es){ return { table:"tracker_entries", payload:trackerEntryPayload(es) }; }));
+    }
     pushUndo("delete " + dups.length + " duplicate tracker variable" + (dups.length===1?"":"s"), async function(){
       for(var i2=0;i2<snapshots.length;i2++){
         var vSnapshot = snapshots[i2];
-        var rvi = await sb.from("tracker_variables").insert({ id:vSnapshot.id, name:vSnapshot.name, type:vSnapshot.type, unit:vSnapshot.unit, scale_max:vSnapshot.scaleMax, categories:vSnapshot.categories, position:vSnapshot.position }).select().single();
+        var rvi = await sb.from("tracker_variables").insert(trackerVarPayload(vSnapshot)).select().single();
         if(rvi.error){ console.error(rvi.error); continue; }
         state.trackerVars.push(vSnapshot);
         var ents = entrySnapshots[vSnapshot.id] || [];
         for(var j=0;j<ents.length;j++){
           var es = ents[j];
-          var rei = await sb.from("tracker_entries").insert({ id:es.id, date:es.date, variable_id:es.variableId, value:es.value }).select().single();
+          var rei = await sb.from("tracker_entries").insert(trackerEntryPayload(es)).select().single();
           if(!rei.error) state.trackerEntries.push(es);
         }
       }
@@ -4006,13 +4163,14 @@
       renderTracker();
       var rDel = await sb.from("tracker_variables").delete().eq("id", id);
       if(rDel.error){ console.error(rDel.error); return; }
+      await writeTrash("tracker_variable", vSnapshot.name, trackerVarPayload(vSnapshot), vEntrySnapshots.map(function(es){ return { table:"tracker_entries", payload:trackerEntryPayload(es) }; }));
       pushUndo("delete tracker variable \"" + vSnapshot.name + "\"", async function(){
-        var rvi = await sb.from("tracker_variables").insert({ id:vSnapshot.id, name:vSnapshot.name, type:vSnapshot.type, unit:vSnapshot.unit, scale_max:vSnapshot.scaleMax, categories:vSnapshot.categories, position:vSnapshot.position }).select().single();
+        var rvi = await sb.from("tracker_variables").insert(trackerVarPayload(vSnapshot)).select().single();
         if(rvi.error){ console.error(rvi.error); toast("Could not restore tracker variable: " + rvi.error.message); return; }
         state.trackerVars.push(vSnapshot);
         for(var i=0;i<vEntrySnapshots.length;i++){
           var es = vEntrySnapshots[i];
-          var rei = await sb.from("tracker_entries").insert({ id:es.id, date:es.date, variable_id:es.variableId, value:es.value }).select().single();
+          var rei = await sb.from("tracker_entries").insert(trackerEntryPayload(es)).select().single();
           if(!rei.error) state.trackerEntries.push(es);
         }
         renderAll();
