@@ -684,7 +684,20 @@
   .tl-daynight-seg{ position:absolute; top:0; bottom:0; border-right:1px solid var(--border); box-sizing:border-box; }
   .tl-now{ position:absolute; top:0; bottom:0; width:2px; background:var(--p0); box-shadow:0 0 6px var(--p0); z-index:5; pointer-events:none; }
 
-  .today-layout{ display:grid; grid-template-columns:1fr 320px; gap:28px; align-items:start; margin-top:18px; }
+  .today-layout{ margin-top:18px; }
+  .today-month-strip{ margin-bottom:22px; }
+  .today-month-strip-days{ display:flex; gap:6px; overflow-x:auto; padding-bottom:4px; }
+  .today-month-strip-day{ flex:1 1 0; min-width:38px; display:flex; flex-direction:column; align-items:center; gap:3px; padding:8px 4px 7px; border:1px solid var(--border); border-radius:6px; background:var(--bg-raised); cursor:pointer; }
+  .today-month-strip-day:hover{ box-shadow:inset 0 0 0 1px var(--border-bright); }
+  .today-month-strip-day.weekend{ background:var(--bg-inset); }
+  .today-month-strip-day.today{ box-shadow:inset 0 0 0 1.5px var(--violet); }
+  .today-month-strip-day.selected{ box-shadow:inset 0 0 0 1.5px var(--accent); }
+  .today-month-strip-day.selected .today-month-strip-day-num{ color:var(--accent); font-weight:700; }
+  .today-month-strip-day-wd{ font-family:var(--mono); font-size:9px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.05em; }
+  .today-month-strip-day-num{ font-family:var(--mono); font-size:12px; color:var(--text-dim); }
+  .today-month-strip-day.today .today-month-strip-day-num{ color:var(--violet); font-weight:700; }
+  .today-month-strip-day-dot{ width:4px; height:4px; border-radius:50%; background:var(--accent); }
+  .today-month-strip-day-dot-empty{ width:4px; height:4px; }
   .today-date-nav{ display:flex; align-items:center; gap:10px; margin-bottom:22px; }
   .today-section-block{ margin-bottom:26px; }
   .today-section-block-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; }
@@ -716,14 +729,8 @@
   .today-habit-tile.Growth{ background:var(--cat-growth-bg); }
   .today-habit-tile.Relationships{ background:var(--cat-relationships-bg); }
   .today-habit-tile.Life{ background:var(--cat-life-bg); }
-  .cal-grid.mini{ margin-top:10px; }
-  .cal-grid.mini .cal-day{ min-height:36px; padding:4px; cursor:pointer; gap:2px; }
-  .cal-grid.mini .cal-day.clickable:hover{ box-shadow:inset 0 0 0 1px var(--border-bright); }
-  .cal-grid.mini .cal-day.selected{ box-shadow:inset 0 0 0 1.5px var(--accent); }
-  .cal-grid.mini .cal-day.selected .cal-day-num{ color:var(--accent); font-weight:700; }
   .cal-dot-mini-row{ display:flex; gap:2px; flex-wrap:wrap; }
   .cal-dot-mini{ width:4px; height:4px; border-radius:50%; background:var(--accent); }
-  @media (max-width:900px){ .today-layout{ grid-template-columns:1fr; } }
   .cal-entry.google .cal-dot{ background:var(--accent); }
   .cal-entry.project .cal-dot{ background:var(--violet); }
   .cal-entry.action .cal-dot{ background:var(--p1); }
@@ -942,6 +949,17 @@
         </div>
       </div>
 
+      <div class="today-month-strip">
+        <div class="cal-toolbar" style="margin-top:0;">
+          <div class="cal-nav-group">
+            <button class="cal-nav-btn" id="todayCalPrevBtn" type="button" aria-label="Previous month">‹</button>
+            <span class="cal-month-label" id="todayCalMonthLabel"></span>
+            <button class="cal-nav-btn" id="todayCalNextBtn" type="button" aria-label="Next month">›</button>
+          </div>
+        </div>
+        <div class="today-month-strip-days" id="todayCalGrid"></div>
+      </div>
+
       <div class="today-timeline">
         <div class="wb-toolbar" style="margin:0 0 10px;">
           <div class="wb-zoom-group">
@@ -1011,17 +1029,6 @@
             <div class="today-row-list" id="todayActionsList"></div>
             <p class="today-empty-note" id="todayActionsEmpty">Nothing scheduled for this day.</p>
           </div>
-        </div>
-
-        <div class="today-cal-panel">
-          <div class="cal-toolbar" style="margin-top:0;">
-            <div class="cal-nav-group">
-              <button class="cal-nav-btn" id="todayCalPrevBtn" type="button" aria-label="Previous month">‹</button>
-              <span class="cal-month-label" id="todayCalMonthLabel"></span>
-              <button class="cal-nav-btn" id="todayCalNextBtn" type="button" aria-label="Next month">›</button>
-            </div>
-          </div>
-          <div class="cal-grid mini" id="todayCalGrid"></div>
         </div>
       </div>
     </section>
@@ -5851,29 +5858,32 @@
   function renderTodayCalGrid(){
     document.getElementById("todayCalMonthLabel").textContent = todayCalMonth.toLocaleDateString(undefined, { month:"long", year:"numeric" });
     var year = todayCalMonth.getFullYear(), month = todayCalMonth.getMonth();
-    var firstOfMonth = new Date(year, month, 1);
-    var startOffset = (firstOfMonth.getDay() + 6) % 7;
-    var gridStart = new Date(year, month, 1 - startOffset);
+    var daysInMonth = new Date(year, month + 1, 0).getDate();
     var todayKey = todayStr();
     var gEvents = googleEventsCache[monthKey(todayCalMonth)] || [];
-    var weekdayLabels = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
-    var html = weekdayLabels.map(function(w){ return '<div class="cal-weekday">' + w + '</div>'; }).join("");
-    for(var i=0;i<42;i++){
-      var cellDate = new Date(gridStart); cellDate.setDate(gridStart.getDate() + i);
-      var cellKey = cellDate.getFullYear() + "-" + String(cellDate.getMonth()+1).padStart(2,"0") + "-" + String(cellDate.getDate()).padStart(2,"0");
-      var inMonth = cellDate.getMonth() === month;
+    var weekdayLabels = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+    var html = "";
+    for(var day=1; day<=daysInMonth; day++){
+      var cellDate = new Date(year, month, day);
+      var cellKey = year + "-" + String(month+1).padStart(2,"0") + "-" + String(day).padStart(2,"0");
+      var dow = cellDate.getDay();
+      var isWeekend = dow === 0 || dow === 6;
       var hasStuff = gEvents.some(function(ev){ return ev.date === cellKey; }) ||
         state.projects.some(function(p){ return p.due === cellKey; }) ||
         state.actions.some(function(a){ return a.date === cellKey; });
-      html += '<div class="cal-day clickable' + (inMonth?'':' other-month') + (cellKey===todayKey?' today':'') + (cellKey===todaySelectedDate?' selected':'') + '" data-date="' + cellKey + '">' +
-        '<div class="cal-day-num">' + cellDate.getDate() + '</div>' +
-        (hasStuff ? '<span class="cal-dot-mini"></span>' : '') +
+      html += '<div class="today-month-strip-day' + (isWeekend?' weekend':'') + (cellKey===todayKey?' today':'') + (cellKey===todaySelectedDate?' selected':'') + '" data-date="' + cellKey + '">' +
+        '<span class="today-month-strip-day-wd">' + weekdayLabels[dow] + '</span>' +
+        '<span class="today-month-strip-day-num">' + day + '</span>' +
+        (hasStuff ? '<span class="today-month-strip-day-dot"></span>' : '<span class="today-month-strip-day-dot-empty"></span>') +
       '</div>';
     }
-    document.getElementById("todayCalGrid").innerHTML = html;
+    var gridEl = document.getElementById("todayCalGrid");
+    gridEl.innerHTML = html;
+    var selectedEl = gridEl.querySelector(".today-month-strip-day.selected") || gridEl.querySelector(".today-month-strip-day.today");
+    if(selectedEl && selectedEl.scrollIntoView) selectedEl.scrollIntoView({ block:"nearest", inline:"center" });
   }
   document.getElementById("todayCalGrid").addEventListener("click", function(e){
-    var cell = e.target.closest(".cal-day[data-date]");
+    var cell = e.target.closest(".today-month-strip-day[data-date]");
     if(!cell) return;
     todaySelectedDate = cell.dataset.date;
     renderToday();
