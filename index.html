@@ -2836,9 +2836,7 @@
   }
 
   function renderGoalsMatrix(list){
-    var sections = CATEGORIES.map(function(cat){
-      var items = list.filter(function(g){ return g.category === cat; });
-      if(!items.length) return "";
+    var sections = renderByCategorySections(list, function(g){ return g.category; }, function(cat, label, items){
       var tiles = items.map(function(g){
         var status = goalStatus(g);
         var health = goalHealth(g);
@@ -2851,10 +2849,10 @@
           '<div class="matrix-tile-progress" title="health"><div class="matrix-tile-progress-fill ' + (status==="done"?"done":(health.level!=="good"?health.level:"")) + '" style="width:' + health.pct + '%"></div></div>' +
         '</div>';
       }).join("");
-      return '<div class="matrix-section"><div class="matrix-section-head"><span class="matrix-section-title">' + CATEGORY_ICONS[cat] + ' ' + cat + '</span>' +
+      return '<div class="matrix-section"><div class="matrix-section-head"><span class="matrix-section-title">' + label + '</span>' +
         '<span class="matrix-section-count">' + items.length + '</span><span class="matrix-section-line"></span></div>' +
         '<div class="matrix-grid">' + tiles + '</div></div>';
-    }).join("");
+    });
     document.getElementById("goalList").innerHTML = sections;
   }
 
@@ -3730,18 +3728,27 @@
       '<span>' + p.hours + 'h</span></div>' +
     '</div>';
   }
-  function renderProjectsMatrix(list){
+  // Groups a list by area (falling back to an "Unassigned" bucket for items with no resolvable
+  // category), skips empty areas, and hands each non-empty group to the caller's own sectionFn to
+  // build whatever markup shell it needs (a div-based matrix section, a table row, ...) — shared by
+  // every matrix/tracker view that clusters its list by CATEGORIES this same way.
+  function renderByCategorySections(list, catFn, sectionFn){
     var byCat = {};
-    list.forEach(function(p){ var c = projectCategory(p) || "__none__"; (byCat[c] = byCat[c] || []).push(p); });
-    var sections = CATEGORIES.concat(["__none__"]).map(function(cat){
+    list.forEach(function(item){ var c = catFn(item) || "__none__"; (byCat[c] = byCat[c] || []).push(item); });
+    return CATEGORIES.concat(["__none__"]).map(function(cat){
       var items = byCat[cat];
       if(!items || !items.length) return "";
       var label = cat === "__none__" ? "Unassigned" : (CATEGORY_ICONS[cat] + " " + cat);
+      return sectionFn(cat === "__none__" ? null : cat, label, items);
+    }).join("");
+  }
+  function renderProjectsMatrix(list){
+    var sections = renderByCategorySections(list, projectCategory, function(cat, label, items){
       var subsections = matrixGoalSubsections(items, function(p){ return p.goalId; }, projectTileHtml);
       return '<div class="matrix-section"><div class="matrix-section-head"><span class="matrix-section-title">' + label + '</span>' +
         '<span class="matrix-section-count">' + items.length + '</span><span class="matrix-section-line"></span></div>' +
         subsections + '</div>';
-    }).join("");
+    });
     document.getElementById("projectList").innerHTML = sections;
   }
 
@@ -3832,17 +3839,12 @@
     '</div>';
   }
   function renderHabitsMatrix(list){
-    var byCat = {};
-    list.forEach(function(h){ var c = habitCategory(h) || "__none__"; (byCat[c] = byCat[c] || []).push(h); });
-    var sections = CATEGORIES.concat(["__none__"]).map(function(cat){
-      var items = byCat[cat];
-      if(!items || !items.length) return "";
-      var label = cat === "__none__" ? "Unassigned" : (CATEGORY_ICONS[cat] + " " + cat);
+    var sections = renderByCategorySections(list, habitCategory, function(cat, label, items){
       var subsections = matrixGoalSubsections(items, function(h){ return h.goalId; }, habitTileHtml);
       return '<div class="matrix-section"><div class="matrix-section-head"><span class="matrix-section-title">' + label + '</span>' +
         '<span class="matrix-section-count">' + items.length + '</span><span class="matrix-section-line"></span></div>' +
         subsections + '</div>';
-    }).join("");
+    });
     document.getElementById("habitList").innerHTML = sections;
   }
 
@@ -3931,12 +3933,7 @@
   }
 
   function renderActionsMatrix(list){
-    var byCat = {};
-    list.forEach(function(a){ var c = actionCategory(a) || "__none__"; (byCat[c] = byCat[c] || []).push(a); });
-    var sections = CATEGORIES.concat(["__none__"]).map(function(cat){
-      var items = byCat[cat];
-      if(!items || !items.length) return "";
-      var label = cat === "__none__" ? "Unassigned" : (CATEGORY_ICONS[cat] + " " + cat);
+    var sections = renderByCategorySections(list, actionCategory, function(cat, label, items){
       var tiles = items.map(function(a){
         var overdue = !a.done && a.date && a.date < todayStr();
         var tCat = actionCategory(a);
@@ -3956,7 +3953,7 @@
       return '<div class="matrix-section"><div class="matrix-section-head"><span class="matrix-section-title">' + label + '</span>' +
         '<span class="matrix-section-count">' + items.length + '</span><span class="matrix-section-line"></span></div>' +
         '<div class="ms-grid">' + tiles + '</div></div>';
-    }).join("");
+    });
     document.getElementById("actionList").innerHTML = sections;
   }
 
@@ -5020,20 +5017,15 @@
       '</th>';
     }).join("") + '</tr>';
 
-    var byCat = {};
-    vars.forEach(function(v){ var c = trackerVarArea(v) || "__none__"; (byCat[c] = byCat[c] || []).push(v); });
     var colspan = dates.length + 1;
-    var rows = CATEGORIES.concat(["__none__"]).map(function(cat){
-      var items = byCat[cat];
-      if(!items || !items.length) return "";
-      var label = cat === "__none__" ? "Unassigned" : (CATEGORY_ICONS[cat] + " " + cat);
+    var rows = renderByCategorySections(vars, trackerVarArea, function(cat, label, items){
       var headRow = '<tr class="tracker-area-head"><th colspan="' + colspan + '">' +
         '<div class="matrix-section-head" style="margin:0;"><span class="matrix-section-title">' + label + '</span>' +
         '<span class="matrix-section-count">' + items.length + '</span><span class="matrix-section-line"></span></div>' +
       '</th></tr>';
-      var itemRows = items.map(function(v){ return trackerVarRowHtml(v, dates, cat === "__none__" ? null : cat); }).join("");
+      var itemRows = items.map(function(v){ return trackerVarRowHtml(v, dates, cat); }).join("");
       return headRow + itemRows;
-    }).join("");
+    });
 
     table.innerHTML = head + rows;
 
