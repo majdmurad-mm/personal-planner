@@ -439,6 +439,12 @@
      structural (derived from the data itself), not a deliberate user-drawn annotation, and there's
      nothing to click/delete since "removing" one means re-parenting the item, not this graph. */
   .wb-hier-line{ stroke:var(--border-bright); stroke-width:1; stroke-dasharray:3,3; opacity:0.7; pointer-events:none; }
+  /* A secondary goal -> habit link (see wbHierarchyEdges/renderWbHierarchyLines): solid, area-hued,
+     and much fainter than every other use of that color on the graph — the "hue extends toward the
+     habit" effect the primary dashed/neutral line above doesn't give. The inline stroke color (set
+     per-edge in JS) always wins over both this and the dark-mode override, so it stays area-colored
+     in either theme. */
+  .wb-hier-line-secondary{ stroke-width:1.5; stroke-dasharray:none; opacity:0.3; }
   .wb-overlay{ position:absolute; inset:0; pointer-events:none; }
   /* Goal/project/habit nodes are a plain colored dot (area color), not a card — the wrapper's own
      box IS the dot (width/height = diameter), so wbNodeCenter's radius-map math keeps anchoring
@@ -4048,7 +4054,7 @@
     });
     state.habits.forEach(function(h){
       if(h.goalId) edges.push({ fromType:"goal", fromId:h.goalId, toType:"habit", toId:h.id });
-      (h.secondaryGoalIds || []).forEach(function(gid){ edges.push({ fromType:"goal", fromId:gid, toType:"habit", toId:h.id }); });
+      (h.secondaryGoalIds || []).forEach(function(gid){ edges.push({ fromType:"goal", fromId:gid, toType:"habit", toId:h.id, secondary:true }); });
     });
     return edges;
   }
@@ -4250,6 +4256,15 @@
       var a = wbNodeCenter(c.fromType, c.fromId);
       var b = wbNodeCenter(c.toType, c.toId);
       if(!a || !b) return "";
+      // A secondary goal link renders as a faint streak of *that goal's own area* color reaching
+      // toward the habit, instead of the normal neutral dashed line — the area hue visibly extends
+      // out to every habit it's secondarily connected to, just much more translucent than any other
+      // use of that color on the graph (a hull, a node, a primary connection).
+      if(c.secondary){
+        var g = goalById(c.fromId);
+        var color = categoryColorVar(g ? g.category : null);
+        return '<line class="wb-hier-line wb-hier-line-secondary" x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '" style="stroke:' + color + ';"></line>';
+      }
       return '<line class="wb-hier-line" x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '"></line>';
     }).join("");
   }
