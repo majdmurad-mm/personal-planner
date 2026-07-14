@@ -6686,6 +6686,7 @@
         renderAll(); return { ok:true };
       }
       if(name === "create_project"){
+        if(input.goal_id && !goalById(input.goal_id)) return { error:"no goal with that id" };
         var res3 = await safeInsert("projects", { goal_id: input.goal_id || null, title:input.title, priority:input.priority, due: input.due || null, hours: input.hours || 0, done:false, categories: input.categories || [] }, state.projects);
         if(res3.error) return { error: res3.error.message };
         var r3 = res3.data;
@@ -6695,6 +6696,7 @@
       if(name === "edit_project"){
         var p = projectById(input.id);
         if(!p) return { error:"no project with that id" };
+        if(input.goal_id && !goalById(input.goal_id)) return { error:"no goal with that id" };
         var pp = {};
         if(input.title !== undefined) pp.title = input.title;
         if(input.goal_id !== undefined) pp.goal_id = input.goal_id || null;
@@ -6718,6 +6720,7 @@
         renderAll(); return { ok:true };
       }
       if(name === "create_habit"){
+        if(input.goal_id && !goalById(input.goal_id)) return { error:"no goal with that id" };
         var habitVarRes = await safeInsert("tracker_variables", { name: input.title, type: "boolean" }, state.trackerVars);
         var habitVarId = null;
         if(!habitVarRes.error){
@@ -6735,6 +6738,7 @@
       if(name === "edit_habit"){
         var h = state.habits.find(function(x){ return x.id === input.id; });
         if(!h) return { error:"no habit with that id" };
+        if(input.goal_id && !goalById(input.goal_id)) return { error:"no goal with that id" };
         var hp = {};
         if(input.title !== undefined) hp.title = input.title;
         if(input.goal_id !== undefined) hp.goal_id = input.goal_id || null;
@@ -6757,6 +6761,11 @@
       }
       if(name === "create_action"){
         var pt7 = input.parent_type || "none";
+        // actions.parent_id is polymorphic (goal or project depending on parent_type), so the DB has
+        // no foreign key to catch a bad id here the way goal_id/tracker links do elsewhere — an
+        // unvalidated id would silently create an action that never resolves to anything.
+        if(pt7 === "goal" && input.parent_id && !goalById(input.parent_id)) return { error:"no goal with that id" };
+        if(pt7 === "project" && input.parent_id && !projectById(input.parent_id)) return { error:"no project with that id" };
         var res7 = await safeInsert("actions", { title:input.title, type:input.type, priority:input.priority, parent_type:pt7, parent_id: pt7 === "none" ? null : (input.parent_id || null), date: input.date || null, done:false }, state.actions);
         if(res7.error) return { error: res7.error.message };
         var r7 = res7.data;
@@ -6766,6 +6775,10 @@
       if(name === "edit_action"){
         var a = state.actions.find(function(x){ return x.id === input.id; });
         if(!a) return { error:"no action with that id" };
+        var effectivePt8 = input.parent_type !== undefined ? input.parent_type : a.parentType;
+        var effectivePid8 = input.parent_id !== undefined ? input.parent_id : a.parentId;
+        if(effectivePt8 === "goal" && effectivePid8 && !goalById(effectivePid8)) return { error:"no goal with that id" };
+        if(effectivePt8 === "project" && effectivePid8 && !projectById(effectivePid8)) return { error:"no project with that id" };
         var ap = {};
         if(input.title !== undefined) ap.title = input.title;
         if(input.type !== undefined) ap.type = input.type;
