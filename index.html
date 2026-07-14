@@ -332,33 +332,28 @@
   .wb-conn-line{ stroke:var(--text-faint); stroke-width:1.5; pointer-events:none; }
   .wb-conn:hover .wb-conn-line{ stroke:var(--accent); stroke-width:2.25; }
   .wb-overlay{ position:absolute; inset:0; pointer-events:none; }
-  .wb-goal-node{ position:absolute; width:148px; background:var(--bg-raised); border:1px solid var(--border-bright); border-left:3px solid var(--border-bright); border-radius:6px; padding:8px 10px; pointer-events:auto; cursor:grab; box-shadow:0 4px 14px rgba(0,0,0,0.3); user-select:none; touch-action:none; }
-  .wb-goal-node:hover{ border-color:var(--text-faint); }
-  .wb-goal-node.dragging{ cursor:grabbing; box-shadow:0 10px 28px rgba(0,0,0,0.45); z-index:50; }
-  .wb-goal-node.is-project{ border-left-style:dashed; }
-  .wb-goal-node.connect-pending{ box-shadow:0 0 0 2px var(--accent), 0 10px 28px rgba(0,0,0,0.45); }
-  .wb-goal-node.Health{ border-left-color:var(--cat-health); }
-  .wb-goal-node.Finance{ border-left-color:var(--cat-finance); }
-  .wb-goal-node.Career{ border-left-color:var(--cat-career); }
-  .wb-goal-node.Maintenance{ border-left-color:var(--cat-maintenance); }
-  .wb-goal-node.Growth{ border-left-color:var(--cat-growth); }
-  .wb-goal-node.Relationships{ border-left-color:var(--cat-relationships); }
-  .wb-goal-node.Life{ border-left-color:var(--cat-life); }
-  .wb-goal-node.Health .wb-goal-node-initial{ background:var(--cat-health); color:var(--bg); }
-  .wb-goal-node.Finance .wb-goal-node-initial{ background:var(--cat-finance); color:var(--bg); }
-  .wb-goal-node.Career .wb-goal-node-initial{ background:var(--cat-career); color:var(--bg); }
-  .wb-goal-node.Maintenance .wb-goal-node-initial{ background:var(--cat-maintenance); color:var(--bg); }
-  .wb-goal-node.Growth .wb-goal-node-initial{ background:var(--cat-growth); color:var(--bg); }
-  .wb-goal-node.Relationships .wb-goal-node-initial{ background:var(--cat-relationships); color:var(--bg); }
-  .wb-goal-node.Life .wb-goal-node-initial{ background:var(--cat-life); color:var(--bg); }
-  .wb-goal-node-top{ display:flex; align-items:center; gap:7px; }
-  .wb-goal-node-icon{ width:20px; height:20px; border-radius:4px; display:block; flex-shrink:0; mask-size:contain; -webkit-mask-size:contain; mask-repeat:no-repeat; -webkit-mask-repeat:no-repeat; mask-position:center; -webkit-mask-position:center; }
-  .wb-goal-node-initial{ width:20px; height:20px; border-radius:4px; display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:11px; font-weight:700; background:var(--bg-inset); color:var(--text-dim); flex-shrink:0; }
-  .wb-goal-node-title{ font-family:var(--mono); font-size:11.5px; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .wb-goal-node-meta{ display:flex; align-items:center; gap:6px; margin-top:7px; }
-  .wb-goal-node-health-dot{ width:7px; height:7px; border-radius:50%; margin-left:auto; background:var(--accent); }
-  .wb-goal-node-health-dot.warn{ background:var(--p1); }
-  .wb-goal-node-health-dot.critical{ background:var(--p0); }
+  /* Goal/project nodes are a plain colored dot (area color), not a card — the wrapper's own box IS
+     the dot (width/height = diameter), so wbNodeCenter's existing left+width/2 math keeps anchoring
+     connection lines to the dot's true center with no changes needed there. The title renders as a
+     separate absolutely-positioned label alongside it, which — since absolutely-positioned children
+     don't contribute to their parent's own box size — never affects that center math either. */
+  .wb-goal-node{ position:absolute; width:16px; height:16px; border-radius:50%; background:var(--text-faint); pointer-events:auto; cursor:grab; box-shadow:0 0 0 2px var(--bg-inset), 0 2px 8px rgba(0,0,0,0.35); user-select:none; touch-action:none; }
+  .wb-goal-node:hover{ box-shadow:0 0 0 2px var(--bg-inset), 0 0 0 5px var(--accent-glow), 0 2px 8px rgba(0,0,0,0.35); }
+  .wb-goal-node.dragging{ cursor:grabbing; z-index:50; box-shadow:0 0 0 2px var(--bg-inset), 0 4px 16px rgba(0,0,0,0.5); }
+  .wb-goal-node.connect-pending{ box-shadow:0 0 0 2px var(--bg-inset), 0 0 0 5px var(--accent), 0 2px 8px rgba(0,0,0,0.35); }
+  /* Projects keep a visual distinction from goals — same area color, but a hollow ring (inset bg
+     cutout) instead of a solid fill. */
+  .wb-goal-node.is-project{ box-shadow:0 0 0 2px var(--bg-inset), 0 2px 8px rgba(0,0,0,0.35), inset 0 0 0 4px var(--bg-inset); }
+  .wb-goal-node.is-project:hover{ box-shadow:0 0 0 2px var(--bg-inset), 0 0 0 5px var(--accent-glow), 0 2px 8px rgba(0,0,0,0.35), inset 0 0 0 4px var(--bg-inset); }
+  .wb-goal-node.is-project.connect-pending{ box-shadow:0 0 0 2px var(--bg-inset), 0 0 0 5px var(--accent), 0 2px 8px rgba(0,0,0,0.35), inset 0 0 0 4px var(--bg-inset); }
+  .wb-goal-node.Health{ background:var(--cat-health); }
+  .wb-goal-node.Finance{ background:var(--cat-finance); }
+  .wb-goal-node.Career{ background:var(--cat-career); }
+  .wb-goal-node.Maintenance{ background:var(--cat-maintenance); }
+  .wb-goal-node.Growth{ background:var(--cat-growth); }
+  .wb-goal-node.Relationships{ background:var(--cat-relationships); }
+  .wb-goal-node.Life{ background:var(--cat-life); }
+  .wb-goal-node-label{ position:absolute; left:22px; top:50%; transform:translateY(-50%); font-family:var(--mono); font-size:11px; font-weight:600; color:var(--text-dim); white-space:nowrap; pointer-events:none; text-shadow:0 1px 3px var(--bg), 0 1px 3px var(--bg); }
   .wb-empty-hint{ position:absolute; top:12px; left:12px; font-family:var(--mono); font-size:11px; color:var(--text-faint); pointer-events:none; }
   .entity-icon-img{ width:22px; height:22px; border-radius:5px; display:block; flex-shrink:0; mask-size:contain; -webkit-mask-size:contain; mask-repeat:no-repeat; -webkit-mask-repeat:no-repeat; mask-position:center; -webkit-mask-position:center; }
   /* Built-in habit icons (see HABIT_ICON_LIBRARY) — inline usage, tinted by area via `color` since
@@ -1217,7 +1212,7 @@
       <div class="main-header">
         <div>
           <h1>whiteboard</h1>
-          <p class="subhead">A mind map — goals and projects as movable cards, connect them into relations, sketch around them.</p>
+          <p class="subhead">A mind map — goals and projects as movable dots colored by area, connect them into relations, sketch around them.</p>
         </div>
       </div>
       <div class="wb-toolbar">
@@ -3659,24 +3654,15 @@
   function wbNodeHtml(type, item, index){
     var pos = wbNodePosition(item, index);
     var category = type === "goal" ? item.category : projectCategory(item);
-    var health = type === "goal" ? goalHealth(item) : projectHealth(item);
-    var initial = (item.title || "?").trim().charAt(0).toUpperCase() || "?";
-    return '<div class="wb-goal-node' + (category ? " " + category : "") + (type === "project" ? " is-project" : "") + '" data-type="' + type + '" data-id="' + item.id + '" style="left:' + pos.x + 'px; top:' + pos.y + 'px;">' +
-      '<div class="wb-goal-node-top">' +
-        (item.icon ? iconMaskHtml("wb-goal-node-icon", item.icon, category) : '<span class="wb-goal-node-initial">' + initial + '</span>') +
-        '<span class="wb-goal-node-title">' + (type === "project" ? "▸ " : "") + escapeHtml(item.title) + '</span>' +
-      '</div>' +
-      '<div class="wb-goal-node-meta">' +
-        '<span class="prio-badge ' + item.priority + '">' + item.priority + '</span>' +
-        '<span class="wb-goal-node-health-dot ' + (health.level !== "good" ? health.level : "") + '"></span>' +
-      '</div>' +
+    return '<div class="wb-goal-node' + (category ? " " + category : "") + (type === "project" ? " is-project" : "") + '" data-type="' + type + '" data-id="' + item.id + '" style="left:' + pos.x + 'px; top:' + pos.y + 'px;" title="' + escapeHtml(item.title) + '">' +
+      '<span class="wb-goal-node-label">' + (type === "project" ? "▸ " : "") + escapeHtml(item.title) + '</span>' +
     '</div>';
   }
   function renderWhiteboardNodes(){
     var overlay = document.getElementById("wbOverlay");
     if(!overlay) return;
     if(!state.goals.length && !state.projects.length){
-      overlay.innerHTML = '<div class="wb-empty-hint">Add a goal or project from the Planner or Areas tab — it\'ll show up here as a movable card.</div>';
+      overlay.innerHTML = '<div class="wb-empty-hint">Add a goal or project from the Planner or Areas tab — it\'ll show up here as a movable dot.</div>';
       renderWbConnections();
       return;
     }
