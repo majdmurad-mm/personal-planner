@@ -3976,7 +3976,7 @@
   // an area hub is the biggest node, then a goal, then a project, then a habit the smallest.
   var WB_DOT_RADII = { area: 28, goal: 11, project: 8, habit: 5.5 };
   var WB_CENTER_X = WB_WORLD_W / 2, WB_CENTER_Y = WB_WORLD_H / 2;
-  var WB_REPEL = 9000, WB_AREA_PUSH = 3000, WB_LINK_DIST = 130, WB_LINK_K = 0.02, WB_CENTER_K = 0.0025, WB_DAMPING = 0.82, WB_ALPHA_DECAY = 0.985;
+  var WB_REPEL = 9000, WB_AREA_PUSH = 3000, WB_LINK_DIST = 130, WB_LINK_K = 0.02, WB_DAMPING = 0.82, WB_ALPHA_DECAY = 0.985;
   var wbAlpha = 0, wbSimRunning = false;
   function wbFindSimNode(type, id){
     for(var i=0;i<wbSimNodes.length;i++){ if(wbSimNodes[i].type === type && wbSimNodes[i].id === id) return wbSimNodes[i]; }
@@ -4055,15 +4055,11 @@
     }
     state.wbConnections.forEach(wbApplySpring);
     wbHierarchyEdges().forEach(wbApplySpring);
+    // No node type is pulled toward the world center anymore — the layout settles purely from
+    // repulsion, the area-vs-area push, and the hierarchy/manual springs, so nothing forces area
+    // hubs (or anything spring-linked to one) toward the middle of the world.
     nodes.forEach(function(n){
       if(n.fixed){ n.vx = 0; n.vy = 0; return; }
-      // Only area hubs get pulled toward the world center — goal/project/habit nodes have no direct
-      // center pull of their own; they stay near the middle only by being spring-linked (see
-      // wbHierarchyEdges/wbApplySpring above) to an area hub that's itself being pulled inward.
-      if(n.type === "area"){
-        n.vx += (WB_CENTER_X - n.x) * WB_CENTER_K * wbAlpha;
-        n.vy += (WB_CENTER_Y - n.y) * WB_CENTER_K * wbAlpha;
-      }
       n.vx *= WB_DAMPING; n.vy *= WB_DAMPING;
       n.x += n.vx; n.y += n.vy;
     });
