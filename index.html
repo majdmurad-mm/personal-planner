@@ -364,6 +364,13 @@
   .icon-gallery-btn svg{ width:100%; height:100%; display:block; }
   .icon-gallery-btn:hover{ border-color:var(--accent-dim); color:var(--text); }
   .icon-gallery-btn.sel{ border-color:var(--accent); background:var(--accent-glow); color:var(--accent); }
+  /* Collapsed multi-select dropdown (secondary goals) — a button showing the current count that
+     toggles a checkable chip panel, instead of always showing every option inline. */
+  .dropdown-multi{ position:relative; }
+  .dropdown-multi-btn{ width:100%; text-align:left; background:var(--bg-raised); border:1px solid var(--border-bright); border-radius:var(--radius); padding:8px 10px; font-family:var(--mono); font-size:11.5px; color:var(--text); cursor:pointer; }
+  .dropdown-multi-btn:hover{ border-color:var(--accent-dim); }
+  .dropdown-multi-panel{ position:absolute; top:calc(100% + 4px); left:0; right:0; z-index:50; background:var(--bg-raised); border:1px solid var(--border-bright); border-radius:var(--radius); padding:8px; box-shadow:0 8px 20px rgba(0,0,0,0.35); max-height:180px; overflow-y:auto; }
+  .dropdown-multi-panel[hidden]{ display:none; }
 
   /* ===== SLEEP ===== */
   .goal-integration-block{ margin-top:28px; padding-top:20px; border-top:1px solid var(--border); }
@@ -1558,7 +1565,11 @@
         <div class="chip-opt" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" data-ar="Growth">↑ Growth</div><div class="chip-opt" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" data-ar="Sol">◐ Sol</div>
       </div></div>
       <div class="field"><label for="habitGoalSelect">parent goal</label><select id="habitGoalSelect"></select></div>
-      <div class="field"><label>secondary goals (optional)</label><div class="chip-select" id="habitSecondaryGoalsSelect"></div>
+      <div class="field"><label>secondary goals (optional)</label>
+        <div class="dropdown-multi" id="habitSecondaryGoalsDropdown">
+          <button type="button" class="dropdown-multi-btn" id="habitSecondaryGoalsBtn">none selected ▾</button>
+          <div class="dropdown-multi-panel chip-select" id="habitSecondaryGoalsSelect" hidden></div>
+        </div>
         <p class="panel-hint">Link this habit to other goals too — its area still comes from the parent goal above.</p>
       </div>
       <div class="field"><label>icon</label><div class="icon-gallery" id="habitIconGallery"></div></div>
@@ -6867,6 +6878,10 @@
   // goal changes, since the parent itself is excluded from the list — preSelectedIds lets a caller
   // re-apply whatever was already checked (modal open with saved data, or a live parent-goal switch
   // re-filtering out whichever goal just became the new parent).
+  function updateHabitSecondaryGoalsBtn(){
+    var count = multiChipValues(document.getElementById("habitSecondaryGoalsSelect"), "gid").length;
+    document.getElementById("habitSecondaryGoalsBtn").textContent = (count ? count + " selected" : "none selected") + " ▾";
+  }
   function renderHabitSecondaryGoalsChips(preSelectedIds){
     var primaryId = document.getElementById("habitGoalSelect").value;
     var container = document.getElementById("habitSecondaryGoalsSelect");
@@ -6875,10 +6890,24 @@
       ? options.map(function(g){ return '<div class="chip-opt" data-gid="' + g.id + '">' + escapeHtml(g.title) + '</div>'; }).join("")
       : '<span class="panel-hint" style="margin:0;">No other goals yet.</span>';
     setMultiChip(container, "gid", (preSelectedIds || []).filter(function(id){ return id !== primaryId; }));
+    updateHabitSecondaryGoalsBtn();
   }
   wireMultiChipSelect(document.getElementById("habitSecondaryGoalsSelect"));
+  document.getElementById("habitSecondaryGoalsSelect").addEventListener("click", function(e){
+    if(e.target.closest(".chip-opt")) updateHabitSecondaryGoalsBtn();
+  });
   document.getElementById("habitGoalSelect").addEventListener("change", function(){
     renderHabitSecondaryGoalsChips(multiChipValues(document.getElementById("habitSecondaryGoalsSelect"), "gid"));
+  });
+  // The panel stays open across multiple picks (closing after every click would defeat the point of
+  // a multi-select) — only the button itself toggles it, and clicking anywhere outside closes it.
+  document.getElementById("habitSecondaryGoalsBtn").addEventListener("click", function(e){
+    e.stopPropagation();
+    document.getElementById("habitSecondaryGoalsSelect").hidden = !document.getElementById("habitSecondaryGoalsSelect").hidden;
+  });
+  document.addEventListener("click", function(e){
+    var panel = document.getElementById("habitSecondaryGoalsSelect");
+    if(!panel.hidden && !document.getElementById("habitSecondaryGoalsDropdown").contains(e.target)) panel.hidden = true;
   });
   // Icon gallery: every HABIT_ICON_LIBRARY entry, highlighting whichever key is currently drafted.
   // habitIconDraft/habitIconManuallySet are updated by the title-input live-suggest and the gallery
@@ -6950,6 +6979,7 @@
     fillHabitGoalSelect();
     document.getElementById("habitGoalSelect").value = goalToSelect;
     renderHabitSecondaryGoalsChips(editHabitObj ? (editHabitObj.secondaryGoalIds || []) : []);
+    document.getElementById("habitSecondaryGoalsSelect").hidden = true;
     // Editing an existing habit keeps its already-assigned icon fixed (habitIconManuallySet=true)
     // so retyping the title doesn't silently swap it out from under the user; a brand-new habit
     // starts unset and live-suggests as they type (see the habitTitleInput listener above).
