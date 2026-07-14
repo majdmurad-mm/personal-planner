@@ -4153,6 +4153,7 @@
   function activateWhiteboard(){
     if(!wbLoadStarted){ wbLoadStarted = true; loadWbConnections(); }
     wbSyncSimNodes();
+    wbRebuildGraphCache();
     renderWhiteboardNodes();
     wbReheat(1);
   }
@@ -4269,13 +4270,32 @@
     a.vx += fx; a.vy += fy;
     b.vx -= fx; b.vy -= fy;
   }
+  // wbHierarchyEdges()/wbAreaLeafEdges()/wbNodeArea() are all pure functions of state (goals/
+  // projects/habits/actions), not of the simulation's live positions — but wbTickPhysics() runs on
+  // every animation frame while the sim is hot (which can be continuous for seconds after any reheat,
+  // or the whole duration of a drag), so recomputing them from scratch every single tick was doing
+  // the same O(goals+projects+habits) work over and over for data that hadn't changed since the last
+  // sync. Cached here and rebuilt only at the same checkpoints wbSyncSimNodes() already treats as
+  // "the graph's structure may have changed" (section entry, the actions-layer toggle) — node
+  // membership itself is already only refreshed at those same two points, so this doesn't introduce
+  // any new staleness window beyond one that already exists for which nodes appear at all.
+  var wbCachedHierarchyEdges = [];
+  var wbCachedAreaLeafEdges = [];
+  var wbCachedNodeAreas = {};
+  function wbRebuildGraphCache(){
+    wbCachedHierarchyEdges = wbHierarchyEdges();
+    wbCachedAreaLeafEdges = wbAreaLeafEdges();
+    wbCachedNodeAreas = {};
+    wbSimNodes.forEach(function(n){ wbCachedNodeAreas[n.type + ":" + n.id] = wbNodeArea(n); });
+  }
   function wbTickPhysics(){
     var nodes = wbSimNodes;
-    // Each node's area, computed once per tick (not per pair) — used below to add a small extra
-    // push between nodes from *different* areas, on top of the base repulsion every pair already
-    // gets. Reinforces the area grouping the cluster hulls already show, by actually keeping
-    // different-area nodes a bit further apart rather than just drawing a shape around them.
-    var areas = nodes.map(wbNodeArea);
+    // Each node's area, from the cache built by wbRebuildGraphCache() (not recomputed per tick) —
+    // used below to add a small extra push between nodes from *different* areas, on top of the base
+    // repulsion every pair already gets. Reinforces the area grouping the cluster hulls already show,
+    // by actually keeping different-area nodes a bit further apart rather than just drawing a shape
+    // around them.
+    var areas = nodes.map(function(n){ return wbCachedNodeAreas[n.type + ":" + n.id]; });
     for(var i=0;i<nodes.length;i++){
       for(var j=i+1;j<nodes.length;j++){
         var dx = nodes[j].x - nodes[i].x, dy = nodes[j].y - nodes[i].y;
@@ -4289,8 +4309,8 @@
       }
     }
     state.wbConnections.forEach(wbApplySpring);
-    wbHierarchyEdges().forEach(wbApplySpring);
-    wbAreaLeafEdges().forEach(wbApplySpring);
+    wbCachedHierarchyEdges.forEach(wbApplySpring);
+    wbCachedAreaLeafEdges.forEach(wbApplySpring);
     // Area hubs get pulled toward the world center, and strongly (WB_CENTER_K is bigger than the
     // link spring constant). A true orphan — no resolvable area at all (areas[idx] is null: a
     // standalone project/habit/action with no goal and no area of its own) — gets the same pull at
@@ -4715,6 +4735,7 @@
       wbShowActions = !wbShowActions;
       this.classList.toggle("on", wbShowActions);
       wbSyncSimNodes();
+      wbRebuildGraphCache();
       renderWhiteboardNodes();
       wbReheat(1);
     });
