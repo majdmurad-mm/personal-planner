@@ -807,6 +807,10 @@
   .tracker-col-head.sel{ box-shadow:inset 0 0 0 1.5px var(--accent); color:var(--accent); }
   .tracker-cell{ text-align:center; padding:2px; vertical-align:middle; background:var(--bg-raised); }
   .tracker-cell:hover{ background:var(--bg-inset); }
+  /* A habit-linked variable's cell for a day its repetition pattern doesn't spawn an instance on —
+     no control at all, just a faint placeholder, since there's nothing to track that day. */
+  .tracker-cell-off{ background:var(--bg-inset); opacity:0.5; color:var(--text-faint); font-family:var(--mono); font-size:11px; cursor:default; }
+  .tracker-cell-off:hover{ background:var(--bg-inset); }
   .tracker-cell-input{ width:100%; min-width:64px; text-align:center; background:transparent; border:none; color:var(--text); font-family:var(--mono); font-size:11.5px; padding:9px 4px; }
   .tracker-cell-input:focus{ background:var(--bg-inset); outline:1.5px solid var(--accent-dim); outline-offset:-1.5px; }
   .tracker-scale{ display:flex; gap:3px; justify-content:center; padding:10px 4px; }
@@ -4527,6 +4531,14 @@
     return '<input type="number" step="any" class="tracker-cell-input" data-action="tracker-num-input" data-var="' + v.id + '" data-date="' + date + '" value="' + escapeHtml(value) + '">';
   }
   function trackerRenderCell(v, date, value){
+    // A habit-linked variable only gets a real control on days its repetition pattern actually
+    // spawns an instance — other days render as an inert placeholder instead of an editable cell.
+    // Exception: if a value is already recorded there (e.g. the habit's schedule changed after that
+    // day was tracked), keep it visible and editable rather than hiding pre-existing data.
+    var h = state.habits.find(function(x){ return x.trackerVariableId === v.id; });
+    if(h && !value && !habitOccursOnDate(h, date)){
+      return '<td class="tracker-cell tracker-cell-off" title="' + escapeHtml(h.title) + ' doesn\'t repeat on this day">·</td>';
+    }
     return '<td class="tracker-cell">' + trackerCellControlHtml(v, date, value) + '</td>';
   }
 
