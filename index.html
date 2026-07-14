@@ -4678,12 +4678,14 @@
   // Every block also carries its own area's color class (same .timeline-block.Health etc rules used
   // elsewhere) on top of the row's background tint, so items read clearly against the row rather
   // than blending into it.
+  // resizable: true = both edges, "right" = right edge only (used for the overnight tail — its left
+  // edge is pinned to midnight, not a real edge of the item, so only the wake/end side is
+  // draggable), falsy = no handle at all (notes have no duration field).
   function todayTimelineBlockHtml(kind, id, date, left, width, title, label, area, extraClass, overnight, resizable){
     var cls = (area ? " " + area : "") + (extraClass || "");
-    var handles = resizable
-      ? '<span class="timeline-block-resize timeline-block-resize-left" data-resize-handle="left"></span>' +
-        '<span class="timeline-block-resize timeline-block-resize-right" data-resize-handle="right"></span>'
-      : "";
+    var handles = "";
+    if(resizable === true) handles = '<span class="timeline-block-resize timeline-block-resize-left" data-resize-handle="left"></span>';
+    if(resizable) handles += '<span class="timeline-block-resize timeline-block-resize-right" data-resize-handle="right"></span>';
     return '<div class="timeline-block' + cls + '" data-kind="' + kind + '" data-id="' + id + '" data-date="' + date + '"' + (overnight ? ' data-overnight="1"' : '') + ' style="left:' + left + '%; width:' + width + '%;" title="' + escapeHtml(title) + '">' +
       handles + '<span class="timeline-block-title">' + label + '</span></div>';
   }
@@ -4699,14 +4701,14 @@
     });
     // Habits that started yesterday and run past midnight (sleep being the obvious one — 11:30pm to
     // 7:30am) show their overnight tail here too, continued from the very start of today. Not
-    // draggable/resizable: neither has a sensible meaning for this segment's own start time or
-    // duration, so wireTimelineLayerDrag/wireTimelineBlockResize both skip anything with
-    // data-overnight (and it's never rendered with a resize handle in the first place).
+    // draggable (wireTimelineLayerDrag skips anything with data-overnight — the segment's own start
+    // time isn't meaningful to move), but its right edge IS resizable: that's how you shorten or
+    // lengthen sleep from the wake-up side without having to go edit the original day's block.
     state.habits.filter(function(h){ return !!h.timeOfDay && habitOccursOnDate(h, yesterday) && habitCategory(h) === area; }).forEach(function(h){
       var spillMin = overnightSpilloverMinutes(h.timeOfDay, h.durationMinutes);
       if(!spillMin) return;
       var widthFrac = spillMin / 1440 * 100;
-      html += todayTimelineBlockHtml("habit-instance", h.id, yesterday, 0, widthFrac, h.title + " — continued from " + fmtTimeOfDay(h.timeOfDay) + " yesterday", "‹ " + escapeHtml(h.title), area, "", true);
+      html += todayTimelineBlockHtml("habit-instance", h.id, yesterday, 0, widthFrac, h.title + " — continued from " + fmtTimeOfDay(h.timeOfDay) + " yesterday", "‹ " + escapeHtml(h.title), area, "", true, "right");
     });
     state.actions.filter(function(a){ return a.date === todaySelectedDate && !!a.timeOfDay && actionCategory(a) === area; }).forEach(function(a){
       var startFrac = timeToFraction(a.timeOfDay) * 100;
@@ -4719,7 +4721,7 @@
       var spillMin = overnightSpilloverMinutes(a.timeOfDay, a.durationMinutes);
       if(!spillMin) return;
       var widthFrac = spillMin / 1440 * 100;
-      html += todayTimelineBlockHtml("action", a.id, yesterday, 0, widthFrac, a.title + " — continued from " + fmtTimeOfDay(a.timeOfDay) + " yesterday", "‹ " + escapeHtml(a.title), area, a.done ? " done" : "", true);
+      html += todayTimelineBlockHtml("action", a.id, yesterday, 0, widthFrac, a.title + " — continued from " + fmtTimeOfDay(a.timeOfDay) + " yesterday", "‹ " + escapeHtml(a.title), area, a.done ? " done" : "", true, "right");
     });
     // Notes are a point in time, not a span — no duration field, so every block is the same small
     // fixed width, positioned by time_of_day.
@@ -4843,20 +4845,28 @@
     track.addEventListener("pointerup", async function(){
       if(!resizeEl) return;
       var el = resizeEl, id = resizeId, kind = resizeKind, edge = resizeEdge;
+      var isOvernight = el.dataset.overnight === "1";
       var durationMin = el.dataset.pendingDuration, newTime = el.dataset.pendingTime;
       resizeEl = null; resizeId = null; resizeKind = null; resizeEdge = null;
       el.classList.remove("resizing");
       delete el.dataset.pendingTime;
       if(!moved || !durationMin) return;
       durationMin = Number(durationMin);
-      var payload = { duration_minutes: durationMin };
-      if(edge === "left" && newTime) payload.time_of_day = newTime;
       var arr = kind === "habit-instance" ? state.habits : state.actions;
       var obj = arr.find(function(x){ return x.id === id; });
-      if(obj){
-        obj.durationMinutes = durationMin;
-        if(payload.time_of_day) obj.timeOfDay = payload.time_of_day;
+      if(!obj) return;
+      // The overnight tail's own width is only the spillover past midnight — its right edge is the
+      // wake/end time, so the real total duration is that spillover plus the (unchanged) stretch
+      // from the item's actual start time up to midnight.
+      var finalDuration = durationMin;
+      if(isOvernight){
+        var startMin = timeToFraction(obj.timeOfDay) * 1440;
+        finalDuration = Math.max(TIMELINE_RESIZE_MIN_MIN, Math.round((1440 - startMin) + durationMin));
       }
+      var payload = { duration_minutes: finalDuration };
+      if(edge === "left" && newTime) payload.time_of_day = newTime;
+      obj.durationMinutes = finalDuration;
+      if(payload.time_of_day) obj.timeOfDay = payload.time_of_day;
       var r = await safeUpdate(kind === "habit-instance" ? "habits" : "actions", id, payload);
       if(r.error) console.error(r.error); else warnDroppedFields(r.droppedFields);
       renderToday();
