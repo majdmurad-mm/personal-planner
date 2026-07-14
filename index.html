@@ -4510,7 +4510,13 @@
   function trackerCellControlHtml(v, date, value){
     if(v.type === "boolean"){
       var on = value === "true";
-      return '<button class="day-box' + (on?' on':'') + '" data-action="tracker-toggle-bool" data-var="' + v.id + '" data-date="' + date + '" aria-label="Toggle"></button>';
+      // A boolean variable linked to a habit completes in that habit's own area color instead of the
+      // generic accent — unlinked/manual boolean variables (and habits with no area of their own)
+      // keep the default accent-colored button.
+      var h = state.habits.find(function(x){ return x.trackerVariableId === v.id; });
+      var cat = h ? habitCategory(h) : null;
+      var styleAttr = (on && cat) ? ' style="background:' + categoryColorVar(cat) + ';border-color:' + categoryColorVar(cat) + ';"' : '';
+      return '<button class="day-box' + (on?' on':'') + '" data-action="tracker-toggle-bool" data-var="' + v.id + '" data-date="' + date + '"' + styleAttr + ' aria-label="Toggle"></button>';
     }
     if(v.type === "scale"){
       var max = v.scaleMax || 5;
