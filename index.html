@@ -511,7 +511,7 @@
   .daynight-badge.day{ background:#FDE047; box-shadow:0 0 6px rgba(253,224,71,0.6); }
   .daynight-badge.night{ background:#5FA8FF; box-shadow:0 0 6px rgba(95,168,255,0.6); }
   .daynight-times{ font-family:var(--mono); font-size:9.5px; color:var(--text-faint); }
-  .timeline-block{ position:absolute; top:2px; bottom:2px; min-width:10px; border-radius:4px; border-left:3px solid var(--border-bright); background:var(--bg-raised); border-top:1px solid var(--border-bright); border-right:1px solid var(--border-bright); border-bottom:1px solid var(--border-bright); cursor:grab; overflow:hidden; padding:0 5px; display:flex; align-items:center; user-select:none; touch-action:none; }
+  .timeline-block{ position:absolute; top:2px; bottom:2px; min-width:32px; border-radius:4px; border-left:3px solid var(--border-bright); background:var(--bg-raised); border-top:1px solid var(--border-bright); border-right:1px solid var(--border-bright); border-bottom:1px solid var(--border-bright); cursor:grab; overflow:hidden; padding:0 5px; display:flex; align-items:center; user-select:none; touch-action:none; }
   .timeline-block:hover{ border-color:var(--accent-dim); z-index:2; }
   .timeline-block.dragging{ cursor:grabbing; z-index:3; box-shadow:0 4px 14px rgba(0,0,0,0.4); }
   .timeline-block.resizing{ z-index:3; box-shadow:0 4px 14px rgba(0,0,0,0.4); }
@@ -524,14 +524,13 @@
   .timeline-block-resize:hover{ background:rgba(255,255,255,0.18); }
   .timeline-block-resize-left{ left:0; }
   .timeline-block-resize-right{ right:0; }
-  /* Habit icons inside a timeline block are absolutely positioned (not a normal flex sibling of the
-     title) — most blocks are only a few % of a 24h-wide row, far too narrow to fit a 13px icon plus
-     any title text under normal flex sharing (the icon's flex-shrink:0 would just push it past the
-     block's overflow:hidden edge and it'd never actually paint). Pinning it to a fixed spot means it
-     always renders regardless of block width; the title gets a matching margin-left so it starts
-     after the icon instead of underneath it. */
-  .timeline-block .habit-icon-inline.icon-sm{ position:absolute; left:8px; top:50%; transform:translateY(-50%); z-index:2; }
-  .timeline-block .habit-icon-inline.icon-sm + .timeline-block-title{ margin-left:16px; }
+  /* Habit icon is the dominant visual element of a timeline block, not a small corner accent — a
+     bold solid-fill mask (see habitTimelineIconHtml/iconMaskHtml), sized close to the block's own
+     height, absolutely positioned so it always renders at full size regardless of block width
+     (most blocks are only a few % of a 24h-wide row — far too narrow to fit this via normal flex
+     sharing). The title gets a matching margin-left so it starts after the icon instead of under it. */
+  .timeline-block-icon{ position:absolute; left:8px; top:50%; transform:translateY(-50%); width:22px; height:22px; display:block; mask-size:contain; -webkit-mask-size:contain; mask-repeat:no-repeat; -webkit-mask-repeat:no-repeat; mask-position:center; -webkit-mask-position:center; z-index:2; filter:drop-shadow(0 1px 1.5px rgba(0,0,0,0.5)); }
+  .timeline-block-icon + .timeline-block-title{ margin-left:32px; }
   .timeline-block-title{ font-family:var(--mono); font-size:9.5px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; z-index:1; }
   .timeline-block.done{ opacity:0.5; }
   /* Filled area tint, not just a border accent — these blocks are often too narrow (short
@@ -1692,6 +1691,16 @@
     var uri = "data:image/svg+xml," + encodeURIComponent(maskSvg);
     habitIconDataUriCache[key] = uri;
     return uri;
+  }
+  // Timeline usage (Today timeline blocks, Timeline-page track) — the icon is the dominant visual
+  // element here, not a small corner accent, so it goes through the same solid-fill CSS-mask
+  // treatment as the Today square tiles (bold, fully opaque area color) rather than the thin
+  // stroke-outline habitIconInlineHtml uses in list/matrix cards, which reads as too faint at small
+  // sizes against a tinted background.
+  function habitTimelineIconHtml(key, category){
+    var uri = key ? habitIconDataUri(key) : null;
+    if(!uri) return "";
+    return iconMaskHtml("timeline-block-icon", uri, category);
   }
   var ACTION_TYPES = ["Call","Email","Meeting","Research","Write","Review","Task","Follow-up"];
   var RELATIONSHIPS = ["Family","Friend","Colleague","Mentor","Partner","Other"];
@@ -4912,7 +4921,7 @@
     state.habits.filter(function(h){ return !!h.timeOfDay && habitOccursOnDate(h, todaySelectedDate) && habitCategory(h) === area; }).forEach(function(h){
       var startFrac = timeToFraction(h.timeOfDay) * 100;
       var widthFrac = Math.max(1.2, ((h.durationMinutes || 15) / 1440) * 100);
-      html += todayTimelineBlockHtml("habit-instance", h.id, todaySelectedDate, startFrac, widthFrac, h.title + " — " + fmtTimeOfDay(h.timeOfDay), escapeHtml(h.title), area, h.priority === "P0" ? " p0" : "", false, true, habitIconInlineHtml(h.icon, "icon-sm"));
+      html += todayTimelineBlockHtml("habit-instance", h.id, todaySelectedDate, startFrac, widthFrac, h.title + " — " + fmtTimeOfDay(h.timeOfDay), escapeHtml(h.title), area, h.priority === "P0" ? " p0" : "", false, true, habitTimelineIconHtml(h.icon, area));
     });
     // Habits that started yesterday and run past midnight (sleep being the obvious one — 11:30pm to
     // 7:30am) show their overnight tail here too, continued from the very start of today. Not
@@ -4923,7 +4932,7 @@
       var spillMin = overnightSpilloverMinutes(h.timeOfDay, h.durationMinutes);
       if(!spillMin) return;
       var widthFrac = spillMin / 1440 * 100;
-      html += todayTimelineBlockHtml("habit-instance", h.id, yesterday, 0, widthFrac, h.title + " — continued from " + fmtTimeOfDay(h.timeOfDay) + " yesterday", "‹ " + escapeHtml(h.title), area, h.priority === "P0" ? " p0" : "", true, "right", habitIconInlineHtml(h.icon, "icon-sm"));
+      html += todayTimelineBlockHtml("habit-instance", h.id, yesterday, 0, widthFrac, h.title + " — continued from " + fmtTimeOfDay(h.timeOfDay) + " yesterday", "‹ " + escapeHtml(h.title), area, h.priority === "P0" ? " p0" : "", true, "right", habitTimelineIconHtml(h.icon, area));
     });
     state.actions.filter(function(a){ return a.date === todaySelectedDate && !!a.timeOfDay && actionCategory(a) === area; }).forEach(function(a){
       var startFrac = timeToFraction(a.timeOfDay) * 100;
@@ -5239,9 +5248,10 @@
       state.habits.filter(function(h){ return !!h.timeOfDay && habitOccursOnDate(h, dateStr); }).forEach(function(h){
         var leftPx = i*tlPxPerDay + timeToFraction(h.timeOfDay)*tlPxPerDay;
         var widthPx = Math.max(10, ((h.durationMinutes || 15) / 1440) * tlPxPerDay);
-        var catClass = habitCategory(h) ? " " + habitCategory(h) : "";
+        var cat = habitCategory(h);
+        var catClass = cat ? " " + cat : "";
         html += '<div class="timeline-block' + catClass + '" data-kind="habit-instance" data-id="' + h.id + '" data-day-index="' + i + '" data-date="' + dateStr + '" style="left:' + leftPx + 'px; width:' + widthPx + 'px;" title="' + escapeHtml(h.title) + ' — ' + fmtTimeOfDay(h.timeOfDay) + '">' +
-          habitIconInlineHtml(h.icon, "icon-sm") + '<span class="timeline-block-title">' + escapeHtml(h.title) + '</span></div>';
+          habitTimelineIconHtml(h.icon, cat) + '<span class="timeline-block-title">' + escapeHtml(h.title) + '</span></div>';
       });
     }
     track.innerHTML = html;
