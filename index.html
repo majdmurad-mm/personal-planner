@@ -3057,16 +3057,24 @@
   // Deleting a single day's occurrence of a recurring habit (Today tiles, Today's timeline blocks,
   // the Timeline page) never touches the habit definition — it just adds that date to the habit's
   // skip_dates, which habitOccursOnDate checks. The habit keeps recurring on every other day.
-  async function skipHabitInstance(id, dateStr){
-    var h = state.habits.find(function(x){ return x.id === id; });
-    if(!h || !dateStr) return;
-    if(h.skipDates.indexOf(dateStr) !== -1) return;
+  // Core of skipHabitInstance, split out so postponeHabitInstance can apply the same skip-date write
+  // without also pushing its own separate undo entry — a postpone needs ONE combined undo (un-skip +
+  // remove the created action), not two independent stack entries that only partially unwind.
+  async function applySkipHabitInstance(h, dateStr){
+    if(h.skipDates.indexOf(dateStr) !== -1) return false;
     var prevSkipDates = h.skipDates.slice();
     h.skipDates = prevSkipDates.concat([dateStr]);
     renderAll();
-    var r = await safeUpdate("habits", id, { skip_dates: h.skipDates });
-    if(r.error){ console.error(r.error); h.skipDates = prevSkipDates; renderAll(); return; }
+    var r = await safeUpdate("habits", h.id, { skip_dates: h.skipDates });
+    if(r.error){ console.error(r.error); h.skipDates = prevSkipDates; renderAll(); return false; }
     warnDroppedFields(r.droppedFields);
+    return true;
+  }
+  async function skipHabitInstance(id, dateStr){
+    var h = state.habits.find(function(x){ return x.id === id; });
+    if(!h || !dateStr) return;
+    var applied = await applySkipHabitInstance(h, dateStr);
+    if(!applied) return;
     pushUndo("skip \"" + h.title + "\" on " + dateStr, async function(){
       h.skipDates = h.skipDates.filter(function(d){ return d !== dateStr; });
       renderAll();
@@ -3285,15 +3293,31 @@
   async function postponeHabitInstance(id, fromDate, toDate){
     var h = state.habits.find(function(x){ return x.id === id; });
     if(!h || !fromDate || !toDate) return;
-    await skipHabitInstance(id, fromDate);
+    var applied = await applySkipHabitInstance(h, fromDate);
+    if(!applied) return;
     var payload = { title:h.title, type:"Task", priority:h.priority, parent_type:"none", parent_id:null, date:toDate, done:false, time_of_day:h.timeOfDay||null, duration_minutes:h.durationMinutes||null, category:habitCategory(h) };
     var res = await safeInsert("actions", payload, state.actions);
-    if(res.error){ alert(res.error.message); return; }
+    if(res.error){
+      // the action failed to create — roll back the skip so the habit instance isn't lost either
+      h.skipDates = h.skipDates.filter(function(d){ return d !== fromDate; });
+      renderAll();
+      await safeUpdate("habits", id, { skip_dates: h.skipDates });
+      alert(res.error.message);
+      return;
+    }
     var r = res.data;
-    state.actions.push({ id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null });
+    var newAction = { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null };
+    state.actions.push(newAction);
     renderAll();
     warnDroppedFields(res.droppedFields);
     toast("\"" + h.title + "\" postponed to " + toDate + " as a one-off action — today's occurrence is skipped, the habit still recurs normally.");
+    pushUndo("postpone \"" + h.title + "\" to " + toDate, async function(){
+      h.skipDates = h.skipDates.filter(function(d){ return d !== fromDate; });
+      state.actions = state.actions.filter(function(x){ return x.id !== newAction.id; });
+      renderAll();
+      await safeUpdate("habits", id, { skip_dates: h.skipDates });
+      await sb.from("actions").delete().eq("id", newAction.id);
+    });
   }
   async function postponeItem(kind, id, fromDate, toDate){
     if(kind === "action") await postponeAction(id, toDate);
