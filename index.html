@@ -437,17 +437,32 @@
 
   /* ===== TODAY ===== */
   .today-timeline{ margin:18px 0 26px; }
-  /* One unified widget, divided into horizontal rows by type (day/night, habits, actions) and by
-     time horizontally within every row — the row labels live in their own column outside the
+  /* One unified widget, divided into horizontal rows by area (day/night, then one row per life
+     area — habits/actions/notes are mixed together within each area's row, colored by that row)
+     and by time horizontally within every row — the row labels live in their own column outside the
      bordered box so they never shift each row's 0-100% time axis out of alignment with the others,
      and the "now" line is a direct child of the box so it spans all rows as one continuous line. */
   .today-timeline-body{ display:flex; gap:8px; align-items:stretch; }
-  .today-timeline-row-labels{ display:flex; flex-direction:column; width:50px; flex-shrink:0; }
-  .today-timeline-row-labels span{ flex:1; display:flex; align-items:center; font-family:var(--mono); font-size:8.5px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-faint); }
+  .today-timeline-row-labels{ display:flex; flex-direction:column; width:26px; flex-shrink:0; }
+  .today-timeline-row-labels span{ flex:1; display:flex; align-items:center; justify-content:center; font-size:12px; color:var(--text-faint); }
+  .today-timeline-row-labels span.Health{ color:var(--cat-health); }
+  .today-timeline-row-labels span.Finance{ color:var(--cat-finance); }
+  .today-timeline-row-labels span.Career{ color:var(--cat-career); }
+  .today-timeline-row-labels span.Maintenance{ color:var(--cat-maintenance); }
+  .today-timeline-row-labels span.Growth{ color:var(--cat-growth); }
+  .today-timeline-row-labels span.Relationships{ color:var(--cat-relationships); }
+  .today-timeline-row-labels span.Life{ color:var(--cat-life); }
   .today-timeline-main{ flex:1; min-width:0; }
-  .today-timeline-unified{ position:relative; display:flex; flex-direction:column; height:118px; border:1px solid var(--border); border-radius:6px; overflow:hidden; background:var(--bg-raised); }
+  .today-timeline-unified{ position:relative; display:flex; flex-direction:column; height:236px; border:1px solid var(--border); border-radius:6px; overflow:hidden; background:var(--bg-raised); }
   .today-timeline-row{ position:relative; flex:1; touch-action:none; }
   .today-timeline-row + .today-timeline-row{ border-top:1px solid var(--border); }
+  .today-timeline-row.Health{ background:var(--cat-health-bg); }
+  .today-timeline-row.Finance{ background:var(--cat-finance-bg); }
+  .today-timeline-row.Career{ background:var(--cat-career-bg); }
+  .today-timeline-row.Maintenance{ background:var(--cat-maintenance-bg); }
+  .today-timeline-row.Growth{ background:var(--cat-growth-bg); }
+  .today-timeline-row.Relationships{ background:var(--cat-relationships-bg); }
+  .today-timeline-row.Life{ background:var(--cat-life-bg); }
   .today-timeline-daynight{ position:absolute; inset:0; transition:background 1s ease; }
   .today-timeline-now{ position:absolute; top:0; bottom:0; width:2px; background:var(--p0); box-shadow:0 0 6px var(--p0); z-index:5; }
   .today-timeline-now-label{ position:absolute; top:-17px; left:50%; transform:translateX(-50%); font-family:var(--mono); font-size:9px; font-weight:700; color:var(--p0); white-space:nowrap; }
@@ -754,15 +769,30 @@
 
       <div class="today-timeline">
         <div class="today-timeline-body">
-          <div class="today-timeline-row-labels"><span></span><span>habits</span><span>actions</span><span>notes</span></div>
+          <div class="today-timeline-row-labels">
+            <span></span>
+            <span class="Health" title="Health">✚</span>
+            <span class="Finance" title="Finance">$</span>
+            <span class="Career" title="Career">▲</span>
+            <span class="Maintenance" title="Maintenance">⚙</span>
+            <span class="Growth" title="Growth">↑</span>
+            <span class="Relationships" title="Relationships">♥</span>
+            <span class="Life" title="Life">◐</span>
+            <span title="No area set">○</span>
+          </div>
           <div class="today-timeline-main">
             <div class="today-timeline-unified" id="todayTimelineUnified">
               <div class="today-timeline-row">
                 <div class="today-timeline-daynight" id="todayTimelineDayNight"></div>
               </div>
-              <div class="today-timeline-row" id="todayTimelineHabitsTrack"></div>
-              <div class="today-timeline-row" id="todayTimelineActionsTrack"></div>
-              <div class="today-timeline-row" id="todayTimelineNotesTrack"></div>
+              <div class="today-timeline-row Health" id="todayTimelineArea-Health"></div>
+              <div class="today-timeline-row Finance" id="todayTimelineArea-Finance"></div>
+              <div class="today-timeline-row Career" id="todayTimelineArea-Career"></div>
+              <div class="today-timeline-row Maintenance" id="todayTimelineArea-Maintenance"></div>
+              <div class="today-timeline-row Growth" id="todayTimelineArea-Growth"></div>
+              <div class="today-timeline-row Relationships" id="todayTimelineArea-Relationships"></div>
+              <div class="today-timeline-row Life" id="todayTimelineArea-Life"></div>
+              <div class="today-timeline-row" id="todayTimelineAreaOther"></div>
               <div class="today-timeline-now" id="todayTimelineNow"><span class="today-timeline-now-label" id="todayTimelineNowLabel"></span></div>
             </div>
             <div class="today-timeline-labels">
@@ -3126,6 +3156,13 @@
     var g = goalById(resolveGoalIdForAction(a));
     return g ? g.category : null;
   }
+  // Habits don't yet have their own area field (unlike goals/projects/actions) — this is purely
+  // derived from a linked goal, so a standalone habit with no goal has no area at all (it lands in
+  // the Today timeline's "other" row).
+  function habitCategory(h){
+    var g = h.goalId ? goalById(h.goalId) : null;
+    return g ? g.category : null;
+  }
 
   function renderActions(){
     var f = filters.actions;
@@ -4597,91 +4634,74 @@
     var endMin = timeToFraction(hhmm) * 1440 + (durationMinutes || 15);
     return endMin > 1440 ? Math.min(1440, endMin - 1440) : 0;
   }
-  function renderTodayTimelineHabits(){
-    var track = document.getElementById("todayTimelineHabitsTrack");
+  // One row per life area (plus a catch-all "other" row for anything with no derivable area) —
+  // habits, actions, and notes are all mixed into whichever row matches their own area, since the
+  // row itself now carries the area color instead of each individual block.
+  var TODAY_TIMELINE_AREAS = CATEGORIES.concat([null]);
+  function todayTimelineRowId(area){ return area ? "todayTimelineArea-" + area : "todayTimelineAreaOther"; }
+  function todayTimelineBlockHtml(kind, id, date, left, width, title, label, extraClass, overnight){
+    return '<div class="timeline-block' + (extraClass||"") + '" data-kind="' + kind + '" data-id="' + id + '" data-date="' + date + '"' + (overnight ? ' data-overnight="1"' : '') + ' style="left:' + left + '%; width:' + width + '%;" title="' + escapeHtml(title) + '">' +
+      '<span class="timeline-block-title">' + label + '</span></div>';
+  }
+  function renderTodayTimelineAreaRow(area){
+    var track = document.getElementById(todayTimelineRowId(area));
     if(!track) return;
     var yesterday = addDaysToDateStr(todaySelectedDate, -1);
-    var timed = state.habits.filter(function(h){ return !!h.timeOfDay && habitOccursOnDate(h, todaySelectedDate); });
-    var html = timed.map(function(h){
+    var html = "";
+    state.habits.filter(function(h){ return !!h.timeOfDay && habitOccursOnDate(h, todaySelectedDate) && habitCategory(h) === area; }).forEach(function(h){
       var startFrac = timeToFraction(h.timeOfDay) * 100;
       var widthFrac = Math.max(1.2, ((h.durationMinutes || 15) / 1440) * 100);
-      var goal = h.goalId ? goalById(h.goalId) : null;
-      var catClass = goal ? " " + goal.category : "";
-      return '<div class="timeline-block' + catClass + '" data-kind="habit-instance" data-id="' + h.id + '" data-date="' + todaySelectedDate + '" style="left:' + startFrac + '%; width:' + widthFrac + '%;" title="' + escapeHtml(h.title) + ' — ' + fmtTimeOfDay(h.timeOfDay) + '">' +
-        '<span class="timeline-block-title">' + escapeHtml(h.title) + '</span>' +
-      '</div>';
-    }).join("");
-    // Habits that started yesterday and run past midnight (sleep being the obvious one — 11:30pm
-    // to 7:30am) show their overnight tail here too, continued from the very start of today. Not
+      html += todayTimelineBlockHtml("habit-instance", h.id, todaySelectedDate, startFrac, widthFrac, h.title + " — " + fmtTimeOfDay(h.timeOfDay), escapeHtml(h.title));
+    });
+    // Habits that started yesterday and run past midnight (sleep being the obvious one — 11:30pm to
+    // 7:30am) show their overnight tail here too, continued from the very start of today. Not
     // draggable: dragging this segment would have no sensible meaning for the habit's own start
     // time, so wireTimelineLayerDrag skips anything with data-overnight.
-    html += state.habits.filter(function(h){ return !!h.timeOfDay && habitOccursOnDate(h, yesterday); }).map(function(h){
+    state.habits.filter(function(h){ return !!h.timeOfDay && habitOccursOnDate(h, yesterday) && habitCategory(h) === area; }).forEach(function(h){
       var spillMin = overnightSpilloverMinutes(h.timeOfDay, h.durationMinutes);
-      if(!spillMin) return "";
+      if(!spillMin) return;
       var widthFrac = spillMin / 1440 * 100;
-      var goal = h.goalId ? goalById(h.goalId) : null;
-      var catClass = goal ? " " + goal.category : "";
-      return '<div class="timeline-block' + catClass + '" data-kind="habit-instance" data-id="' + h.id + '" data-date="' + yesterday + '" data-overnight="1" style="left:0%; width:' + widthFrac + '%;" title="' + escapeHtml(h.title) + ' — continued from ' + fmtTimeOfDay(h.timeOfDay) + ' yesterday">' +
-        '<span class="timeline-block-title">‹ ' + escapeHtml(h.title) + '</span>' +
-      '</div>';
-    }).join("");
-    track.innerHTML = html;
-  }
-  function renderTodayTimelineActions(){
-    var track = document.getElementById("todayTimelineActionsTrack");
-    if(!track) return;
-    var yesterday = addDaysToDateStr(todaySelectedDate, -1);
-    var timed = state.actions.filter(function(a){ return a.date === todaySelectedDate && !!a.timeOfDay; });
-    var html = timed.map(function(a){
+      html += todayTimelineBlockHtml("habit-instance", h.id, yesterday, 0, widthFrac, h.title + " — continued from " + fmtTimeOfDay(h.timeOfDay) + " yesterday", "‹ " + escapeHtml(h.title), "", true);
+    });
+    state.actions.filter(function(a){ return a.date === todaySelectedDate && !!a.timeOfDay && actionCategory(a) === area; }).forEach(function(a){
       var startFrac = timeToFraction(a.timeOfDay) * 100;
       var widthFrac = Math.max(1.2, ((a.durationMinutes || 15) / 1440) * 100);
-      var cat = actionCategory(a);
-      var catClass = cat ? " " + cat : "";
-      return '<div class="timeline-block' + catClass + (a.done?' done':'') + '" data-kind="action" data-id="' + a.id + '" style="left:' + startFrac + '%; width:' + widthFrac + '%;" title="' + escapeHtml(a.title) + ' — ' + fmtTimeOfDay(a.timeOfDay) + '">' +
-        '<span class="timeline-block-title">' + escapeHtml(a.title) + '</span>' +
-      '</div>';
-    }).join("");
+      html += todayTimelineBlockHtml("action", a.id, todaySelectedDate, startFrac, widthFrac, a.title + " — " + fmtTimeOfDay(a.timeOfDay), escapeHtml(a.title), a.done ? " done" : "");
+    });
     // Same overnight-spillover treatment as habits, for actions scheduled yesterday with a duration
     // that runs past midnight.
-    html += state.actions.filter(function(a){ return a.date === yesterday && !!a.timeOfDay; }).map(function(a){
+    state.actions.filter(function(a){ return a.date === yesterday && !!a.timeOfDay && actionCategory(a) === area; }).forEach(function(a){
       var spillMin = overnightSpilloverMinutes(a.timeOfDay, a.durationMinutes);
-      if(!spillMin) return "";
+      if(!spillMin) return;
       var widthFrac = spillMin / 1440 * 100;
-      var cat = actionCategory(a);
-      var catClass = cat ? " " + cat : "";
-      return '<div class="timeline-block' + catClass + (a.done?' done':'') + '" data-kind="action" data-id="' + a.id + '" data-overnight="1" style="left:0%; width:' + widthFrac + '%;" title="' + escapeHtml(a.title) + ' — continued from ' + fmtTimeOfDay(a.timeOfDay) + ' yesterday">' +
-        '<span class="timeline-block-title">‹ ' + escapeHtml(a.title) + '</span>' +
-      '</div>';
-    }).join("");
+      html += todayTimelineBlockHtml("action", a.id, yesterday, 0, widthFrac, a.title + " — continued from " + fmtTimeOfDay(a.timeOfDay) + " yesterday", "‹ " + escapeHtml(a.title), a.done ? " done" : "", true);
+    });
+    // Notes are a point in time, not a span — no duration field, so every block is the same small
+    // fixed width, positioned by time_of_day.
+    state.journal.filter(function(n){ return n.date === todaySelectedDate && !!n.timeOfDay && n.category === area; }).forEach(function(n){
+      var startFrac = timeToFraction(n.timeOfDay) * 100;
+      var preview = n.text.length > 60 ? n.text.slice(0, 60) + "…" : n.text;
+      html += todayTimelineBlockHtml("journal", n.id, todaySelectedDate, startFrac, 1.4, preview + " — " + fmtTimeOfDay(n.timeOfDay), "✎ " + escapeHtml(preview));
+    });
     track.innerHTML = html;
   }
-  // Notes are a point in time, not a span — no duration field, so every block is the same small
-  // fixed width, positioned by time_of_day like habits/actions.
-  function renderTodayTimelineNotes(){
-    var track = document.getElementById("todayTimelineNotesTrack");
-    if(!track) return;
-    var timed = state.journal.filter(function(n){ return n.date === todaySelectedDate && !!n.timeOfDay; });
-    track.innerHTML = timed.map(function(n){
-      var startFrac = timeToFraction(n.timeOfDay) * 100;
-      var catClass = n.category ? " " + n.category : "";
-      var preview = n.text.length > 60 ? n.text.slice(0, 60) + "…" : n.text;
-      return '<div class="timeline-block' + catClass + '" data-kind="journal" data-id="' + n.id + '" style="left:' + startFrac + '%; width:1.4%;" title="' + escapeHtml(preview) + ' — ' + fmtTimeOfDay(n.timeOfDay) + '">' +
-        '<span class="timeline-block-title">✎ ' + escapeHtml(preview) + '</span>' +
-      '</div>';
-    }).join("");
+  function renderTodayTimelineAreas(){
+    TODAY_TIMELINE_AREAS.forEach(renderTodayTimelineAreaRow);
   }
   // Dragging a block left/right updates its time-of-day (snapped to 5 min) — this is what "moving
   // it along the timeline updates its properties" means. Clicking without dragging is a no-op here;
   // use the existing right-click menu (already wired globally via data-kind/data-id) to edit/delete.
-  function wireTimelineLayerDrag(trackId, kind){
+  // Each area row now mixes habit/action/note blocks together, so the kind is read from the block
+  // being dragged (data-kind) rather than being fixed per track.
+  function wireTimelineLayerDrag(trackId){
     var track = document.getElementById(trackId);
-    var dragEl = null, dragId = null, moved = false;
+    var dragEl = null, dragId = null, dragKind = null, moved = false;
     track.addEventListener("pointerdown", function(e){
       var block = e.target.closest(".timeline-block");
       // The overnight-spillover tail (yesterday's item continuing past midnight) has no sensible
       // "new start time" to derive from its own left edge — it isn't draggable.
       if(!block || block.dataset.overnight) return;
-      dragEl = block; dragId = block.dataset.id; moved = false;
+      dragEl = block; dragId = block.dataset.id; dragKind = block.dataset.kind; moved = false;
       block.setPointerCapture(e.pointerId);
       block.classList.add("dragging");
     });
@@ -4697,11 +4717,11 @@
     });
     track.addEventListener("pointerup", async function(){
       if(!dragEl) return;
-      var el = dragEl, id = dragId, newTime = el.dataset.pendingTime;
-      dragEl = null; dragId = null;
+      var el = dragEl, id = dragId, kind = dragKind, newTime = el.dataset.pendingTime;
+      dragEl = null; dragId = null; dragKind = null;
       el.classList.remove("dragging");
       if(!moved || !newTime) return;
-      if(kind === "habit"){
+      if(kind === "habit-instance"){
         var h = state.habits.find(function(x){ return x.id === id; });
         if(h) h.timeOfDay = newTime;
         var r = await safeUpdate("habits", id, { time_of_day: newTime });
@@ -4721,31 +4741,31 @@
     });
     track.addEventListener("pointercancel", function(){
       if(dragEl) dragEl.classList.remove("dragging");
-      dragEl = null; dragId = null;
+      dragEl = null; dragId = null; dragKind = null;
     });
   }
-  wireTimelineLayerDrag("todayTimelineHabitsTrack", "habit");
-  wireTimelineLayerDrag("todayTimelineActionsTrack", "action");
-  wireTimelineLayerDrag("todayTimelineNotesTrack", "journal");
+  TODAY_TIMELINE_AREAS.forEach(function(area){ wireTimelineLayerDrag(todayTimelineRowId(area)); });
 
-  // Clicking empty space in the notes row (not an existing block, which is handled by the drag
-  // wiring above) quick-creates a note at that time on whichever day the Today page is showing.
-  document.getElementById("todayTimelineNotesTrack").addEventListener("click", async function(e){
-    if(e.target.closest(".timeline-block")) return;
-    var rect = this.getBoundingClientRect();
-    var x = Math.min(rect.width, Math.max(0, e.clientX - rect.left));
-    var totalMin = Math.round(((x / rect.width) * 1440) / 5) * 5;
-    var newTime = minutesToTime(totalMin);
-    var text = prompt("New note at " + fmtTimeOfDay(newTime) + ":");
-    if(!text || !text.trim()) return;
-    var payload = { date: todaySelectedDate, text: text.trim(), time_of_day: newTime, category: null };
-    var res = await safeWrite(function(p){ return sb.from("journal").insert(p).select().single(); }, payload);
-    if(res.error){ alert(res.error.message); return; }
-    var r = res.data;
-    state.journal.push({ id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null });
-    renderToday();
-    renderJournal();
-    warnDroppedFields(res.droppedFields);
+  // Clicking empty space in an area's row (not an existing block, which is handled by the drag
+  // wiring above) quick-creates a note at that time, pre-tagged with that row's area.
+  TODAY_TIMELINE_AREAS.forEach(function(area){
+    document.getElementById(todayTimelineRowId(area)).addEventListener("click", async function(e){
+      if(e.target.closest(".timeline-block")) return;
+      var rect = this.getBoundingClientRect();
+      var x = Math.min(rect.width, Math.max(0, e.clientX - rect.left));
+      var totalMin = Math.round(((x / rect.width) * 1440) / 5) * 5;
+      var newTime = minutesToTime(totalMin);
+      var text = prompt("New " + (area || "uncategorized") + " note at " + fmtTimeOfDay(newTime) + ":");
+      if(!text || !text.trim()) return;
+      var payload = { date: todaySelectedDate, text: text.trim(), time_of_day: newTime, category: area };
+      var res = await safeWrite(function(p){ return sb.from("journal").insert(p).select().single(); }, payload);
+      if(res.error){ alert(res.error.message); return; }
+      var r = res.data;
+      state.journal.push({ id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null });
+      renderToday();
+      renderJournal();
+      warnDroppedFields(res.droppedFields);
+    });
   });
 
   /* ---------------- Timeline page ---------------- */
@@ -5073,9 +5093,7 @@
   function renderToday(){
     if(activeSection !== "today") return;
     renderTodayTimeline();
-    renderTodayTimelineHabits();
-    renderTodayTimelineActions();
-    renderTodayTimelineNotes();
+    renderTodayTimelineAreas();
     document.getElementById("todayDateLabel").textContent = fmtDateLong(todaySelectedDate) + (todaySelectedDate === todayStr() ? " (today)" : "");
 
     // Active projects grid is removed from the page for now — guarded rather than deleted so it's
