@@ -478,6 +478,11 @@
   .today-timeline-row-labels span.Relationships{ color:var(--cat-relationships); }
   .today-timeline-row-labels span.Life{ color:var(--cat-life); }
   .today-timeline-main{ flex:1; min-width:0; }
+  /* Zoomable: #todayTimelineUnified and #todayTimelineLabels get an explicit pixel width from JS
+     (see todayApplyZoomWidth) instead of stretching to 100% once zoomed past "fit" — this viewport
+     is what actually scrolls horizontally to reveal it, native scrollbar plus Ctrl/Cmd+scroll/+−
+     buttons to zoom (see todaySetZoom), matching the separate Timeline page's zoom UX. */
+  .today-timeline-viewport{ overflow-x:auto; overflow-y:hidden; }
   .today-timeline-unified{ position:relative; display:flex; flex-direction:column; height:326px; border:1px solid var(--border); border-radius:6px; overflow:hidden; background:var(--bg-raised); }
   .today-timeline-row{ position:relative; flex:1; touch-action:none; }
   .today-timeline-row + .today-timeline-row{ border-top:1px solid var(--border); }
@@ -826,6 +831,13 @@
       </div>
 
       <div class="today-timeline">
+        <div class="wb-toolbar" style="margin:0 0 10px;">
+          <div class="wb-zoom-group">
+            <button class="cal-nav-btn" id="todayZoomOutBtn" type="button" aria-label="Zoom out">−</button>
+            <span class="wb-zoom-label" id="todayZoomLabel">fit</span>
+            <button class="cal-nav-btn" id="todayZoomInBtn" type="button" aria-label="Zoom in">+</button>
+          </div>
+        </div>
         <div class="today-timeline-body">
           <div class="today-timeline-row-labels">
             <span></span>
@@ -839,23 +851,25 @@
             <span title="No area set">○</span>
           </div>
           <div class="today-timeline-main">
-            <div class="today-timeline-unified" id="todayTimelineUnified">
-              <div class="today-timeline-row today-timeline-daynight-row">
-                <div class="today-timeline-daynight" id="todayTimelineDayNight"></div>
-                <div class="today-timeline-weather" id="todayTimelineWeather"></div>
+            <div class="today-timeline-viewport" id="todayTimelineViewport">
+              <div class="today-timeline-unified" id="todayTimelineUnified">
+                <div class="today-timeline-row today-timeline-daynight-row">
+                  <div class="today-timeline-daynight" id="todayTimelineDayNight"></div>
+                  <div class="today-timeline-weather" id="todayTimelineWeather"></div>
+                </div>
+                <div class="today-timeline-row Health" id="todayTimelineArea-Health"></div>
+                <div class="today-timeline-row Maintenance" id="todayTimelineArea-Maintenance"></div>
+                <div class="today-timeline-row Career" id="todayTimelineArea-Career"></div>
+                <div class="today-timeline-row Relationships" id="todayTimelineArea-Relationships"></div>
+                <div class="today-timeline-row Growth" id="todayTimelineArea-Growth"></div>
+                <div class="today-timeline-row Life" id="todayTimelineArea-Life"></div>
+                <div class="today-timeline-row Finance" id="todayTimelineArea-Finance"></div>
+                <div class="today-timeline-row" id="todayTimelineAreaOther"></div>
+                <div class="today-timeline-now" id="todayTimelineNow"><span class="today-timeline-now-label" id="todayTimelineNowLabel"></span></div>
               </div>
-              <div class="today-timeline-row Health" id="todayTimelineArea-Health"></div>
-              <div class="today-timeline-row Maintenance" id="todayTimelineArea-Maintenance"></div>
-              <div class="today-timeline-row Career" id="todayTimelineArea-Career"></div>
-              <div class="today-timeline-row Relationships" id="todayTimelineArea-Relationships"></div>
-              <div class="today-timeline-row Growth" id="todayTimelineArea-Growth"></div>
-              <div class="today-timeline-row Life" id="todayTimelineArea-Life"></div>
-              <div class="today-timeline-row Finance" id="todayTimelineArea-Finance"></div>
-              <div class="today-timeline-row" id="todayTimelineAreaOther"></div>
-              <div class="today-timeline-now" id="todayTimelineNow"><span class="today-timeline-now-label" id="todayTimelineNowLabel"></span></div>
-            </div>
-            <div class="today-timeline-labels">
-              <span>12am</span><span>3am</span><span>6am</span><span>9am</span><span>12pm</span><span>3pm</span><span>6pm</span><span>9pm</span><span>12am</span>
+              <div class="today-timeline-labels" id="todayTimelineLabels">
+                <span>12am</span><span>3am</span><span>6am</span><span>9am</span><span>12pm</span><span>3pm</span><span>6pm</span><span>9pm</span><span>12am</span>
+              </div>
             </div>
           </div>
         </div>
@@ -2187,7 +2201,7 @@
       document.getElementById(id).style.display = (id === name + "Section") ? "" : "none";
     });
     if(name === "whiteboard") activateWhiteboard();
-    if(name === "today") renderToday();
+    if(name === "today"){ renderToday(); todayApplyZoomWidth(); }
     if(name === "timeline") activateTimeline();
   }
   document.getElementById("sideNav").addEventListener("click", function(e){
@@ -4876,6 +4890,57 @@
     renderTodayTimelineWeather();
   }
   setInterval(function(){ if(activeSection === "today") renderTodayTimeline(); }, 60000);
+
+  // ---- Today timeline zoom: a multiplier of the viewport's own width, not an absolute px value —
+  // 1x always means "fit the container, no scroll" (matches the pre-zoom look/behavior exactly),
+  // anything above that sets an explicit pixel width on the world (#todayTimelineUnified +
+  // #todayTimelineLabels, which move in lockstep since they're both children of the same scrolling
+  // viewport) and the browser's native horizontal scrollbar reveals it. Every block/gridline/now-
+  // marker position on the timeline is already a % of its row's own width (not a fixed px value),
+  // so nothing else has to change for zoom to work — they just naturally scale with the row.
+  var todayZoomLevel = 1, TODAY_ZOOM_MAX = 8;
+  function todayApplyZoomWidth(){
+    var viewport = document.getElementById("todayTimelineViewport");
+    var unified = document.getElementById("todayTimelineUnified");
+    var labels = document.getElementById("todayTimelineLabels");
+    if(!viewport || !unified) return;
+    var width = todayZoomLevel <= 1 ? "100%" : (viewport.clientWidth * todayZoomLevel) + "px";
+    unified.style.width = width;
+    if(labels) labels.style.width = width;
+  }
+  function todaySetZoom(newLevel, viewportX){
+    var viewport = document.getElementById("todayTimelineViewport");
+    if(!viewport) return;
+    newLevel = Math.max(1, Math.min(TODAY_ZOOM_MAX, newLevel));
+    var vx = viewportX != null ? viewportX : viewport.clientWidth / 2;
+    var worldX = viewport.scrollLeft + vx;
+    var ratio = newLevel / todayZoomLevel;
+    todayZoomLevel = newLevel;
+    todayApplyZoomWidth();
+    viewport.scrollLeft = worldX * ratio - vx;
+    var label = document.getElementById("todayZoomLabel");
+    if(label) label.textContent = todayZoomLevel <= 1.01 ? "fit" : (todayZoomLevel.toFixed(1) + "x");
+  }
+  document.getElementById("todayZoomInBtn").addEventListener("click", function(){ todaySetZoom(todayZoomLevel * 1.4); });
+  document.getElementById("todayZoomOutBtn").addEventListener("click", function(){ todaySetZoom(todayZoomLevel / 1.4); });
+  // Plain wheel scroll pans horizontally once zoomed in (trackpad two-finger swipes pass through as
+  // deltaX regardless); hold Ctrl/Cmd to zoom instead, centered on the cursor — same convention as
+  // the separate Timeline page. At "fit" (no horizontal overflow) plain scroll is left alone so it
+  // doesn't hijack the page's normal vertical scroll while just passing over the timeline.
+  document.getElementById("todayTimelineViewport").addEventListener("wheel", function(e){
+    if(e.ctrlKey || e.metaKey){
+      e.preventDefault();
+      var rect = this.getBoundingClientRect();
+      var factor = e.deltaY < 0 ? 1.15 : (1 / 1.15);
+      todaySetZoom(todayZoomLevel * factor, e.clientX - rect.left);
+      return;
+    }
+    if(todayZoomLevel > 1){
+      e.preventDefault();
+      this.scrollLeft += (e.deltaX !== 0 ? e.deltaX : e.deltaY);
+    }
+  }, { passive:false });
+  window.addEventListener("resize", function(){ if(activeSection === "today") todayApplyZoomWidth(); });
 
   // ---- Timeline layers: habits and actions plotted (and draggable) against the same 24h scale.
   // Only items with a time actually set get a block — untimed ones still show in the grid/list
