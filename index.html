@@ -327,17 +327,22 @@
   .wb-conn-line{ stroke:var(--text-faint); stroke-width:1.5; pointer-events:none; }
   .wb-conn:hover .wb-conn-line{ stroke:var(--accent); stroke-width:2.25; }
   .wb-overlay{ position:absolute; inset:0; pointer-events:none; }
-  /* Goal/project nodes are a plain colored dot (area color), not a card — the wrapper's own box IS
-     the dot (width/height = diameter), so wbNodeCenter's existing left+width/2 math keeps anchoring
-     connection lines to the dot's true center with no changes needed there. The title renders as a
-     separate absolutely-positioned label alongside it, which — since absolutely-positioned children
-     don't contribute to their parent's own box size — never affects that center math either. */
-  .wb-goal-node{ position:absolute; width:16px; height:16px; border-radius:50%; background:var(--text-faint); pointer-events:auto; cursor:grab; box-shadow:0 0 0 2px var(--bg-inset), 0 2px 8px rgba(0,0,0,0.35); user-select:none; touch-action:none; }
+  /* Goal/project/habit nodes are a plain colored dot (area color), not a card — the wrapper's own
+     box IS the dot (width/height = diameter), so wbNodeCenter's radius-map math keeps anchoring
+     connection lines to the dot's true center. The title renders as a separate absolutely-positioned
+     label alongside it, which — since absolutely-positioned children don't contribute to their
+     parent's own box size — never affects that center math either.
+     Size reflects hierarchy (goal > project > habit — see WB_DOT_RADII, which must stay in sync with
+     these diameters), not just an arbitrary style choice. */
+  .wb-goal-node{ position:absolute; border-radius:50%; background:var(--text-faint); pointer-events:auto; cursor:grab; box-shadow:0 0 0 2px var(--bg-inset), 0 2px 8px rgba(0,0,0,0.35); user-select:none; touch-action:none; }
+  .wb-goal-node[data-type="goal"]{ width:22px; height:22px; }
+  .wb-goal-node[data-type="project"]{ width:16px; height:16px; }
+  .wb-goal-node[data-type="habit"]{ width:11px; height:11px; }
   .wb-goal-node:hover{ box-shadow:0 0 0 2px var(--bg-inset), 0 0 0 5px var(--accent-glow), 0 2px 8px rgba(0,0,0,0.35); }
   .wb-goal-node.dragging{ cursor:grabbing; z-index:50; box-shadow:0 0 0 2px var(--bg-inset), 0 4px 16px rgba(0,0,0,0.5); }
   .wb-goal-node.connect-pending{ box-shadow:0 0 0 2px var(--bg-inset), 0 0 0 5px var(--accent), 0 2px 8px rgba(0,0,0,0.35); }
-  /* Projects keep a visual distinction from goals — same area color, but a hollow ring (inset bg
-     cutout) instead of a solid fill. */
+  /* Projects keep a visual distinction from goals/habits — same area color, but a hollow ring (inset
+     bg cutout) instead of a solid fill. */
   .wb-goal-node.is-project{ box-shadow:0 0 0 2px var(--bg-inset), 0 2px 8px rgba(0,0,0,0.35), inset 0 0 0 4px var(--bg-inset); }
   .wb-goal-node.is-project:hover{ box-shadow:0 0 0 2px var(--bg-inset), 0 0 0 5px var(--accent-glow), 0 2px 8px rgba(0,0,0,0.35), inset 0 0 0 4px var(--bg-inset); }
   .wb-goal-node.is-project.connect-pending{ box-shadow:0 0 0 2px var(--bg-inset), 0 0 0 5px var(--accent), 0 2px 8px rgba(0,0,0,0.35), inset 0 0 0 4px var(--bg-inset); }
@@ -349,6 +354,11 @@
   .wb-goal-node.Relationships{ background:var(--cat-relationships); }
   .wb-goal-node.Life{ background:var(--cat-life); }
   .wb-goal-node-label{ position:absolute; left:22px; top:50%; transform:translateY(-50%); font-family:var(--mono); font-size:11px; font-weight:600; color:#000; white-space:nowrap; pointer-events:none; }
+  .wb-goal-node[data-type="goal"] .wb-goal-node-label{ left:28px; }
+  .wb-goal-node[data-type="habit"] .wb-goal-node-label{ left:17px; font-size:10px; font-weight:500; }
+  /* Area cluster hulls — a soft blob (convex hull, padded + blurred) drawn behind every area's own
+     group of nodes, see wbRenderClusters. */
+  .wb-cluster-hull{ fill-opacity:0.16; stroke-opacity:0.4; stroke-width:1.5; }
   .wb-empty-hint{ position:absolute; top:12px; left:12px; font-family:var(--mono); font-size:11px; color:var(--text-faint); pointer-events:none; }
   .entity-icon-img{ width:22px; height:22px; border-radius:5px; display:block; flex-shrink:0; mask-size:contain; -webkit-mask-size:contain; mask-repeat:no-repeat; -webkit-mask-repeat:no-repeat; mask-position:center; -webkit-mask-position:center; }
   /* Built-in habit icons (see HABIT_ICON_LIBRARY) — inline usage, tinted by area via `color` since
@@ -786,7 +796,7 @@
         <button class="side-link" data-section="today" type="button"><span class="sl-glyph">◷</span>Today</button>
         <button class="side-link" data-section="planner" type="button"><span class="sl-glyph">▤</span>Planner</button>
         <button class="side-link" data-section="tracker" type="button"><span class="sl-glyph">▥</span>Tracker</button>
-        <button class="side-link" data-section="whiteboard" type="button"><span class="sl-glyph">▧</span>Whiteboard</button>
+        <button class="side-link" data-section="whiteboard" type="button"><span class="sl-glyph">▧</span>Graph</button>
         <button class="side-link" data-section="calendar" type="button"><span class="sl-glyph">▦</span>Calendar</button>
         <button class="side-link" data-section="timeline" type="button"><span class="sl-glyph">↔</span>Timeline</button>
         <button class="side-link" data-section="journal" type="button"><span class="sl-glyph">✎</span>Journal</button>
@@ -1206,8 +1216,8 @@
     <section id="whiteboardSection" style="display:none;">
       <div class="main-header">
         <div>
-          <h1>whiteboard</h1>
-          <p class="subhead">A living mind map — goals and projects as dots colored by area, pulled together by their connections.</p>
+          <h1>graph</h1>
+          <p class="subhead">A living mind map — goals, projects and habits as dots colored by area (sized by hierarchy), pulled together by their connections.</p>
         </div>
       </div>
       <div class="wb-toolbar">
@@ -1225,7 +1235,15 @@
       <p class="panel-hint">Pan: drag empty space, or drag with the middle mouse button. Zoom: scroll, or the +/− buttons.</p>
       <div class="wb-canvas-wrap" id="wbCanvasWrap">
         <div class="wb-world" id="wbWorld">
-          <svg class="wb-conn-svg" id="wbConnSvg"></svg>
+          <svg class="wb-conn-svg" id="wbConnSvg">
+            <defs>
+              <filter id="wbClusterBlur" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur stdDeviation="14"></feGaussianBlur>
+              </filter>
+            </defs>
+            <g id="wbClusterLayer"></g>
+            <g id="wbConnLayer"></g>
+          </svg>
           <div class="wb-overlay" id="wbOverlay"></div>
         </div>
       </div>
@@ -1866,7 +1884,7 @@
   var DROPPED_FIELD_LABELS = {
     health_override: "health status", health_pct_override: "health %",
     icon: "icon image", position: "custom order",
-    whiteboard_x: "whiteboard position", whiteboard_y: "whiteboard position",
+    whiteboard_x: "graph position", whiteboard_y: "graph position",
     weekdays: "habit day selection", tracker_variable_id: "habit's tracker link", time_of_day: "scheduled time",
     duration_minutes: "duration", category: "area", skip_dates: "skipped habit days",
     categories: "area(s)", custom_interval_days: "custom repeat interval"
@@ -1970,6 +1988,7 @@
 
   function goalById(id){ return state.goals.find(function(g){ return g.id === id; }); }
   function projectById(id){ return state.projects.find(function(p){ return p.id === id; }); }
+  function habitById(id){ return state.habits.find(function(h){ return h.id === id; }); }
 
   /* ---------------- Auth ---------------- */
   var authMode = "signin";
@@ -3609,7 +3628,9 @@
      smoothly and then stops burning CPU, the same technique d3-force uses — dragging, adding a node,
      or adding a connection "reheats" it so it reacts and resettles. */
   var wbSimNodes = []; // { type, id, x, y, vx, vy, fixed }
-  var WB_DOT_R = 8; // half of .wb-goal-node's 16px diameter — keep in sync with that CSS
+  // Half of each type's .wb-goal-node diameter — keep in sync with that CSS. Size reflects hierarchy:
+  // a goal is the biggest node, a project medium, a habit the smallest.
+  var WB_DOT_RADII = { goal: 11, project: 8, habit: 5.5 };
   var WB_CENTER_X = WB_WORLD_W / 2, WB_CENTER_Y = WB_WORLD_H / 2;
   var WB_REPEL = 9000, WB_LINK_DIST = 130, WB_LINK_K = 0.02, WB_CENTER_K = 0.0025, WB_DAMPING = 0.82, WB_ALPHA_DECAY = 0.985;
   var wbAlpha = 0, wbSimRunning = false;
@@ -3617,13 +3638,14 @@
     for(var i=0;i<wbSimNodes.length;i++){ if(wbSimNodes[i].type === type && wbSimNodes[i].id === id) return wbSimNodes[i]; }
     return null;
   }
-  // Keeps wbSimNodes in sync with the current goals/projects — existing nodes keep their live
+  // Keeps wbSimNodes in sync with the current goals/projects/habits — existing nodes keep their live
   // position/velocity (so this never causes a jump), new ones are seeded just off-center in a random
   // direction so a burst of new items doesn't all spawn stacked on the exact same point.
   function wbSyncSimNodes(){
     var wantedKeys = {};
     state.goals.forEach(function(g){ wantedKeys["goal:" + g.id] = true; });
     state.projects.forEach(function(p){ wantedKeys["project:" + p.id] = true; });
+    state.habits.forEach(function(h){ wantedKeys["habit:" + h.id] = true; });
     wbSimNodes = wbSimNodes.filter(function(n){ return wantedKeys[n.type + ":" + n.id]; });
     function ensure(type, id){
       if(wbFindSimNode(type, id)) return;
@@ -3632,6 +3654,7 @@
     }
     state.goals.forEach(function(g){ ensure("goal", g.id); });
     state.projects.forEach(function(p){ ensure("project", p.id); });
+    state.habits.forEach(function(h){ ensure("habit", h.id); });
   }
   function wbTickPhysics(){
     var nodes = wbSimNodes;
@@ -3687,10 +3710,9 @@
     }
   }
 
-  function wbNodeHtml(type, item){
+  function wbNodeHtml(type, item, category){
     var sim = wbFindSimNode(type, item.id);
     var x = sim ? sim.x : WB_CENTER_X, y = sim ? sim.y : WB_CENTER_Y;
-    var category = type === "goal" ? item.category : projectCategory(item);
     return '<div class="wb-goal-node' + (category ? " " + category : "") + (type === "project" ? " is-project" : "") + '" data-type="' + type + '" data-id="' + item.id + '" style="left:' + x + 'px; top:' + y + 'px;" title="' + escapeHtml(item.title) + '">' +
       '<span class="wb-goal-node-label">' + (type === "project" ? "▸ " : "") + escapeHtml(item.title) + '</span>' +
     '</div>';
@@ -3698,29 +3720,102 @@
   function renderWhiteboardNodes(){
     var overlay = document.getElementById("wbOverlay");
     if(!overlay) return;
-    if(!state.goals.length && !state.projects.length){
-      overlay.innerHTML = '<div class="wb-empty-hint">Add a goal or project from the Planner or Areas tab — it\'ll show up here as a node in the graph.</div>';
+    if(!state.goals.length && !state.projects.length && !state.habits.length){
+      overlay.innerHTML = '<div class="wb-empty-hint">Add a goal, project or habit from the Planner or Areas tab — it\'ll show up here as a node in the graph.</div>';
       renderWbConnections();
       return;
     }
-    var html = state.goals.map(function(g){ return wbNodeHtml("goal", g); }).join("");
-    html += state.projects.map(function(p){ return wbNodeHtml("project", p); }).join("");
+    var html = state.goals.map(function(g){ return wbNodeHtml("goal", g, g.category); }).join("");
+    html += state.projects.map(function(p){ return wbNodeHtml("project", p, projectCategory(p)); }).join("");
+    html += state.habits.map(function(h){ return wbNodeHtml("habit", h, habitCategory(h)); }).join("");
     overlay.innerHTML = html;
     renderWbConnections();
   }
 
-  /* ---- Connections: mind-map relations between goal/project nodes ---- */
+  /* ---- Connections: mind-map relations between goal/project/habit nodes ---- */
   // Reads position straight from the simulation (not the DOM) — cheaper, and correct even before
   // the next paint has happened.
   function wbNodeCenter(type, id){
     var n = wbFindSimNode(type, id);
     if(!n) return null;
-    return { x: n.x + WB_DOT_R, y: n.y + WB_DOT_R };
+    var r = WB_DOT_RADII[type] || 8;
+    return { x: n.x + r, y: n.y + r };
+  }
+  function wbNodeArea(n){
+    var item = n.type === "goal" ? goalById(n.id) : n.type === "project" ? projectById(n.id) : habitById(n.id);
+    if(!item) return null;
+    return n.type === "goal" ? item.category : n.type === "project" ? projectCategory(item) : habitCategory(item);
+  }
+  // Andrew's monotone chain — a standard, compact convex hull algorithm. Returns hull points in
+  // counter-clockwise order; for < 3 points there's no real hull, callers handle those separately.
+  function wbConvexHull(points){
+    var pts = points.slice().sort(function(a,b){ return a.x - b.x || a.y - b.y; });
+    function cross(o,a,b){ return (a.x-o.x)*(b.y-o.y) - (a.y-o.y)*(b.x-o.x); }
+    var lower = [];
+    for(var i=0;i<pts.length;i++){
+      while(lower.length >= 2 && cross(lower[lower.length-2], lower[lower.length-1], pts[i]) <= 0) lower.pop();
+      lower.push(pts[i]);
+    }
+    var upper = [];
+    for(var j=pts.length-1;j>=0;j--){
+      while(upper.length >= 2 && cross(upper[upper.length-2], upper[upper.length-1], pts[j]) <= 0) upper.pop();
+      upper.push(pts[j]);
+    }
+    lower.pop(); upper.pop();
+    return lower.concat(upper);
+  }
+  // Pushes every hull vertex outward from the shape's own centroid — without this the hull hugs the
+  // dots exactly, which (once blurred) reads as a shrunk, off-looking blob rather than loose "territory"
+  // around the cluster.
+  function wbPadHull(hull, padding){
+    var cx = 0, cy = 0;
+    hull.forEach(function(p){ cx += p.x; cy += p.y; });
+    cx /= hull.length; cy /= hull.length;
+    return hull.map(function(p){
+      var dx = p.x - cx, dy = p.y - cy, dist = Math.sqrt(dx*dx + dy*dy) || 1;
+      return { x: p.x + (dx/dist)*padding, y: p.y + (dy/dist)*padding };
+    });
+  }
+  // A hull needs 3+ points — for exactly 2 nodes, build a padded rectangle around the segment
+  // between them instead (reads as a rounded capsule once the blur filter softens its corners).
+  function wbCapsuleFromTwoPoints(a, b, r){
+    var dx = b.x - a.x, dy = b.y - a.y, len = Math.sqrt(dx*dx+dy*dy) || 1;
+    var nx = -dy/len * r, ny = dx/len * r, ex = dx/len * r, ey = dy/len * r;
+    return [
+      { x: a.x - ex + nx, y: a.y - ey + ny },
+      { x: b.x + ex + nx, y: b.y + ey + ny },
+      { x: b.x + ex - nx, y: b.y + ey - ny },
+      { x: a.x - ex - nx, y: a.y - ey - ny }
+    ];
+  }
+  var WB_CLUSTER_PAD = 34;
+  // Groups every node by its resolved area and draws a soft blurred hull behind that group — the
+  // visual "territory" a life area occupies on the graph. Single-node "clusters" get no shape (a
+  // hull around one point is meaningless), areas with no nodes at all are simply absent.
+  function wbRenderClusters(){
+    var layer = document.getElementById("wbClusterLayer");
+    if(!layer) return;
+    var byArea = {};
+    wbSimNodes.forEach(function(n){
+      var cat = wbNodeArea(n);
+      if(!cat) return;
+      var r = WB_DOT_RADII[n.type] || 8;
+      if(!byArea[cat]) byArea[cat] = [];
+      byArea[cat].push({ x: n.x + r, y: n.y + r });
+    });
+    layer.innerHTML = Object.keys(byArea).map(function(cat){
+      var pts = byArea[cat];
+      if(pts.length < 2) return "";
+      var shape = pts.length === 2 ? wbCapsuleFromTwoPoints(pts[0], pts[1], WB_CLUSTER_PAD) : wbPadHull(wbConvexHull(pts), WB_CLUSTER_PAD);
+      var pointsAttr = shape.map(function(p){ return p.x.toFixed(1) + "," + p.y.toFixed(1); }).join(" ");
+      var color = categoryColorVar(cat);
+      return '<polygon class="wb-cluster-hull" points="' + pointsAttr + '" style="fill:' + color + '; stroke:' + color + '; filter:url(#wbClusterBlur);"></polygon>';
+    }).join("");
   }
   function renderWbConnections(){
-    var svg = document.getElementById("wbConnSvg");
-    if(!svg) return;
-    svg.innerHTML = state.wbConnections.map(function(c){
+    var layer = document.getElementById("wbConnLayer");
+    if(!layer) return;
+    layer.innerHTML = state.wbConnections.map(function(c){
       var a = wbNodeCenter(c.fromType, c.fromId);
       var b = wbNodeCenter(c.toType, c.toId);
       if(!a || !b) return "";
@@ -3729,6 +3824,7 @@
         '<line class="wb-conn-line" x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '"></line>' +
       '</g>';
     }).join("");
+    wbRenderClusters();
   }
   async function loadWbConnections(){
     var res = await sb.from("whiteboard_connections").select("*");
@@ -3835,7 +3931,7 @@
       sim.fixed = false;
       if(!moved){
         if(wbConnectMode){ handleWbConnectClick(type, id, node); return; }
-        if(type === "goal") openGoalDetailPage(id); else editProject(id);
+        if(type === "goal") openGoalDetailPage(id); else if(type === "project") editProject(id); else editHabit(id);
         return;
       }
       wbReheat(1);
