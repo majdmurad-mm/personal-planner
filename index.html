@@ -453,7 +453,7 @@
   .today-timeline-row-labels span.Relationships{ color:var(--cat-relationships); }
   .today-timeline-row-labels span.Life{ color:var(--cat-life); }
   .today-timeline-main{ flex:1; min-width:0; }
-  .today-timeline-unified{ position:relative; display:flex; flex-direction:column; height:236px; border:1px solid var(--border); border-radius:6px; overflow:hidden; background:var(--bg-raised); }
+  .today-timeline-unified{ position:relative; display:flex; flex-direction:column; height:306px; border:1px solid var(--border); border-radius:6px; overflow:hidden; background:var(--bg-raised); }
   .today-timeline-row{ position:relative; flex:1; touch-action:none; }
   .today-timeline-row + .today-timeline-row{ border-top:1px solid var(--border); }
   .today-timeline-row.Health{ background:var(--cat-health-bg); }
@@ -4639,8 +4639,12 @@
   // row itself now carries the area color instead of each individual block.
   var TODAY_TIMELINE_AREAS = CATEGORIES.concat([null]);
   function todayTimelineRowId(area){ return area ? "todayTimelineArea-" + area : "todayTimelineAreaOther"; }
-  function todayTimelineBlockHtml(kind, id, date, left, width, title, label, extraClass, overnight){
-    return '<div class="timeline-block' + (extraClass||"") + '" data-kind="' + kind + '" data-id="' + id + '" data-date="' + date + '"' + (overnight ? ' data-overnight="1"' : '') + ' style="left:' + left + '%; width:' + width + '%;" title="' + escapeHtml(title) + '">' +
+  // Every block also carries its own area's color class (same .timeline-block.Health etc rules used
+  // elsewhere) on top of the row's background tint, so items read clearly against the row rather
+  // than blending into it.
+  function todayTimelineBlockHtml(kind, id, date, left, width, title, label, area, extraClass, overnight){
+    var cls = (area ? " " + area : "") + (extraClass || "");
+    return '<div class="timeline-block' + cls + '" data-kind="' + kind + '" data-id="' + id + '" data-date="' + date + '"' + (overnight ? ' data-overnight="1"' : '') + ' style="left:' + left + '%; width:' + width + '%;" title="' + escapeHtml(title) + '">' +
       '<span class="timeline-block-title">' + label + '</span></div>';
   }
   function renderTodayTimelineAreaRow(area){
@@ -4651,7 +4655,7 @@
     state.habits.filter(function(h){ return !!h.timeOfDay && habitOccursOnDate(h, todaySelectedDate) && habitCategory(h) === area; }).forEach(function(h){
       var startFrac = timeToFraction(h.timeOfDay) * 100;
       var widthFrac = Math.max(1.2, ((h.durationMinutes || 15) / 1440) * 100);
-      html += todayTimelineBlockHtml("habit-instance", h.id, todaySelectedDate, startFrac, widthFrac, h.title + " — " + fmtTimeOfDay(h.timeOfDay), escapeHtml(h.title));
+      html += todayTimelineBlockHtml("habit-instance", h.id, todaySelectedDate, startFrac, widthFrac, h.title + " — " + fmtTimeOfDay(h.timeOfDay), escapeHtml(h.title), area);
     });
     // Habits that started yesterday and run past midnight (sleep being the obvious one — 11:30pm to
     // 7:30am) show their overnight tail here too, continued from the very start of today. Not
@@ -4661,12 +4665,12 @@
       var spillMin = overnightSpilloverMinutes(h.timeOfDay, h.durationMinutes);
       if(!spillMin) return;
       var widthFrac = spillMin / 1440 * 100;
-      html += todayTimelineBlockHtml("habit-instance", h.id, yesterday, 0, widthFrac, h.title + " — continued from " + fmtTimeOfDay(h.timeOfDay) + " yesterday", "‹ " + escapeHtml(h.title), "", true);
+      html += todayTimelineBlockHtml("habit-instance", h.id, yesterday, 0, widthFrac, h.title + " — continued from " + fmtTimeOfDay(h.timeOfDay) + " yesterday", "‹ " + escapeHtml(h.title), area, "", true);
     });
     state.actions.filter(function(a){ return a.date === todaySelectedDate && !!a.timeOfDay && actionCategory(a) === area; }).forEach(function(a){
       var startFrac = timeToFraction(a.timeOfDay) * 100;
       var widthFrac = Math.max(1.2, ((a.durationMinutes || 15) / 1440) * 100);
-      html += todayTimelineBlockHtml("action", a.id, todaySelectedDate, startFrac, widthFrac, a.title + " — " + fmtTimeOfDay(a.timeOfDay), escapeHtml(a.title), a.done ? " done" : "");
+      html += todayTimelineBlockHtml("action", a.id, todaySelectedDate, startFrac, widthFrac, a.title + " — " + fmtTimeOfDay(a.timeOfDay), escapeHtml(a.title), area, a.done ? " done" : "");
     });
     // Same overnight-spillover treatment as habits, for actions scheduled yesterday with a duration
     // that runs past midnight.
@@ -4674,14 +4678,14 @@
       var spillMin = overnightSpilloverMinutes(a.timeOfDay, a.durationMinutes);
       if(!spillMin) return;
       var widthFrac = spillMin / 1440 * 100;
-      html += todayTimelineBlockHtml("action", a.id, yesterday, 0, widthFrac, a.title + " — continued from " + fmtTimeOfDay(a.timeOfDay) + " yesterday", "‹ " + escapeHtml(a.title), a.done ? " done" : "", true);
+      html += todayTimelineBlockHtml("action", a.id, yesterday, 0, widthFrac, a.title + " — continued from " + fmtTimeOfDay(a.timeOfDay) + " yesterday", "‹ " + escapeHtml(a.title), area, a.done ? " done" : "", true);
     });
     // Notes are a point in time, not a span — no duration field, so every block is the same small
     // fixed width, positioned by time_of_day.
     state.journal.filter(function(n){ return n.date === todaySelectedDate && !!n.timeOfDay && n.category === area; }).forEach(function(n){
       var startFrac = timeToFraction(n.timeOfDay) * 100;
       var preview = n.text.length > 60 ? n.text.slice(0, 60) + "…" : n.text;
-      html += todayTimelineBlockHtml("journal", n.id, todaySelectedDate, startFrac, 1.4, preview + " — " + fmtTimeOfDay(n.timeOfDay), "✎ " + escapeHtml(preview));
+      html += todayTimelineBlockHtml("journal", n.id, todaySelectedDate, startFrac, 1.4, preview + " — " + fmtTimeOfDay(n.timeOfDay), "✎ " + escapeHtml(preview), area);
     });
     track.innerHTML = html;
   }
