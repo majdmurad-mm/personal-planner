@@ -1386,7 +1386,7 @@
           </div>
           <div class="wb-force-group" title="How strongly area nodes pull toward the center">
             <span class="wb-force-label">center pull</span>
-            <input type="range" class="wb-force-slider" id="wbCenterForceSlider" min="0" max="0.08" step="0.002" value="0.03">
+            <input type="range" class="wb-force-slider" id="wbCenterForceSlider" min="0" max="0.08" step="0.002" value="0.018">
           </div>
           <button class="btn" id="wbFullscreenBtn" type="button">⤢ fullscreen</button>
           <span class="wb-save-status" id="wbSaveStatus"></span>
@@ -3983,7 +3983,7 @@
   // an area hub is the biggest node, then a goal, then a project, then a habit the smallest.
   var WB_DOT_RADII = { area: 28, goal: 11, project: 8, habit: 5.5 };
   var WB_CENTER_X = WB_WORLD_W / 2, WB_CENTER_Y = WB_WORLD_H / 2;
-  var WB_REPEL = 9000, WB_AREA_PUSH = 3000, WB_LINK_DIST = 130, WB_LINK_K = 0.02, WB_CENTER_K = 0.03, WB_DAMPING = 0.82, WB_ALPHA_DECAY = 0.985;
+  var WB_REPEL = 9000, WB_AREA_PUSH = 3000, WB_LINK_DIST = 130, WB_LINK_K = 0.02, WB_CENTER_K = 0.018, WB_DAMPING = 0.82, WB_ALPHA_DECAY = 0.985;
   var wbAlpha = 0, wbSimRunning = false;
   function wbFindSimNode(type, id){
     for(var i=0;i<wbSimNodes.length;i++){ if(wbSimNodes[i].type === type && wbSimNodes[i].id === id) return wbSimNodes[i]; }
