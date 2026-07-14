@@ -2486,8 +2486,9 @@
       document.getElementById(id).style.display = (id === name + "Section") ? "" : "none";
     });
     if(name === "whiteboard") activateWhiteboard();
-    if(name === "today"){ renderToday(); todayApplyZoomWidth(); }
-    if(name === "timeline") activateTimeline();
+    else if(name === "today"){ renderToday(); todayApplyZoomWidth(); }
+    else if(name === "timeline") activateTimeline();
+    else renderActiveSectionContent();
   }
   document.getElementById("sideNav").addEventListener("click", function(e){
     var btn = e.target.closest(".side-link");
@@ -3507,7 +3508,6 @@
     goalDetailId = id;
     goalDetailReturnSection = activeSection;
     showSection("goalDetail");
-    renderGoalDetail();
   }
   function closeGoalDetailPage(){
     showSection(goalDetailReturnSection);
@@ -3556,7 +3556,6 @@
     areaDetailCat = cat;
     areaDetailReturnSection = activeSection;
     showSection("areaDetail");
-    renderAreaDetail();
   }
   function closeAreaDetailPage(){
     showSection(areaDetailReturnSection);
@@ -7527,22 +7526,30 @@
   });
 
   /* ---------------- Render all ---------------- */
+  // Every other section's DOM is hidden (display:none) while inactive, so re-rendering it on every
+  // state mutation was pure waste — only the currently visible section's content actually needs to
+  // be kept fresh; every other section gets rendered lazily, the moment showSection() switches to it
+  // (see the renderActiveSectionContent() call there). Whiteboard has no entry here — it has its own
+  // separate render/physics loop, started by activateWhiteboard(), untouched by renderAll().
+  var SECTION_RENDERERS = {
+    agent: [renderChatMessages],
+    areas: [renderAreas],
+    today: [renderToday],
+    planner: [renderGoals, renderProjects, renderHabits, renderActions],
+    tracker: [renderTracker],
+    calendar: [renderCalendar],
+    timeline: [renderTimeline],
+    journal: [renderJournal],
+    people: [renderPeople],
+    goalDetail: [renderGoalDetail],
+    areaDetail: [renderAreaDetail]
+  };
+  function renderActiveSectionContent(){
+    (SECTION_RENDERERS[activeSection] || []).forEach(function(fn){ fn(); });
+  }
   function renderAll(){
     renderStats();
-    renderGoals();
-    renderAreas();
-    renderProjects();
-    renderHabits();
-    renderActions();
-    renderCalendar();
-    renderJournal();
-    renderPeople();
-    renderChatMessages();
-    renderTracker();
-    renderToday();
-    renderTimeline();
-    renderGoalDetail();
-    renderAreaDetail();
+    renderActiveSectionContent();
   }
 })();
 </script>
