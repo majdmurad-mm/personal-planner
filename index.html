@@ -810,12 +810,16 @@
   .tracker-col-head:hover{ color:var(--text-dim); }
   .tracker-col-head.today{ color:var(--violet); font-weight:700; }
   .tracker-col-head.sel{ box-shadow:inset 0 0 0 1.5px var(--accent); color:var(--accent); }
-  .tracker-cell{ text-align:center; padding:2px; vertical-align:middle; background:var(--bg-raised); }
+  .tracker-cell{ position:relative; text-align:center; padding:2px; vertical-align:middle; background:var(--bg-raised); }
   .tracker-cell:hover{ background:var(--bg-inset); }
   /* A habit-linked variable's cell for a day its repetition pattern doesn't spawn an instance on —
-     no control at all, just a faint placeholder, since there's nothing to track that day. */
-  .tracker-cell-off{ background:var(--bg-inset); opacity:0.5; color:var(--text-faint); font-family:var(--mono); font-size:11px; cursor:default; }
-  .tracker-cell-off:hover{ background:var(--bg-inset); }
+     no control at all, just a faint placeholder, since there's nothing to track that day. Press and
+     hold it (see the trackerTable press-and-hold handler) to schedule a one-off instance anyway. */
+  .tracker-cell-off{ background:var(--bg-inset); opacity:0.5; color:var(--text-faint); font-family:var(--mono); font-size:11px; cursor:pointer; }
+  .tracker-cell-off:hover{ background:var(--bg-inset); opacity:0.8; }
+  /* Press-and-hold on any habit-linked cell (scheduled or not) schedules/unschedules an instance —
+     same 1s fill-bar affordance as the Today timeline's hold-to-drag (see TRACKER_HOLD_MS). */
+  .tracker-cell.tl-holding::after{ content:""; position:absolute; left:0; bottom:0; height:3px; width:0%; background:var(--accent); animation:tlHoldFill 1s linear forwards; z-index:1; }
   .tracker-cell-input{ width:100%; min-width:64px; text-align:center; background:transparent; border:none; color:var(--text); font-family:var(--mono); font-size:11.5px; padding:9px 4px; }
   .tracker-cell-input:focus{ background:var(--bg-inset); outline:1.5px solid var(--accent-dim); outline-offset:-1.5px; }
   .tracker-scale{ display:flex; gap:3px; justify-content:center; padding:10px 4px; }
@@ -2060,7 +2064,7 @@
     whiteboard_x: "graph position", whiteboard_y: "graph position",
     weekdays: "habit day selection", tracker_variable_id: "habit's tracker link", time_of_day: "scheduled time",
     duration_minutes: "duration", category: "area", skip_dates: "skipped habit days",
-    categories: "area(s)", custom_interval_days: "custom repeat interval"
+    categories: "area(s)", custom_interval_days: "custom repeat interval", extra_dates: "manually scheduled habit days"
   };
   function warnDroppedFields(dropped){
     if(!dropped || !dropped.length) return;
@@ -2281,7 +2285,7 @@
     state.goals.sort(function(a,b){ return a.position - b.position; });
     state.projects = (results[1].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), categories:r.categories||[] }; });
     state.projects.sort(function(a,b){ return a.position - b.position; });
-    state.habits = (results[2].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || null, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [], customIntervalDays:r.custom_interval_days||null, icon:r.icon||null }; });
+    state.habits = (results[2].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || null, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [], extraDates:r.extra_dates || [], customIntervalDays:r.custom_interval_days||null, icon:r.icon||null }; });
     state.habits.sort(function(a,b){ return a.position - b.position; });
     state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null }; });
     state.actions.sort(function(a,b){ return a.position - b.position; });
@@ -2640,8 +2644,12 @@
   // what "delete" means for a single day's instance shown on Today/Timeline, as opposed to deleting
   // the habit itself from the Planner tab.
   function habitOccursOnDate(h, dateStr){
-    if(h.createdAt && dateStr < h.createdAt) return false;
+    // A deliberate skip always wins; a deliberate manual add (see scheduleHabitInstance, from the
+    // Tracker page's press-and-hold gesture) forces an instance to exist on that date regardless of
+    // the habit's own repetition pattern or how far outside its normal schedule the date falls.
     if(h.skipDates && h.skipDates.indexOf(dateStr) !== -1) return false;
+    if(h.extraDates && h.extraDates.indexOf(dateStr) !== -1) return true;
+    if(h.createdAt && dateStr < h.createdAt) return false;
     if(h.frequency === "weekly") return (h.weekdays || []).indexOf(WEEKDAY_ABBR[new Date(dateStr + "T00:00:00").getDay()]) !== -1;
     if(h.frequency === "custom" && h.createdAt){
       var interval = h.customIntervalDays || 1;
@@ -2844,7 +2852,7 @@
     });
   }
   function habitPayload(snapshot){
-    return { id:snapshot.id, goal_id:snapshot.goalId, title:snapshot.title, priority:snapshot.priority, frequency:snapshot.frequency, weekdays:snapshot.weekdays, tracker_variable_id:snapshot.trackerVariableId, time_of_day:snapshot.timeOfDay, duration_minutes:snapshot.durationMinutes, days:snapshot.days, position:snapshot.position, skip_dates:snapshot.skipDates, created_at:snapshot.createdAt, custom_interval_days:snapshot.customIntervalDays, icon:snapshot.icon };
+    return { id:snapshot.id, goal_id:snapshot.goalId, title:snapshot.title, priority:snapshot.priority, frequency:snapshot.frequency, weekdays:snapshot.weekdays, tracker_variable_id:snapshot.trackerVariableId, time_of_day:snapshot.timeOfDay, duration_minutes:snapshot.durationMinutes, days:snapshot.days, position:snapshot.position, skip_dates:snapshot.skipDates, extra_dates:snapshot.extraDates, created_at:snapshot.createdAt, custom_interval_days:snapshot.customIntervalDays, icon:snapshot.icon };
   }
   function trackerVarPayload(snapshot){
     return { id:snapshot.id, name:snapshot.name, type:snapshot.type, unit:snapshot.unit, scale_max:snapshot.scaleMax, categories:snapshot.categories, position:snapshot.position };
@@ -2915,6 +2923,47 @@
       h.skipDates = h.skipDates.filter(function(d){ return d !== dateStr; });
       renderAll();
       await safeUpdate("habits", id, { skip_dates: h.skipDates });
+    });
+  }
+  // The Tracker page's press-and-hold gesture on an off-schedule cell: forces a one-off instance to
+  // exist on that date (added to extra_dates — see habitOccursOnDate) without touching the habit's
+  // own repetition pattern, and clears any prior skip for that same date so the two can't fight.
+  async function scheduleHabitInstance(id, dateStr){
+    var h = state.habits.find(function(x){ return x.id === id; });
+    if(!h || !dateStr) return;
+    var wasSkipped = h.skipDates.indexOf(dateStr) !== -1;
+    var wasExtra = h.extraDates.indexOf(dateStr) !== -1;
+    if(!wasSkipped && wasExtra) return;
+    var prevSkipDates = h.skipDates.slice(), prevExtraDates = h.extraDates.slice();
+    h.skipDates = h.skipDates.filter(function(d){ return d !== dateStr; });
+    if(!wasExtra) h.extraDates = prevExtraDates.concat([dateStr]);
+    renderAll();
+    var r = await safeUpdate("habits", id, { skip_dates: h.skipDates, extra_dates: h.extraDates });
+    if(r.error){ console.error(r.error); h.skipDates = prevSkipDates; h.extraDates = prevExtraDates; renderAll(); return; }
+    warnDroppedFields(r.droppedFields);
+    pushUndo("schedule \"" + h.title + "\" on " + dateStr, async function(){
+      h.skipDates = prevSkipDates; h.extraDates = prevExtraDates;
+      renderAll();
+      await safeUpdate("habits", id, { skip_dates: h.skipDates, extra_dates: h.extraDates });
+    });
+  }
+  // The same gesture on an already-scheduled cell removes the instance instead: a manually-added
+  // date (extra_dates) is just un-added, while a normal pattern-scheduled date falls back to the
+  // existing skip mechanism (skip_dates) so the habit's own repetition pattern is left untouched.
+  async function unscheduleHabitInstance(id, dateStr){
+    var h = state.habits.find(function(x){ return x.id === id; });
+    if(!h || !dateStr) return;
+    if(h.extraDates.indexOf(dateStr) === -1){ await skipHabitInstance(id, dateStr); return; }
+    var prevExtraDates = h.extraDates.slice();
+    h.extraDates = prevExtraDates.filter(function(d){ return d !== dateStr; });
+    renderAll();
+    var r = await safeUpdate("habits", id, { extra_dates: h.extraDates });
+    if(r.error){ console.error(r.error); h.extraDates = prevExtraDates; renderAll(); return; }
+    warnDroppedFields(r.droppedFields);
+    pushUndo("unschedule \"" + h.title + "\" on " + dateStr, async function(){
+      h.extraDates = prevExtraDates;
+      renderAll();
+      await safeUpdate("habits", id, { extra_dates: h.extraDates });
     });
   }
   function goalPayload(snapshot){
@@ -4546,11 +4595,14 @@
     // spawns an instance — other days render as an inert placeholder instead of an editable cell.
     // Exception: if a value is already recorded there (e.g. the habit's schedule changed after that
     // day was tracked), keep it visible and editable rather than hiding pre-existing data.
+    // Every habit-linked cell (on-schedule or off) carries data-var/data-date so the table-level
+    // press-and-hold handler can schedule/unschedule an instance regardless of which state it's in.
     var h = state.habits.find(function(x){ return x.trackerVariableId === v.id; });
     if(h && !value && !habitOccursOnDate(h, date)){
-      return '<td class="tracker-cell tracker-cell-off" title="' + escapeHtml(h.title) + ' doesn\'t repeat on this day">·</td>';
+      return '<td class="tracker-cell tracker-cell-off" data-var="' + v.id + '" data-date="' + date + '" title="' + escapeHtml(h.title) + ' doesn\'t repeat on this day — press and hold to schedule it anyway">·</td>';
     }
-    return '<td class="tracker-cell">' + trackerCellControlHtml(v, date, value) + '</td>';
+    var holdAttrs = h ? ' data-var="' + v.id + '" data-date="' + date + '"' : "";
+    return '<td class="tracker-cell"' + holdAttrs + '>' + trackerCellControlHtml(v, date, value) + '</td>';
   }
 
   function renderTracker(){
@@ -4726,6 +4778,58 @@
     handleTrackerCellClick(e);
   });
   document.getElementById("trackerTable").addEventListener("change", handleTrackerCellChange);
+
+  // ---- Press-and-hold a habit-linked cell to schedule/unschedule an instance on that day ----
+  // Holding ~1s (same convention as the Today timeline's hold-to-drag) toggles whether that day has
+  // an instance at all — independent of a quick click, which still just toggles/sets the value of an
+  // already-scheduled cell. An off (unscheduled) cell schedules one; an already-scheduled cell
+  // unschedules it. Since the hold action re-renders the table mid-press (replacing the pressed
+  // element), the browser's own click-after-mouseup either never fires against the now-detached
+  // element or is explicitly suppressed below via trackerHoldFired as a belt-and-suspenders guard.
+  (function(){
+    var TRACKER_HOLD_MS = 1000, TRACKER_HOLD_MOVE_THRESHOLD = 6;
+    var table = document.getElementById("trackerTable");
+    var holdCell = null, holdTimer = null, downX = 0, downY = 0;
+    var trackerHoldFired = null; // { varId, date, at } — consumed by handleTrackerCellClick below
+    function clearHoldTimer(){ if(holdTimer){ clearTimeout(holdTimer); holdTimer = null; } }
+    function endHold(){
+      clearHoldTimer();
+      if(holdCell) holdCell.classList.remove("tl-holding");
+      holdCell = null;
+    }
+    table.addEventListener("pointerdown", function(e){
+      var cell = e.target.closest("td.tracker-cell[data-var][data-date]");
+      if(!cell) return;
+      holdCell = cell; downX = e.clientX; downY = e.clientY;
+      cell.classList.add("tl-holding");
+      holdTimer = setTimeout(async function(){
+        holdTimer = null;
+        cell.classList.remove("tl-holding");
+        var varId = cell.dataset.var, dateStr = cell.dataset.date;
+        var h = state.habits.find(function(x){ return x.trackerVariableId === varId; });
+        holdCell = null;
+        if(!h) return;
+        trackerHoldFired = { varId: varId, date: dateStr, at: Date.now() };
+        if(habitOccursOnDate(h, dateStr)) await unscheduleHabitInstance(h.id, dateStr);
+        else await scheduleHabitInstance(h.id, dateStr);
+      }, TRACKER_HOLD_MS);
+    });
+    table.addEventListener("pointermove", function(e){
+      if(!holdCell) return;
+      var dx = e.clientX - downX, dy = e.clientY - downY;
+      if(Math.sqrt(dx*dx + dy*dy) > TRACKER_HOLD_MOVE_THRESHOLD) endHold();
+    });
+    table.addEventListener("pointerup", endHold);
+    table.addEventListener("pointercancel", endHold);
+    table.addEventListener("click", function(e){
+      if(!trackerHoldFired) return;
+      var target = e.target.closest("[data-var][data-date]");
+      if(target && target.dataset.var === trackerHoldFired.varId && target.dataset.date === trackerHoldFired.date && Date.now() - trackerHoldFired.at < 500){
+        e.stopImmediatePropagation();
+        trackerHoldFired = null;
+      }
+    }, true);
+  })();
 
   /* ---------------- Tracker variable context menu (right-click a row header) ---------------- */
   var trackerCtxVarId = null;
@@ -6279,7 +6383,7 @@
         var res5 = await safeInsert("habits", { goal_id: input.goal_id || null, title:input.title, priority:input.priority, frequency:input.frequency, tracker_variable_id: habitVarId, days:{}, custom_interval_days: input.frequency === "custom" ? Math.max(1, Math.round(input.custom_interval_days) || 1) : null, icon: iconKey5 }, state.habits);
         if(res5.error) return { error: res5.error.message };
         var r5 = res5.data;
-        state.habits.push({ id:r5.id, goalId:r5.goal_id, title:r5.title, priority:r5.priority, frequency:r5.frequency, weekdays:r5.weekdays || [], trackerVariableId:r5.tracker_variable_id || habitVarId, timeOfDay:r5.time_of_day ? r5.time_of_day.slice(0,5) : null, durationMinutes:r5.duration_minutes||null, days:r5.days || {}, position:r5.position||0, createdAt:r5.created_at ? r5.created_at.slice(0,10) : null, skipDates:r5.skip_dates || [], customIntervalDays:r5.custom_interval_days||null, icon:r5.icon||iconKey5 });
+        state.habits.push({ id:r5.id, goalId:r5.goal_id, title:r5.title, priority:r5.priority, frequency:r5.frequency, weekdays:r5.weekdays || [], trackerVariableId:r5.tracker_variable_id || habitVarId, timeOfDay:r5.time_of_day ? r5.time_of_day.slice(0,5) : null, durationMinutes:r5.duration_minutes||null, days:r5.days || {}, position:r5.position||0, createdAt:r5.created_at ? r5.created_at.slice(0,10) : null, skipDates:r5.skip_dates || [], extraDates:r5.extra_dates || [], customIntervalDays:r5.custom_interval_days||null, icon:r5.icon||iconKey5 });
         renderAll(); return { ok:true, id:r5.id };
       }
       if(name === "edit_habit"){
@@ -6798,7 +6902,7 @@
     this.disabled = false;
     if(res.error){ alert(res.error.message); return; }
     var r = res.data;
-    var mapped = { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || mappedVar.id, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [], customIntervalDays:r.custom_interval_days||null, icon:r.icon||payload.icon||null };
+    var mapped = { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || mappedVar.id, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [], extraDates:r.extra_dates || [], customIntervalDays:r.custom_interval_days||null, icon:r.icon||payload.icon||null };
     if(isEdit){
       var idx = state.habits.findIndex(function(x){ return x.id === editingHabitId; });
       if(idx !== -1) state.habits[idx] = mapped;
