@@ -2175,12 +2175,13 @@
     labels = labels.filter(function(l, i){ return labels.indexOf(l) === i; });
     toast("Saved, but " + labels.join(", ") + " needs a pending database update to be run first — see _Memory/ for the migration.");
   }
-  function todayStr(){ return new Date().toISOString().slice(0,10); }
+  function dateToLocalStr(d){ return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0"); }
+  function todayStr(){ return dateToLocalStr(new Date()); }
   function fmtDate(d){ return d ? new Date(d + "T00:00:00").toLocaleDateString(undefined, { month:"short", day:"numeric" }) : ""; }
   function addDaysToDateStr(dateStr, n){
     var d = new Date(dateStr + "T00:00:00");
     d.setDate(d.getDate() + n);
-    return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+    return dateToLocalStr(d);
   }
   function fmtTimeOfDay(t){
     if(!t) return "";
@@ -2770,7 +2771,7 @@
   function habitStreak(h){
     var streak = 0, d = new Date();
     while(true){
-      var key = d.toISOString().slice(0,10);
+      var key = dateToLocalStr(d);
       if(habitDoneForDate(h, key)){ streak++; d.setDate(d.getDate()-1); } else break;
     }
     return streak;
@@ -3126,11 +3127,19 @@
     if(childCount && !confirm("Delete goal \"" + g.title + "\"? " + orphanedProjectIds.length + " project(s), " + orphanedHabitIds.length + " habit(s), and " + orphanedActionIds.length + " action(s) will be kept but unlinked from it. This can be undone with Ctrl+Z or from Trash.")) return;
     var snapshot = Object.assign({}, g);
     var removedConns = state.wbConnections.filter(function(c){ return (c.fromType==="goal"&&c.fromId===goalId)||(c.toType==="goal"&&c.toId===goalId); });
+    // A deleted goal can also be referenced as a *secondary* link — from other goals' secondaryGoalIds,
+    // from projects' secondaryGoalIds, and from habits' secondaryGoalIds — none of which are foreign
+    // keys (they're jsonb arrays), so the DB can't sweep these itself. Snapshot the affected rows'
+    // original arrays (for undo) before filtering the dead id out of each.
+    var secGoalRefs = state.goals.filter(function(x){ return x.id !== goalId && (x.secondaryGoalIds || []).indexOf(goalId) !== -1; }).map(function(x){ return { id:x.id, prev:(x.secondaryGoalIds||[]).slice() }; });
+    var secProjectRefs = state.projects.filter(function(x){ return (x.secondaryGoalIds || []).indexOf(goalId) !== -1; }).map(function(x){ return { id:x.id, prev:(x.secondaryGoalIds||[]).slice() }; });
+    var secHabitRefs = state.habits.filter(function(x){ return (x.secondaryGoalIds || []).indexOf(goalId) !== -1; }).map(function(x){ return { id:x.id, prev:(x.secondaryGoalIds||[]).slice() }; });
     // deleting a goal orphans its projects/habits/actions rather than deleting them —
     // parent links are optional, so children keep existing on their own.
-    state.projects.forEach(function(x){ if(x.goalId === goalId) x.goalId = null; });
-    state.habits.forEach(function(x){ if(x.goalId === goalId) x.goalId = null; });
+    state.projects.forEach(function(x){ if(x.goalId === goalId) x.goalId = null; if((x.secondaryGoalIds||[]).indexOf(goalId) !== -1) x.secondaryGoalIds = x.secondaryGoalIds.filter(function(id){ return id !== goalId; }); });
+    state.habits.forEach(function(x){ if(x.goalId === goalId) x.goalId = null; if((x.secondaryGoalIds||[]).indexOf(goalId) !== -1) x.secondaryGoalIds = x.secondaryGoalIds.filter(function(id){ return id !== goalId; }); });
     state.actions.forEach(function(x){ if(x.parentType==="goal" && x.parentId===goalId){ x.parentType="none"; x.parentId=null; } });
+    state.goals.forEach(function(x){ if((x.secondaryGoalIds||[]).indexOf(goalId) !== -1) x.secondaryGoalIds = x.secondaryGoalIds.filter(function(id){ return id !== goalId; }); });
     state.goals = state.goals.filter(function(x){ return x.id !== goalId; });
     state.wbConnections = state.wbConnections.filter(function(c){ return !((c.fromType==="goal"&&c.fromId===goalId)||(c.toType==="goal"&&c.toId===goalId)); });
     renderAll();
@@ -3139,6 +3148,18 @@
     await sb.from("actions").update({ parent_type:"none", parent_id:null }).eq("parent_type","goal").eq("parent_id", goalId);
     await sb.from("whiteboard_connections").delete().eq("from_id", goalId);
     await sb.from("whiteboard_connections").delete().eq("to_id", goalId);
+    for(var si=0;si<secGoalRefs.length;si++){
+      var sg = state.goals.find(function(x){ return x.id === secGoalRefs[si].id; });
+      await sb.from("goals").update({ secondary_goal_ids: sg ? sg.secondaryGoalIds : [] }).eq("id", secGoalRefs[si].id);
+    }
+    for(var sp=0;sp<secProjectRefs.length;sp++){
+      var spj = state.projects.find(function(x){ return x.id === secProjectRefs[sp].id; });
+      await sb.from("projects").update({ secondary_goal_ids: spj ? spj.secondaryGoalIds : [] }).eq("id", secProjectRefs[sp].id);
+    }
+    for(var sh=0;sh<secHabitRefs.length;sh++){
+      var shb = state.habits.find(function(x){ return x.id === secHabitRefs[sh].id; });
+      await sb.from("habits").update({ secondary_goal_ids: shb ? shb.secondaryGoalIds : [] }).eq("id", secHabitRefs[sh].id);
+    }
     var r3 = await sb.from("goals").delete().eq("id", goalId);
     if(r3.error){ console.error(r3.error); return; }
     await writeTrash("goal", snapshot.title, goalPayload(snapshot));
@@ -3161,6 +3182,18 @@
       for(var i=0;i<removedConns.length;i++){
         var rc = await sb.from("whiteboard_connections").insert(wbConnPayload(removedConns[i])).select().single();
         if(!rc.error) state.wbConnections.push(removedConns[i]);
+      }
+      for(var ri2=0;ri2<secGoalRefs.length;ri2++){
+        var rg = state.goals.find(function(x){ return x.id === secGoalRefs[ri2].id; });
+        if(rg){ rg.secondaryGoalIds = secGoalRefs[ri2].prev; await sb.from("goals").update({ secondary_goal_ids: rg.secondaryGoalIds }).eq("id", rg.id); }
+      }
+      for(var rp=0;rp<secProjectRefs.length;rp++){
+        var rpj = state.projects.find(function(x){ return x.id === secProjectRefs[rp].id; });
+        if(rpj){ rpj.secondaryGoalIds = secProjectRefs[rp].prev; await sb.from("projects").update({ secondary_goal_ids: rpj.secondaryGoalIds }).eq("id", rpj.id); }
+      }
+      for(var rh=0;rh<secHabitRefs.length;rh++){
+        var rhb = state.habits.find(function(x){ return x.id === secHabitRefs[rh].id; });
+        if(rhb){ rhb.secondaryGoalIds = secHabitRefs[rh].prev; await sb.from("habits").update({ secondary_goal_ids: rhb.secondaryGoalIds }).eq("id", rhb.id); }
       }
       renderAll();
     });
@@ -3737,7 +3770,7 @@
   /* ---------------- Habits ---------------- */
   function last7Dates(){
     var out = [], today = new Date();
-    for(var i=6;i>=0;i--){ var d = new Date(today); d.setDate(d.getDate()-i); out.push(d.toISOString().slice(0,10)); }
+    for(var i=6;i>=0;i--){ var d = new Date(today); d.setDate(d.getDate()-i); out.push(dateToLocalStr(d)); }
     return out;
   }
   function renderHabits(){
@@ -3954,7 +3987,7 @@
           var day = d.getDay();
           var diffToMonday = (day === 0 ? -6 : 1 - day);
           d.setDate(d.getDate() + diffToMonday);
-          key = d.toISOString().slice(0, 10);
+          key = dateToLocalStr(d);
         }
         if(!buckets[key]) buckets[key] = { key:key, sum:0, count:0 };
         buckets[key].sum += s.score;
@@ -4780,7 +4813,7 @@
     for(var i=0;i<7;i++){
       var d = new Date(trackerRangeStart);
       d.setDate(d.getDate() + i);
-      out.push(d.toISOString().slice(0,10));
+      out.push(dateToLocalStr(d));
     }
     return out;
   }
@@ -5155,6 +5188,13 @@
       if(!vSnapshot) return;
       vSnapshot = Object.assign({}, vSnapshot);
       var vEntrySnapshots = state.trackerEntries.filter(function(x){ return x.variableId === id; }).map(function(x){ return Object.assign({}, x); });
+      // A habit-linked variable's own habit is left pointing at a now-deleted tracker_variable_id
+      // (the DB's ON DELETE SET NULL fixes the row server-side, but state.habits stays stale until a
+      // reload) — clear the link client-side too so the habit falls back to habits.days tracking
+      // instead of silently going dead (every click would try to insert a tracker_entries row against
+      // a variable_id that no longer exists and fail its foreign key).
+      var linkedHabitIds = state.habits.filter(function(h){ return h.trackerVariableId === id; }).map(function(h){ return h.id; });
+      state.habits.forEach(function(h){ if(h.trackerVariableId === id) h.trackerVariableId = null; });
       state.trackerVars = state.trackerVars.filter(function(x){ return x.id !== id; });
       state.trackerEntries = state.trackerEntries.filter(function(x){ return x.variableId !== id; });
       if(editingTrackerVarId === id) resetTrackerVarForm();
@@ -5170,6 +5210,12 @@
           var es = vEntrySnapshots[i];
           var rei = await sb.from("tracker_entries").insert(trackerEntryPayload(es)).select().single();
           if(!rei.error) state.trackerEntries.push(es);
+        }
+        for(var j=0;j<linkedHabitIds.length;j++){
+          var h = state.habits.find(function(x){ return x.id === linkedHabitIds[j]; });
+          if(!h) continue;
+          h.trackerVariableId = id;
+          await sb.from("habits").update({ tracker_variable_id: id }).eq("id", h.id);
         }
         renderAll();
       });
