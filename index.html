@@ -47,7 +47,7 @@
     --cat-maintenance: #8A6905; --cat-maintenance-bg: rgba(234,179,8,0.14);
     --cat-growth: #8744F0; --cat-growth-bg: rgba(176,132,245,0.14);
     --cat-relationships: #0068E4; --cat-relationships-bg: rgba(95,168,255,0.12);
-    --cat-life: #0B7A8B; --cat-life-bg: rgba(34,211,238,0.12);
+    --cat-sol: #6B6B6B; --cat-sol-bg: rgba(107,107,107,0.12);
     /* Today timeline hour gridlines — one repeating pattern (period = 6h = 1/4 of the row) covers
        all three tiers at once: a thick line every 6h, a medium line every 3h, thin lines every
        other hour. Reused as a background layer on every area row (layered under that row's own
@@ -97,7 +97,7 @@
     --cat-maintenance: #EAB308; --cat-maintenance-bg: rgba(234,179,8,0.14);
     --cat-growth: #B084F5; --cat-growth-bg: rgba(176,132,245,0.14);
     --cat-relationships: #5FA8FF; --cat-relationships-bg: rgba(95,168,255,0.12);
-    --cat-life: #22D3EE; --cat-life-bg: rgba(34,211,238,0.12);
+    --cat-sol: #FFFFFF; --cat-sol-bg: rgba(255,255,255,0.14);
     /* Hour gridlines flip back to light-on-dark. */
     --tl-hour-grid: repeating-linear-gradient(90deg,
       rgba(255,255,255,0.22) 0, rgba(255,255,255,0.22) 2px, transparent 2px,
@@ -228,7 +228,7 @@
   .cat-badge.Maintenance{ color:var(--cat-maintenance); background:var(--cat-maintenance-bg); }
   .cat-badge.Growth{ color:var(--cat-growth); background:var(--cat-growth-bg); }
   .cat-badge.Relationships{ color:var(--cat-relationships); background:var(--cat-relationships-bg); }
-  .cat-badge.Life{ color:var(--cat-life); background:var(--cat-life-bg); }
+  .cat-badge.Sol{ color:var(--cat-sol); background:var(--cat-sol-bg); }
 
   .infinite-badge{ font-family:var(--mono); font-size:10px; font-weight:700; padding:2px 7px; border-radius:3px; color:var(--violet); background:var(--violet-glow); letter-spacing:0.03em; }
   .type-badge{ font-family:var(--mono); font-size:10px; font-weight:700; padding:2px 7px; border-radius:3px; color:var(--accent); background:var(--accent-glow); letter-spacing:0.03em; }
@@ -248,7 +248,7 @@
   .goal-card.Maintenance{ border-left-color:var(--cat-maintenance); border-color:rgba(234,179,8,0.3); background:linear-gradient(135deg, var(--cat-maintenance-bg), var(--bg-raised) 55%); }
   .goal-card.Growth{ border-left-color:var(--cat-growth); border-color:rgba(176,132,245,0.25); background:linear-gradient(135deg, var(--cat-growth-bg), var(--bg-raised) 55%); }
   .goal-card.Relationships{ border-left-color:var(--cat-relationships); border-color:rgba(95,168,255,0.25); background:linear-gradient(135deg, var(--cat-relationships-bg), var(--bg-raised) 55%); }
-  .goal-card.Life{ border-left-color:var(--cat-life); border-color:rgba(34,211,238,0.25); background:linear-gradient(135deg, var(--cat-life-bg), var(--bg-raised) 55%); }
+  .goal-card.Sol{ border-left-color:var(--cat-sol); border-color:rgba(140,140,140,0.35); background:linear-gradient(135deg, var(--cat-sol-bg), var(--bg-raised) 55%); }
 
   /* ===== AREAS ===== */
   .area-block{ margin-bottom:30px; }
@@ -272,7 +272,7 @@
   .area-icon.Maintenance{ color:var(--cat-maintenance); } .area-head.Maintenance{ border-bottom-color:var(--cat-maintenance); }
   .area-icon.Growth{ color:var(--cat-growth); } .area-head.Growth{ border-bottom-color:var(--cat-growth); }
   .area-icon.Relationships{ color:var(--cat-relationships); } .area-head.Relationships{ border-bottom-color:var(--cat-relationships); }
-  .area-icon.Life{ color:var(--cat-life); } .area-head.Life{ border-bottom-color:var(--cat-life); }
+  .area-icon.Sol{ color:var(--cat-sol); } .area-head.Sol{ border-bottom-color:var(--cat-sol); }
   .area-head-addbtn{ font-size:10.5px; padding:5px 10px; }
   .area-name{ font-family:var(--mono); font-size:15px; font-weight:700; letter-spacing:0.01em; margin:0; }
   .area-counts{ margin-left:auto; font-family:var(--mono); font-size:10.5px; color:var(--text-faint); }
@@ -438,7 +438,7 @@
   .wb-goal-node.Maintenance{ background:var(--cat-maintenance); }
   .wb-goal-node.Growth{ background:var(--cat-growth); }
   .wb-goal-node.Relationships{ background:var(--cat-relationships); }
-  .wb-goal-node.Life{ background:var(--cat-life); }
+  .wb-goal-node.Sol{ background:var(--cat-sol); }
   /* Area hubs are just their icon glyph — no circle, no fill, no ring — so declared after (and more
      specific than) the .Health/.Finance/etc background rules above to win the override. The glyph
      itself carries the area color instead (see .wb-goal-node-icon), since there's no colored disc
@@ -465,7 +465,7 @@
   .wb-goal-node.Maintenance .wb-goal-node-icon{ color:var(--cat-maintenance); }
   .wb-goal-node.Growth .wb-goal-node-icon{ color:var(--cat-growth); }
   .wb-goal-node.Relationships .wb-goal-node-icon{ color:var(--cat-relationships); }
-  .wb-goal-node.Life .wb-goal-node-icon{ color:var(--cat-life); }
+  .wb-goal-node.Sol .wb-goal-node-icon{ color:var(--cat-sol); }
   /* Area cluster hulls — a soft blob (convex hull, padded + blurred) drawn behind every area's own
      group of nodes, see wbRenderClusters. */
   .wb-cluster-hull{ fill-opacity:0.16; stroke-opacity:0.4; stroke-width:1.5; }
@@ -483,7 +483,7 @@
   .habit-icon-inline.Maintenance{ color:var(--cat-maintenance); }
   .habit-icon-inline.Growth{ color:var(--cat-growth); }
   .habit-icon-inline.Relationships{ color:var(--cat-relationships); }
-  .habit-icon-inline.Life{ color:var(--cat-life); }
+  .habit-icon-inline.Sol{ color:var(--cat-sol); }
   .matrix-tile-status{ position:absolute; top:6px; left:6px; width:7px; height:7px; border-radius:50%; z-index:2; }
   .matrix-tile-status.on-track{ background:var(--accent); box-shadow:0 0 5px var(--accent); }
   .matrix-tile-status.behind{ background:var(--p0); box-shadow:0 0 5px var(--p0); }
@@ -502,7 +502,7 @@
   .matrix-tile.Maintenance{ background:var(--cat-maintenance-bg); } .matrix-tile.Maintenance .matrix-tile-initial{ color:var(--cat-maintenance); }
   .matrix-tile.Growth{ background:var(--cat-growth-bg); } .matrix-tile.Growth .matrix-tile-initial{ color:var(--cat-growth); }
   .matrix-tile.Relationships{ background:var(--cat-relationships-bg); } .matrix-tile.Relationships .matrix-tile-initial{ color:var(--cat-relationships); }
-  .matrix-tile.Life{ background:var(--cat-life-bg); } .matrix-tile.Life .matrix-tile-initial{ color:var(--cat-life); }
+  .matrix-tile.Sol{ background:var(--cat-sol-bg); } .matrix-tile.Sol .matrix-tile-initial{ color:var(--cat-sol); }
 
   /* ===== MATRIX VIEW (projects/habits/actions, grouped by goal) ===== */
   .ms-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(160px,1fr)); gap:8px; }
@@ -518,7 +518,7 @@
   .ms-tile.Maintenance{ border-left-color:var(--cat-maintenance); background:var(--cat-maintenance-bg); }
   .ms-tile.Growth{ border-left-color:var(--cat-growth); background:var(--cat-growth-bg); }
   .ms-tile.Relationships{ border-left-color:var(--cat-relationships); background:var(--cat-relationships-bg); }
-  .ms-tile.Life{ border-left-color:var(--cat-life); background:var(--cat-life-bg); }
+  .ms-tile.Sol{ border-left-color:var(--cat-sol); background:var(--cat-sol-bg); }
 
   /* ===== FORM ELEMENTS ===== */
   input[type="text"], input[type="date"], input[type="number"], input[type="email"], input[type="password"], select, textarea{
@@ -586,7 +586,7 @@
   .today-timeline-row-labels span.Maintenance{ color:var(--cat-maintenance); }
   .today-timeline-row-labels span.Growth{ color:var(--cat-growth); }
   .today-timeline-row-labels span.Relationships{ color:var(--cat-relationships); }
-  .today-timeline-row-labels span.Life{ color:var(--cat-life); }
+  .today-timeline-row-labels span.Sol{ color:var(--cat-sol); }
   .today-timeline-main{ flex:1; min-width:0; }
   /* Zoomable: #todayTimelineUnified and #todayTimelineLabels get an explicit pixel width from JS
      (see todayApplyZoomWidth) instead of stretching to 100% once zoomed past "fit" — this viewport
@@ -606,7 +606,7 @@
   .today-timeline-row.Maintenance{ background:var(--tl-hour-grid), var(--cat-maintenance-bg); }
   .today-timeline-row.Growth{ background:var(--tl-hour-grid), var(--cat-growth-bg); }
   .today-timeline-row.Relationships{ background:var(--tl-hour-grid), var(--cat-relationships-bg); }
-  .today-timeline-row.Life{ background:var(--tl-hour-grid), var(--cat-life-bg); }
+  .today-timeline-row.Sol{ background:var(--tl-hour-grid), var(--cat-sol-bg); }
   .today-timeline-daynight{ position:absolute; inset:0; transition:background 1s ease; }
   /* Hourly Berlin forecast (Open-Meteo), overlaid directly on the day/night band — one tick every
      3h (matching the medium gridline tier used on the area rows below) since the band is too short
@@ -630,6 +630,11 @@
   .timeline-block:hover{ border-color:var(--accent-dim); z-index:2; }
   .timeline-block.dragging{ cursor:grabbing; z-index:3; box-shadow:0 4px 14px rgba(0,0,0,0.4); }
   .timeline-block.resizing{ z-index:3; box-shadow:0 4px 14px rgba(0,0,0,0.4); }
+  /* Press-and-hold-to-drag: a thin bar fills over the same 1s the JS timer waits before arming the
+     drag (see TL_DRAG_HOLD_MS) — a release before it fills is a click (toggles done), not a drag. */
+  .timeline-block.tl-holding{ z-index:3; }
+  .timeline-block.tl-holding::after{ content:""; position:absolute; left:0; bottom:0; height:3px; width:0%; background:var(--accent); animation:tlHoldFill 1s linear forwards; }
+  @keyframes tlHoldFill{ from{ width:0%; } to{ width:100%; } }
   .timeline-block[data-overnight]{ cursor:default; border-left-style:dashed; }
   /* Edge grab strips for stretching a habit/action's duration from either side — dragging the right
      edge changes the end time (start fixed), dragging the left edge changes the start time (end
@@ -658,7 +663,7 @@
   .timeline-block.Maintenance{ border-left-color:var(--cat-maintenance); background:rgba(234,179,8,0.3); }
   .timeline-block.Growth{ border-left-color:var(--cat-growth); background:rgba(176,132,245,0.3); }
   .timeline-block.Relationships{ border-left-color:var(--cat-relationships); background:rgba(95,168,255,0.28); }
-  .timeline-block.Life{ border-left-color:var(--cat-life); background:rgba(34,211,238,0.28); }
+  .timeline-block.Sol{ border-left-color:var(--cat-sol); background:rgba(160,160,160,0.28); }
   /* P0 overrides the area color entirely — defined after the area rules so it wins on equal
      specificity regardless of which area class the block also carries. */
   .timeline-block.p0{ border-left-color:var(--p0); background:rgba(251,102,102,0.32); }
@@ -711,7 +716,7 @@
   .today-row.Maintenance{ border-left-color:var(--cat-maintenance); }
   .today-row.Growth{ border-left-color:var(--cat-growth); }
   .today-row.Relationships{ border-left-color:var(--cat-relationships); }
-  .today-row.Life{ border-left-color:var(--cat-life); }
+  .today-row.Sol{ border-left-color:var(--cat-sol); }
   .today-row-title{ flex:1; font-family:var(--sans); font-size:12.5px; color:var(--text); }
   .today-row-title.done{ color:var(--text-faint); text-decoration:line-through; }
   .today-row-meta{ font-family:var(--mono); font-size:10px; color:var(--text-faint); flex-shrink:0; }
@@ -728,7 +733,7 @@
   .today-habit-tile.Maintenance{ background:var(--cat-maintenance-bg); }
   .today-habit-tile.Growth{ background:var(--cat-growth-bg); }
   .today-habit-tile.Relationships{ background:var(--cat-relationships-bg); }
-  .today-habit-tile.Life{ background:var(--cat-life-bg); }
+  .today-habit-tile.Sol{ background:var(--cat-sol-bg); }
   .cal-dot-mini-row{ display:flex; gap:2px; flex-wrap:wrap; }
   .cal-dot-mini{ width:4px; height:4px; border-radius:50%; background:var(--accent); }
   .cal-entry.google .cal-dot{ background:var(--accent); }
@@ -766,7 +771,7 @@
   .journal-entry.Maintenance{ border-left-color:var(--cat-maintenance); background:var(--cat-maintenance-bg); }
   .journal-entry.Growth{ border-left-color:var(--cat-growth); background:var(--cat-growth-bg); }
   .journal-entry.Relationships{ border-left-color:var(--cat-relationships); background:var(--cat-relationships-bg); }
-  .journal-entry.Life{ border-left-color:var(--cat-life); background:var(--cat-life-bg); }
+  .journal-entry.Sol{ border-left-color:var(--cat-sol); background:var(--cat-sol-bg); }
 
   /* ===== PEOPLE ===== */
   .people-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(230px,1fr)); gap:12px; margin-top:20px; }
@@ -851,14 +856,14 @@
   .chip-opt.sel[data-c="Maintenance"]{ background:var(--cat-maintenance-bg); color:var(--cat-maintenance); border-color:var(--cat-maintenance); }
   .chip-opt.sel[data-c="Growth"]{ background:var(--cat-growth-bg); color:var(--cat-growth); border-color:var(--cat-growth); }
   .chip-opt.sel[data-c="Relationships"]{ background:var(--cat-relationships-bg); color:var(--cat-relationships); border-color:var(--cat-relationships); }
-  .chip-opt.sel[data-c="Life"]{ background:var(--cat-life-bg); color:var(--cat-life); border-color:var(--cat-life); }
+  .chip-opt.sel[data-c="Sol"]{ background:var(--cat-sol-bg); color:var(--cat-sol); border-color:var(--cat-sol); }
   .chip-opt.sel[data-ar="Health"]{ background:var(--cat-health-bg); color:var(--cat-health); border-color:var(--cat-health); }
   .chip-opt.sel[data-ar="Finance"]{ background:var(--cat-finance-bg); color:var(--cat-finance); border-color:var(--cat-finance); }
   .chip-opt.sel[data-ar="Career"]{ background:var(--cat-career-bg); color:var(--cat-career); border-color:var(--cat-career); }
   .chip-opt.sel[data-ar="Maintenance"]{ background:var(--cat-maintenance-bg); color:var(--cat-maintenance); border-color:var(--cat-maintenance); }
   .chip-opt.sel[data-ar="Growth"]{ background:var(--cat-growth-bg); color:var(--cat-growth); border-color:var(--cat-growth); }
   .chip-opt.sel[data-ar="Relationships"]{ background:var(--cat-relationships-bg); color:var(--cat-relationships); border-color:var(--cat-relationships); }
-  .chip-opt.sel[data-ar="Life"]{ background:var(--cat-life-bg); color:var(--cat-life); border-color:var(--cat-life); }
+  .chip-opt.sel[data-ar="Sol"]{ background:var(--cat-sol-bg); color:var(--cat-sol); border-color:var(--cat-sol); }
   .chip-opt.sel[data-r]{ background:var(--violet-glow); color:var(--violet); border-color:var(--violet); }
   .infinite-toggle{ display:flex; align-items:center; gap:7px; margin-top:9px; cursor:pointer; user-select:none; }
   .infinite-toggle input{ width:14px; height:14px; accent-color:var(--violet); cursor:pointer; }
@@ -979,7 +984,7 @@
             <span class="Career" title="Career">▲</span>
             <span class="Relationships" title="Relationships">♥</span>
             <span class="Growth" title="Growth">↑</span>
-            <span class="Life" title="Life">◐</span>
+            <span class="Sol" title="Sol">◐</span>
             <span class="Finance" title="Finance">$</span>
             <span title="No area set">○</span>
           </div>
@@ -995,7 +1000,7 @@
                 <div class="today-timeline-row Career" id="todayTimelineArea-Career"></div>
                 <div class="today-timeline-row Relationships" id="todayTimelineArea-Relationships"></div>
                 <div class="today-timeline-row Growth" id="todayTimelineArea-Growth"></div>
-                <div class="today-timeline-row Life" id="todayTimelineArea-Life"></div>
+                <div class="today-timeline-row Sol" id="todayTimelineArea-Sol"></div>
                 <div class="today-timeline-row Finance" id="todayTimelineArea-Finance"></div>
                 <div class="today-timeline-row" id="todayTimelineAreaOther"></div>
                 <div class="today-timeline-now" id="todayTimelineNow"><span class="today-timeline-now-label" id="todayTimelineNowLabel"></span></div>
@@ -1385,7 +1390,7 @@
             </div>
             <div class="chip-select" id="journalAreaSelect">
               <div class="chip-opt" data-ar="Health">✚ Health</div><div class="chip-opt" data-ar="Finance">$ Finance</div><div class="chip-opt sel" data-ar="Career">▲ Career</div>
-              <div class="chip-opt" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" data-ar="Growth">↑ Growth</div><div class="chip-opt" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" data-ar="Life">◐ Life</div>
+              <div class="chip-opt" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" data-ar="Growth">↑ Growth</div><div class="chip-opt" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" data-ar="Sol">◐ Sol</div>
             </div>
           </div>
           <button class="btn btn-accent" id="saveJournalBtn" type="button">+ add entry</button>
@@ -1442,7 +1447,7 @@
       </div>
       <div class="field"><label>category</label><div class="chip-select" id="goalCatSelect">
         <div class="chip-opt" data-c="Health">✚ Health</div><div class="chip-opt" data-c="Finance">$ Finance</div><div class="chip-opt sel" data-c="Career">▲ Career</div>
-        <div class="chip-opt" data-c="Maintenance">⚙ Maintenance</div><div class="chip-opt" data-c="Growth">↑ Growth</div><div class="chip-opt" data-c="Relationships">♥ Relationships</div><div class="chip-opt" data-c="Life">◐ Life</div>
+        <div class="chip-opt" data-c="Maintenance">⚙ Maintenance</div><div class="chip-opt" data-c="Growth">↑ Growth</div><div class="chip-opt" data-c="Relationships">♥ Relationships</div><div class="chip-opt" data-c="Sol">◐ Sol</div>
       </div></div>
       <div class="field"><label>health (optional override)</label>
         <div class="field-row">
@@ -1473,7 +1478,7 @@
       <div class="field"><label for="projectTitleInput">project</label><input type="text" id="projectTitleInput" placeholder="e.g. Redesign onboarding flow"></div>
       <div class="field"><label>area(s)</label><div class="chip-select" id="projectAreaSelect">
         <div class="chip-opt" data-ar="Health">✚ Health</div><div class="chip-opt" data-ar="Finance">$ Finance</div><div class="chip-opt" data-ar="Career">▲ Career</div>
-        <div class="chip-opt" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" data-ar="Growth">↑ Growth</div><div class="chip-opt" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" data-ar="Life">◐ Life</div>
+        <div class="chip-opt" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" data-ar="Growth">↑ Growth</div><div class="chip-opt" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" data-ar="Sol">◐ Sol</div>
       </div>
         <p class="panel-hint">Select one or more to narrow the parent goal list below — leave all selected to see every goal.</p>
       </div>
@@ -1506,7 +1511,7 @@
       <div class="field"><label for="habitTitleInput">habit</label><input type="text" id="habitTitleInput" placeholder="e.g. Read for 20 minutes"></div>
       <div class="field"><label>area</label><div class="chip-select" id="habitAreaSelect">
         <div class="chip-opt" data-ar="Health">✚ Health</div><div class="chip-opt" data-ar="Finance">$ Finance</div><div class="chip-opt sel" data-ar="Career">▲ Career</div>
-        <div class="chip-opt" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" data-ar="Growth">↑ Growth</div><div class="chip-opt" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" data-ar="Life">◐ Life</div>
+        <div class="chip-opt" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" data-ar="Growth">↑ Growth</div><div class="chip-opt" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" data-ar="Sol">◐ Sol</div>
       </div></div>
       <div class="field"><label for="habitGoalSelect">parent goal</label><select id="habitGoalSelect"></select></div>
       <div class="field-row">
@@ -1556,7 +1561,7 @@
       </div>
       <div class="field" id="actionAreaField"><label>area</label><div class="chip-select" id="actionAreaSelect">
         <div class="chip-opt" data-ar="Health">✚ Health</div><div class="chip-opt" data-ar="Finance">$ Finance</div><div class="chip-opt sel" data-ar="Career">▲ Career</div>
-        <div class="chip-opt" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" data-ar="Growth">↑ Growth</div><div class="chip-opt" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" data-ar="Life">◐ Life</div>
+        <div class="chip-opt" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" data-ar="Growth">↑ Growth</div><div class="chip-opt" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" data-ar="Sol">◐ Sol</div>
       </div></div>
       <div class="field"><label>belongs to</label><div class="chip-select" id="actionParentTypeSelect">
         <div class="chip-opt sel" data-pt="goal">Goal</div><div class="chip-opt" data-pt="project">Project</div><div class="chip-opt" data-pt="none">None</div>
@@ -1612,7 +1617,7 @@
       </div>
       <div class="field"><label>area</label><div class="chip-select" id="journalEditAreaSelect">
         <div class="chip-opt" data-ar="Health">✚ Health</div><div class="chip-opt" data-ar="Finance">$ Finance</div><div class="chip-opt sel" data-ar="Career">▲ Career</div>
-        <div class="chip-opt" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" data-ar="Growth">↑ Growth</div><div class="chip-opt" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" data-ar="Life">◐ Life</div>
+        <div class="chip-opt" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" data-ar="Growth">↑ Growth</div><div class="chip-opt" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" data-ar="Sol">◐ Sol</div>
       </div></div>
       <div class="field"><label for="journalEditTextInput">note</label><textarea id="journalEditTextInput" class="journal-textarea" rows="5"></textarea></div>
       <div class="modal-actions"><button class="btn" id="cancelJournalModalBtn" type="button">cancel</button><button class="btn btn-accent" id="saveJournalEditBtn" type="button">save note</button></div>
@@ -1760,9 +1765,9 @@
   });
 
   var PRIORITIES = ["P0","P1","P2","P3"];
-  var CATEGORIES = ["Health","Finance","Career","Maintenance","Growth","Relationships","Life"];
-  var CATEGORY_ICONS = { Health:"✚", Finance:"$", Career:"▲", Maintenance:"⚙", Growth:"↑", Relationships:"♥", Life:"◐" };
-  var CATEGORY_COLOR_VAR = { Health:"--cat-health", Finance:"--cat-finance", Career:"--cat-career", Maintenance:"--cat-maintenance", Growth:"--cat-growth", Relationships:"--cat-relationships", Life:"--cat-life" };
+  var CATEGORIES = ["Health","Finance","Career","Maintenance","Growth","Relationships","Sol"];
+  var CATEGORY_ICONS = { Health:"✚", Finance:"$", Career:"▲", Maintenance:"⚙", Growth:"↑", Relationships:"♥", Sol:"◐" };
+  var CATEGORY_COLOR_VAR = { Health:"--cat-health", Finance:"--cat-finance", Career:"--cat-career", Maintenance:"--cat-maintenance", Growth:"--cat-growth", Relationships:"--cat-relationships", Sol:"--cat-sol" };
   function categoryColorVar(cat){ return "var(" + (CATEGORY_COLOR_VAR[cat] || "--text-dim") + ")"; }
   // Uploaded icons are typically monochrome glyphs (black shape on a transparent background), so
   // instead of drawing the raw image we use it as a CSS mask and fill the shape with the goal/
@@ -3416,15 +3421,16 @@
   }
 
   function renderProjectsMatrix(list){
-    var groups = state.goals.map(function(g){ return { id: g.id, title: g.title }; });
-    groups.push({ id: null, title: "Unassigned" });
-    var sections = groups.map(function(g){
-      var items = list.filter(function(p){ return (p.goalId || null) === g.id; });
-      if(!items.length) return "";
+    var byCat = {};
+    list.forEach(function(p){ var c = projectCategory(p) || "__none__"; (byCat[c] = byCat[c] || []).push(p); });
+    var sections = CATEGORIES.concat(["__none__"]).map(function(cat){
+      var items = byCat[cat];
+      if(!items || !items.length) return "";
+      var label = cat === "__none__" ? "Unassigned" : (CATEGORY_ICONS[cat] + " " + cat);
       var tiles = items.map(function(p){
         var overdue = !p.done && p.due && p.due < todayStr();
-        var cat = projectCategory(p);
-        return '<div class="ms-tile' + (cat ? ' ' + cat : '') + '" data-kind="project" data-id="' + p.id + '">' +
+        var tCat = projectCategory(p);
+        return '<div class="ms-tile' + (tCat ? ' ' + tCat : '') + '" data-kind="project" data-id="' + p.id + '">' +
           '<div class="ms-tile-top">' +
             '<button class="ms-check' + (p.done?' done':'') + '" data-action="toggle-proj" data-id="' + p.id + '" aria-label="Toggle done"></button>' +
             '<span class="ms-tile-title' + (p.done?' done':'') + '">' + escapeHtml(p.title) + '</span>' +
@@ -3436,7 +3442,7 @@
           '<span>' + p.hours + 'h</span></div>' +
         '</div>';
       }).join("");
-      return '<div class="matrix-section"><div class="matrix-section-head"><span class="matrix-section-title">' + escapeHtml(g.title) + '</span>' +
+      return '<div class="matrix-section"><div class="matrix-section-head"><span class="matrix-section-title">' + label + '</span>' +
         '<span class="matrix-section-count">' + items.length + '</span><span class="matrix-section-line"></span></div>' +
         '<div class="ms-grid">' + tiles + '</div></div>';
     }).join("");
@@ -3514,11 +3520,12 @@
 
   function renderHabitsMatrix(list){
     var today = todayStr();
-    var groups = state.goals.map(function(g){ return { id: g.id, title: g.title }; });
-    groups.push({ id: null, title: "Unassigned" });
-    var sections = groups.map(function(g){
-      var items = list.filter(function(h){ return (h.goalId || null) === g.id; });
-      if(!items.length) return "";
+    var byCat = {};
+    list.forEach(function(h){ var c = habitCategory(h) || "__none__"; (byCat[c] = byCat[c] || []).push(h); });
+    var sections = CATEGORIES.concat(["__none__"]).map(function(cat){
+      var items = byCat[cat];
+      if(!items || !items.length) return "";
+      var label = cat === "__none__" ? "Unassigned" : (CATEGORY_ICONS[cat] + " " + cat);
       var tiles = items.map(function(h){
         var streak = habitStreak(h);
         var on = habitDoneForDate(h, today);
@@ -3534,7 +3541,7 @@
           '<span style="color:var(--accent)">' + streak + 'd streak</span></div>' +
         '</div>';
       }).join("");
-      return '<div class="matrix-section"><div class="matrix-section-head"><span class="matrix-section-title">' + escapeHtml(g.title) + '</span>' +
+      return '<div class="matrix-section"><div class="matrix-section-head"><span class="matrix-section-title">' + label + '</span>' +
         '<span class="matrix-section-count">' + items.length + '</span><span class="matrix-section-line"></span></div>' +
         '<div class="ms-grid">' + tiles + '</div></div>';
     }).join("");
@@ -3626,15 +3633,16 @@
   }
 
   function renderActionsMatrix(list){
-    var groups = state.goals.map(function(g){ return { id: g.id, title: g.title }; });
-    groups.push({ id: null, title: "Unassigned" });
-    var sections = groups.map(function(g){
-      var items = list.filter(function(a){ return resolveGoalIdForAction(a) === g.id; });
-      if(!items.length) return "";
+    var byCat = {};
+    list.forEach(function(a){ var c = actionCategory(a) || "__none__"; (byCat[c] = byCat[c] || []).push(a); });
+    var sections = CATEGORIES.concat(["__none__"]).map(function(cat){
+      var items = byCat[cat];
+      if(!items || !items.length) return "";
+      var label = cat === "__none__" ? "Unassigned" : (CATEGORY_ICONS[cat] + " " + cat);
       var tiles = items.map(function(a){
         var overdue = !a.done && a.date && a.date < todayStr();
-        var cat = actionCategory(a);
-        return '<div class="ms-tile' + (cat ? ' ' + cat : '') + '" data-kind="action" data-id="' + a.id + '">' +
+        var tCat = actionCategory(a);
+        return '<div class="ms-tile' + (tCat ? ' ' + tCat : '') + '" data-kind="action" data-id="' + a.id + '">' +
           '<div class="ms-tile-top">' +
             '<button class="ms-check' + (a.done?' done':'') + '" data-action="toggle-action" data-id="' + a.id + '" aria-label="Toggle done"></button>' +
             '<span class="ms-tile-title' + (a.done?' done':'') + '">' + escapeHtml(a.title) + '</span>' +
@@ -3647,7 +3655,7 @@
           '</div>' +
         '</div>';
       }).join("");
-      return '<div class="matrix-section"><div class="matrix-section-head"><span class="matrix-section-title">' + escapeHtml(g.title) + '</span>' +
+      return '<div class="matrix-section"><div class="matrix-section-head"><span class="matrix-section-title">' + label + '</span>' +
         '<span class="matrix-section-count">' + items.length + '</span><span class="matrix-section-line"></span></div>' +
         '<div class="ms-grid">' + tiles + '</div></div>';
     }).join("");
@@ -5277,7 +5285,7 @@
   // row itself now carries the area color instead of each individual block.
   // Row order here just needs to match the static HTML row order above — CATEGORIES itself (used
   // for chip-selects, Areas tab, etc.) stays in its own order elsewhere in the app.
-  var TODAY_TIMELINE_AREAS = ["Health","Maintenance","Career","Relationships","Growth","Life","Finance", null];
+  var TODAY_TIMELINE_AREAS = ["Health","Maintenance","Career","Relationships","Growth","Sol","Finance", null];
   function todayTimelineRowId(area){ return area ? "todayTimelineArea-" + area : "todayTimelineAreaOther"; }
   // Every block also carries its own area's color class (same .timeline-block.Health etc rules used
   // elsewhere) on top of the row's background tint, so items read clearly against the row rather
@@ -5340,27 +5348,46 @@
     TODAY_TIMELINE_AREAS.forEach(renderTodayTimelineAreaRow);
   }
   // Dragging a block left/right updates its time-of-day (snapped to 5 min) — this is what "moving
-  // it along the timeline updates its properties" means. A plain click (no drag) toggles the item
-  // done/not-done instead — notes have no done concept, so those clicks are a no-op, same as before.
+  // it along the timeline updates its properties" means. A press only "arms" into a drag after
+  // TL_DRAG_HOLD_MS of holding still (the .tl-holding fill bar shows the wait) — a release before
+  // that toggles the item done/not-done instead (notes have no done concept, so those are a no-op),
+  // which is what keeps an ordinary click from also nudging the block's time by a few minutes.
   // Use the right-click menu (already wired globally via data-kind/data-id) to edit/delete/postpone.
   // Each area row now mixes habit/action/note blocks together, so the kind is read from the block
   // being dragged (data-kind) rather than being fixed per track.
+  var TL_DRAG_HOLD_MS = 1000, TL_DRAG_ARM_MOVE_THRESHOLD = 4;
   function wireTimelineLayerDrag(trackId){
     var track = document.getElementById(trackId);
-    var dragEl = null, dragId = null, dragKind = null, dragDate = null, dragOvernight = false, moved = false;
+    var dragEl = null, dragId = null, dragKind = null, dragDate = null, dragOvernight = false;
+    var armed = false, armTimer = null, moved = false, movedBeforeArm = false, downX = 0, downY = 0;
+    function clearArmTimer(){ if(armTimer){ clearTimeout(armTimer); armTimer = null; } }
     track.addEventListener("pointerdown", function(e){
       if(e.target.closest("[data-resize-handle]")) return; // handled by wireTimelineBlockResize instead
       var block = e.target.closest(".timeline-block");
       if(!block) return;
       dragEl = block; dragId = block.dataset.id; dragKind = block.dataset.kind; dragDate = block.dataset.date;
-      dragOvernight = !!block.dataset.overnight; moved = false;
+      dragOvernight = !!block.dataset.overnight;
+      armed = false; moved = false; movedBeforeArm = false; downX = e.clientX; downY = e.clientY;
+      block.setPointerCapture(e.pointerId);
       // The overnight-spillover tail (yesterday's item continuing past midnight) has no sensible
       // "new start time" to derive from its own left edge, so it isn't draggable — it's still
-      // click-to-toggle below, just never picks up pointer capture/the dragging visual state.
-      if(!dragOvernight){ block.setPointerCapture(e.pointerId); block.classList.add("dragging"); }
+      // click-to-toggle below, just never arms into a drag.
+      if(!dragOvernight){
+        block.classList.add("tl-holding");
+        armTimer = setTimeout(function(){
+          armed = true;
+          block.classList.remove("tl-holding");
+          block.classList.add("dragging");
+        }, TL_DRAG_HOLD_MS);
+      }
     });
     track.addEventListener("pointermove", function(e){
-      if(!dragEl || dragOvernight) return;
+      if(!dragEl) return;
+      if(!armed){
+        var dx = e.clientX - downX, dy = e.clientY - downY;
+        if(Math.sqrt(dx*dx + dy*dy) > TL_DRAG_ARM_MOVE_THRESHOLD) movedBeforeArm = true;
+        return;
+      }
       moved = true;
       var rect = track.getBoundingClientRect();
       var x = Math.min(rect.width, Math.max(0, e.clientX - rect.left));
@@ -5371,15 +5398,18 @@
     });
     track.addEventListener("pointerup", async function(){
       if(!dragEl) return;
+      clearArmTimer();
       var el = dragEl, id = dragId, kind = dragKind, date = dragDate, newTime = el.dataset.pendingTime;
-      dragEl = null; dragId = null; dragKind = null; dragDate = null; dragOvernight = false;
-      el.classList.remove("dragging");
-      if(!moved){
+      var wasArmed = armed, wasMoved = moved, wasMovedBeforeArm = movedBeforeArm;
+      dragEl = null; dragId = null; dragKind = null; dragDate = null; dragOvernight = false; armed = false;
+      el.classList.remove("dragging", "tl-holding");
+      if(!wasArmed){
+        if(wasMovedBeforeArm) return; // let go mid-press before the hold armed — not a clean click either
         if(kind === "habit-instance") await handleHabitMarkClick(id, date);
         else if(kind === "action") await toggleActionDone(id);
         return;
       }
-      if(!newTime) return;
+      if(!wasMoved || !newTime) return;
       if(kind === "habit-instance"){
         var h = state.habits.find(function(x){ return x.id === id; });
         if(h) h.timeOfDay = newTime;
@@ -5399,8 +5429,9 @@
       renderToday();
     });
     track.addEventListener("pointercancel", function(){
-      if(dragEl) dragEl.classList.remove("dragging");
-      dragEl = null; dragId = null; dragKind = null; dragDate = null; dragOvernight = false;
+      clearArmTimer();
+      if(dragEl) dragEl.classList.remove("dragging", "tl-holding");
+      dragEl = null; dragId = null; dragKind = null; dragDate = null; dragOvernight = false; armed = false;
     });
   }
   TODAY_TIMELINE_AREAS.forEach(function(area){ wireTimelineLayerDrag(todayTimelineRowId(area)); });
