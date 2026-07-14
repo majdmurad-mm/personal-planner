@@ -478,7 +478,12 @@
   .timeline-block{ position:absolute; top:2px; bottom:2px; min-width:10px; border-radius:4px; border-left:3px solid var(--border-bright); background:var(--bg-raised); border-top:1px solid var(--border-bright); border-right:1px solid var(--border-bright); border-bottom:1px solid var(--border-bright); cursor:grab; overflow:hidden; padding:0 5px; display:flex; align-items:center; user-select:none; touch-action:none; }
   .timeline-block:hover{ border-color:var(--accent-dim); z-index:2; }
   .timeline-block.dragging{ cursor:grabbing; z-index:3; box-shadow:0 4px 14px rgba(0,0,0,0.4); }
+  .timeline-block.resizing{ z-index:3; box-shadow:0 4px 14px rgba(0,0,0,0.4); }
   .timeline-block[data-overnight]{ cursor:default; border-left-style:dashed; }
+  /* Right-edge grab strip for stretching a habit/action's duration — notes and the overnight tail
+     don't get one (see todayTimelineBlockHtml's resizable flag). */
+  .timeline-block-resize{ position:absolute; right:0; top:0; bottom:0; width:7px; cursor:ew-resize; }
+  .timeline-block-resize:hover{ background:rgba(255,255,255,0.18); }
   .timeline-block-title{ font-family:var(--mono); font-size:9.5px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; z-index:1; }
   .timeline-block.done{ opacity:0.5; }
   /* Filled area tint, not just a border accent — these blocks are often too narrow (short
@@ -775,12 +780,12 @@
           <div class="today-timeline-row-labels">
             <span></span>
             <span class="Health" title="Health">✚</span>
-            <span class="Finance" title="Finance">$</span>
-            <span class="Career" title="Career">▲</span>
             <span class="Maintenance" title="Maintenance">⚙</span>
-            <span class="Growth" title="Growth">↑</span>
+            <span class="Career" title="Career">▲</span>
             <span class="Relationships" title="Relationships">♥</span>
+            <span class="Growth" title="Growth">↑</span>
             <span class="Life" title="Life">◐</span>
+            <span class="Finance" title="Finance">$</span>
             <span title="No area set">○</span>
           </div>
           <div class="today-timeline-main">
@@ -789,12 +794,12 @@
                 <div class="today-timeline-daynight" id="todayTimelineDayNight"></div>
               </div>
               <div class="today-timeline-row Health" id="todayTimelineArea-Health"></div>
-              <div class="today-timeline-row Finance" id="todayTimelineArea-Finance"></div>
-              <div class="today-timeline-row Career" id="todayTimelineArea-Career"></div>
               <div class="today-timeline-row Maintenance" id="todayTimelineArea-Maintenance"></div>
-              <div class="today-timeline-row Growth" id="todayTimelineArea-Growth"></div>
+              <div class="today-timeline-row Career" id="todayTimelineArea-Career"></div>
               <div class="today-timeline-row Relationships" id="todayTimelineArea-Relationships"></div>
+              <div class="today-timeline-row Growth" id="todayTimelineArea-Growth"></div>
               <div class="today-timeline-row Life" id="todayTimelineArea-Life"></div>
+              <div class="today-timeline-row Finance" id="todayTimelineArea-Finance"></div>
               <div class="today-timeline-row" id="todayTimelineAreaOther"></div>
               <div class="today-timeline-now" id="todayTimelineNow"><span class="today-timeline-now-label" id="todayTimelineNowLabel"></span></div>
             </div>
@@ -1488,6 +1493,13 @@
 <div class="ctx-menu" id="globalCtxMenu" hidden>
   <button class="ctx-menu-item" data-ctx="edit" type="button">edit</button>
   <button class="ctx-menu-item danger" data-ctx="delete" type="button">delete</button>
+</div>
+
+<!-- ===== TODAY TIMELINE "ADD" MENU (click empty row space) ===== -->
+<div class="ctx-menu" id="todayAddMenu" hidden>
+  <button class="ctx-menu-item" data-add="habit" type="button">+ habit</button>
+  <button class="ctx-menu-item" data-add="action" type="button">+ action</button>
+  <button class="ctx-menu-item" data-add="note" type="button">+ note</button>
 </div>
 
 <div class="global-toast" id="globalToast" style="display:none;"></div>
@@ -4640,15 +4652,18 @@
   // One row per life area (plus a catch-all "other" row for anything with no derivable area) —
   // habits, actions, and notes are all mixed into whichever row matches their own area, since the
   // row itself now carries the area color instead of each individual block.
-  var TODAY_TIMELINE_AREAS = CATEGORIES.concat([null]);
+  // Row order here just needs to match the static HTML row order above — CATEGORIES itself (used
+  // for chip-selects, Areas tab, etc.) stays in its own order elsewhere in the app.
+  var TODAY_TIMELINE_AREAS = ["Health","Maintenance","Career","Relationships","Growth","Life","Finance", null];
   function todayTimelineRowId(area){ return area ? "todayTimelineArea-" + area : "todayTimelineAreaOther"; }
   // Every block also carries its own area's color class (same .timeline-block.Health etc rules used
   // elsewhere) on top of the row's background tint, so items read clearly against the row rather
   // than blending into it.
-  function todayTimelineBlockHtml(kind, id, date, left, width, title, label, area, extraClass, overnight){
+  function todayTimelineBlockHtml(kind, id, date, left, width, title, label, area, extraClass, overnight, resizable){
     var cls = (area ? " " + area : "") + (extraClass || "");
+    var handle = resizable ? '<span class="timeline-block-resize" data-resize-handle="1"></span>' : "";
     return '<div class="timeline-block' + cls + '" data-kind="' + kind + '" data-id="' + id + '" data-date="' + date + '"' + (overnight ? ' data-overnight="1"' : '') + ' style="left:' + left + '%; width:' + width + '%;" title="' + escapeHtml(title) + '">' +
-      '<span class="timeline-block-title">' + label + '</span></div>';
+      '<span class="timeline-block-title">' + label + '</span>' + handle + '</div>';
   }
   function renderTodayTimelineAreaRow(area){
     var track = document.getElementById(todayTimelineRowId(area));
@@ -4658,12 +4673,13 @@
     state.habits.filter(function(h){ return !!h.timeOfDay && habitOccursOnDate(h, todaySelectedDate) && habitCategory(h) === area; }).forEach(function(h){
       var startFrac = timeToFraction(h.timeOfDay) * 100;
       var widthFrac = Math.max(1.2, ((h.durationMinutes || 15) / 1440) * 100);
-      html += todayTimelineBlockHtml("habit-instance", h.id, todaySelectedDate, startFrac, widthFrac, h.title + " — " + fmtTimeOfDay(h.timeOfDay), escapeHtml(h.title), area);
+      html += todayTimelineBlockHtml("habit-instance", h.id, todaySelectedDate, startFrac, widthFrac, h.title + " — " + fmtTimeOfDay(h.timeOfDay), escapeHtml(h.title), area, "", false, true);
     });
     // Habits that started yesterday and run past midnight (sleep being the obvious one — 11:30pm to
     // 7:30am) show their overnight tail here too, continued from the very start of today. Not
-    // draggable: dragging this segment would have no sensible meaning for the habit's own start
-    // time, so wireTimelineLayerDrag skips anything with data-overnight.
+    // draggable/resizable: neither has a sensible meaning for this segment's own start time or
+    // duration, so wireTimelineLayerDrag/wireTimelineBlockResize both skip anything with
+    // data-overnight (and it's never rendered with a resize handle in the first place).
     state.habits.filter(function(h){ return !!h.timeOfDay && habitOccursOnDate(h, yesterday) && habitCategory(h) === area; }).forEach(function(h){
       var spillMin = overnightSpilloverMinutes(h.timeOfDay, h.durationMinutes);
       if(!spillMin) return;
@@ -4673,7 +4689,7 @@
     state.actions.filter(function(a){ return a.date === todaySelectedDate && !!a.timeOfDay && actionCategory(a) === area; }).forEach(function(a){
       var startFrac = timeToFraction(a.timeOfDay) * 100;
       var widthFrac = Math.max(1.2, ((a.durationMinutes || 15) / 1440) * 100);
-      html += todayTimelineBlockHtml("action", a.id, todaySelectedDate, startFrac, widthFrac, a.title + " — " + fmtTimeOfDay(a.timeOfDay), escapeHtml(a.title), area, a.done ? " done" : "");
+      html += todayTimelineBlockHtml("action", a.id, todaySelectedDate, startFrac, widthFrac, a.title + " — " + fmtTimeOfDay(a.timeOfDay), escapeHtml(a.title), area, a.done ? " done" : "", false, true);
     });
     // Same overnight-spillover treatment as habits, for actions scheduled yesterday with a duration
     // that runs past midnight.
@@ -4704,6 +4720,7 @@
     var track = document.getElementById(trackId);
     var dragEl = null, dragId = null, dragKind = null, moved = false;
     track.addEventListener("pointerdown", function(e){
+      if(e.target.closest("[data-resize-handle]")) return; // handled by wireTimelineBlockResize instead
       var block = e.target.closest(".timeline-block");
       // The overnight-spillover tail (yesterday's item continuing past midnight) has no sensible
       // "new start time" to derive from its own left edge — it isn't draggable.
@@ -4753,18 +4770,100 @@
   }
   TODAY_TIMELINE_AREAS.forEach(function(area){ wireTimelineLayerDrag(todayTimelineRowId(area)); });
 
-  // Clicking empty space in an area's row (not an existing block, which is handled by the drag
-  // wiring above) quick-creates a note at that time, pre-tagged with that row's area.
-  TODAY_TIMELINE_AREAS.forEach(function(area){
-    document.getElementById(todayTimelineRowId(area)).addEventListener("click", async function(e){
-      if(e.target.closest(".timeline-block")) return;
-      var rect = this.getBoundingClientRect();
+  // Dragging a block's right-edge handle stretches/shrinks it, which is what "duration" means here
+  // — the block's left edge (start time) never moves, only the width. Only habit/action blocks get
+  // a handle (see todayTimelineBlockHtml's resizable flag); notes have no duration field.
+  function wireTimelineBlockResize(trackId){
+    var track = document.getElementById(trackId);
+    var resizeEl = null, resizeId = null, resizeKind = null, resizeStartLeftPct = 0, moved = false;
+    track.addEventListener("pointerdown", function(e){
+      var handle = e.target.closest("[data-resize-handle]");
+      if(!handle) return;
+      var block = handle.closest(".timeline-block");
+      if(!block) return;
+      resizeEl = block; resizeId = block.dataset.id; resizeKind = block.dataset.kind; moved = false;
+      resizeStartLeftPct = parseFloat(block.style.left) || 0;
+      handle.setPointerCapture(e.pointerId);
+      block.classList.add("resizing");
+    });
+    track.addEventListener("pointermove", function(e){
+      if(!resizeEl) return;
+      moved = true;
+      var rect = track.getBoundingClientRect();
       var x = Math.min(rect.width, Math.max(0, e.clientX - rect.left));
-      var totalMin = Math.round(((x / rect.width) * 1440) / 5) * 5;
-      var newTime = minutesToTime(totalMin);
-      var text = prompt("New " + (area || "uncategorized") + " note at " + fmtTimeOfDay(newTime) + ":");
+      var leftPx = (resizeStartLeftPct / 100) * rect.width;
+      var widthPx = Math.max(6, x - leftPx);
+      var durationMin = Math.max(5, Math.round(((widthPx / rect.width) * 1440) / 5) * 5);
+      resizeEl.style.width = Math.max(1.2, (widthPx / rect.width) * 100) + "%";
+      resizeEl.dataset.pendingDuration = durationMin;
+    });
+    track.addEventListener("pointerup", async function(){
+      if(!resizeEl) return;
+      var el = resizeEl, id = resizeId, kind = resizeKind, durationMin = el.dataset.pendingDuration;
+      resizeEl = null; resizeId = null; resizeKind = null;
+      el.classList.remove("resizing");
+      if(!moved || !durationMin) return;
+      durationMin = Number(durationMin);
+      if(kind === "habit-instance"){
+        var h = state.habits.find(function(x){ return x.id === id; });
+        if(h) h.durationMinutes = durationMin;
+        var r = await safeUpdate("habits", id, { duration_minutes: durationMin });
+        if(r.error) console.error(r.error); else warnDroppedFields(r.droppedFields);
+      } else {
+        var a = state.actions.find(function(x){ return x.id === id; });
+        if(a) a.durationMinutes = durationMin;
+        var r2 = await safeUpdate("actions", id, { duration_minutes: durationMin });
+        if(r2.error) console.error(r2.error); else warnDroppedFields(r2.droppedFields);
+      }
+      renderToday();
+    });
+    track.addEventListener("pointercancel", function(){
+      if(resizeEl) resizeEl.classList.remove("resizing");
+      resizeEl = null; resizeId = null; resizeKind = null;
+    });
+  }
+  TODAY_TIMELINE_AREAS.forEach(function(area){ wireTimelineBlockResize(todayTimelineRowId(area)); });
+
+  // Clicking empty space in an area's row shows a small "what do you want to add" picker (habit,
+  // action, or note) instead of assuming a note — existing blocks are handled by the drag/resize
+  // wiring above, not this.
+  var todayAddMenuTarget = null;
+  function openTodayAddMenu(x, y, area, time){
+    todayAddMenuTarget = { area: area, time: time };
+    var menu = document.getElementById("todayAddMenu");
+    menu.hidden = false;
+    var maxX = window.innerWidth - menu.offsetWidth - 8;
+    var maxY = window.innerHeight - menu.offsetHeight - 8;
+    menu.style.left = Math.max(4, Math.min(x, maxX)) + "px";
+    menu.style.top = Math.max(4, Math.min(y, maxY)) + "px";
+  }
+  function closeTodayAddMenu(){
+    document.getElementById("todayAddMenu").hidden = true;
+    todayAddMenuTarget = null;
+  }
+  document.addEventListener("click", function(e){
+    var menu = document.getElementById("todayAddMenu");
+    if(!menu.hidden && !menu.contains(e.target)) closeTodayAddMenu();
+  });
+  document.getElementById("todayAddMenu").addEventListener("click", async function(e){
+    var btn = e.target.closest("[data-add]");
+    if(!btn || !todayAddMenuTarget) return;
+    var target = todayAddMenuTarget;
+    closeTodayAddMenu();
+    if(btn.dataset.add === "habit"){
+      openHabitModal(null, null);
+      if(target.area) setChip(document.getElementById("habitAreaSelect"), "ar", target.area);
+      fillHabitGoalSelect();
+      document.getElementById("habitTimeInput").value = target.time;
+    } else if(btn.dataset.add === "action"){
+      openActionModal(null, null);
+      if(target.area) setChip(document.getElementById("actionAreaSelect"), "ar", target.area);
+      fillActionParentSelect();
+      document.getElementById("actionTimeInput").value = target.time;
+    } else if(btn.dataset.add === "note"){
+      var text = prompt("New " + (target.area || "uncategorized") + " note at " + fmtTimeOfDay(target.time) + ":");
       if(!text || !text.trim()) return;
-      var payload = { date: todaySelectedDate, text: text.trim(), time_of_day: newTime, category: area };
+      var payload = { date: todaySelectedDate, text: text.trim(), time_of_day: target.time, category: target.area };
       var res = await safeWrite(function(p){ return sb.from("journal").insert(p).select().single(); }, payload);
       if(res.error){ alert(res.error.message); return; }
       var r = res.data;
@@ -4772,6 +4871,17 @@
       renderToday();
       renderJournal();
       warnDroppedFields(res.droppedFields);
+    }
+  });
+  TODAY_TIMELINE_AREAS.forEach(function(area){
+    document.getElementById(todayTimelineRowId(area)).addEventListener("click", function(e){
+      if(e.target.closest(".timeline-block")) return;
+      var rect = this.getBoundingClientRect();
+      var x = Math.min(rect.width, Math.max(0, e.clientX - rect.left));
+      var totalMin = Math.round(((x / rect.width) * 1440) / 5) * 5;
+      var newTime = minutesToTime(totalMin);
+      e.stopPropagation(); // keep this click from immediately closing the menu it's about to open
+      openTodayAddMenu(e.clientX, e.clientY, area, newTime);
     });
   });
 
