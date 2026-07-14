@@ -660,6 +660,57 @@
   .person-contact{ font-family:var(--mono); font-size:11px; color:var(--text-dim); margin-top:8px; }
   .person-notes{ font-size:12px; color:var(--text-dim); margin-top:8px; line-height:1.4; }
 
+  /* ===== MINDFUL WORKOUT (habit-linked page) ===== */
+  .mw-disclaimer{ display:flex; align-items:center; gap:12px; margin:18px 0; padding:11px 14px; background:var(--p0-bg); border:1px solid var(--p0); border-radius:var(--radius); }
+  .mw-disclaimer-text{ font-size:12.5px; color:var(--text-dim); line-height:1.5; flex:1; }
+  .mw-disclaimer-text strong{ color:var(--p0); }
+  .mw-disclaimer.dismissed{ display:none; }
+  .mw-weekly{ margin:18px 0; }
+  .mw-weekly-title{ font-family:var(--mono); font-size:11px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.05em; }
+  .mw-weekly-grid{ display:flex; flex-direction:column; gap:6px; margin-top:10px; }
+  .mw-weekly-row{ display:flex; align-items:center; gap:10px; }
+  .mw-weekly-row-label{ font-family:var(--mono); font-size:10.5px; color:var(--text-faint); width:78px; flex-shrink:0; }
+  .mw-weekly-days{ display:flex; gap:8px; }
+  .mw-day-box{ font-family:var(--mono); font-size:10.5px; color:var(--text-dim); background:var(--bg-raised); border:1px solid var(--border-bright); border-radius:var(--radius); padding:6px 10px; cursor:pointer; transition:all .15s ease; display:flex; flex-direction:column; align-items:center; gap:2px; min-width:52px; }
+  .mw-day-box:hover{ border-color:var(--accent-dim); }
+  .mw-day-box .mw-day-name{ font-weight:700; }
+  .mw-day-box .mw-day-date{ font-size:9px; color:var(--text-faint); }
+  .mw-day-box.on{ background:var(--cat-health-bg); border-color:var(--cat-health); color:var(--cat-health); }
+  .mw-day-box.on .mw-day-date{ color:var(--cat-health); opacity:0.8; }
+  .mw-day-box.future{ opacity:0.4; cursor:default; }
+  .sub-view-toggle#mwPhaseTabs{ margin-top:20px; }
+  .mw-phase{ margin-top:18px; display:flex; flex-direction:column; gap:14px; }
+  .mw-card{ background:var(--bg-raised); border:1px solid var(--border); border-radius:6px; padding:16px 18px; }
+  .mw-card-head{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+  .mw-card-head h3{ margin:0; font-size:15px; font-weight:700; }
+  .mw-card-sub{ font-family:var(--mono); font-size:10.5px; color:var(--text-faint); }
+  .mw-timer{ display:flex; align-items:center; gap:16px; margin-top:12px; }
+  .mw-timer-display{ font-family:var(--mono); font-size:30px; font-weight:700; color:var(--accent); min-width:96px; transition:color .2s ease, text-shadow .2s ease; }
+  .mw-timer-display.mw-pulse{ animation:mwPulse 0.6s ease-in-out 3; }
+  @keyframes mwPulse{ 0%,100%{ color:var(--accent); text-shadow:none; } 50%{ color:var(--cat-health); text-shadow:0 0 14px var(--cat-health); } }
+  .mw-timer-controls{ display:flex; gap:8px; }
+  .mw-callout{ font-size:12.5px; line-height:1.5; padding:10px 13px; border-radius:var(--radius); margin-top:12px; }
+  .mw-callout-danger{ background:var(--p0-bg); border:1px solid var(--p0); color:var(--text-dim); }
+  .mw-callout-danger strong{ color:var(--p0); }
+  .mw-callout-tip{ background:var(--cat-health-bg); border:1px solid var(--cat-health); color:var(--text-dim); }
+  .mw-callout-tip strong{ color:var(--cat-health); }
+  .mw-pose-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(220px,1fr)); gap:12px; margin-top:14px; }
+  .mw-pose-card{ background:var(--bg-inset); border:1px solid var(--border); border-radius:var(--radius); padding:13px 14px; }
+  .mw-pose-card h4{ margin:0 0 6px; font-size:13px; font-weight:700; }
+  .mw-pose-card ul{ margin:0 0 10px; padding-left:16px; font-size:12px; color:var(--text-dim); line-height:1.5; }
+  .mw-exercise-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(260px,1fr)); gap:12px; }
+  .mw-exercise-card{ background:var(--bg-raised); border:1px solid var(--border); border-radius:6px; padding:15px 16px; transition:opacity .2s ease; }
+  .mw-exercise-card.done{ opacity:0.55; }
+  .mw-exercise-card.done .mw-exercise-name{ text-decoration:line-through; }
+  .mw-exercise-name{ margin:0; font-size:14px; font-weight:700; }
+  .mw-exercise-prescription{ font-family:var(--mono); font-size:10.5px; color:var(--text-faint); margin-top:3px; }
+  .mw-set-row{ display:flex; gap:8px; margin-top:12px; }
+  .mw-set-bubble{ width:36px; height:36px; border-radius:50%; border:1.5px solid var(--border-bright); background:var(--bg-inset); color:var(--text-dim); font-family:var(--mono); font-size:12px; font-weight:700; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all .15s ease; }
+  .mw-set-bubble:hover{ border-color:var(--accent-dim); }
+  .mw-set-bubble.on{ background:var(--cat-health); border-color:var(--cat-health); color:#04140F; }
+  .mw-plank-timer{ display:flex; align-items:center; gap:12px; margin-top:12px; padding-top:12px; border-top:1px solid var(--border); }
+  .mw-plank-timer .mw-timer-display{ font-size:22px; min-width:64px; }
+
   /* ===== DRAG-TO-REORDER (list views) ===== */
   [draggable="true"]{ cursor:grab; }
   [draggable="true"].dragging{ opacity:0.4; cursor:grabbing; }
@@ -1079,6 +1130,87 @@
         <div class="sleep-list" id="sleepList"></div>
         <div class="empty-state" id="sleepEmptyState" style="display:none;">
           <div class="glyph">☾</div><h3>no sleep data yet</h3><p>Add a score manually, or import from Garmin above.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== MINDFUL WORKOUT (habit-linked page) ===== -->
+    <!-- Reached by clicking the "Mindful Workout" habit (see isMindfulWorkoutHabit/openMindfulWorkoutPage)
+         — same "click a specific item, get a hand-built page" pattern as the Goal Detail page's sleep
+         block, just habit-triggered and full-page instead of a conditional block. -->
+    <section id="mindfulWorkoutSection" style="display:none;">
+      <div class="main-header">
+        <div>
+          <button class="btn" id="mwBackBtn" type="button">‹ back</button>
+          <h1 style="margin-top:10px;">mindful movement tracker</h1>
+          <p class="subhead">Back-friendly strength &amp; mobility — Monday, Wednesday, Friday.</p>
+        </div>
+      </div>
+
+      <div class="mw-disclaimer" id="mwDisclaimer">
+        <span class="mw-disclaimer-text"><strong>Not medical advice.</strong> Listen to your body, prioritize form over weight, and stop immediately if you feel sharp back pain.</span>
+        <button class="icon-btn" id="mwDismissDisclaimerBtn" type="button" aria-label="Dismiss">&times;</button>
+      </div>
+
+      <div class="mw-weekly">
+        <div class="mw-weekly-head"><span class="mw-weekly-title">progress — last 4 weeks</span></div>
+        <div class="mw-weekly-grid" id="mwWeeklyGrid"></div>
+      </div>
+
+      <div class="sub-view-toggle" id="mwPhaseTabs">
+        <button class="sub-view-tab active" data-phase="warmup" type="button">1 · warm-up</button>
+        <button class="sub-view-tab" data-phase="cardio" type="button">2 · cardio</button>
+        <button class="sub-view-tab" data-phase="strength" type="button">3 · strength &amp; core</button>
+      </div>
+
+      <div class="mw-phase" id="mwPhase-warmup">
+        <div class="mw-card">
+          <div class="mw-card-head"><h3>meditation</h3><span class="mw-card-sub">5 minutes</span></div>
+          <div class="mw-timer" id="mwTimer-meditation">
+            <span class="mw-timer-display" id="mwTimerDisplay-meditation">05:00</span>
+            <div class="mw-timer-controls">
+              <button class="btn" data-timer="meditation" data-action="start" type="button">play</button>
+              <button class="btn" data-timer="meditation" data-action="pause" type="button">pause</button>
+              <button class="btn" data-timer="meditation" data-action="reset" type="button">reset</button>
+            </div>
+          </div>
+        </div>
+        <div class="mw-card">
+          <div class="mw-card-head"><h3>gentle yoga</h3><span class="mw-card-sub">10 minutes</span></div>
+          <div class="mw-timer" id="mwTimer-yoga">
+            <span class="mw-timer-display" id="mwTimerDisplay-yoga">10:00</span>
+            <div class="mw-timer-controls">
+              <button class="btn" data-timer="yoga" data-action="start" type="button">play</button>
+              <button class="btn" data-timer="yoga" data-action="pause" type="button">pause</button>
+              <button class="btn" data-timer="yoga" data-action="reset" type="button">reset</button>
+            </div>
+          </div>
+          <div class="mw-pose-grid" id="mwPoseGrid"></div>
+        </div>
+      </div>
+
+      <div class="mw-phase" id="mwPhase-cardio" style="display:none;">
+        <div class="mw-card">
+          <div class="mw-card-head"><h3>rowing</h3><span class="mw-card-sub">10 minutes</span></div>
+          <div class="mw-callout mw-callout-danger">
+            <strong>Form &amp; back safety:</strong> Sit tall. Drive through your legs, keep your core locked, and maintain a neutral spine.
+          </div>
+          <div class="mw-timer" id="mwTimer-rowing">
+            <span class="mw-timer-display" id="mwTimerDisplay-rowing">10:00</span>
+            <div class="mw-timer-controls">
+              <button class="btn" data-timer="rowing" data-action="start" type="button">play</button>
+              <button class="btn" data-timer="rowing" data-action="pause" type="button">pause</button>
+              <button class="btn" data-timer="rowing" data-action="reset" type="button">reset</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mw-phase" id="mwPhase-strength" style="display:none;">
+        <div class="mw-exercise-grid" id="mwExerciseGrid"></div>
+        <div class="panel-actions">
+          <p class="panel-hint">Sets are per-day — a fresh day starts unchecked. Reset clears today's sets and every timer.</p>
+          <button class="btn" id="mwResetBtn" type="button">reset workout</button>
         </div>
       </div>
     </section>
@@ -2193,7 +2325,7 @@
     });
   }
 
-  var ALL_SECTION_IDS = ["todaySection","plannerSection","areasSection","trackerSection","whiteboardSection","agentSection","calendarSection","timelineSection","journalSection","peopleSection","goalDetailSection","areaDetailSection"];
+  var ALL_SECTION_IDS = ["todaySection","plannerSection","areasSection","trackerSection","whiteboardSection","agentSection","calendarSection","timelineSection","journalSection","peopleSection","goalDetailSection","areaDetailSection","mindfulWorkoutSection"];
   function showSection(name){
     activeSection = name;
     document.querySelectorAll(".side-link").forEach(function(l){ l.classList.toggle("active", l.dataset.section === name); });
@@ -2832,7 +2964,17 @@
   }
   function editGoal(id){ var g = goalById(id); if(g) openGoalModal(g); }
   function editProject(id){ var p = projectById(id); if(p) openProjectModal(null, p); }
-  function editHabit(id){ var h = state.habits.find(function(x){ return x.id === id; }); if(h) openHabitModal(null, h); }
+  // Individually-designed habit pages: specific habits (matched by title, same pattern as
+  // isSleepGoal) open a hand-built full page instead of the generic edit modal. Mindful Workout is
+  // the first one; more habits can get their own page the same way over time.
+  function isMindfulWorkoutHabit(h){
+    return !!h.title && h.title.trim().toLowerCase() === "mindful workout";
+  }
+  function editHabit(id){
+    var h = state.habits.find(function(x){ return x.id === id; });
+    if(!h) return;
+    if(isMindfulWorkoutHabit(h)) openMindfulWorkoutPage(); else openHabitModal(null, h);
+  }
   function editAction(id){ var a = state.actions.find(function(x){ return x.id === id; }); if(a) openActionModal(null, a); }
 
   /* ---------------- Generic right-click edit/delete (goals, projects, habits, actions, journal, people) ---------------- */
@@ -3022,6 +3164,245 @@
     }
   }
   document.getElementById("goalDetailBackBtn").addEventListener("click", closeGoalDetailPage);
+
+  /* ---------------- Mindful Workout (habit-linked page) ---------------- */
+  var MW_YOGA_POSES = [
+    { name:"Cat-Cow Stretch", bullets:["Alternate slowly arching and rounding your spine, moving with your breath."], tip:"Lead the motion from your chest and hips, not your lower back — keep it small and controlled." },
+    { name:"Child's Pose", bullets:["Sit back onto your heels, arms extended forward, forehead resting toward the floor."], tip:"Widen your knees if that eases any pressure on your lower back." },
+    { name:"Gentle Cobra", bullets:["Lift your chest slightly off the floor, elbows bent and close to your body."], tip:"Only rise as far as feels easy — this is a small lift, not a deep backbend." }
+  ];
+  var MW_EXERCISES = [
+    { key:"press", name:"Standing Dumbbell Overhead Press", prescription:"3 sets × 10–12 reps" },
+    { key:"pushup", name:"Incline Push-ups", prescription:"3 sets × 8–10 reps" },
+    { key:"curl", name:"Dumbbell Bicep Curls", prescription:"3 sets × 12 reps" },
+    { key:"tricep", name:"Overhead Dumbbell Tricep Extension", prescription:"3 sets × 10–12 reps" },
+    { key:"plank", name:"Plank", prescription:"3 holds × 20–30 sec", timer:30 },
+    { key:"birddog", name:"Bird-Dog", prescription:"3 sets × 8–10 reps per side" }
+  ];
+  function mwLoadJSON(key, fallback){
+    try{ var raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; } catch(e){ return fallback; }
+  }
+  function mwSaveJSON(key, val){
+    try{ localStorage.setItem(key, JSON.stringify(val)); } catch(e){}
+  }
+  function mwFormatTime(totalSec){
+    var m = Math.floor(totalSec/60), s = totalSec%60;
+    return String(m).padStart(2,"0") + ":" + String(s).padStart(2,"0");
+  }
+  // ---- Countdown timer engine — shared by the 3 static phase timers (meditation/yoga/rowing) and
+  // every strength card that has one (currently just Plank). State lives in mwTimers (not the DOM),
+  // so re-rendering a card's HTML (see renderMwExercises) never loses a running timer's progress —
+  // mwUpdateTimerDisplay looks the element up fresh by id on every tick instead of holding a
+  // reference, and mwEnsureTimer only initializes a timer once per session (a later call just
+  // refreshes the display from whatever's already there, so navigating away and back resumes a
+  // paused timer instead of silently resetting it).
+  var mwTimers = {};
+  function mwEnsureTimer(key, totalSeconds){
+    if(!mwTimers[key]) mwTimers[key] = { remaining: totalSeconds, total: totalSeconds, intervalId: null, running: false };
+    mwUpdateTimerDisplay(key);
+  }
+  function mwUpdateTimerDisplay(key){
+    var el = document.getElementById("mwTimerDisplay-" + key);
+    if(el && mwTimers[key]) el.textContent = mwFormatTime(Math.max(0, mwTimers[key].remaining));
+  }
+  function mwStartTimer(key){
+    var t = mwTimers[key];
+    if(!t || t.running || t.remaining <= 0) return;
+    t.running = true;
+    t.intervalId = setInterval(function(){
+      t.remaining--;
+      mwUpdateTimerDisplay(key);
+      if(t.remaining <= 0){
+        mwPauseTimer(key);
+        mwOnTimerComplete(key);
+      }
+    }, 1000);
+  }
+  function mwPauseTimer(key){
+    var t = mwTimers[key];
+    if(!t) return;
+    t.running = false;
+    if(t.intervalId){ clearInterval(t.intervalId); t.intervalId = null; }
+  }
+  function mwResetTimer(key){
+    var t = mwTimers[key];
+    if(!t) return;
+    mwPauseTimer(key);
+    t.remaining = t.total;
+    mwUpdateTimerDisplay(key);
+  }
+  // Gentle 3-note chime (Web Audio, no external file) plus a brief color-pulse on the timer's own
+  // display — covers both audio-off and sound-off-by-policy cases (autoplay/permission quirks).
+  function mwOnTimerComplete(key){
+    var el = document.getElementById("mwTimerDisplay-" + key);
+    if(el){
+      el.classList.remove("mw-pulse");
+      void el.offsetWidth;
+      el.classList.add("mw-pulse");
+    }
+    mwPlayChime();
+  }
+  function mwPlayChime(){
+    try{
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      if(!Ctx) return;
+      var ctx = new Ctx();
+      [523.25, 659.25, 783.99].forEach(function(freq, i){
+        var osc = ctx.createOscillator(), gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = freq;
+        var start = ctx.currentTime + i * 0.15;
+        gain.gain.setValueAtTime(0, start);
+        gain.gain.linearRampToValueAtTime(0.18, start + 0.03);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.5);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start(start);
+        osc.stop(start + 0.55);
+      });
+    } catch(e){ /* no audio available — the visual pulse still shows */ }
+  }
+  function mwMondayOf(dateStr){
+    var d = new Date(dateStr + "T00:00:00");
+    var day = d.getDay();
+    d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
+    return d;
+  }
+  function mwAddDays(d, n){ var nd = new Date(d); nd.setDate(nd.getDate() + n); return nd; }
+  function mwDateStr(d){ return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0"); }
+  // Rolling 4 weeks ending with the current one (rather than calendar-month-aligned) — always exactly
+  // 4 rows regardless of where in the month "today" falls, no month-boundary edge cases.
+  function renderMwWeekly(){
+    var grid = document.getElementById("mwWeeklyGrid");
+    if(!grid) return;
+    var wkState = mwLoadJSON("mw_weekly_v1", {});
+    var todayKey = todayStr();
+    var thisMonday = mwMondayOf(todayKey);
+    var html = "";
+    for(var w=3; w>=0; w--){
+      var monday = mwAddDays(thisMonday, -7*w);
+      var label = w === 0 ? "this week" : (w + " week" + (w===1?"":"s") + " ago");
+      var days = [{off:0,name:"Mon"},{off:2,name:"Wed"},{off:4,name:"Fri"}].map(function(dd){
+        var dt = mwAddDays(monday, dd.off);
+        var key = mwDateStr(dt);
+        var on = !!wkState[key];
+        var isFuture = key > todayKey;
+        return '<button type="button" class="mw-day-box' + (on?' on':'') + (isFuture?' future':'') + '" data-mw-day="' + key + '"' + (isFuture?' disabled':'') + '>' +
+          '<span class="mw-day-name">' + dd.name + '</span><span class="mw-day-date">' + (dt.getMonth()+1) + '/' + dt.getDate() + '</span></button>';
+      }).join("");
+      html += '<div class="mw-weekly-row"><span class="mw-weekly-row-label">' + label + '</span><div class="mw-weekly-days">' + days + '</div></div>';
+    }
+    grid.innerHTML = html;
+  }
+  function mwToggleWeeklyDay(dateStr){
+    var wkState = mwLoadJSON("mw_weekly_v1", {});
+    wkState[dateStr] = !wkState[dateStr];
+    mwSaveJSON("mw_weekly_v1", wkState);
+    renderMwWeekly();
+  }
+  // Set-completion state is per-day (keyed by date, see mwToggleSet) — a fresh day always starts
+  // with every set unchecked, and "reset workout" just deletes today's entry.
+  function renderMwExercises(){
+    var grid = document.getElementById("mwExerciseGrid");
+    if(!grid) return;
+    var daily = mwLoadJSON("mw_daily_v1", {});
+    var todaySets = (daily[todayStr()] && daily[todayStr()].sets) || {};
+    grid.innerHTML = MW_EXERCISES.map(function(ex){
+      var sets = todaySets[ex.key] || [false,false,false];
+      var allDone = sets[0] && sets[1] && sets[2];
+      var bubbles = [0,1,2].map(function(i){
+        return '<button type="button" class="mw-set-bubble' + (sets[i]?' on':'') + '" data-mw-set-ex="' + ex.key + '" data-mw-set-idx="' + i + '" aria-label="Set ' + (i+1) + '">' + (i+1) + '</button>';
+      }).join("");
+      var timerHtml = ex.timer ? (
+        '<div class="mw-plank-timer" id="mwTimer-' + ex.key + '">' +
+          '<span class="mw-timer-display" id="mwTimerDisplay-' + ex.key + '">' + mwFormatTime(ex.timer) + '</span>' +
+          '<div class="mw-timer-controls">' +
+            '<button class="btn" data-timer="' + ex.key + '" data-action="start" type="button">play</button>' +
+            '<button class="btn" data-timer="' + ex.key + '" data-action="pause" type="button">pause</button>' +
+            '<button class="btn" data-timer="' + ex.key + '" data-action="reset" type="button">reset</button>' +
+          '</div>' +
+        '</div>'
+      ) : "";
+      return '<div class="mw-exercise-card' + (allDone?' done':'') + '">' +
+        '<h4 class="mw-exercise-name">' + escapeHtml(ex.name) + '</h4>' +
+        '<div class="mw-exercise-prescription">' + escapeHtml(ex.prescription) + '</div>' +
+        '<div class="mw-set-row">' + bubbles + '</div>' +
+        timerHtml +
+      '</div>';
+    }).join("");
+    MW_EXERCISES.forEach(function(ex){ if(ex.timer) mwEnsureTimer(ex.key, ex.timer); });
+  }
+  function mwToggleSet(exerciseKey, setIdx){
+    var daily = mwLoadJSON("mw_daily_v1", {});
+    var today = todayStr();
+    if(!daily[today]) daily[today] = { sets:{} };
+    if(!daily[today].sets[exerciseKey]) daily[today].sets[exerciseKey] = [false,false,false];
+    daily[today].sets[exerciseKey][setIdx] = !daily[today].sets[exerciseKey][setIdx];
+    mwSaveJSON("mw_daily_v1", daily);
+    renderMwExercises();
+  }
+  function mwResetWorkout(){
+    var daily = mwLoadJSON("mw_daily_v1", {});
+    delete daily[todayStr()];
+    mwSaveJSON("mw_daily_v1", daily);
+    ["meditation","yoga","rowing"].forEach(mwResetTimer);
+    MW_EXERCISES.forEach(function(ex){ if(ex.timer) mwResetTimer(ex.key); });
+    renderMwExercises();
+  }
+  var mwReturnSection = "today";
+  function openMindfulWorkoutPage(){
+    mwReturnSection = activeSection === "mindfulWorkout" ? mwReturnSection : activeSection;
+    showSection("mindfulWorkout");
+    renderMindfulWorkout();
+  }
+  function closeMindfulWorkoutPage(){
+    showSection(mwReturnSection);
+  }
+  function renderMindfulWorkout(){
+    if(activeSection !== "mindfulWorkout") return;
+    var dismissed = localStorage.getItem("mw_disclaimer_dismissed_v1") === "1";
+    document.getElementById("mwDisclaimer").classList.toggle("dismissed", dismissed);
+    renderMwWeekly();
+    document.getElementById("mwPoseGrid").innerHTML = MW_YOGA_POSES.map(function(p){
+      return '<div class="mw-pose-card"><h4>' + escapeHtml(p.name) + '</h4><ul>' +
+        p.bullets.map(function(b){ return '<li>' + escapeHtml(b) + '</li>'; }).join("") +
+        '</ul><div class="mw-callout mw-callout-tip"><strong>Form tip:</strong> ' + escapeHtml(p.tip) + '</div></div>';
+    }).join("");
+    renderMwExercises();
+    mwEnsureTimer("meditation", 300);
+    mwEnsureTimer("yoga", 600);
+    mwEnsureTimer("rowing", 600);
+  }
+  document.getElementById("mwBackBtn").addEventListener("click", closeMindfulWorkoutPage);
+  document.getElementById("mwDismissDisclaimerBtn").addEventListener("click", function(){
+    localStorage.setItem("mw_disclaimer_dismissed_v1", "1");
+    document.getElementById("mwDisclaimer").classList.add("dismissed");
+  });
+  document.getElementById("mwPhaseTabs").addEventListener("click", function(e){
+    var btn = e.target.closest("[data-phase]");
+    if(!btn) return;
+    document.querySelectorAll("#mwPhaseTabs .sub-view-tab").forEach(function(b){ b.classList.toggle("active", b===btn); });
+    ["warmup","cardio","strength"].forEach(function(p){
+      document.getElementById("mwPhase-" + p).style.display = (p === btn.dataset.phase) ? "" : "none";
+    });
+  });
+  document.getElementById("mindfulWorkoutSection").addEventListener("click", function(e){
+    var timerBtn = e.target.closest("[data-timer]");
+    if(timerBtn){
+      var key = timerBtn.dataset.timer, action = timerBtn.dataset.action;
+      if(action === "start") mwStartTimer(key);
+      else if(action === "pause") mwPauseTimer(key);
+      else if(action === "reset") mwResetTimer(key);
+      return;
+    }
+    var setBubble = e.target.closest("[data-mw-set-ex]");
+    if(setBubble){ mwToggleSet(setBubble.dataset.mwSetEx, Number(setBubble.dataset.mwSetIdx)); return; }
+  });
+  document.getElementById("mwWeeklyGrid").addEventListener("click", function(e){
+    var box = e.target.closest(".mw-day-box");
+    if(!box || box.disabled) return;
+    mwToggleWeeklyDay(box.dataset.mwDay);
+  });
+  document.getElementById("mwResetBtn").addEventListener("click", mwResetWorkout);
 
   /* ---------------- Areas ---------------- */
   function computeAreaData(cat){
@@ -5704,6 +6085,8 @@
   document.getElementById("todayHabitsList").addEventListener("click", async function(e){
     var tile = e.target.closest(".today-habit-tile");
     if(!tile) return;
+    var h = state.habits.find(function(x){ return x.id === tile.dataset.id; });
+    if(h && isMindfulWorkoutHabit(h)){ openMindfulWorkoutPage(); return; }
     await handleHabitMarkClick(tile.dataset.id, todaySelectedDate);
   });
   if(document.getElementById("todayProjectsGrid")){
