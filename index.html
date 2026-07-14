@@ -48,6 +48,7 @@
     --cat-growth: #8744F0; --cat-growth-bg: rgba(176,132,245,0.14);
     --cat-relationships: #0068E4; --cat-relationships-bg: rgba(95,168,255,0.12);
     --cat-sol: #6B6B6B; --cat-sol-bg: rgba(107,107,107,0.12);
+    --cat-goal-sol: #0B7A8B; --cat-goal-sol-bg: rgba(34,211,238,0.12);
     /* Today timeline hour gridlines — one repeating pattern (period = 6h = 1/4 of the row) covers
        all three tiers at once: a thick line every 6h, a medium line every 3h, thin lines every
        other hour. Reused as a background layer on every area row (layered under that row's own
@@ -98,6 +99,7 @@
     --cat-growth: #B084F5; --cat-growth-bg: rgba(176,132,245,0.14);
     --cat-relationships: #5FA8FF; --cat-relationships-bg: rgba(95,168,255,0.12);
     --cat-sol: #FFFFFF; --cat-sol-bg: rgba(255,255,255,0.14);
+    --cat-goal-sol: #22D3EE; --cat-goal-sol-bg: rgba(34,211,238,0.12);
     /* Hour gridlines flip back to light-on-dark. */
     --tl-hour-grid: repeating-linear-gradient(90deg,
       rgba(255,255,255,0.22) 0, rgba(255,255,255,0.22) 2px, transparent 2px,
@@ -228,7 +230,7 @@
   .cat-badge.Maintenance{ color:var(--cat-maintenance); background:var(--cat-maintenance-bg); }
   .cat-badge.Growth{ color:var(--cat-growth); background:var(--cat-growth-bg); }
   .cat-badge.Relationships{ color:var(--cat-relationships); background:var(--cat-relationships-bg); }
-  .cat-badge.Sol{ color:var(--cat-sol); background:var(--cat-sol-bg); }
+  .cat-badge.Sol{ color:var(--cat-goal-sol); background:var(--cat-goal-sol-bg); }
 
   .infinite-badge{ font-family:var(--mono); font-size:10px; font-weight:700; padding:2px 7px; border-radius:3px; color:var(--violet); background:var(--violet-glow); letter-spacing:0.03em; }
   .type-badge{ font-family:var(--mono); font-size:10px; font-weight:700; padding:2px 7px; border-radius:3px; color:var(--accent); background:var(--accent-glow); letter-spacing:0.03em; }
@@ -249,6 +251,9 @@
   .goal-card.Growth{ border-left-color:var(--cat-growth); border-color:rgba(176,132,245,0.25); background:linear-gradient(135deg, var(--cat-growth-bg), var(--bg-raised) 55%); }
   .goal-card.Relationships{ border-left-color:var(--cat-relationships); border-color:rgba(95,168,255,0.25); background:linear-gradient(135deg, var(--cat-relationships-bg), var(--bg-raised) 55%); }
   .goal-card.Sol{ border-left-color:var(--cat-sol); border-color:rgba(140,140,140,0.35); background:linear-gradient(135deg, var(--cat-sol-bg), var(--bg-raised) 55%); }
+  /* .goal-card is shared by goal/project/action list cards — only goals in Sol get the cyan
+     treatment (see .matrix-tile.Sol / .cat-badge.Sol), everything else stays the neutral Sol above. */
+  .goal-card[data-kind="goal"].Sol{ border-left-color:var(--cat-goal-sol); border-color:rgba(34,211,238,0.25); background:linear-gradient(135deg, var(--cat-goal-sol-bg), var(--bg-raised) 55%); }
 
   /* ===== AREAS ===== */
   .area-block{ margin-bottom:30px; }
@@ -508,7 +513,7 @@
   .matrix-tile.Maintenance{ background:var(--cat-maintenance-bg); } .matrix-tile.Maintenance .matrix-tile-initial{ color:var(--cat-maintenance); }
   .matrix-tile.Growth{ background:var(--cat-growth-bg); } .matrix-tile.Growth .matrix-tile-initial{ color:var(--cat-growth); }
   .matrix-tile.Relationships{ background:var(--cat-relationships-bg); } .matrix-tile.Relationships .matrix-tile-initial{ color:var(--cat-relationships); }
-  .matrix-tile.Sol{ background:var(--cat-sol-bg); } .matrix-tile.Sol .matrix-tile-initial{ color:var(--cat-sol); }
+  .matrix-tile.Sol{ background:var(--cat-goal-sol-bg); } .matrix-tile.Sol .matrix-tile-initial{ color:var(--cat-goal-sol); }
 
   /* ===== MATRIX VIEW (projects/habits/actions, grouped by goal) ===== */
   .ms-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(160px,1fr)); gap:8px; }
