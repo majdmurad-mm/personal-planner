@@ -333,6 +333,12 @@
   .matrix-section-count{ font-family:var(--mono); font-size:10.5px; color:var(--text-faint); }
   .matrix-section-line{ flex:1; height:1px; background:var(--border); }
   .matrix-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(116px,1fr)); gap:10px; }
+  .matrix-subsection{ margin-bottom:14px; }
+  .matrix-subsection:last-child{ margin-bottom:0; }
+  .matrix-subsection-head{ display:flex; align-items:center; gap:8px; margin-bottom:6px; padding-left:2px; }
+  .matrix-subsection-title{ font-family:var(--mono); font-size:10px; font-weight:600; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.04em; }
+  .matrix-subsection-count{ font-family:var(--mono); font-size:9.5px; color:var(--text-faint); }
+  .matrix-subsection-line{ flex:1; height:1px; background:var(--border); opacity:0.6; }
   .matrix-tile{ aspect-ratio:1; border-radius:6px; position:relative; overflow:hidden; cursor:pointer; border:2px solid var(--border); background:var(--bg-inset); transition:transform .12s ease, border-color .12s ease; }
   .matrix-tile:hover{ transform:translateY(-2px); border-color:var(--border-bright); }
   .matrix-tile-initial{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:26px; font-weight:700; opacity:0.35; }
@@ -3420,6 +3426,45 @@
     document.getElementById("projEmptyState").style.display = list.length ? "none" : "";
   }
 
+  // Within an already area-clustered matrix-section, sub-groups habit/project tiles by their parent
+  // goal (each goal gets its own small subheading; items with no goal land in a trailing "No goal"
+  // group). Goals themselves have no further parent, so this only applies to habits and projects —
+  // the actions matrix stays area-only.
+  function matrixGoalSubsections(items, getGoalId, tileHtmlFn){
+    var byGoal = {};
+    items.forEach(function(item){ var gid = getGoalId(item) || "__none__"; (byGoal[gid] = byGoal[gid] || []).push(item); });
+    var goalIds = Object.keys(byGoal).filter(function(id){ return id !== "__none__"; });
+    goalIds.sort(function(a,b){
+      var ga = goalById(a), gb = goalById(b);
+      return (ga ? ga.title : "").localeCompare(gb ? gb.title : "");
+    });
+    if(byGoal.__none__) goalIds.push("__none__");
+    return goalIds.map(function(gid){
+      var groupItems = byGoal[gid];
+      var g = gid === "__none__" ? null : goalById(gid);
+      var title = g ? escapeHtml(g.title) : "No goal";
+      var tiles = groupItems.map(tileHtmlFn).join("");
+      return '<div class="matrix-subsection"><div class="matrix-subsection-head"><span class="matrix-subsection-title">' + title + '</span>' +
+        '<span class="matrix-subsection-count">' + groupItems.length + '</span><span class="matrix-subsection-line"></span></div>' +
+        '<div class="ms-grid">' + tiles + '</div></div>';
+    }).join("");
+  }
+
+  function projectTileHtml(p){
+    var overdue = !p.done && p.due && p.due < todayStr();
+    var tCat = projectCategory(p);
+    return '<div class="ms-tile' + (tCat ? ' ' + tCat : '') + '" data-kind="project" data-id="' + p.id + '">' +
+      '<div class="ms-tile-top">' +
+        '<button class="ms-check' + (p.done?' done':'') + '" data-action="toggle-proj" data-id="' + p.id + '" aria-label="Toggle done"></button>' +
+        '<span class="ms-tile-title' + (p.done?' done':'') + '">' + escapeHtml(p.title) + '</span>' +
+        '<button class="icon-btn edit" data-action="edit-proj" data-id="' + p.id + '" aria-label="Edit project">✎</button>' +
+        '<button class="icon-btn" data-action="del-proj" data-id="' + p.id + '" aria-label="Delete project">&times;</button>' +
+      '</div>' +
+      '<div class="ms-tile-meta"><span class="prio-badge ' + p.priority + '">' + p.priority + '</span>' +
+      (p.due ? '<span style="color:' + (overdue?'var(--p0)':'var(--text-faint)') + '">' + fmtDate(p.due) + '</span>' : '') +
+      '<span>' + p.hours + 'h</span></div>' +
+    '</div>';
+  }
   function renderProjectsMatrix(list){
     var byCat = {};
     list.forEach(function(p){ var c = projectCategory(p) || "__none__"; (byCat[c] = byCat[c] || []).push(p); });
@@ -3427,24 +3472,10 @@
       var items = byCat[cat];
       if(!items || !items.length) return "";
       var label = cat === "__none__" ? "Unassigned" : (CATEGORY_ICONS[cat] + " " + cat);
-      var tiles = items.map(function(p){
-        var overdue = !p.done && p.due && p.due < todayStr();
-        var tCat = projectCategory(p);
-        return '<div class="ms-tile' + (tCat ? ' ' + tCat : '') + '" data-kind="project" data-id="' + p.id + '">' +
-          '<div class="ms-tile-top">' +
-            '<button class="ms-check' + (p.done?' done':'') + '" data-action="toggle-proj" data-id="' + p.id + '" aria-label="Toggle done"></button>' +
-            '<span class="ms-tile-title' + (p.done?' done':'') + '">' + escapeHtml(p.title) + '</span>' +
-            '<button class="icon-btn edit" data-action="edit-proj" data-id="' + p.id + '" aria-label="Edit project">✎</button>' +
-            '<button class="icon-btn" data-action="del-proj" data-id="' + p.id + '" aria-label="Delete project">&times;</button>' +
-          '</div>' +
-          '<div class="ms-tile-meta"><span class="prio-badge ' + p.priority + '">' + p.priority + '</span>' +
-          (p.due ? '<span style="color:' + (overdue?'var(--p0)':'var(--text-faint)') + '">' + fmtDate(p.due) + '</span>' : '') +
-          '<span>' + p.hours + 'h</span></div>' +
-        '</div>';
-      }).join("");
+      var subsections = matrixGoalSubsections(items, function(p){ return p.goalId; }, projectTileHtml);
       return '<div class="matrix-section"><div class="matrix-section-head"><span class="matrix-section-title">' + label + '</span>' +
         '<span class="matrix-section-count">' + items.length + '</span><span class="matrix-section-line"></span></div>' +
-        '<div class="ms-grid">' + tiles + '</div></div>';
+        subsections + '</div>';
     }).join("");
     document.getElementById("projectList").innerHTML = sections;
   }
@@ -3518,32 +3549,34 @@
     document.getElementById("habitEmptyState").style.display = list.length ? "none" : "";
   }
 
-  function renderHabitsMatrix(list){
+  function habitTileHtml(h){
     var today = todayStr();
+    var streak = habitStreak(h);
+    var on = habitDoneForDate(h, today);
+    var cat = habitCategory(h);
+    return '<div class="ms-tile' + (cat ? ' ' + cat : '') + '" data-kind="habit" data-id="' + h.id + '">' +
+      '<div class="ms-tile-top">' +
+        '<button class="ms-check' + (on?' done':'') + '" data-action="toggle-habit-today" data-id="' + h.id + '" aria-label="Toggle today"></button>' +
+        habitIconInlineHtml(h.icon, cat) +
+        '<span class="ms-tile-title">' + escapeHtml(h.title) + '</span>' +
+        '<button class="icon-btn edit" data-action="edit-habit" data-id="' + h.id + '" aria-label="Edit habit">✎</button>' +
+        '<button class="icon-btn" data-action="del-habit" data-id="' + h.id + '" aria-label="Delete habit">&times;</button>' +
+      '</div>' +
+      '<div class="ms-tile-meta"><span class="prio-badge ' + h.priority + '">' + h.priority + '</span><span>' + habitScheduleLabel(h) + '</span>' +
+      '<span style="color:var(--accent)">' + streak + 'd streak</span></div>' +
+    '</div>';
+  }
+  function renderHabitsMatrix(list){
     var byCat = {};
     list.forEach(function(h){ var c = habitCategory(h) || "__none__"; (byCat[c] = byCat[c] || []).push(h); });
     var sections = CATEGORIES.concat(["__none__"]).map(function(cat){
       var items = byCat[cat];
       if(!items || !items.length) return "";
       var label = cat === "__none__" ? "Unassigned" : (CATEGORY_ICONS[cat] + " " + cat);
-      var tiles = items.map(function(h){
-        var streak = habitStreak(h);
-        var on = habitDoneForDate(h, today);
-        return '<div class="ms-tile" data-kind="habit" data-id="' + h.id + '">' +
-          '<div class="ms-tile-top">' +
-            '<button class="ms-check' + (on?' done':'') + '" data-action="toggle-habit-today" data-id="' + h.id + '" aria-label="Toggle today"></button>' +
-            habitIconInlineHtml(h.icon, habitCategory(h)) +
-            '<span class="ms-tile-title">' + escapeHtml(h.title) + '</span>' +
-            '<button class="icon-btn edit" data-action="edit-habit" data-id="' + h.id + '" aria-label="Edit habit">✎</button>' +
-            '<button class="icon-btn" data-action="del-habit" data-id="' + h.id + '" aria-label="Delete habit">&times;</button>' +
-          '</div>' +
-          '<div class="ms-tile-meta"><span class="prio-badge ' + h.priority + '">' + h.priority + '</span><span>' + habitScheduleLabel(h) + '</span>' +
-          '<span style="color:var(--accent)">' + streak + 'd streak</span></div>' +
-        '</div>';
-      }).join("");
+      var subsections = matrixGoalSubsections(items, function(h){ return h.goalId; }, habitTileHtml);
       return '<div class="matrix-section"><div class="matrix-section-head"><span class="matrix-section-title">' + label + '</span>' +
         '<span class="matrix-section-count">' + items.length + '</span><span class="matrix-section-line"></span></div>' +
-        '<div class="ms-grid">' + tiles + '</div></div>';
+        subsections + '</div>';
     }).join("");
     document.getElementById("habitList").innerHTML = sections;
   }
