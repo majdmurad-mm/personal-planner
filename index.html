@@ -6226,10 +6226,15 @@
   function renderTlHabitsTrack(range){
     var track = document.getElementById("tlHabitsTrack");
     if(!track) return;
+    // Habits are recurring, so unlike actions/notes there's no single fixed date to index them by —
+    // whether one occurs on a given day still has to be checked per day. But which habits even HAVE a
+    // time-of-day at all (most don't) is static, so that filter is hoisted out of the day loop instead
+    // of being re-checked against every habit on every visible day.
+    var timedHabits = state.habits.filter(function(h){ return !!h.timeOfDay; });
     var html = "";
     for(var i=range.start; i<=range.end; i++){
       var dateStr = addDaysToDateStr(tlRangeStart, i);
-      state.habits.filter(function(h){ return !!h.timeOfDay && habitOccursOnDate(h, dateStr); }).forEach(function(h){
+      timedHabits.filter(function(h){ return habitOccursOnDate(h, dateStr); }).forEach(function(h){
         var leftPx = i*tlPxPerDay + timeToFraction(h.timeOfDay)*tlPxPerDay;
         var widthPx = Math.max(10, ((h.durationMinutes || 15) / 1440) * tlPxPerDay);
         var catClass = habitCategory(h) ? " " + habitCategory(h) : "";
@@ -6242,10 +6247,15 @@
   function renderTlActionsTrack(range){
     var track = document.getElementById("tlActionsTrack");
     if(!track) return;
+    // Unlike habits, an action has one fixed date — index once by date instead of re-filtering the
+    // entire actions array on every visible day (was O(days in view * total actions), now O(total
+    // actions) once plus an O(1) lookup per day).
+    var byDate = {};
+    state.actions.forEach(function(a){ if(a.timeOfDay && a.date) (byDate[a.date] = byDate[a.date] || []).push(a); });
     var html = "";
     for(var i=range.start; i<=range.end; i++){
       var dateStr = addDaysToDateStr(tlRangeStart, i);
-      state.actions.filter(function(a){ return a.date === dateStr && !!a.timeOfDay; }).forEach(function(a){
+      (byDate[dateStr] || []).forEach(function(a){
         var leftPx = i*tlPxPerDay + timeToFraction(a.timeOfDay)*tlPxPerDay;
         var widthPx = Math.max(10, ((a.durationMinutes || 15) / 1440) * tlPxPerDay);
         var cat = actionCategory(a);
@@ -6259,10 +6269,14 @@
   function renderTlNotesTrack(range){
     var track = document.getElementById("tlNotesTrack");
     if(!track) return;
+    // Same story as renderTlActionsTrack — a journal entry has one fixed date, indexed once instead
+    // of re-filtered on every visible day.
+    var byDate = {};
+    state.journal.forEach(function(n){ if(n.timeOfDay && n.date) (byDate[n.date] = byDate[n.date] || []).push(n); });
     var html = "";
     for(var i=range.start; i<=range.end; i++){
       var dateStr = addDaysToDateStr(tlRangeStart, i);
-      state.journal.filter(function(n){ return n.date === dateStr && !!n.timeOfDay; }).forEach(function(n){
+      (byDate[dateStr] || []).forEach(function(n){
         var leftPx = i*tlPxPerDay + timeToFraction(n.timeOfDay)*tlPxPerDay;
         var widthPx = Math.max(10, tlPxPerDay * 0.02);
         var catClass = n.category ? " " + n.category : "";
