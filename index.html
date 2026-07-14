@@ -4886,8 +4886,23 @@
     }
     return out;
   }
+  // A full tracker render calls this once per (variable, date) cell -- O(variables * dates) calls,
+  // each previously a linear scan over every entry ever recorded (grows unboundedly over the app's
+  // lifetime). Indexed by a Map instead, rebuilt only when state.trackerEntries has actually changed
+  // shape (its array reference or length differs from what the index was last built from) -- an
+  // in-place value edit (trackerSaveValue's existing.value = rawValue) mutates the same object the
+  // Map already points to, so it's picked up automatically without needing a rebuild at all.
+  var trackerEntryIndex = null;
+  var trackerEntryIndexRef = null;
+  var trackerEntryIndexLen = -1;
   function trackerEntryFor(variableId, date){
-    return state.trackerEntries.find(function(e){ return e.variableId === variableId && e.date === date; });
+    if(trackerEntryIndexRef !== state.trackerEntries || trackerEntryIndexLen !== state.trackerEntries.length){
+      trackerEntryIndex = new Map();
+      state.trackerEntries.forEach(function(e){ trackerEntryIndex.set(e.variableId + "|" + e.date, e); });
+      trackerEntryIndexRef = state.trackerEntries;
+      trackerEntryIndexLen = state.trackerEntries.length;
+    }
+    return trackerEntryIndex.get(variableId + "|" + date);
   }
   function trackerDayFor(date){
     return state.trackerDays.find(function(d){ return d.date === date; });
