@@ -4332,7 +4332,7 @@
   }
   function wbApplyPositionsToDom(){
     wbSimNodes.forEach(function(n){
-      var el = document.querySelector('.wb-goal-node[data-type="' + n.type + '"][data-id="' + n.id + '"]');
+      var el = wbNodeElCache[n.type + ":" + n.id];
       if(el){ el.style.left = n.x + "px"; el.style.top = n.y + "px"; }
     });
   }
@@ -4379,6 +4379,17 @@
       '<span class="wb-goal-node-label">' + (type === "project" ? "▸ " : "") + escapeHtml(item.title) + '</span>' +
     '</div>';
   }
+  // Keyed by "type:id" -> its .wb-goal-node element, rebuilt by rebuildWbNodeElCache() every time
+  // renderWhiteboardNodes() replaces overlay.innerHTML (which detaches every previous element
+  // reference) — wbApplyPositionsToDom() runs on every animation frame while the sim is hot, and
+  // was previously doing a full document.querySelector() attribute-selector scan per node per tick.
+  var wbNodeElCache = {};
+  function rebuildWbNodeElCache(overlay){
+    wbNodeElCache = {};
+    overlay.querySelectorAll(".wb-goal-node").forEach(function(el){
+      wbNodeElCache[el.dataset.type + ":" + el.dataset.id] = el;
+    });
+  }
   function renderWhiteboardNodes(){
     var overlay = document.getElementById("wbOverlay");
     if(!overlay) return;
@@ -4386,6 +4397,7 @@
     var html = CATEGORIES.map(function(cat){ return wbNodeHtml("area", { id:cat, title:cat }, cat); }).join("");
     if(!state.goals.length && !state.projects.length && !state.habits.length){
       overlay.innerHTML = html + '<div class="wb-empty-hint">Add a goal, project or habit from the Planner or Areas tab — it\'ll show up here as a node in the graph.</div>';
+      rebuildWbNodeElCache(overlay);
       renderWbConnections();
       return;
     }
@@ -4394,6 +4406,7 @@
     html += state.habits.map(function(h){ return wbNodeHtml("habit", h, habitCategory(h)); }).join("");
     if(wbShowActions) html += state.actions.map(function(a){ return wbNodeHtml("action", a, actionCategory(a)); }).join("");
     overlay.innerHTML = html;
+    rebuildWbNodeElCache(overlay);
     renderWbConnections();
   }
 
