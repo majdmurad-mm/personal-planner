@@ -1600,7 +1600,12 @@
   // needed. Requires the icon to have real alpha transparency (see readImageAsIcon, which now
   // exports PNG instead of JPEG for exactly this reason).
   function iconMaskHtml(cls, dataUri, category){
-    return '<span class="' + cls + '" style="-webkit-mask-image:url(' + dataUri + ');mask-image:url(' + dataUri + ');background-color:' + categoryColorVar(category) + ';"></span>';
+    // The url() value is single-quoted — encodeURIComponent leaves "(" and ")" unescaped (they're in
+    // its unreserved set), and an *unquoted* CSS url() must not contain a literal paren. A handful of
+    // the built-in habit icons use transform="rotate(...)", which broke the mask (and so the icon
+    // never rendered) before this was quoted. Uploaded goal/project icons are unaffected either way
+    // since their base64 data URIs never contain parens.
+    return '<span class="' + cls + '" style="-webkit-mask-image:url(\'' + dataUri + '\');mask-image:url(\'' + dataUri + '\');background-color:' + categoryColorVar(category) + ';"></span>';
   }
   // Built-in vector icon library for habits — auto-assigned per habit (never uploaded), so every
   // habit gets a distinct glyph with no manual work. Thin-outline style matching the weather icons,
