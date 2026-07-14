@@ -484,8 +484,9 @@
      3h (matching the medium gridline tier used on the area rows below) since the band is too short
      to fit 24 legible ticks. */
   .today-timeline-weather{ position:absolute; inset:0; pointer-events:none; }
-  .tl-weather-tick{ position:absolute; top:50%; transform:translate(-50%,-50%); display:flex; flex-direction:column; align-items:center; gap:0; font-family:var(--mono); }
-  .tl-weather-tick-icon{ font-size:13px; line-height:1; }
+  .tl-weather-tick{ position:absolute; top:50%; transform:translate(-50%,-50%); display:flex; flex-direction:column; align-items:center; gap:1px; font-family:var(--mono); }
+  .tl-weather-tick-icon{ width:21px; height:21px; filter:drop-shadow(0 0 2px rgba(255,255,255,0.85)); }
+  .tl-weather-tick-icon svg{ width:100%; height:100%; display:block; }
   .tl-weather-tick-temp{ font-size:8.5px; line-height:1.3; color:var(--text); text-shadow:0 1px 2px rgba(0,0,0,0.6); }
   .today-timeline-now{ position:absolute; top:0; bottom:0; width:2px; background:var(--p0); box-shadow:0 0 6px var(--p0); z-index:5; }
   .today-timeline-now-label{ position:absolute; top:-17px; left:50%; transform:translateX(-50%); font-family:var(--mono); font-size:9px; font-weight:700; color:var(--p0); white-space:nowrap; }
@@ -4612,13 +4613,22 @@
   // have no data (forecasts don't go backwards) and render no ticks — that's expected, not an error.
   var berlinWeatherByDate = {}; // "YYYY-MM-DD" -> [{ hour, temp, code }, ...]
   var berlinWeatherFetchState = "idle"; // idle | loading | done | error
+  // Simple black-outline (thin stroke) weather glyphs, drawn as inline SVG rather than emoji so they
+  // render consistently across platforms/fonts.
+  var WEATHER_ICON_SVGS = {
+    sunny: '<svg viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.3"/><line x1="12" y1="1.2" x2="12" y2="4.2"/><line x1="12" y1="19.8" x2="12" y2="22.8"/><line x1="1.2" y1="12" x2="4.2" y2="12"/><line x1="19.8" y1="12" x2="22.8" y2="12"/><line x1="4.1" y1="4.1" x2="6.2" y2="6.2"/><line x1="17.8" y1="17.8" x2="19.9" y2="19.9"/><line x1="4.1" y1="19.9" x2="6.2" y2="17.8"/><line x1="17.8" y1="6.2" x2="19.9" y2="4.1"/></svg>',
+    partly: '<svg viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.6" cy="7.2" r="3.4"/><line x1="7.6" y1="0.8" x2="7.6" y2="2.4"/><line x1="1.2" y1="7.2" x2="2.8" y2="7.2"/><line x1="3.1" y1="2.7" x2="4.2" y2="3.8"/><path d="M8.7 20.2a4.3 4.3 0 0 1-.5-8.55 5.4 5.4 0 0 1 10.3-2.18A4.85 4.85 0 0 1 20 20.2H8.7z"/></svg>',
+    cloudy: '<svg viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M6.2 19a4.3 4.3 0 0 1-.5-8.55 5.4 5.4 0 0 1 10.3-2.18A4.85 4.85 0 0 1 17.5 19H6.2z"/></svg>',
+    rain: '<svg viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M6.2 14.8a4.3 4.3 0 0 1-.5-8.55 5.4 5.4 0 0 1 10.3-2.18A4.85 4.85 0 0 1 17.5 14.8H6.2z"/><line x1="8" y1="17.3" x2="6.8" y2="21"/><line x1="12" y1="17.3" x2="10.8" y2="21"/><line x1="16" y1="17.3" x2="14.8" y2="21"/></svg>',
+    snow: '<svg viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M6.2 13.8a4.3 4.3 0 0 1-.5-8.55 5.4 5.4 0 0 1 10.3-2.18A4.85 4.85 0 0 1 17.5 13.8H6.2z"/><line x1="8" y1="17" x2="8" y2="21.4"/><line x1="6.1" y1="17.9" x2="9.9" y2="20.5"/><line x1="9.9" y1="17.9" x2="6.1" y2="20.5"/><line x1="15" y1="17" x2="15" y2="21.4"/><line x1="13.1" y1="17.9" x2="16.9" y2="20.5"/><line x1="16.9" y1="17.9" x2="13.1" y2="20.5"/></svg>'
+  };
   function weatherCodeIcon(code){
-    if(code === 0 || code === 1) return "☀️";
-    if(code === 2) return "⛅";
-    if(code === 3 || code === 45 || code === 48) return "☁️";
-    if((code >= 51 && code <= 67) || (code >= 80 && code <= 82) || (code >= 95 && code <= 99)) return "🌧️";
-    if((code >= 71 && code <= 77) || code === 85 || code === 86) return "❄️";
-    return "☁️";
+    if(code === 0 || code === 1) return WEATHER_ICON_SVGS.sunny;
+    if(code === 2) return WEATHER_ICON_SVGS.partly;
+    if(code === 3 || code === 45 || code === 48) return WEATHER_ICON_SVGS.cloudy;
+    if((code >= 51 && code <= 67) || (code >= 80 && code <= 82) || (code >= 95 && code <= 99)) return WEATHER_ICON_SVGS.rain;
+    if((code >= 71 && code <= 77) || code === 85 || code === 86) return WEATHER_ICON_SVGS.snow;
+    return WEATHER_ICON_SVGS.cloudy;
   }
   async function fetchBerlinWeather(){
     if(berlinWeatherFetchState !== "idle") return;
