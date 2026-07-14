@@ -773,19 +773,6 @@
   .today-row-title.done{ color:var(--text-faint); text-decoration:line-through; }
   .today-row-meta{ font-family:var(--mono); font-size:10px; color:var(--text-faint); flex-shrink:0; }
   .today-empty-note{ font-family:var(--mono); font-size:11px; color:var(--text-faint); display:none; }
-  /* Square tiles, same visual language as goal matrix tiles (icon/initial + area color +
-     bottom scrim title) — reuses .matrix-tile-status/.matrix-tile-icon-img/.matrix-tile-initial/
-     .matrix-tile-scrim/.matrix-tile-title directly instead of duplicating them. */
-  .today-habit-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(96px,1fr)); gap:10px; }
-  .today-habit-tile{ aspect-ratio:1; position:relative; border-radius:6px; overflow:hidden; cursor:pointer; border:2px solid var(--border); background:var(--bg-inset); transition:transform .12s ease, border-color .12s ease; }
-  .today-habit-tile:hover{ transform:translateY(-2px); border-color:var(--border-bright); }
-  .today-habit-tile.Health{ background:var(--cat-health-bg); }
-  .today-habit-tile.Finance{ background:var(--cat-finance-bg); }
-  .today-habit-tile.Career{ background:var(--cat-career-bg); }
-  .today-habit-tile.Maintenance{ background:var(--cat-maintenance-bg); }
-  .today-habit-tile.Growth{ background:var(--cat-growth-bg); }
-  .today-habit-tile.Relationships{ background:var(--cat-relationships-bg); }
-  .today-habit-tile.Sol{ background:var(--cat-sol-bg); }
   .cal-dot-mini-row{ display:flex; gap:2px; flex-wrap:wrap; }
   .cal-dot-mini{ width:4px; height:4px; border-radius:50%; background:var(--accent); }
   .cal-entry.google .cal-dot{ background:var(--accent); }
@@ -1085,9 +1072,6 @@
         <div class="today-daynight" id="todayDayNight"></div>
       </div>
 
-      <!-- Active projects grid removed for now — see renderToday(), guarded so it's a quick
-           re-add later rather than a rewrite. -->
-
       <div class="today-layout">
         <div class="today-main">
           <div class="today-date-nav">
@@ -1096,10 +1080,6 @@
             <button class="cal-nav-btn" id="todayNextDayBtn" type="button" aria-label="Next day">›</button>
             <button class="btn" id="todayJumpTodayBtn" type="button">today</button>
           </div>
-
-          <!-- Dedicated "habits scheduled today" tile grid removed for now — habits already show on
-               the timeline above, this was redundant. Guarded rather than deleted (see renderToday())
-               so it's a quick re-add later rather than a rewrite. -->
 
           <div class="today-section-block">
             <div class="today-section-block-head"><h2>actions</h2>
@@ -6478,67 +6458,6 @@
     renderTodayTimelineAreas();
     document.getElementById("todayDateLabel").textContent = fmtDateLong(todaySelectedDate) + (todaySelectedDate === todayStr() ? " (today)" : "");
 
-    // Active projects grid is removed from the page for now — guarded rather than deleted so it's
-    // a one-line re-add (just restore the HTML block) instead of rewriting this.
-    var todayProjectsGridEl = document.getElementById("todayProjectsGrid");
-    if(todayProjectsGridEl){
-      var activeProjects = state.projects.filter(function(p){ return !p.done; });
-      document.getElementById("todayProjectsEmpty").style.display = activeProjects.length ? "none" : "";
-      todayProjectsGridEl.innerHTML = activeProjects.map(function(p){
-        var overdue = p.due && p.due < todayStr();
-        return '<div class="ms-tile" data-kind="project" data-id="' + p.id + '">' +
-          '<div class="ms-tile-top">' +
-            '<button class="ms-check" data-action="toggle-proj" data-id="' + p.id + '" aria-label="Toggle done"></button>' +
-            '<span class="ms-tile-title">' + escapeHtml(p.title) + '</span>' +
-            '<button class="icon-btn edit" data-action="edit-proj" data-id="' + p.id + '" aria-label="Edit project">✎</button>' +
-            '<button class="icon-btn" data-action="del-proj" data-id="' + p.id + '" aria-label="Delete project">&times;</button>' +
-          '</div>' +
-          '<div class="ms-tile-meta"><span class="prio-badge ' + p.priority + '">' + p.priority + '</span>' +
-          (p.due ? '<span style="color:' + (overdue?'var(--p0)':'var(--text-faint)') + '">' + fmtDate(p.due) + '</span>' : '') +
-          '<span>' + p.hours + 'h</span></div>' +
-        '</div>';
-      }).join("");
-    }
-
-    // Dedicated "habits scheduled today" tile grid is removed from the page for now — habits
-    // already show on the timeline above, this was redundant. Guarded rather than deleted so it's
-    // a quick re-add later rather than a rewrite (same pattern as todayProjectsGrid above).
-    var todayHabitsListEl = document.getElementById("todayHabitsList");
-    if(todayHabitsListEl){
-      // Only habits actually scheduled for this day (same rule the Today timeline and the Timeline
-      // page already use) — earliest-to-latest by time of day, untimed habits after every timed one,
-      // then falling back to their manual drag order among themselves.
-      var habits = state.habits.filter(function(h){ return habitOccursOnDate(h, todaySelectedDate); }).sort(function(x,y){
-        if(x.timeOfDay && y.timeOfDay) return x.timeOfDay < y.timeOfDay ? -1 : (x.timeOfDay > y.timeOfDay ? 1 : 0);
-        if(x.timeOfDay && !y.timeOfDay) return -1;
-        if(!x.timeOfDay && y.timeOfDay) return 1;
-        return x.position - y.position;
-      });
-      document.getElementById("todayHabitsEmpty").style.display = habits.length ? "none" : "";
-      // Squares, matching the same icon-forward visual language as goal matrix tiles: every habit now
-      // has its own built-in vector icon (see HABIT_ICON_LIBRARY), auto-assigned and tinted by area —
-      // falls back to the parent goal's uploaded icon, then a plain initial, only for the rare case a
-      // habit's own icon is still missing (migration not yet run). Click toggles/prompts for the value
-      // (see handleHabitMarkClick); right-click still edits (full habit) / deletes (this day only —
-      // data-kind="habit-instance") via the app's generic data-kind/data-id system.
-      todayHabitsListEl.innerHTML = habits.map(function(h){
-        var value = habitValueForDate(h, todaySelectedDate);
-        var on = !!value;
-        var goal = h.goalId ? goalById(h.goalId) : null;
-        var cat = habitCategory(h);
-        var catClass = cat ? " " + cat : "";
-        var initial = ((goal ? goal.title : h.title) || "?").trim().charAt(0).toUpperCase() || "?";
-        var iconSrc = h.icon ? habitIconDataUri(h.icon) : (goal ? resolveEntityIconDataUri(goal.icon) : null);
-        var iconCat = h.icon ? cat : (goal && goal.category);
-        var titleAttr = escapeHtml(h.title) + (h.timeOfDay ? " — " + fmtTimeOfDay(h.timeOfDay) : "") + (value ? " — " + value : "");
-        return '<div class="today-habit-tile' + catClass + '" data-kind="habit-instance" data-id="' + h.id + '" data-date="' + todaySelectedDate + '" title="' + titleAttr + '">' +
-          '<span class="matrix-tile-status' + (on?' on-track':'') + '"></span>' +
-          (iconSrc ? iconMaskHtml("matrix-tile-icon-img", iconSrc, iconCat) : '<span class="matrix-tile-initial">' + initial + '</span>') +
-          '<div class="matrix-tile-scrim"><div class="matrix-tile-title">' + escapeHtml(h.title) + '</div></div>' +
-        '</div>';
-      }).join("");
-    }
-
     var actionsToday = state.actions.filter(function(a){ return a.date === todaySelectedDate; });
     document.getElementById("todayActionsEmpty").style.display = actionsToday.length ? "none" : "";
     document.getElementById("todayActionsList").innerHTML = actionsToday.map(function(a){
@@ -6628,31 +6547,10 @@
     else if(t.dataset.action === "edit-action") editAction(t.dataset.id);
     else if(t.dataset.action === "del-action") await deleteAction(t.dataset.id);
   });
-  if(document.getElementById("todayHabitsList")){
-    document.getElementById("todayHabitsList").addEventListener("click", async function(e){
-      var tile = e.target.closest(".today-habit-tile");
-      if(!tile) return;
-      await handleHabitMarkClick(tile.dataset.id, todaySelectedDate);
-    });
-  }
-  if(document.getElementById("todayProjectsGrid")){
-    document.getElementById("todayProjectsGrid").addEventListener("click", async function(e){
-      var t = e.target.closest("[data-action]");
-      if(!t) return;
-      if(t.dataset.action === "toggle-proj") await toggleProjectDone(t.dataset.id);
-      else if(t.dataset.action === "edit-proj") editProject(t.dataset.id);
-      else if(t.dataset.action === "del-proj") await deleteProject(t.dataset.id);
-    });
-  }
   document.getElementById("addTodayActionBtn").addEventListener("click", function(){
     openActionModal(null, null);
     document.getElementById("actionDateInput").value = todaySelectedDate;
   });
-  if(document.getElementById("addTodayHabitBtn")){
-    document.getElementById("addTodayHabitBtn").addEventListener("click", function(){
-      openHabitModal(null, null);
-    });
-  }
 
   /* ---------------- Agent ---------------- */
   var AGENT_TOOLS = [
@@ -7049,11 +6947,6 @@
     closeTrackerCtxMenu();
     closeGlobalCtxMenu();
   });
-
-  function fillGoalSelect(sel){
-    var opts = state.goals.map(function(g){ return '<option value="' + g.id + '">' + escapeHtml(g.title) + '</option>'; }).join("");
-    sel.innerHTML = '<option value="">— no parent goal —</option>' + opts;
-  }
 
   // Goal modal
   var editingGoalId = null;
