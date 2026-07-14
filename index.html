@@ -6868,9 +6868,18 @@
     return await resp.json();
   }
 
+  // Only warn once per session (not once per message) — a missing chat_messages migration would
+  // otherwise toast on every single send/reply in a conversation.
+  var chatPersistFailWarned = false;
   async function persistChatMessage(role, content){
     var r = await sb.from("chat_messages").insert({ role: role, content: content });
-    if(r.error) console.error(r.error);
+    if(r.error){
+      console.error(r.error);
+      if(!chatPersistFailWarned){
+        chatPersistFailWarned = true;
+        toast("This chat isn't being saved (" + r.error.message + ") — it'll be lost on reload.");
+      }
+    }
   }
 
   function renderChatMessages(){
