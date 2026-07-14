@@ -1558,6 +1558,13 @@
         <p class="panel-hint">Select one or more to narrow the parent goal list below — leave all selected to see every goal.</p>
       </div>
       <div class="field"><label for="projectGoalSelect">parent goal</label><select id="projectGoalSelect"></select></div>
+      <div class="field"><label>secondary goals (optional)</label>
+        <div class="dropdown-multi" id="projectSecondaryGoalsDropdown">
+          <button type="button" class="dropdown-multi-btn" id="projectSecondaryGoalsBtn">none selected ▾</button>
+          <div class="dropdown-multi-panel chip-select" id="projectSecondaryGoalsSelect" hidden></div>
+        </div>
+        <p class="panel-hint">Link this project to other goals too — its parent goal above is unaffected.</p>
+      </div>
       <div class="field-row">
         <div class="field"><label>priority</label><div class="chip-select" id="projectPrioSelect">
           <div class="chip-opt" data-p="P0">P0</div><div class="chip-opt" data-p="P1">P1</div><div class="chip-opt sel" data-p="P2">P2</div><div class="chip-opt" data-p="P3">P3</div>
@@ -2348,7 +2355,7 @@
     // the migration runs and real position values exist.
     state.goals = (results[0].data || []).map(function(r){ return { id:r.id, title:r.title, priority:r.priority, category:r.category, secondaryCategories:r.secondary_categories || [], secondaryGoalIds:r.secondary_goal_ids || [], due:r.due, ongoing:r.ongoing, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null) }; });
     state.goals.sort(function(a,b){ return a.position - b.position; });
-    state.projects = (results[1].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), categories:r.categories||[] }; });
+    state.projects = (results[1].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), categories:r.categories||[] }; });
     state.projects.sort(function(a,b){ return a.position - b.position; });
     state.habits = (results[2].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || null, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [], extraDates:r.extra_dates || [], customIntervalDays:r.custom_interval_days||null, icon:r.icon||null }; });
     state.habits.sort(function(a,b){ return a.position - b.position; });
@@ -2565,18 +2572,23 @@
   /* ---------------- Stats ---------------- */
   function goalDirectChildren(g){
     var projs = state.projects.filter(function(p){ return p.goalId === g.id; }).map(function(p){ return { kind:"project", id:p.id, title:p.title, done:p.done }; });
+    // A secondary-linked project shows up here too (so it's visible as a connection), but flagged so
+    // goalProgress/goalStatus can exclude it below — unlike a real parent link, a secondary one
+    // shouldn't make a project's completion count toward a goal it's only tangentially connected to
+    // (the same reason habits, which never affect progress at all, are filtered out there too).
+    var secondaryProjs = state.projects.filter(function(p){ return p.goalId !== g.id && (p.secondaryGoalIds || []).indexOf(g.id) !== -1; }).map(function(p){ return { kind:"project", id:p.id, title:p.title, done:p.done, secondary:true }; });
     var acts = state.actions.filter(function(a){ return a.parentType==="goal" && a.parentId===g.id; }).map(function(a){ return { kind:"action", id:a.id, title:a.title, done:a.done }; });
     var habs = state.habits.filter(function(h){ return h.goalId === g.id || (h.secondaryGoalIds || []).indexOf(g.id) !== -1; }).map(function(h){ return { kind:"habit", id:h.id, title:h.title, done:false }; });
-    return projs.concat(acts, habs);
+    return projs.concat(secondaryProjs, acts, habs);
   }
   function goalProgress(g){
-    var items = goalDirectChildren(g).filter(function(x){ return x.kind !== "habit"; });
+    var items = goalDirectChildren(g).filter(function(x){ return x.kind !== "habit" && !x.secondary; });
     if(!items.length) return 0;
     var done = items.filter(function(x){ return x.done; }).length;
     return Math.round(done / items.length * 100);
   }
   function goalStatus(g){
-    var items = goalDirectChildren(g).filter(function(x){ return x.kind !== "habit"; });
+    var items = goalDirectChildren(g).filter(function(x){ return x.kind !== "habit" && !x.secondary; });
     var pct = goalProgress(g);
     if(pct >= 100 && items.length) return "done";
     if(!g.ongoing && g.due && g.due < todayStr()) return "behind";
@@ -2868,7 +2880,7 @@
   }
   function wbConnPayload(c){ return { id:c.id, from_type:c.fromType, from_id:c.fromId, to_type:c.toType, to_id:c.toId }; }
   function projectPayload(snapshot){
-    return { id:snapshot.id, goal_id:snapshot.goalId, title:snapshot.title, priority:snapshot.priority, due:snapshot.due, hours:snapshot.hours, done:snapshot.done, position:snapshot.position, health_override:snapshot.healthOverride, health_pct_override:snapshot.healthPctOverride, icon:snapshot.icon, whiteboard_x:snapshot.wbX, whiteboard_y:snapshot.wbY, categories:snapshot.categories };
+    return { id:snapshot.id, goal_id:snapshot.goalId, secondary_goal_ids:snapshot.secondaryGoalIds, title:snapshot.title, priority:snapshot.priority, due:snapshot.due, hours:snapshot.hours, done:snapshot.done, position:snapshot.position, health_override:snapshot.healthOverride, health_pct_override:snapshot.healthPctOverride, icon:snapshot.icon, whiteboard_x:snapshot.wbX, whiteboard_y:snapshot.wbY, categories:snapshot.categories };
   }
   async function deleteProject(id){
     var p = state.projects.find(function(x){ return x.id === id; });
@@ -4097,6 +4109,7 @@
     });
     state.projects.forEach(function(p){
       if(p.goalId) edges.push({ fromType:"goal", fromId:p.goalId, toType:"project", toId:p.id });
+      (p.secondaryGoalIds || []).forEach(function(gid){ edges.push({ fromType:"goal", fromId:gid, toType:"project", toId:p.id, secondary:true }); });
     });
     state.habits.forEach(function(h){
       if(h.goalId) edges.push({ fromType:"goal", fromId:h.goalId, toType:"habit", toId:h.id });
@@ -6928,6 +6941,23 @@
   }
   wireMultiChipSelect(document.getElementById("projectAreaSelect"));
   document.getElementById("projectAreaSelect").addEventListener("click", function(){ fillProjectGoalSelect(); });
+  // Secondary goals: every OTHER goal (any area — a project's own area(s) come from the picker
+  // above, not from its parent goal) as toggleable chips. Rebuilt whenever the parent goal changes,
+  // since the parent itself is excluded from the list — mirrors the habit modal's equivalent.
+  var updateProjectSecondaryGoalsBtn = wireDropdownMulti("projectSecondaryGoalsBtn", "projectSecondaryGoalsSelect", "projectSecondaryGoalsDropdown", "gid");
+  function renderProjectSecondaryGoalsChips(preSelectedIds){
+    var primaryId = document.getElementById("projectGoalSelect").value;
+    var container = document.getElementById("projectSecondaryGoalsSelect");
+    var options = state.goals.filter(function(g){ return g.id !== primaryId; });
+    container.innerHTML = options.length
+      ? options.map(function(g){ return '<div class="chip-opt" data-gid="' + g.id + '">' + escapeHtml(g.title) + '</div>'; }).join("")
+      : '<span class="panel-hint" style="margin:0;">No other goals yet.</span>';
+    setMultiChip(container, "gid", (preSelectedIds || []).filter(function(id){ return id !== primaryId; }));
+    updateProjectSecondaryGoalsBtn();
+  }
+  document.getElementById("projectGoalSelect").addEventListener("change", function(){
+    renderProjectSecondaryGoalsChips(multiChipValues(document.getElementById("projectSecondaryGoalsSelect"), "gid"));
+  });
   function openProjectModal(presetGoalId, editProjectObj){
     editingProjectId = editProjectObj ? editProjectObj.id : null;
     document.getElementById("projectModalTitle").textContent = editProjectObj ? "edit_project.json" : "new_project.json";
@@ -6944,6 +6974,8 @@
     setMultiChip(document.getElementById("projectAreaSelect"), "ar", initialAreas);
     fillProjectGoalSelect();
     document.getElementById("projectGoalSelect").value = goalToSelect;
+    renderProjectSecondaryGoalsChips(editProjectObj ? (editProjectObj.secondaryGoalIds || []) : []);
+    document.getElementById("projectSecondaryGoalsSelect").hidden = true;
     setChip(document.getElementById("projectPrioSelect"), "p", editProjectObj ? editProjectObj.priority : "P2");
     projectIconDraft = editProjectObj ? (editProjectObj.icon || null) : null;
     setProjectIconPreview(projectIconDraft);
@@ -6956,6 +6988,7 @@
     if(!title) return;
     var payload = {
       goal_id: document.getElementById("projectGoalSelect").value || null,
+      secondary_goal_ids: multiChipValues(document.getElementById("projectSecondaryGoalsSelect"), "gid"),
       title: title, priority: chipValue(document.getElementById("projectPrioSelect"), "p"),
       due: document.getElementById("projectDueInput").value || null,
       hours: parseFloat(document.getElementById("projectHoursInput").value) || 0,
@@ -6974,7 +7007,7 @@
     this.disabled = false;
     if(res.error){ alert(res.error.message); return; }
     var r = res.data;
-    var mapped = { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), categories:r.categories||[] };
+    var mapped = { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), categories:r.categories||[] };
     if(isEdit){
       var idx = state.projects.findIndex(function(x){ return x.id === editingProjectId; });
       if(idx !== -1) state.projects[idx] = mapped;
