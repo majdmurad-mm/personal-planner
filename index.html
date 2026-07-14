@@ -802,6 +802,17 @@
   .tracker-table{ width:100%; border-collapse:collapse; }
   .tracker-table th, .tracker-table td{ border:1px solid var(--border); padding:0; }
   .tracker-row-head{ background:var(--bg-inset); text-align:left; padding:9px 12px; white-space:nowrap; vertical-align:middle; }
+  /* Tracker rows cluster by area (same grouping the Planner matrix view uses), each with its own
+     divider row and a background tint across the whole row — name cell, tracked cells, and the
+     off-schedule placeholder alike — matching the area's color everywhere else in the app. */
+  .tracker-area-head th{ background:var(--bg-raised); padding:10px 12px 6px; }
+  .tracker-row.Health .tracker-row-head, .tracker-row.Health .tracker-cell, .tracker-row.Health .tracker-cell-off{ background:var(--cat-health-bg); }
+  .tracker-row.Finance .tracker-row-head, .tracker-row.Finance .tracker-cell, .tracker-row.Finance .tracker-cell-off{ background:var(--cat-finance-bg); }
+  .tracker-row.Career .tracker-row-head, .tracker-row.Career .tracker-cell, .tracker-row.Career .tracker-cell-off{ background:var(--cat-career-bg); }
+  .tracker-row.Maintenance .tracker-row-head, .tracker-row.Maintenance .tracker-cell, .tracker-row.Maintenance .tracker-cell-off{ background:var(--cat-maintenance-bg); }
+  .tracker-row.Growth .tracker-row-head, .tracker-row.Growth .tracker-cell, .tracker-row.Growth .tracker-cell-off{ background:var(--cat-growth-bg); }
+  .tracker-row.Relationships .tracker-row-head, .tracker-row.Relationships .tracker-cell, .tracker-row.Relationships .tracker-cell-off{ background:var(--cat-relationships-bg); }
+  .tracker-row.Sol .tracker-row-head, .tracker-row.Sol .tracker-cell, .tracker-row.Sol .tracker-cell-off{ background:var(--cat-sol-bg); }
   .tv-name{ font-size:12.5px; font-weight:600; color:var(--text); }
   .tv-unit{ font-family:var(--mono); font-size:9.5px; color:var(--text-faint); margin-left:5px; }
   .tracker-sparkline{ display:flex; align-items:flex-end; gap:2px; height:16px; margin-top:5px; }
@@ -4605,6 +4616,30 @@
     return '<td class="tracker-cell"' + holdAttrs + '>' + trackerCellControlHtml(v, date, value) + '</td>';
   }
 
+  // A tracker variable's area is only ever derived through the habit it's linked to (variables
+  // have no area field of their own) — manual, non-habit-linked variables have no area at all.
+  function trackerVarArea(v){
+    var h = state.habits.find(function(x){ return x.trackerVariableId === v.id; });
+    return h ? habitCategory(h) : null;
+  }
+  function trackerVarRowHtml(v, dates, cat){
+    var values = dates.map(function(d){ var e = trackerEntryFor(v.id, d); return e ? e.value : ""; });
+    var spark = "";
+    if(v.type === "number" || v.type === "scale"){
+      var nums = values.map(function(x){ return x === "" ? null : Number(x); });
+      var present = nums.filter(function(n){ return n !== null && !isNaN(n); });
+      var max = present.length ? Math.max.apply(null, present) : 0;
+      var min = present.length ? Math.min.apply(null, present) : 0;
+      spark = '<div class="tracker-sparkline">' + nums.map(function(n){
+        var h = 2;
+        if(n !== null && !isNaN(n)){ h = (max > min) ? (2 + Math.round(((n - min) / (max - min)) * 14)) : 16; }
+        return '<div class="tracker-spark-bar" style="height:' + h + 'px"></div>';
+      }).join("") + '</div>';
+    }
+    var nameCell = '<th class="tracker-row-head" data-var-id="' + v.id + '"><div class="tv-name">' + escapeHtml(v.name) + (v.unit ? '<span class="tv-unit">' + escapeHtml(v.unit) + '</span>' : '') + '</div>' + spark + '</th>';
+    var cells = dates.map(function(d, i){ return trackerRenderCell(v, d, values[i]); }).join("");
+    return '<tr class="tracker-row' + (cat ? ' ' + cat : '') + '">' + nameCell + cells + '</tr>';
+  }
   function renderTracker(){
     var dates = trackerRangeDates();
     document.getElementById("trackerRangeLabel").textContent = trackerFmtRangeLabel(dates);
@@ -4624,23 +4659,19 @@
       '</th>';
     }).join("") + '</tr>';
 
-    var rows = vars.map(function(v){
-      var values = dates.map(function(d){ var e = trackerEntryFor(v.id, d); return e ? e.value : ""; });
-      var spark = "";
-      if(v.type === "number" || v.type === "scale"){
-        var nums = values.map(function(x){ return x === "" ? null : Number(x); });
-        var present = nums.filter(function(n){ return n !== null && !isNaN(n); });
-        var max = present.length ? Math.max.apply(null, present) : 0;
-        var min = present.length ? Math.min.apply(null, present) : 0;
-        spark = '<div class="tracker-sparkline">' + nums.map(function(n){
-          var h = 2;
-          if(n !== null && !isNaN(n)){ h = (max > min) ? (2 + Math.round(((n - min) / (max - min)) * 14)) : 16; }
-          return '<div class="tracker-spark-bar" style="height:' + h + 'px"></div>';
-        }).join("") + '</div>';
-      }
-      var nameCell = '<th class="tracker-row-head" data-var-id="' + v.id + '"><div class="tv-name">' + escapeHtml(v.name) + (v.unit ? '<span class="tv-unit">' + escapeHtml(v.unit) + '</span>' : '') + '</div>' + spark + '</th>';
-      var cells = dates.map(function(d, i){ return trackerRenderCell(v, d, values[i]); }).join("");
-      return '<tr>' + nameCell + cells + '</tr>';
+    var byCat = {};
+    vars.forEach(function(v){ var c = trackerVarArea(v) || "__none__"; (byCat[c] = byCat[c] || []).push(v); });
+    var colspan = dates.length + 1;
+    var rows = CATEGORIES.concat(["__none__"]).map(function(cat){
+      var items = byCat[cat];
+      if(!items || !items.length) return "";
+      var label = cat === "__none__" ? "Unassigned" : (CATEGORY_ICONS[cat] + " " + cat);
+      var headRow = '<tr class="tracker-area-head"><th colspan="' + colspan + '">' +
+        '<div class="matrix-section-head" style="margin:0;"><span class="matrix-section-title">' + label + '</span>' +
+        '<span class="matrix-section-count">' + items.length + '</span><span class="matrix-section-line"></span></div>' +
+      '</th></tr>';
+      var itemRows = items.map(function(v){ return trackerVarRowHtml(v, dates, cat === "__none__" ? null : cat); }).join("");
+      return headRow + itemRows;
     }).join("");
 
     table.innerHTML = head + rows;
@@ -4905,11 +4936,16 @@
       return;
     }
     if(action === "up" || action === "down"){
+      // Rows now cluster by area (see renderTracker), so "up"/"down" only makes sense — and only
+      // produces a visible change — within the same area's own group, not the raw global position
+      // order (swapping against a neighbor from a different area would be invisible after regroup).
       var vars = state.trackerVars.slice().sort(function(a,b){ return (a.position||0) - (b.position||0); });
-      var idx = vars.findIndex(function(x){ return x.id === id; });
+      var varArea = trackerVarArea(v) || "__none__";
+      var sameAreaVars = vars.filter(function(x){ return (trackerVarArea(x) || "__none__") === varArea; });
+      var idx = sameAreaVars.findIndex(function(x){ return x.id === id; });
       var swapIdx = action === "up" ? idx - 1 : idx + 1;
-      if(swapIdx < 0 || swapIdx >= vars.length) return;
-      var va = vars[idx], vb = vars[swapIdx];
+      if(swapIdx < 0 || swapIdx >= sameAreaVars.length) return;
+      var va = sameAreaVars[idx], vb = sameAreaVars[swapIdx];
       var posA = va.position, posB = vb.position;
       va.position = posB; vb.position = posA;
       renderTracker();
