@@ -406,6 +406,7 @@
   .wb-toolbar{ display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
   .wb-save-status{ margin-left:auto; font-family:var(--mono); font-size:10px; color:var(--text-faint); }
   #wbConnectBtn.on{ background:var(--accent); color:var(--bg); border-color:var(--accent); }
+  #wbActionsBtn.on{ background:var(--accent); color:var(--bg); border-color:var(--accent); }
   .wb-zoom-group{ display:flex; align-items:center; gap:6px; }
   .wb-zoom-label{ font-family:var(--mono); font-size:10.5px; color:var(--text-dim); min-width:34px; text-align:center; }
   .wb-force-group{ display:flex; align-items:center; gap:6px; }
@@ -416,7 +417,7 @@
      white background (no more drawing canvas to paint it) so the plain-black node labels read
      cleanly with no shadow/blur trick needed for contrast. The toolbar and hints are now floating
      overlays (position:absolute) rather than their own row, so the canvas itself gets the full area. */
-  .wb-canvas-wrap{ position:relative; flex:1; min-height:0; border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; touch-action:none; background:var(--bg-inset); cursor:grab; }
+  .wb-canvas-wrap{ position:relative; flex:1; min-height:0; border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; touch-action:none; background:var(--bg-raised); cursor:grab; }
   .wb-canvas-wrap.panning{ cursor:grabbing; }
   .wb-canvas-wrap:fullscreen{ height:100vh; border-radius:0; border:none; }
   .wb-toolbar-float{ position:absolute; top:12px; left:12px; z-index:100; background:var(--bg-raised); border:1px solid var(--border-bright); border-radius:var(--radius); padding:8px 10px; box-shadow:0 6px 20px rgba(0,0,0,0.35); pointer-events:auto; }
@@ -458,6 +459,7 @@
   .wb-goal-node[data-type="goal"]{ width:22px; height:22px; }
   .wb-goal-node[data-type="project"]{ width:16px; height:16px; }
   .wb-goal-node[data-type="habit"]{ width:11px; height:11px; }
+  .wb-goal-node[data-type="action"]{ width:8px; height:8px; }
   .wb-goal-node:hover{ box-shadow:0 0 0 2px var(--bg-inset), 0 0 0 5px var(--accent-glow), 0 2px 8px rgba(0,0,0,0.35); }
   .wb-goal-node.dragging{ cursor:grabbing; z-index:50; box-shadow:0 0 0 2px var(--bg-inset), 0 4px 16px rgba(0,0,0,0.5); }
   .wb-goal-node.connect-pending{ box-shadow:0 0 0 2px var(--bg-inset), 0 0 0 5px var(--accent), 0 2px 8px rgba(0,0,0,0.35); }
@@ -489,6 +491,7 @@
   .wb-goal-node[data-type="area"] .wb-goal-node-label{ left:62px; font-size:13px; font-weight:700; }
   .wb-goal-node[data-type="goal"] .wb-goal-node-label{ left:28px; }
   .wb-goal-node[data-type="habit"] .wb-goal-node-label{ left:17px; font-size:10px; font-weight:500; }
+  .wb-goal-node[data-type="action"] .wb-goal-node-label{ left:14px; font-size:9px; font-weight:500; }
   /* Area hub nodes (one per life area, always present, connected only to that area's own goals — see
      wbHierarchyEdges) render as just the area's own glyph — no circle behind it, the icon itself
      carries the area color. */
@@ -1398,6 +1401,7 @@
       <div class="wb-canvas-wrap" id="wbCanvasWrap">
         <div class="wb-toolbar wb-toolbar-float" id="wbToolbarFloat">
           <button class="btn" id="wbConnectBtn" type="button" title="Click two nodes in a row to link them">🔗 connect</button>
+          <button class="btn" id="wbActionsBtn" type="button" title="Show actions as their own node layer">▪ actions</button>
           <div class="wb-zoom-group">
             <button class="cal-nav-btn" id="wbZoomOutBtn" type="button" aria-label="Zoom out">−</button>
             <span class="wb-zoom-label" id="wbZoomLabel">100%</span>
@@ -4041,11 +4045,15 @@
      or adding a connection "reheats" it so it reacts and resettles. */
   var wbSimNodes = []; // { type, id, x, y, vx, vy, fixed }
   // Half of each type's .wb-goal-node diameter — keep in sync with that CSS. Size reflects hierarchy:
-  // an area hub is the biggest node, then a goal, then a project, then a habit the smallest.
-  var WB_DOT_RADII = { area: 28, goal: 11, project: 8, habit: 5.5 };
+  // an area hub is the biggest node, then a goal, then a project, then a habit, then an action —
+  // the smallest of all, and only ever present when the "actions" layer toggle is on.
+  var WB_DOT_RADII = { area: 28, goal: 11, project: 8, habit: 5.5, action: 4 };
   var WB_CENTER_X = WB_WORLD_W / 2, WB_CENTER_Y = WB_WORLD_H / 2;
   var WB_REPEL = 9000, WB_AREA_PUSH = 3000, WB_LINK_DIST = 130, WB_LINK_K = 0.02, WB_CENTER_K = 0.005, WB_DAMPING = 0.82, WB_ALPHA_DECAY = 0.985;
   var wbAlpha = 0, wbSimRunning = false;
+  // Actions are an opt-in layer — off by default so existing graphs don't suddenly get cluttered
+  // with (often many) small action nodes the first time someone opens this page after the update.
+  var wbShowActions = false;
   function wbFindSimNode(type, id){
     for(var i=0;i<wbSimNodes.length;i++){ if(wbSimNodes[i].type === type && wbSimNodes[i].id === id) return wbSimNodes[i]; }
     return null;
@@ -4061,6 +4069,7 @@
     state.goals.forEach(function(g){ wantedKeys["goal:" + g.id] = true; });
     state.projects.forEach(function(p){ wantedKeys["project:" + p.id] = true; });
     state.habits.forEach(function(h){ wantedKeys["habit:" + h.id] = true; });
+    if(wbShowActions) state.actions.forEach(function(a){ wantedKeys["action:" + a.id] = true; });
     wbSimNodes = wbSimNodes.filter(function(n){ return wantedKeys[n.type + ":" + n.id]; });
     function ensure(type, id){
       if(wbFindSimNode(type, id)) return;
@@ -4071,6 +4080,7 @@
     state.goals.forEach(function(g){ ensure("goal", g.id); });
     state.projects.forEach(function(p){ ensure("project", p.id); });
     state.habits.forEach(function(h){ ensure("habit", h.id); });
+    if(wbShowActions) state.actions.forEach(function(a){ ensure("action", a.id); });
   }
   // Implicit parent/child edges — derived straight from each goal's own category and each
   // project/habit's own goal_id, not a stored relation, so there's nothing to sync/persist here:
@@ -4092,18 +4102,34 @@
       if(h.goalId) edges.push({ fromType:"goal", fromId:h.goalId, toType:"habit", toId:h.id });
       (h.secondaryGoalIds || []).forEach(function(gid){ edges.push({ fromType:"goal", fromId:gid, toType:"habit", toId:h.id, secondary:true }); });
     });
+    // Actions only ever join the graph when the "actions" layer toggle is on — no sim node exists
+    // for them otherwise, so wbApplySpring would just no-op on these anyway, but skip generating
+    // them at all while off rather than computing edges nobody uses.
+    if(wbShowActions){
+      state.actions.forEach(function(a){
+        if(a.parentType === "goal" && a.parentId) edges.push({ fromType:"goal", fromId:a.parentId, toType:"action", toId:a.id });
+        else if(a.parentType === "project" && a.parentId) edges.push({ fromType:"project", fromId:a.parentId, toType:"action", toId:a.id });
+      });
+    }
     return edges;
   }
-  // A habit normally only reaches its area hub transitively (area -> goal -> habit), but a habit's
-  // own area (see habitCategory) is well-defined even when it has no goal at all — this connects
-  // every habit straight to its area hub too, on top of any goal-mediated pull it already has, so a
-  // standalone habit (no goal) still has something pulling it toward its area instead of drifting.
-  function wbAreaHabitEdges(){
+  // A habit or action normally only reaches its area hub transitively (area -> goal -> habit/action,
+  // or area -> goal -> project -> action), but a leaf item's own area (see habitCategory/
+  // actionCategory) is well-defined even when it has no parent at all — this connects every one of
+  // them straight to its area hub too, on top of any parent-mediated pull it already has, so a
+  // standalone habit/action still has something pulling it toward its area instead of drifting.
+  function wbAreaLeafEdges(){
     var edges = [];
     state.habits.forEach(function(h){
       var cat = habitCategory(h);
       if(cat) edges.push({ fromType:"area", fromId:cat, toType:"habit", toId:h.id });
     });
+    if(wbShowActions){
+      state.actions.forEach(function(a){
+        var cat = actionCategory(a);
+        if(cat) edges.push({ fromType:"area", fromId:cat, toType:"action", toId:a.id });
+      });
+    }
     return edges;
   }
   // Spring attraction along one edge — shared by manual connections and implicit hierarchy edges so
@@ -4140,15 +4166,21 @@
     }
     state.wbConnections.forEach(wbApplySpring);
     wbHierarchyEdges().forEach(wbApplySpring);
-    wbAreaHabitEdges().forEach(wbApplySpring);
-    // Only area hubs get pulled toward the world center, and strongly (WB_CENTER_K is bigger than
-    // the link spring constant) — goal/project/habit nodes have no direct center pull of their own,
-    // they stay near the middle only by being spring-linked to an area hub that's itself anchored.
-    nodes.forEach(function(n){
+    wbAreaLeafEdges().forEach(wbApplySpring);
+    // Area hubs get pulled toward the world center, and strongly (WB_CENTER_K is bigger than the
+    // link spring constant). A true orphan — no resolvable area at all (areas[idx] is null: a
+    // standalone project/habit/action with no goal and no area of its own) — gets the same pull at
+    // half strength, since it has no area hub or spring-linked parent to anchor it near the middle
+    // either; everything else (goal/project/habit/action WITH an area) still has no direct center
+    // pull of its own, staying near the middle only by being spring-linked to an anchored area hub.
+    nodes.forEach(function(n, idx){
       if(n.fixed){ n.vx = 0; n.vy = 0; return; }
       if(n.type === "area"){
         n.vx += (WB_CENTER_X - n.x) * WB_CENTER_K * wbAlpha;
         n.vy += (WB_CENTER_Y - n.y) * WB_CENTER_K * wbAlpha;
+      } else if(!areas[idx]){
+        n.vx += (WB_CENTER_X - n.x) * WB_CENTER_K * 0.5 * wbAlpha;
+        n.vy += (WB_CENTER_Y - n.y) * WB_CENTER_K * 0.5 * wbAlpha;
       }
       n.vx *= WB_DAMPING; n.vy *= WB_DAMPING;
       n.x += n.vx; n.y += n.vy;
@@ -4200,6 +4232,7 @@
     html += state.goals.map(function(g){ return wbNodeHtml("goal", g, g.category); }).join("");
     html += state.projects.map(function(p){ return wbNodeHtml("project", p, projectCategory(p)); }).join("");
     html += state.habits.map(function(h){ return wbNodeHtml("habit", h, habitCategory(h)); }).join("");
+    if(wbShowActions) html += state.actions.map(function(a){ return wbNodeHtml("action", a, actionCategory(a)); }).join("");
     overlay.innerHTML = html;
     renderWbConnections();
   }
@@ -4215,9 +4248,10 @@
   }
   function wbNodeArea(n){
     if(n.type === "area") return n.id;
-    var item = n.type === "goal" ? goalById(n.id) : n.type === "project" ? projectById(n.id) : habitById(n.id);
-    if(!item) return null;
-    return n.type === "goal" ? item.category : n.type === "project" ? projectCategory(item) : habitCategory(item);
+    if(n.type === "goal"){ var g = goalById(n.id); return g ? g.category : null; }
+    if(n.type === "project"){ var p = projectById(n.id); return p ? projectCategory(p) : null; }
+    if(n.type === "action"){ var a = state.actions.find(function(x){ return x.id === n.id; }); return a ? actionCategory(a) : null; }
+    var h = habitById(n.id); return h ? habitCategory(h) : null;
   }
   // Andrew's monotone chain — a standard, compact convex hull algorithm. Returns hull points in
   // counter-clockwise order; for < 3 points there's no real hull, callers handle those separately.
@@ -4429,6 +4463,7 @@
         if(type === "area") openAreaDetailPage(id);
         else if(type === "goal") openGoalDetailPage(id);
         else if(type === "project") editProject(id);
+        else if(type === "action") editAction(id);
         else editHabit(id);
         return;
       }
@@ -4522,6 +4557,14 @@
 
     document.getElementById("wbConnectBtn").addEventListener("click", function(){
       setWbConnectMode(!wbConnectMode);
+    });
+
+    document.getElementById("wbActionsBtn").addEventListener("click", function(){
+      wbShowActions = !wbShowActions;
+      this.classList.toggle("on", wbShowActions);
+      wbSyncSimNodes();
+      renderWhiteboardNodes();
+      wbReheat(1);
     });
 
     document.getElementById("wbCenterForceSlider").addEventListener("input", function(){
