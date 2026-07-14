@@ -4021,6 +4021,18 @@
     });
     return edges;
   }
+  // A habit normally only reaches its area hub transitively (area -> goal -> habit), but a habit's
+  // own area (see habitCategory) is well-defined even when it has no goal at all — this connects
+  // every habit straight to its area hub too, on top of any goal-mediated pull it already has, so a
+  // standalone habit (no goal) still has something pulling it toward its area instead of drifting.
+  function wbAreaHabitEdges(){
+    var edges = [];
+    state.habits.forEach(function(h){
+      var cat = habitCategory(h);
+      if(cat) edges.push({ fromType:"area", fromId:cat, toType:"habit", toId:h.id });
+    });
+    return edges;
+  }
   // Spring attraction along one edge — shared by manual connections and implicit hierarchy edges so
   // both pull their endpoints together the same way (parent/child items physically cluster, on top
   // of already clustering by shared area).
@@ -4055,6 +4067,7 @@
     }
     state.wbConnections.forEach(wbApplySpring);
     wbHierarchyEdges().forEach(wbApplySpring);
+    wbAreaHabitEdges().forEach(wbApplySpring);
     // No node type is pulled toward the world center anymore — the layout settles purely from
     // repulsion, the area-vs-area push, and the hierarchy/manual springs, so nothing forces area
     // hubs (or anything spring-linked to one) toward the middle of the world.
