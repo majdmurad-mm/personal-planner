@@ -31,6 +31,18 @@
     --cat-growth: #B084F5; --cat-growth-bg: rgba(176,132,245,0.14);
     --cat-relationships: #5FA8FF; --cat-relationships-bg: rgba(95,168,255,0.12);
     --cat-life: #22D3EE; --cat-life-bg: rgba(34,211,238,0.12);
+    /* Today timeline hour gridlines — one repeating pattern (period = 6h = 1/4 of the row) covers
+       all three tiers at once: a thick line every 6h, a medium line every 3h, thin lines every
+       other hour. Reused as a background layer on every area row (layered under that row's own
+       area tint, since a plain background-color must be the bottom-most layer). */
+    --tl-hour-grid: repeating-linear-gradient(90deg,
+      rgba(255,255,255,0.22) 0, rgba(255,255,255,0.22) 2px, transparent 2px,
+      transparent calc(100%/24 - 1px), rgba(255,255,255,0.08) calc(100%/24 - 1px), rgba(255,255,255,0.08) calc(100%/24 + 1px), transparent calc(100%/24 + 1px),
+      transparent calc(100%/24*2 - 1px), rgba(255,255,255,0.08) calc(100%/24*2 - 1px), rgba(255,255,255,0.08) calc(100%/24*2 + 1px), transparent calc(100%/24*2 + 1px),
+      transparent calc(100%/24*3 - 1.5px), rgba(255,255,255,0.15) calc(100%/24*3 - 1.5px), rgba(255,255,255,0.15) calc(100%/24*3 + 1.5px), transparent calc(100%/24*3 + 1.5px),
+      transparent calc(100%/24*4 - 1px), rgba(255,255,255,0.08) calc(100%/24*4 - 1px), rgba(255,255,255,0.08) calc(100%/24*4 + 1px), transparent calc(100%/24*4 + 1px),
+      transparent calc(100%/24*5 - 1px), rgba(255,255,255,0.08) calc(100%/24*5 - 1px), rgba(255,255,255,0.08) calc(100%/24*5 + 1px), transparent calc(100%/24*5 + 1px),
+      transparent calc(100%/4));
     --radius: 4px;
     --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
     --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -457,13 +469,16 @@
   .today-timeline-row{ position:relative; flex:1; touch-action:none; }
   .today-timeline-row + .today-timeline-row{ border-top:1px solid var(--border); }
   .today-timeline-daynight-row{ flex:1.6; }
-  .today-timeline-row.Health{ background:var(--cat-health-bg); }
-  .today-timeline-row.Finance{ background:var(--cat-finance-bg); }
-  .today-timeline-row.Career{ background:var(--cat-career-bg); }
-  .today-timeline-row.Maintenance{ background:var(--cat-maintenance-bg); }
-  .today-timeline-row.Growth{ background:var(--cat-growth-bg); }
-  .today-timeline-row.Relationships{ background:var(--cat-relationships-bg); }
-  .today-timeline-row.Life{ background:var(--cat-life-bg); }
+  /* Hour gridlines on every row that shows scheduled items (area rows + "other") — not on the
+     day/night band, which is its own smooth gradient rather than discrete blocks. */
+  #todayTimelineAreaOther{ background:var(--tl-hour-grid); }
+  .today-timeline-row.Health{ background:var(--tl-hour-grid), var(--cat-health-bg); }
+  .today-timeline-row.Finance{ background:var(--tl-hour-grid), var(--cat-finance-bg); }
+  .today-timeline-row.Career{ background:var(--tl-hour-grid), var(--cat-career-bg); }
+  .today-timeline-row.Maintenance{ background:var(--tl-hour-grid), var(--cat-maintenance-bg); }
+  .today-timeline-row.Growth{ background:var(--tl-hour-grid), var(--cat-growth-bg); }
+  .today-timeline-row.Relationships{ background:var(--tl-hour-grid), var(--cat-relationships-bg); }
+  .today-timeline-row.Life{ background:var(--tl-hour-grid), var(--cat-life-bg); }
   .today-timeline-daynight{ position:absolute; inset:0; transition:background 1s ease; }
   .today-timeline-now{ position:absolute; top:0; bottom:0; width:2px; background:var(--p0); box-shadow:0 0 6px var(--p0); z-index:5; }
   .today-timeline-now-label{ position:absolute; top:-17px; left:50%; transform:translateX(-50%); font-family:var(--mono); font-size:9px; font-weight:700; color:var(--p0); white-space:nowrap; }
