@@ -357,6 +357,13 @@
   .area-tile-attr.critical{ color:var(--p0); }
   .icon-upload-row{ display:flex; align-items:center; gap:10px; }
   .icon-preview{ width:40px; height:40px; border-radius:6px; background-color:var(--bg-inset); border:1px solid var(--border); flex-shrink:0; mask-size:contain; -webkit-mask-size:contain; mask-repeat:no-repeat; -webkit-mask-repeat:no-repeat; mask-position:center; -webkit-mask-position:center; }
+  /* Habit vector icon gallery — every HABIT_ICON_LIBRARY entry as a clickable swatch, letting the
+     user override the title-based auto-suggestion (see renderHabitIconGallery). */
+  .icon-gallery{ display:flex; flex-wrap:wrap; gap:6px; max-height:150px; overflow-y:auto; padding:8px; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg-inset); }
+  .icon-gallery-btn{ width:32px; height:32px; padding:6px; border-radius:6px; border:1.5px solid var(--border-bright); background:var(--bg-raised); color:var(--text-dim); cursor:pointer; flex-shrink:0; }
+  .icon-gallery-btn svg{ width:100%; height:100%; display:block; }
+  .icon-gallery-btn:hover{ border-color:var(--accent-dim); color:var(--text); }
+  .icon-gallery-btn.sel{ border-color:var(--accent); background:var(--accent-glow); color:var(--accent); }
 
   /* ===== SLEEP ===== */
   .goal-integration-block{ margin-top:28px; padding-top:20px; border-top:1px solid var(--border); }
@@ -1551,6 +1558,10 @@
         <div class="chip-opt" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" data-ar="Growth">↑ Growth</div><div class="chip-opt" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" data-ar="Sol">◐ Sol</div>
       </div></div>
       <div class="field"><label for="habitGoalSelect">parent goal</label><select id="habitGoalSelect"></select></div>
+      <div class="field"><label>secondary goals (optional)</label><div class="chip-select" id="habitSecondaryGoalsSelect"></div>
+        <p class="panel-hint">Link this habit to other goals too — its area still comes from the parent goal above.</p>
+      </div>
+      <div class="field"><label>icon</label><div class="icon-gallery" id="habitIconGallery"></div></div>
       <div class="field-row">
         <div class="field"><label>priority</label><div class="chip-select" id="habitPrioSelect">
           <div class="chip-opt" data-p="P0">P0</div><div class="chip-opt" data-p="P1">P1</div><div class="chip-opt sel" data-p="P2">P2</div><div class="chip-opt" data-p="P3">P3</div>
@@ -2082,7 +2093,8 @@
     whiteboard_x: "graph position", whiteboard_y: "graph position",
     weekdays: "habit day selection", tracker_variable_id: "habit's tracker link", time_of_day: "scheduled time",
     duration_minutes: "duration", category: "area", skip_dates: "skipped habit days",
-    categories: "area(s)", custom_interval_days: "custom repeat interval", extra_dates: "manually scheduled habit days"
+    categories: "area(s)", custom_interval_days: "custom repeat interval", extra_dates: "manually scheduled habit days",
+    secondary_goal_ids: "secondary goals"
   };
   function warnDroppedFields(dropped){
     if(!dropped || !dropped.length) return;
@@ -2303,7 +2315,7 @@
     state.goals.sort(function(a,b){ return a.position - b.position; });
     state.projects = (results[1].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), categories:r.categories||[] }; });
     state.projects.sort(function(a,b){ return a.position - b.position; });
-    state.habits = (results[2].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || null, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [], extraDates:r.extra_dates || [], customIntervalDays:r.custom_interval_days||null, icon:r.icon||null }; });
+    state.habits = (results[2].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || null, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [], extraDates:r.extra_dates || [], customIntervalDays:r.custom_interval_days||null, icon:r.icon||null }; });
     state.habits.sort(function(a,b){ return a.position - b.position; });
     state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null }; });
     state.actions.sort(function(a,b){ return a.position - b.position; });
@@ -2501,7 +2513,7 @@
   function goalDirectChildren(g){
     var projs = state.projects.filter(function(p){ return p.goalId === g.id; }).map(function(p){ return { kind:"project", id:p.id, title:p.title, done:p.done }; });
     var acts = state.actions.filter(function(a){ return a.parentType==="goal" && a.parentId===g.id; }).map(function(a){ return { kind:"action", id:a.id, title:a.title, done:a.done }; });
-    var habs = state.habits.filter(function(h){ return h.goalId === g.id; }).map(function(h){ return { kind:"habit", id:h.id, title:h.title, done:false }; });
+    var habs = state.habits.filter(function(h){ return h.goalId === g.id || (h.secondaryGoalIds || []).indexOf(g.id) !== -1; }).map(function(h){ return { kind:"habit", id:h.id, title:h.title, done:false }; });
     return projs.concat(acts, habs);
   }
   function goalProgress(g){
@@ -2870,7 +2882,7 @@
     });
   }
   function habitPayload(snapshot){
-    return { id:snapshot.id, goal_id:snapshot.goalId, title:snapshot.title, priority:snapshot.priority, frequency:snapshot.frequency, weekdays:snapshot.weekdays, tracker_variable_id:snapshot.trackerVariableId, time_of_day:snapshot.timeOfDay, duration_minutes:snapshot.durationMinutes, days:snapshot.days, position:snapshot.position, skip_dates:snapshot.skipDates, extra_dates:snapshot.extraDates, created_at:snapshot.createdAt, custom_interval_days:snapshot.customIntervalDays, icon:snapshot.icon };
+    return { id:snapshot.id, goal_id:snapshot.goalId, secondary_goal_ids:snapshot.secondaryGoalIds, title:snapshot.title, priority:snapshot.priority, frequency:snapshot.frequency, weekdays:snapshot.weekdays, tracker_variable_id:snapshot.trackerVariableId, time_of_day:snapshot.timeOfDay, duration_minutes:snapshot.durationMinutes, days:snapshot.days, position:snapshot.position, skip_dates:snapshot.skipDates, extra_dates:snapshot.extraDates, created_at:snapshot.createdAt, custom_interval_days:snapshot.customIntervalDays, icon:snapshot.icon };
   }
   function trackerVarPayload(snapshot){
     return { id:snapshot.id, name:snapshot.name, type:snapshot.type, unit:snapshot.unit, scale_max:snapshot.scaleMax, categories:snapshot.categories, position:snapshot.position };
@@ -4025,6 +4037,7 @@
     });
     state.habits.forEach(function(h){
       if(h.goalId) edges.push({ fromType:"goal", fromId:h.goalId, toType:"habit", toId:h.id });
+      (h.secondaryGoalIds || []).forEach(function(gid){ edges.push({ fromType:"goal", fromId:gid, toType:"habit", toId:h.id }); });
     });
     return edges;
   }
@@ -6849,6 +6862,48 @@
     if(currentValue && filtered.some(function(g){ return g.id === currentValue; })) sel.value = currentValue;
   }
   document.getElementById("habitAreaSelect").addEventListener("click", function(){ fillHabitGoalSelect(); });
+  // Secondary goals: every OTHER goal (any area — a habit's area only ever comes from its parent
+  // goal above, this is purely an extra connection) as toggleable chips. Rebuilt whenever the parent
+  // goal changes, since the parent itself is excluded from the list — preSelectedIds lets a caller
+  // re-apply whatever was already checked (modal open with saved data, or a live parent-goal switch
+  // re-filtering out whichever goal just became the new parent).
+  function renderHabitSecondaryGoalsChips(preSelectedIds){
+    var primaryId = document.getElementById("habitGoalSelect").value;
+    var container = document.getElementById("habitSecondaryGoalsSelect");
+    var options = state.goals.filter(function(g){ return g.id !== primaryId; });
+    container.innerHTML = options.length
+      ? options.map(function(g){ return '<div class="chip-opt" data-gid="' + g.id + '">' + escapeHtml(g.title) + '</div>'; }).join("")
+      : '<span class="panel-hint" style="margin:0;">No other goals yet.</span>';
+    setMultiChip(container, "gid", (preSelectedIds || []).filter(function(id){ return id !== primaryId; }));
+  }
+  wireMultiChipSelect(document.getElementById("habitSecondaryGoalsSelect"));
+  document.getElementById("habitGoalSelect").addEventListener("change", function(){
+    renderHabitSecondaryGoalsChips(multiChipValues(document.getElementById("habitSecondaryGoalsSelect"), "gid"));
+  });
+  // Icon gallery: every HABIT_ICON_LIBRARY entry, highlighting whichever key is currently drafted.
+  // habitIconDraft/habitIconManuallySet are updated by the title-input live-suggest and the gallery
+  // click handler below (see openHabitModal and the habitTitleInput listener for how they interact).
+  var habitIconDraft = null, habitIconManuallySet = false;
+  function renderHabitIconGallery(selectedKey){
+    document.getElementById("habitIconGallery").innerHTML = HABIT_ICON_LIBRARY.map(function(entry){
+      return '<button type="button" class="icon-gallery-btn' + (entry.key === selectedKey ? ' sel' : '') + '" data-icon-key="' + entry.key + '" title="' + entry.key + '">' + entry.svg + '</button>';
+    }).join("");
+  }
+  document.getElementById("habitIconGallery").addEventListener("click", function(e){
+    var btn = e.target.closest(".icon-gallery-btn");
+    if(!btn) return;
+    habitIconDraft = btn.dataset.iconKey;
+    habitIconManuallySet = true;
+    this.querySelectorAll(".icon-gallery-btn").forEach(function(b){ b.classList.toggle("sel", b === btn); });
+  });
+  // Live-suggest as the title is typed, same logic as the old fully-automatic assignment — but only
+  // until the user overrides it by actually clicking a gallery icon (habitIconManuallySet).
+  document.getElementById("habitTitleInput").addEventListener("input", function(){
+    if(habitIconManuallySet) return;
+    var usedKeys = state.habits.filter(function(h){ return h.id !== editingHabitId; }).map(function(h){ return h.icon; }).filter(Boolean);
+    habitIconDraft = pickHabitIconKey(this.value, usedKeys);
+    renderHabitIconGallery(habitIconDraft);
+  });
   // Mouse-clickable time picker (30-min increments) alongside a native <input type="time">, so
   // setting a time doesn't require typing. Generic — used for both the habit and action modals.
   var TIME_PICK_OPTIONS = (function(){
@@ -6894,6 +6949,13 @@
     setChip(document.getElementById("habitAreaSelect"), "ar", areaGoal ? areaGoal.category : "Career");
     fillHabitGoalSelect();
     document.getElementById("habitGoalSelect").value = goalToSelect;
+    renderHabitSecondaryGoalsChips(editHabitObj ? (editHabitObj.secondaryGoalIds || []) : []);
+    // Editing an existing habit keeps its already-assigned icon fixed (habitIconManuallySet=true)
+    // so retyping the title doesn't silently swap it out from under the user; a brand-new habit
+    // starts unset and live-suggests as they type (see the habitTitleInput listener above).
+    habitIconManuallySet = !!editHabitObj;
+    habitIconDraft = editHabitObj ? (editHabitObj.icon || null) : null;
+    renderHabitIconGallery(habitIconDraft);
     setChip(document.getElementById("habitPrioSelect"), "p", editHabitObj ? editHabitObj.priority : "P2");
     var freq = editHabitObj ? editHabitObj.frequency : "daily";
     setChip(document.getElementById("habitFreqSelect"), "f", freq);
@@ -6948,27 +7010,29 @@
 
     var payload = {
       goal_id: document.getElementById("habitGoalSelect").value || null,
+      secondary_goal_ids: multiChipValues(document.getElementById("habitSecondaryGoalsSelect"), "gid"),
       title: title, priority: chipValue(document.getElementById("habitPrioSelect"), "p"),
       frequency: freq,
       weekdays: freq === "weekly" ? multiChipValues(document.getElementById("habitWeekdaysSelect"), "wd") : [],
       tracker_variable_id: mappedVar.id,
       time_of_day: document.getElementById("habitTimeInput").value || null,
       duration_minutes: document.getElementById("habitDurationInput").value ? Math.max(0, Math.round(Number(document.getElementById("habitDurationInput").value))) : null,
-      custom_interval_days: freq === "custom" ? Math.max(1, Math.round(Number(document.getElementById("habitCustomIntervalInput").value)) || 1) : null
+      custom_interval_days: freq === "custom" ? Math.max(1, Math.round(Number(document.getElementById("habitCustomIntervalInput").value)) || 1) : null,
+      // Whatever's drafted in the icon gallery wins; falls back to the title-based auto-pick only if
+      // the user never typed a title long enough to trigger a live suggestion (see habitTitleInput).
+      icon: habitIconDraft || pickHabitIconKey(title, state.habits.filter(function(x){ return x.id !== editingHabitId; }).map(function(x){ return x.icon; }).filter(Boolean))
     };
     var res;
     if(isEdit){
       res = await safeUpdate("habits", editingHabitId, payload);
     } else {
       payload.days = {};
-      // Auto-assigned here (not user-picked, per how habit icons work) — see HABIT_ICON_LIBRARY.
-      payload.icon = pickHabitIconKey(title, state.habits.map(function(x){ return x.icon; }).filter(Boolean));
       res = await safeInsert("habits", payload, state.habits);
     }
     this.disabled = false;
     if(res.error){ alert(res.error.message); return; }
     var r = res.data;
-    var mapped = { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || mappedVar.id, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [], extraDates:r.extra_dates || [], customIntervalDays:r.custom_interval_days||null, icon:r.icon||payload.icon||null };
+    var mapped = { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || mappedVar.id, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [], extraDates:r.extra_dates || [], customIntervalDays:r.custom_interval_days||null, icon:r.icon||payload.icon||null };
     if(isEdit){
       var idx = state.habits.findIndex(function(x){ return x.id === editingHabitId; });
       if(idx !== -1) state.habits[idx] = mapped;
