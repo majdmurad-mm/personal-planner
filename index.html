@@ -452,14 +452,15 @@
      connection lines to the dot's true center. The title renders as a separate absolutely-positioned
      label alongside it, which — since absolutely-positioned children don't contribute to their
      parent's own box size — never affects that center math either.
-     Size reflects hierarchy (goal > project > habit — see WB_DOT_RADII, which must stay in sync with
-     these diameters), not just an arbitrary style choice. */
+     Size reflects hierarchy (main > area > goal > project = habit > action — see WB_DOT_RADII, which
+     must stay in sync with these diameters), not just an arbitrary style choice. */
   .wb-goal-node{ position:absolute; border-radius:50%; background:var(--text-faint); pointer-events:auto; cursor:grab; box-shadow:0 0 0 2px var(--bg-inset), 0 2px 8px rgba(0,0,0,0.35); user-select:none; touch-action:none; }
-  .wb-goal-node[data-type="area"]{ width:56px; height:56px; }
-  .wb-goal-node[data-type="goal"]{ width:22px; height:22px; }
-  .wb-goal-node[data-type="project"]{ width:16px; height:16px; }
-  .wb-goal-node[data-type="habit"]{ width:11px; height:11px; }
-  .wb-goal-node[data-type="action"]{ width:8px; height:8px; }
+  .wb-goal-node[data-type="main"]{ width:80px; height:80px; }
+  .wb-goal-node[data-type="area"]{ width:64px; height:64px; }
+  .wb-goal-node[data-type="goal"]{ width:56px; height:56px; }
+  .wb-goal-node[data-type="project"]{ width:48px; height:48px; }
+  .wb-goal-node[data-type="habit"]{ width:48px; height:48px; }
+  .wb-goal-node[data-type="action"]{ width:32px; height:32px; }
   .wb-goal-node:hover{ box-shadow:0 0 0 2px var(--bg-inset), 0 0 0 5px var(--accent-glow), 0 2px 8px rgba(0,0,0,0.35); }
   .wb-goal-node.dragging{ cursor:grabbing; z-index:50; box-shadow:0 0 0 2px var(--bg-inset), 0 4px 16px rgba(0,0,0,0.5); }
   .wb-goal-node.connect-pending{ box-shadow:0 0 0 2px var(--bg-inset), 0 0 0 5px var(--accent), 0 2px 8px rgba(0,0,0,0.35); }
@@ -475,6 +476,22 @@
   .wb-goal-node.Growth{ background:var(--cat-growth); }
   .wb-goal-node.Relationships{ background:var(--cat-relationships); }
   .wb-goal-node.Sol{ background:var(--cat-sol); }
+  /* The single "main" hub isn't tied to any area, so it never gets a category class/color — a flat
+     accent fill instead, making it read as a distinct root rather than an eighth area. */
+  .wb-goal-node[data-type="main"]{ background:var(--accent); }
+  /* A goal/project/habit that has its own icon lightens its dot to the area's -bg tint (instead of
+     the full-saturation fill above) so the icon — drawn in the full saturated color via
+     .wb-goal-node-symbol/iconMaskHtml — reads clearly on top of it, same light-bg/saturated-icon
+     pairing already used everywhere else icons appear in this app (matrix tiles, Today tiles). More
+     specific than the plain .Health/etc rules above so it wins regardless of source order. */
+  .wb-goal-node.has-icon.Health{ background:var(--cat-health-bg); }
+  .wb-goal-node.has-icon.Finance{ background:var(--cat-finance-bg); }
+  .wb-goal-node.has-icon.Career{ background:var(--cat-career-bg); }
+  .wb-goal-node.has-icon.Maintenance{ background:var(--cat-maintenance-bg); }
+  .wb-goal-node.has-icon.Growth{ background:var(--cat-growth-bg); }
+  .wb-goal-node.has-icon.Relationships{ background:var(--cat-relationships-bg); }
+  .wb-goal-node.has-icon.Sol{ background:var(--cat-sol-bg); }
+  .wb-goal-node-symbol{ position:absolute; inset:20%; -webkit-mask-size:contain; mask-size:contain; -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat; -webkit-mask-position:center; mask-position:center; pointer-events:none; }
   /* Area hubs are just their icon glyph — no circle, no fill, no ring — so declared after (and more
      specific than) the .Health/.Finance/etc background rules above to win the override. The glyph
      itself carries the area color instead (see .wb-goal-node-icon), since there's no colored disc
@@ -488,14 +505,16 @@
   .wb-goal-node[data-type="area"].connect-pending{ box-shadow:none; }
   .wb-goal-node[data-type="area"].connect-pending .wb-goal-node-icon{ filter:drop-shadow(0 0 4px var(--accent)) drop-shadow(0 0 4px var(--accent)); }
   .wb-goal-node-label{ position:absolute; left:22px; top:50%; transform:translateY(-50%); font-family:var(--mono); font-size:11px; font-weight:600; color:var(--text); white-space:nowrap; pointer-events:none; }
-  .wb-goal-node[data-type="area"] .wb-goal-node-label{ left:62px; font-size:13px; font-weight:700; }
-  .wb-goal-node[data-type="goal"] .wb-goal-node-label{ left:28px; }
-  .wb-goal-node[data-type="habit"] .wb-goal-node-label{ left:17px; font-size:10px; font-weight:500; }
-  .wb-goal-node[data-type="action"] .wb-goal-node-label{ left:14px; font-size:9px; font-weight:500; }
+  .wb-goal-node[data-type="main"] .wb-goal-node-label{ left:88px; font-size:14px; font-weight:700; }
+  .wb-goal-node[data-type="area"] .wb-goal-node-label{ left:72px; font-size:13px; font-weight:700; }
+  .wb-goal-node[data-type="goal"] .wb-goal-node-label{ left:64px; }
+  .wb-goal-node[data-type="project"] .wb-goal-node-label{ left:56px; }
+  .wb-goal-node[data-type="habit"] .wb-goal-node-label{ left:56px; font-size:10px; font-weight:500; }
+  .wb-goal-node[data-type="action"] .wb-goal-node-label{ left:40px; font-size:9px; font-weight:500; }
   /* Area hub nodes (one per life area, always present, connected only to that area's own goals — see
      wbHierarchyEdges) render as just the area's own glyph — no circle behind it, the icon itself
      carries the area color. */
-  .wb-goal-node-icon{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:38px; font-weight:700; pointer-events:none; transition:transform .15s ease; }
+  .wb-goal-node-icon{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:44px; font-weight:700; pointer-events:none; transition:transform .15s ease; }
   .wb-goal-node.Health .wb-goal-node-icon{ color:var(--cat-health); }
   .wb-goal-node.Finance .wb-goal-node-icon{ color:var(--cat-finance); }
   .wb-goal-node.Career .wb-goal-node-icon{ color:var(--cat-career); }
@@ -4056,10 +4075,13 @@
      smoothly and then stops burning CPU, the same technique d3-force uses — dragging, adding a node,
      or adding a connection "reheats" it so it reacts and resettles. */
   var wbSimNodes = []; // { type, id, x, y, vx, vy, fixed }
-  // Half of each type's .wb-goal-node diameter — keep in sync with that CSS. Size reflects hierarchy:
-  // an area hub is the biggest node, then a goal, then a project, then a habit, then an action —
-  // the smallest of all, and only ever present when the "actions" layer toggle is on.
-  var WB_DOT_RADII = { area: 28, goal: 11, project: 8, habit: 5.5, action: 4 };
+  // Half of each type's .wb-goal-node diameter — keep in sync with that CSS. Sizes are a fixed ratio
+  // of WB_SIZE_UNIT (the single "main" hub = 1x, the biggest node in the graph): area 0.8x, goal
+  // 0.7x (not explicitly specified — interpolated between area and project/habit, matching the old
+  // hierarchy's ordering), habit and project tied at 0.6x, action smallest at 0.4x. Only ever present
+  // when the "actions" layer toggle is on.
+  var WB_SIZE_UNIT = 40;
+  var WB_DOT_RADII = { main: WB_SIZE_UNIT * 1, area: WB_SIZE_UNIT * 0.8, goal: WB_SIZE_UNIT * 0.7, project: WB_SIZE_UNIT * 0.6, habit: WB_SIZE_UNIT * 0.6, action: WB_SIZE_UNIT * 0.4 };
   var WB_CENTER_X = WB_WORLD_W / 2, WB_CENTER_Y = WB_WORLD_H / 2;
   var WB_REPEL = 9000, WB_AREA_PUSH = 3000, WB_LINK_DIST = 130, WB_LINK_K = 0.02, WB_CENTER_K = 0.005, WB_DAMPING = 0.82, WB_ALPHA_DECAY = 0.985;
   var wbAlpha = 0, wbSimRunning = false;
@@ -4076,7 +4098,7 @@
   // Area hubs (one per CATEGORIES entry, id = the category name itself) always exist, even before
   // any goal has been added to that area — they're permanent landmarks, not derived from a row.
   function wbSyncSimNodes(){
-    var wantedKeys = {};
+    var wantedKeys = { "main:main": true };
     CATEGORIES.forEach(function(cat){ wantedKeys["area:" + cat] = true; });
     state.goals.forEach(function(g){ wantedKeys["goal:" + g.id] = true; });
     state.projects.forEach(function(p){ wantedKeys["project:" + p.id] = true; });
@@ -4088,6 +4110,7 @@
       var angle = Math.random() * Math.PI * 2, radius = 40 + Math.random() * 140;
       wbSimNodes.push({ type:type, id:id, x: WB_CENTER_X + Math.cos(angle)*radius, y: WB_CENTER_Y + Math.sin(angle)*radius, vx:0, vy:0, fixed:false });
     }
+    ensure("main", "main");
     CATEGORIES.forEach(function(cat){ ensure("area", cat); });
     state.goals.forEach(function(g){ ensure("goal", g.id); });
     state.projects.forEach(function(p){ ensure("project", p.id); });
@@ -4100,6 +4123,7 @@
   // (never straight to a project or habit — those already connect to their goal, one level down).
   function wbHierarchyEdges(){
     var edges = [];
+    CATEGORIES.forEach(function(cat){ edges.push({ fromType:"main", fromId:"main", toType:"area", toId:cat }); });
     state.goals.forEach(function(g){
       if(g.category) edges.push({ fromType:"area", fromId:g.category, toType:"goal", toId:g.id });
       (g.secondaryCategories || []).forEach(function(cat){ edges.push({ fromType:"area", fromId:cat, toType:"goal", toId:g.id, secondary:true }); });
@@ -4180,15 +4204,17 @@
     state.wbConnections.forEach(wbApplySpring);
     wbHierarchyEdges().forEach(wbApplySpring);
     wbAreaLeafEdges().forEach(wbApplySpring);
-    // Area hubs get pulled toward the world center, and strongly (WB_CENTER_K is bigger than the
-    // link spring constant). A true orphan — no resolvable area at all (areas[idx] is null: a
-    // standalone project/habit/action with no goal and no area of its own) — gets the same pull at
-    // half strength, since it has no area hub or spring-linked parent to anchor it near the middle
-    // either; everything else (goal/project/habit/action WITH an area) still has no direct center
-    // pull of its own, staying near the middle only by being spring-linked to an anchored area hub.
+    // Only the single "main" hub gets pulled toward the world center, and strongly (WB_CENTER_K is
+    // bigger than the link spring constant) — area hubs reach the center transitively by being
+    // spring-linked to main (same principle as every other level of the hierarchy). A true orphan —
+    // no resolvable area at all (areas[idx] is null: a standalone project/habit/action with no goal
+    // and no area of its own) — gets the same pull at half strength, since it has no area hub or
+    // spring-linked parent to anchor it near the middle either; everything else (goal/project/habit/
+    // action WITH an area) still has no direct center pull of its own, staying near the middle only
+    // by being spring-linked to an anchored area hub.
     nodes.forEach(function(n, idx){
       if(n.fixed){ n.vx = 0; n.vy = 0; return; }
-      if(n.type === "area"){
+      if(n.type === "main"){
         n.vx += (WB_CENTER_X - n.x) * WB_CENTER_K * wbAlpha;
         n.vy += (WB_CENTER_Y - n.y) * WB_CENTER_K * wbAlpha;
       } else if(!areas[idx]){
@@ -4223,11 +4249,27 @@
     }
   }
 
+  // A goal/project's own uploaded icon, or a habit's built-in vector icon, renders as a symbol on
+  // top of the node's dot (see .wb-goal-node.has-icon in CSS, which lightens the dot to its area's
+  // -bg tint so the full-saturation icon reads clearly against it — the same light-bg/saturated-icon
+  // pairing used everywhere else icons appear in this app, e.g. matrix tiles). Areas keep their own
+  // existing icon-only treatment; actions have no icon field at all.
+  function wbNodeIconDataUri(type, item){
+    if(type === "goal" || type === "project") return item.icon || null;
+    if(type === "habit") return item.icon ? habitIconDataUri(item.icon) : null;
+    return null;
+  }
   function wbNodeHtml(type, item, category){
     var sim = wbFindSimNode(type, item.id);
     var x = sim ? sim.x : WB_CENTER_X, y = sim ? sim.y : WB_CENTER_Y;
-    var icon = type === "area" ? '<span class="wb-goal-node-icon">' + (CATEGORY_ICONS[item.id] || "") + '</span>' : "";
-    return '<div class="wb-goal-node' + (category ? " " + category : "") + (type === "project" ? " is-project" : "") + '" data-type="' + type + '" data-id="' + item.id + '" style="left:' + x + 'px; top:' + y + 'px;" title="' + escapeHtml(item.title) + '">' +
+    var icon = "", hasIcon = false;
+    if(type === "area"){
+      icon = '<span class="wb-goal-node-icon">' + (CATEGORY_ICONS[item.id] || "") + '</span>';
+    } else {
+      var dataUri = wbNodeIconDataUri(type, item);
+      if(dataUri){ icon = iconMaskHtml("wb-goal-node-symbol", dataUri, category); hasIcon = true; }
+    }
+    return '<div class="wb-goal-node' + (category ? " " + category : "") + (type === "project" ? " is-project" : "") + (hasIcon ? " has-icon" : "") + '" data-type="' + type + '" data-id="' + item.id + '" style="left:' + x + 'px; top:' + y + 'px;" title="' + escapeHtml(item.title) + '">' +
       icon +
       '<span class="wb-goal-node-label">' + (type === "project" ? "▸ " : "") + escapeHtml(item.title) + '</span>' +
     '</div>';
@@ -4235,8 +4277,11 @@
   function renderWhiteboardNodes(){
     var overlay = document.getElementById("wbOverlay");
     if(!overlay) return;
+    // The main hub is a single permanent landmark, always rendered first (behind nothing — it's not
+    // an SVG layer — just first in DOM order) — not a real domain object, so it has no icon/category.
+    var html = wbNodeHtml("main", { id:"main", title:"Main" }, null);
     // Area hubs are permanent landmarks — always rendered, even with zero goals/projects/habits yet.
-    var html = CATEGORIES.map(function(cat){ return wbNodeHtml("area", { id:cat, title:cat }, cat); }).join("");
+    html += CATEGORIES.map(function(cat){ return wbNodeHtml("area", { id:cat, title:cat }, cat); }).join("");
     if(!state.goals.length && !state.projects.length && !state.habits.length){
       overlay.innerHTML = html + '<div class="wb-empty-hint">Add a goal, project or habit from the Planner or Areas tab — it\'ll show up here as a node in the graph.</div>';
       renderWbConnections();
@@ -4260,6 +4305,7 @@
     return { x: n.x + r, y: n.y + r };
   }
   function wbNodeArea(n){
+    if(n.type === "main") return null;
     if(n.type === "area") return n.id;
     if(n.type === "goal"){ var g = goalById(n.id); return g ? g.category : null; }
     if(n.type === "project"){ var p = projectById(n.id); return p ? projectCategory(p) : null; }
@@ -4473,7 +4519,8 @@
       sim.fixed = false;
       if(!moved){
         if(wbConnectMode){ handleWbConnectClick(type, id, node); return; }
-        if(type === "area") openAreaDetailPage(id);
+        if(type === "main"){ /* not a real object — nothing to open */ }
+        else if(type === "area") openAreaDetailPage(id);
         else if(type === "goal") openGoalDetailPage(id);
         else if(type === "project") editProject(id);
         else if(type === "action") editAction(id);
