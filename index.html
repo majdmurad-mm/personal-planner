@@ -1000,13 +1000,9 @@
             <button class="btn" id="todayJumpTodayBtn" type="button">today</button>
           </div>
 
-          <div class="today-section-block">
-            <div class="today-section-block-head"><h2>habits scheduled today</h2>
-              <button class="btn" id="addTodayHabitBtn" type="button">+ habit</button>
-            </div>
-            <div class="today-habit-grid" id="todayHabitsList"></div>
-            <p class="today-empty-note" id="todayHabitsEmpty">No habits yet.</p>
-          </div>
+          <!-- Dedicated "habits scheduled today" tile grid removed for now — habits already show on
+               the timeline above, this was redundant. Guarded rather than deleted (see renderToday())
+               so it's a quick re-add later rather than a rewrite. -->
 
           <div class="today-section-block">
             <div class="today-section-block-head"><h2>actions</h2>
@@ -5792,38 +5788,44 @@
       }).join("");
     }
 
-    // Only habits actually scheduled for this day (same rule the Today timeline and the Timeline
-    // page already use) — earliest-to-latest by time of day, untimed habits after every timed one,
-    // then falling back to their manual drag order among themselves.
-    var habits = state.habits.filter(function(h){ return habitOccursOnDate(h, todaySelectedDate); }).sort(function(x,y){
-      if(x.timeOfDay && y.timeOfDay) return x.timeOfDay < y.timeOfDay ? -1 : (x.timeOfDay > y.timeOfDay ? 1 : 0);
-      if(x.timeOfDay && !y.timeOfDay) return -1;
-      if(!x.timeOfDay && y.timeOfDay) return 1;
-      return x.position - y.position;
-    });
-    document.getElementById("todayHabitsEmpty").style.display = habits.length ? "none" : "";
-    // Squares, matching the same icon-forward visual language as goal matrix tiles: every habit now
-    // has its own built-in vector icon (see HABIT_ICON_LIBRARY), auto-assigned and tinted by area —
-    // falls back to the parent goal's uploaded icon, then a plain initial, only for the rare case a
-    // habit's own icon is still missing (migration not yet run). Click toggles/prompts for the value
-    // (see handleHabitMarkClick); right-click still edits (full habit) / deletes (this day only —
-    // data-kind="habit-instance") via the app's generic data-kind/data-id system.
-    document.getElementById("todayHabitsList").innerHTML = habits.map(function(h){
-      var value = habitValueForDate(h, todaySelectedDate);
-      var on = !!value;
-      var goal = h.goalId ? goalById(h.goalId) : null;
-      var cat = habitCategory(h);
-      var catClass = cat ? " " + cat : "";
-      var initial = ((goal ? goal.title : h.title) || "?").trim().charAt(0).toUpperCase() || "?";
-      var iconSrc = h.icon ? habitIconDataUri(h.icon) : (goal && goal.icon);
-      var iconCat = h.icon ? cat : (goal && goal.category);
-      var titleAttr = escapeHtml(h.title) + (h.timeOfDay ? " — " + fmtTimeOfDay(h.timeOfDay) : "") + (value ? " — " + value : "");
-      return '<div class="today-habit-tile' + catClass + '" data-kind="habit-instance" data-id="' + h.id + '" data-date="' + todaySelectedDate + '" title="' + titleAttr + '">' +
-        '<span class="matrix-tile-status' + (on?' on-track':'') + '"></span>' +
-        (iconSrc ? iconMaskHtml("matrix-tile-icon-img", iconSrc, iconCat) : '<span class="matrix-tile-initial">' + initial + '</span>') +
-        '<div class="matrix-tile-scrim"><div class="matrix-tile-title">' + escapeHtml(h.title) + '</div></div>' +
-      '</div>';
-    }).join("");
+    // Dedicated "habits scheduled today" tile grid is removed from the page for now — habits
+    // already show on the timeline above, this was redundant. Guarded rather than deleted so it's
+    // a quick re-add later rather than a rewrite (same pattern as todayProjectsGrid above).
+    var todayHabitsListEl = document.getElementById("todayHabitsList");
+    if(todayHabitsListEl){
+      // Only habits actually scheduled for this day (same rule the Today timeline and the Timeline
+      // page already use) — earliest-to-latest by time of day, untimed habits after every timed one,
+      // then falling back to their manual drag order among themselves.
+      var habits = state.habits.filter(function(h){ return habitOccursOnDate(h, todaySelectedDate); }).sort(function(x,y){
+        if(x.timeOfDay && y.timeOfDay) return x.timeOfDay < y.timeOfDay ? -1 : (x.timeOfDay > y.timeOfDay ? 1 : 0);
+        if(x.timeOfDay && !y.timeOfDay) return -1;
+        if(!x.timeOfDay && y.timeOfDay) return 1;
+        return x.position - y.position;
+      });
+      document.getElementById("todayHabitsEmpty").style.display = habits.length ? "none" : "";
+      // Squares, matching the same icon-forward visual language as goal matrix tiles: every habit now
+      // has its own built-in vector icon (see HABIT_ICON_LIBRARY), auto-assigned and tinted by area —
+      // falls back to the parent goal's uploaded icon, then a plain initial, only for the rare case a
+      // habit's own icon is still missing (migration not yet run). Click toggles/prompts for the value
+      // (see handleHabitMarkClick); right-click still edits (full habit) / deletes (this day only —
+      // data-kind="habit-instance") via the app's generic data-kind/data-id system.
+      todayHabitsListEl.innerHTML = habits.map(function(h){
+        var value = habitValueForDate(h, todaySelectedDate);
+        var on = !!value;
+        var goal = h.goalId ? goalById(h.goalId) : null;
+        var cat = habitCategory(h);
+        var catClass = cat ? " " + cat : "";
+        var initial = ((goal ? goal.title : h.title) || "?").trim().charAt(0).toUpperCase() || "?";
+        var iconSrc = h.icon ? habitIconDataUri(h.icon) : (goal && goal.icon);
+        var iconCat = h.icon ? cat : (goal && goal.category);
+        var titleAttr = escapeHtml(h.title) + (h.timeOfDay ? " — " + fmtTimeOfDay(h.timeOfDay) : "") + (value ? " — " + value : "");
+        return '<div class="today-habit-tile' + catClass + '" data-kind="habit-instance" data-id="' + h.id + '" data-date="' + todaySelectedDate + '" title="' + titleAttr + '">' +
+          '<span class="matrix-tile-status' + (on?' on-track':'') + '"></span>' +
+          (iconSrc ? iconMaskHtml("matrix-tile-icon-img", iconSrc, iconCat) : '<span class="matrix-tile-initial">' + initial + '</span>') +
+          '<div class="matrix-tile-scrim"><div class="matrix-tile-title">' + escapeHtml(h.title) + '</div></div>' +
+        '</div>';
+      }).join("");
+    }
 
     var actionsToday = state.actions.filter(function(a){ return a.date === todaySelectedDate; });
     document.getElementById("todayActionsEmpty").style.display = actionsToday.length ? "none" : "";
@@ -5911,11 +5913,13 @@
     else if(t.dataset.action === "edit-action") editAction(t.dataset.id);
     else if(t.dataset.action === "del-action") await deleteAction(t.dataset.id);
   });
-  document.getElementById("todayHabitsList").addEventListener("click", async function(e){
-    var tile = e.target.closest(".today-habit-tile");
-    if(!tile) return;
-    await handleHabitMarkClick(tile.dataset.id, todaySelectedDate);
-  });
+  if(document.getElementById("todayHabitsList")){
+    document.getElementById("todayHabitsList").addEventListener("click", async function(e){
+      var tile = e.target.closest(".today-habit-tile");
+      if(!tile) return;
+      await handleHabitMarkClick(tile.dataset.id, todaySelectedDate);
+    });
+  }
   if(document.getElementById("todayProjectsGrid")){
     document.getElementById("todayProjectsGrid").addEventListener("click", async function(e){
       var t = e.target.closest("[data-action]");
@@ -5929,9 +5933,11 @@
     openActionModal(null, null);
     document.getElementById("actionDateInput").value = todaySelectedDate;
   });
-  document.getElementById("addTodayHabitBtn").addEventListener("click", function(){
-    openHabitModal(null, null);
-  });
+  if(document.getElementById("addTodayHabitBtn")){
+    document.getElementById("addTodayHabitBtn").addEventListener("click", function(){
+      openHabitModal(null, null);
+    });
+  }
 
   /* ---------------- Agent ---------------- */
   var AGENT_TOOLS = [
