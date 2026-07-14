@@ -480,10 +480,14 @@
   .timeline-block.dragging{ cursor:grabbing; z-index:3; box-shadow:0 4px 14px rgba(0,0,0,0.4); }
   .timeline-block.resizing{ z-index:3; box-shadow:0 4px 14px rgba(0,0,0,0.4); }
   .timeline-block[data-overnight]{ cursor:default; border-left-style:dashed; }
-  /* Right-edge grab strip for stretching a habit/action's duration — notes and the overnight tail
-     don't get one (see todayTimelineBlockHtml's resizable flag). */
-  .timeline-block-resize{ position:absolute; right:0; top:0; bottom:0; width:7px; cursor:ew-resize; }
+  /* Edge grab strips for stretching a habit/action's duration from either side — dragging the right
+     edge changes the end time (start fixed), dragging the left edge changes the start time (end
+     fixed). Notes and the overnight tail don't get either (see todayTimelineBlockHtml's resizable
+     flag). */
+  .timeline-block-resize{ position:absolute; top:0; bottom:0; width:7px; cursor:ew-resize; }
   .timeline-block-resize:hover{ background:rgba(255,255,255,0.18); }
+  .timeline-block-resize-left{ left:0; }
+  .timeline-block-resize-right{ right:0; }
   .timeline-block-title{ font-family:var(--mono); font-size:9.5px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; z-index:1; }
   .timeline-block.done{ opacity:0.5; }
   /* Filled area tint, not just a border accent — these blocks are often too narrow (short
@@ -4661,9 +4665,12 @@
   // than blending into it.
   function todayTimelineBlockHtml(kind, id, date, left, width, title, label, area, extraClass, overnight, resizable){
     var cls = (area ? " " + area : "") + (extraClass || "");
-    var handle = resizable ? '<span class="timeline-block-resize" data-resize-handle="1"></span>' : "";
+    var handles = resizable
+      ? '<span class="timeline-block-resize timeline-block-resize-left" data-resize-handle="left"></span>' +
+        '<span class="timeline-block-resize timeline-block-resize-right" data-resize-handle="right"></span>'
+      : "";
     return '<div class="timeline-block' + cls + '" data-kind="' + kind + '" data-id="' + id + '" data-date="' + date + '"' + (overnight ? ' data-overnight="1"' : '') + ' style="left:' + left + '%; width:' + width + '%;" title="' + escapeHtml(title) + '">' +
-      '<span class="timeline-block-title">' + label + '</span>' + handle + '</div>';
+      handles + '<span class="timeline-block-title">' + label + '</span></div>';
   }
   function renderTodayTimelineAreaRow(area){
     var track = document.getElementById(todayTimelineRowId(area));
@@ -4770,19 +4777,31 @@
   }
   TODAY_TIMELINE_AREAS.forEach(function(area){ wireTimelineLayerDrag(todayTimelineRowId(area)); });
 
-  // Dragging a block's right-edge handle stretches/shrinks it, which is what "duration" means here
-  // — the block's left edge (start time) never moves, only the width. Only habit/action blocks get
-  // a handle (see todayTimelineBlockHtml's resizable flag); notes have no duration field.
+  // Dragging either edge handle stretches/shrinks a block, which is what "duration" means here.
+  // Right edge: end time moves, start time is fixed. Left edge: start time moves, end time is
+  // fixed (duration changes inversely to how far the start moves) — the left edge is clamped to
+  // the start of the day, since moving it earlier than that would mean the item now starts
+  // "yesterday," a bigger change than a resize should make; drag the right edge past midnight
+  // instead, which the existing overnight-spillover rendering already picks up automatically on
+  // the next render. Only habit/action blocks get handles (see todayTimelineBlockHtml's resizable
+  // flag); notes have no duration field.
+  var TIMELINE_RESIZE_MIN_PX = 6, TIMELINE_RESIZE_MIN_MIN = 5;
   function wireTimelineBlockResize(trackId){
     var track = document.getElementById(trackId);
-    var resizeEl = null, resizeId = null, resizeKind = null, resizeStartLeftPct = 0, moved = false;
+    var resizeEl = null, resizeId = null, resizeKind = null, resizeEdge = null;
+    var fixedEdgePx = 0, moved = false;
     track.addEventListener("pointerdown", function(e){
       var handle = e.target.closest("[data-resize-handle]");
       if(!handle) return;
       var block = handle.closest(".timeline-block");
       if(!block) return;
-      resizeEl = block; resizeId = block.dataset.id; resizeKind = block.dataset.kind; moved = false;
-      resizeStartLeftPct = parseFloat(block.style.left) || 0;
+      var rect = track.getBoundingClientRect();
+      var leftPct = parseFloat(block.style.left) || 0;
+      var widthPct = parseFloat(block.style.width) || 0;
+      resizeEl = block; resizeId = block.dataset.id; resizeKind = block.dataset.kind;
+      resizeEdge = handle.dataset.resizeHandle; moved = false;
+      // The edge NOT being dragged stays put — capture its pixel position once, up front.
+      fixedEdgePx = resizeEdge === "left" ? (leftPct + widthPct) / 100 * rect.width : (leftPct / 100) * rect.width;
       handle.setPointerCapture(e.pointerId);
       block.classList.add("resizing");
     });
@@ -4791,35 +4810,45 @@
       moved = true;
       var rect = track.getBoundingClientRect();
       var x = Math.min(rect.width, Math.max(0, e.clientX - rect.left));
-      var leftPx = (resizeStartLeftPct / 100) * rect.width;
-      var widthPx = Math.max(6, x - leftPx);
-      var durationMin = Math.max(5, Math.round(((widthPx / rect.width) * 1440) / 5) * 5);
+      var leftPx, widthPx;
+      if(resizeEdge === "left"){
+        leftPx = Math.max(0, Math.min(x, fixedEdgePx - TIMELINE_RESIZE_MIN_PX));
+        widthPx = fixedEdgePx - leftPx;
+      } else {
+        leftPx = fixedEdgePx;
+        widthPx = Math.max(TIMELINE_RESIZE_MIN_PX, x - fixedEdgePx);
+      }
+      var startMin = Math.round(((leftPx / rect.width) * 1440) / 5) * 5;
+      var durationMin = Math.max(TIMELINE_RESIZE_MIN_MIN, Math.round(((widthPx / rect.width) * 1440) / 5) * 5);
+      resizeEl.style.left = (leftPx / rect.width * 100) + "%";
       resizeEl.style.width = Math.max(1.2, (widthPx / rect.width) * 100) + "%";
       resizeEl.dataset.pendingDuration = durationMin;
+      if(resizeEdge === "left") resizeEl.dataset.pendingTime = minutesToTime(startMin);
     });
     track.addEventListener("pointerup", async function(){
       if(!resizeEl) return;
-      var el = resizeEl, id = resizeId, kind = resizeKind, durationMin = el.dataset.pendingDuration;
-      resizeEl = null; resizeId = null; resizeKind = null;
+      var el = resizeEl, id = resizeId, kind = resizeKind, edge = resizeEdge;
+      var durationMin = el.dataset.pendingDuration, newTime = el.dataset.pendingTime;
+      resizeEl = null; resizeId = null; resizeKind = null; resizeEdge = null;
       el.classList.remove("resizing");
+      delete el.dataset.pendingTime;
       if(!moved || !durationMin) return;
       durationMin = Number(durationMin);
-      if(kind === "habit-instance"){
-        var h = state.habits.find(function(x){ return x.id === id; });
-        if(h) h.durationMinutes = durationMin;
-        var r = await safeUpdate("habits", id, { duration_minutes: durationMin });
-        if(r.error) console.error(r.error); else warnDroppedFields(r.droppedFields);
-      } else {
-        var a = state.actions.find(function(x){ return x.id === id; });
-        if(a) a.durationMinutes = durationMin;
-        var r2 = await safeUpdate("actions", id, { duration_minutes: durationMin });
-        if(r2.error) console.error(r2.error); else warnDroppedFields(r2.droppedFields);
+      var payload = { duration_minutes: durationMin };
+      if(edge === "left" && newTime) payload.time_of_day = newTime;
+      var arr = kind === "habit-instance" ? state.habits : state.actions;
+      var obj = arr.find(function(x){ return x.id === id; });
+      if(obj){
+        obj.durationMinutes = durationMin;
+        if(payload.time_of_day) obj.timeOfDay = payload.time_of_day;
       }
+      var r = await safeUpdate(kind === "habit-instance" ? "habits" : "actions", id, payload);
+      if(r.error) console.error(r.error); else warnDroppedFields(r.droppedFields);
       renderToday();
     });
     track.addEventListener("pointercancel", function(){
       if(resizeEl) resizeEl.classList.remove("resizing");
-      resizeEl = null; resizeId = null; resizeKind = null;
+      resizeEl = null; resizeId = null; resizeKind = null; resizeEdge = null;
     });
   }
   TODAY_TIMELINE_AREAS.forEach(function(area){ wireTimelineBlockResize(todayTimelineRowId(area)); });
