@@ -49,6 +49,12 @@
     --cat-relationships: #0068E4; --cat-relationships-bg: rgba(95,168,255,0.12);
     --cat-sol: #6B6B6B; --cat-sol-bg: rgba(107,107,107,0.12);
     --cat-goal-sol: #0B7A8B; --cat-goal-sol-bg: rgba(34,211,238,0.12);
+    /* Sun/moon colors for the day/night indicator (.daynight-badge, renderTodayTimelineDayNight,
+       tlDayNightGradientCss) — a fixed sun-yellow/night-blue pair, independent of the app's own
+       light/dark theme (unlike every *-bg tint above, these represent an actual time of day, not a
+       themeable UI color, so they stay identical in both :root blocks rather than inverting). */
+    --daynight-day: #FDE047; --daynight-day-glow: rgba(253,224,71,0.6);
+    --daynight-night: #5FA8FF; --daynight-night-glow: rgba(95,168,255,0.6);
     /* Today timeline hour gridlines — one repeating pattern (period = 6h = 1/4 of the row) covers
        all three tiers at once: a thick line every 6h, a medium line every 3h, thin lines every
        other hour. Reused as a background layer on every area row (layered under that row's own
@@ -100,6 +106,8 @@
     --cat-relationships: #5FA8FF; --cat-relationships-bg: rgba(95,168,255,0.12);
     --cat-sol: #FFFFFF; --cat-sol-bg: rgba(255,255,255,0.14);
     --cat-goal-sol: #22D3EE; --cat-goal-sol-bg: rgba(34,211,238,0.12);
+    --daynight-day: #FDE047; --daynight-day-glow: rgba(253,224,71,0.6);
+    --daynight-night: #5FA8FF; --daynight-night-glow: rgba(95,168,255,0.6);
     /* Hour gridlines flip back to light-on-dark. */
     --tl-hour-grid: repeating-linear-gradient(90deg,
       rgba(255,255,255,0.22) 0, rgba(255,255,255,0.22) 2px, transparent 2px,
@@ -674,8 +682,8 @@
   .today-timeline-labels span:last-child{ text-align:right; }
   .today-daynight{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:10px; flex-wrap:wrap; }
   .daynight-badge{ display:inline-block; width:9px; height:9px; border-radius:50%; flex-shrink:0; }
-  .daynight-badge.day{ background:#FDE047; box-shadow:0 0 6px rgba(253,224,71,0.6); }
-  .daynight-badge.night{ background:#5FA8FF; box-shadow:0 0 6px rgba(95,168,255,0.6); }
+  .daynight-badge.day{ background:var(--daynight-day); box-shadow:0 0 6px var(--daynight-day-glow); }
+  .daynight-badge.night{ background:var(--daynight-night); box-shadow:0 0 6px var(--daynight-night-glow); }
   .daynight-times{ font-family:var(--mono); font-size:9.5px; color:var(--text-faint); }
   .timeline-block{ position:absolute; top:2px; bottom:2px; min-width:10px; border-radius:4px; border-left:3px solid var(--border-bright); background:var(--bg-raised); border-top:1px solid var(--border-bright); border-right:1px solid var(--border-bright); border-bottom:1px solid var(--border-bright); cursor:grab; overflow:hidden; padding:0 5px; display:flex; align-items:center; user-select:none; touch-action:none; }
   .timeline-block:hover{ border-color:var(--accent-dim); z-index:2; }
