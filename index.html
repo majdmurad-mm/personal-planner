@@ -353,7 +353,7 @@
      Size reflects hierarchy (goal > project > habit — see WB_DOT_RADII, which must stay in sync with
      these diameters), not just an arbitrary style choice. */
   .wb-goal-node{ position:absolute; border-radius:50%; background:var(--text-faint); pointer-events:auto; cursor:grab; box-shadow:0 0 0 2px var(--bg-inset), 0 2px 8px rgba(0,0,0,0.35); user-select:none; touch-action:none; }
-  .wb-goal-node[data-type="area"]{ width:30px; height:30px; }
+  .wb-goal-node[data-type="area"]{ width:38px; height:38px; }
   .wb-goal-node[data-type="goal"]{ width:22px; height:22px; }
   .wb-goal-node[data-type="project"]{ width:16px; height:16px; }
   .wb-goal-node[data-type="habit"]{ width:11px; height:11px; }
@@ -372,14 +372,33 @@
   .wb-goal-node.Growth{ background:var(--cat-growth); }
   .wb-goal-node.Relationships{ background:var(--cat-relationships); }
   .wb-goal-node.Life{ background:var(--cat-life); }
+  /* Area hubs are just their icon glyph — no circle, no fill, no ring — so declared after (and more
+     specific than) the .Health/.Finance/etc background rules above to win the override. The glyph
+     itself carries the area color instead (see .wb-goal-node-icon), since there's no colored disc
+     behind it anymore to do that job. Hover/drag/connect-pending get their own icon-scale/glow
+     treatment in place of the box-shadow ring every other node type uses. */
+  .wb-goal-node[data-type="area"]{ background:transparent; box-shadow:none; }
+  .wb-goal-node[data-type="area"]:hover{ box-shadow:none; }
+  .wb-goal-node[data-type="area"]:hover .wb-goal-node-icon{ transform:scale(1.12); }
+  .wb-goal-node[data-type="area"].dragging{ box-shadow:none; }
+  .wb-goal-node[data-type="area"].dragging .wb-goal-node-icon{ transform:scale(1.2); filter:drop-shadow(0 4px 10px rgba(0,0,0,0.4)); }
+  .wb-goal-node[data-type="area"].connect-pending{ box-shadow:none; }
+  .wb-goal-node[data-type="area"].connect-pending .wb-goal-node-icon{ filter:drop-shadow(0 0 4px var(--accent)) drop-shadow(0 0 4px var(--accent)); }
   .wb-goal-node-label{ position:absolute; left:22px; top:50%; transform:translateY(-50%); font-family:var(--mono); font-size:11px; font-weight:600; color:#000; white-space:nowrap; pointer-events:none; }
-  .wb-goal-node[data-type="area"] .wb-goal-node-label{ left:36px; font-size:12px; font-weight:700; }
+  .wb-goal-node[data-type="area"] .wb-goal-node-label{ left:44px; font-size:12px; font-weight:700; }
   .wb-goal-node[data-type="goal"] .wb-goal-node-label{ left:28px; }
   .wb-goal-node[data-type="habit"] .wb-goal-node-label{ left:17px; font-size:10px; font-weight:500; }
   /* Area hub nodes (one per life area, always present, connected only to that area's own goals — see
-     wbHierarchyEdges) show the area's own glyph instead of being a plain dot. Dark glyph color works
-     against every area color, including the lighter ones (Finance's yellow). */
-  .wb-goal-node-icon{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:14px; font-weight:700; color:#0B0E14; pointer-events:none; }
+     wbHierarchyEdges) render as just the area's own glyph — no circle behind it, the icon itself
+     carries the area color. */
+  .wb-goal-node-icon{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:26px; font-weight:700; pointer-events:none; transition:transform .15s ease; }
+  .wb-goal-node.Health .wb-goal-node-icon{ color:var(--cat-health); }
+  .wb-goal-node.Finance .wb-goal-node-icon{ color:var(--cat-finance); }
+  .wb-goal-node.Career .wb-goal-node-icon{ color:var(--cat-career); }
+  .wb-goal-node.Maintenance .wb-goal-node-icon{ color:var(--cat-maintenance); }
+  .wb-goal-node.Growth .wb-goal-node-icon{ color:var(--cat-growth); }
+  .wb-goal-node.Relationships .wb-goal-node-icon{ color:var(--cat-relationships); }
+  .wb-goal-node.Life .wb-goal-node-icon{ color:var(--cat-life); }
   /* Area cluster hulls — a soft blob (convex hull, padded + blurred) drawn behind every area's own
      group of nodes, see wbRenderClusters. */
   .wb-cluster-hull{ fill-opacity:0.16; stroke-opacity:0.4; stroke-width:1.5; }
@@ -3655,7 +3674,7 @@
   var wbSimNodes = []; // { type, id, x, y, vx, vy, fixed }
   // Half of each type's .wb-goal-node diameter — keep in sync with that CSS. Size reflects hierarchy:
   // an area hub is the biggest node, then a goal, then a project, then a habit the smallest.
-  var WB_DOT_RADII = { area: 15, goal: 11, project: 8, habit: 5.5 };
+  var WB_DOT_RADII = { area: 19, goal: 11, project: 8, habit: 5.5 };
   var WB_CENTER_X = WB_WORLD_W / 2, WB_CENTER_Y = WB_WORLD_H / 2;
   var WB_REPEL = 9000, WB_LINK_DIST = 130, WB_LINK_K = 0.02, WB_CENTER_K = 0.0025, WB_DAMPING = 0.82, WB_ALPHA_DECAY = 0.985;
   var wbAlpha = 0, wbSimRunning = false;
