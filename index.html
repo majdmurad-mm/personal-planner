@@ -455,20 +455,20 @@
      Size reflects hierarchy (main > area > goal > project = habit > action — see WB_DOT_RADII, which
      must stay in sync with these diameters), not just an arbitrary style choice. */
   .wb-goal-node{ position:absolute; border-radius:50%; background:var(--text-faint); pointer-events:auto; cursor:grab; box-shadow:0 0 0 2px var(--bg-inset), 0 2px 8px rgba(0,0,0,0.35); user-select:none; touch-action:none; }
-  .wb-goal-node[data-type="main"]{ width:80px; height:80px; }
-  .wb-goal-node[data-type="area"]{ width:64px; height:64px; }
-  .wb-goal-node[data-type="goal"]{ width:56px; height:56px; }
-  .wb-goal-node[data-type="project"]{ width:48px; height:48px; }
-  .wb-goal-node[data-type="habit"]{ width:48px; height:48px; }
-  .wb-goal-node[data-type="action"]{ width:32px; height:32px; }
+  .wb-goal-node[data-type="main"]{ width:24px; height:24px; }
+  .wb-goal-node[data-type="area"]{ width:19px; height:19px; }
+  .wb-goal-node[data-type="goal"]{ width:17px; height:17px; }
+  .wb-goal-node[data-type="project"]{ width:14px; height:14px; }
+  .wb-goal-node[data-type="habit"]{ width:14px; height:14px; }
+  .wb-goal-node[data-type="action"]{ width:10px; height:10px; }
   .wb-goal-node:hover{ box-shadow:0 0 0 2px var(--bg-inset), 0 0 0 5px var(--accent-glow), 0 2px 8px rgba(0,0,0,0.35); }
   .wb-goal-node.dragging{ cursor:grabbing; z-index:50; box-shadow:0 0 0 2px var(--bg-inset), 0 4px 16px rgba(0,0,0,0.5); }
   .wb-goal-node.connect-pending{ box-shadow:0 0 0 2px var(--bg-inset), 0 0 0 5px var(--accent), 0 2px 8px rgba(0,0,0,0.35); }
   /* Projects keep a visual distinction from goals/habits — same area color, but a hollow ring (inset
      bg cutout) instead of a solid fill. */
-  .wb-goal-node.is-project{ box-shadow:0 0 0 2px var(--bg-inset), 0 2px 8px rgba(0,0,0,0.35), inset 0 0 0 4px var(--bg-inset); }
-  .wb-goal-node.is-project:hover{ box-shadow:0 0 0 2px var(--bg-inset), 0 0 0 5px var(--accent-glow), 0 2px 8px rgba(0,0,0,0.35), inset 0 0 0 4px var(--bg-inset); }
-  .wb-goal-node.is-project.connect-pending{ box-shadow:0 0 0 2px var(--bg-inset), 0 0 0 5px var(--accent), 0 2px 8px rgba(0,0,0,0.35), inset 0 0 0 4px var(--bg-inset); }
+  .wb-goal-node.is-project{ box-shadow:0 0 0 2px var(--bg-inset), 0 2px 8px rgba(0,0,0,0.35), inset 0 0 0 1px var(--bg-inset); }
+  .wb-goal-node.is-project:hover{ box-shadow:0 0 0 2px var(--bg-inset), 0 0 0 5px var(--accent-glow), 0 2px 8px rgba(0,0,0,0.35), inset 0 0 0 1px var(--bg-inset); }
+  .wb-goal-node.is-project.connect-pending{ box-shadow:0 0 0 2px var(--bg-inset), 0 0 0 5px var(--accent), 0 2px 8px rgba(0,0,0,0.35), inset 0 0 0 1px var(--bg-inset); }
   .wb-goal-node.Health{ background:var(--cat-health); }
   .wb-goal-node.Finance{ background:var(--cat-finance); }
   .wb-goal-node.Career{ background:var(--cat-career); }
@@ -505,16 +505,16 @@
   .wb-goal-node[data-type="area"].connect-pending{ box-shadow:none; }
   .wb-goal-node[data-type="area"].connect-pending .wb-goal-node-icon{ filter:drop-shadow(0 0 4px var(--accent)) drop-shadow(0 0 4px var(--accent)); }
   .wb-goal-node-label{ position:absolute; left:22px; top:50%; transform:translateY(-50%); font-family:var(--mono); font-size:11px; font-weight:600; color:var(--text); white-space:nowrap; pointer-events:none; }
-  .wb-goal-node[data-type="main"] .wb-goal-node-label{ left:88px; font-size:14px; font-weight:700; }
-  .wb-goal-node[data-type="area"] .wb-goal-node-label{ left:72px; font-size:13px; font-weight:700; }
-  .wb-goal-node[data-type="goal"] .wb-goal-node-label{ left:64px; }
-  .wb-goal-node[data-type="project"] .wb-goal-node-label{ left:56px; }
-  .wb-goal-node[data-type="habit"] .wb-goal-node-label{ left:56px; font-size:10px; font-weight:500; }
-  .wb-goal-node[data-type="action"] .wb-goal-node-label{ left:40px; font-size:9px; font-weight:500; }
+  .wb-goal-node[data-type="main"] .wb-goal-node-label{ left:32px; font-size:14px; font-weight:700; }
+  .wb-goal-node[data-type="area"] .wb-goal-node-label{ left:27px; font-size:13px; font-weight:700; }
+  .wb-goal-node[data-type="goal"] .wb-goal-node-label{ left:25px; }
+  .wb-goal-node[data-type="project"] .wb-goal-node-label{ left:22px; }
+  .wb-goal-node[data-type="habit"] .wb-goal-node-label{ left:22px; font-size:10px; font-weight:500; }
+  .wb-goal-node[data-type="action"] .wb-goal-node-label{ left:18px; font-size:9px; font-weight:500; }
   /* Area hub nodes (one per life area, always present, connected only to that area's own goals — see
      wbHierarchyEdges) render as just the area's own glyph — no circle behind it, the icon itself
      carries the area color. */
-  .wb-goal-node-icon{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:44px; font-weight:700; pointer-events:none; transition:transform .15s ease; }
+  .wb-goal-node-icon{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:13px; font-weight:700; pointer-events:none; transition:transform .15s ease; }
   .wb-goal-node.Health .wb-goal-node-icon{ color:var(--cat-health); }
   .wb-goal-node.Finance .wb-goal-node-icon{ color:var(--cat-finance); }
   .wb-goal-node.Career .wb-goal-node-icon{ color:var(--cat-career); }
@@ -4080,7 +4080,7 @@
   // 0.7x (not explicitly specified — interpolated between area and project/habit, matching the old
   // hierarchy's ordering), habit and project tied at 0.6x, action smallest at 0.4x. Only ever present
   // when the "actions" layer toggle is on.
-  var WB_SIZE_UNIT = 40;
+  var WB_SIZE_UNIT = 12; // 40 * 0.3
   var WB_DOT_RADII = { main: WB_SIZE_UNIT * 1, area: WB_SIZE_UNIT * 0.8, goal: WB_SIZE_UNIT * 0.7, project: WB_SIZE_UNIT * 0.6, habit: WB_SIZE_UNIT * 0.6, action: WB_SIZE_UNIT * 0.4 };
   var WB_CENTER_X = WB_WORLD_W / 2, WB_CENTER_Y = WB_WORLD_H / 2;
   var WB_REPEL = 9000, WB_AREA_PUSH = 3000, WB_LINK_DIST = 130, WB_LINK_K = 0.02, WB_CENTER_K = 0.005, WB_DAMPING = 0.82, WB_ALPHA_DECAY = 0.985;
