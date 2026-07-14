@@ -1506,6 +1506,20 @@
         <div class="chip-opt" data-c="Health">✚ Health</div><div class="chip-opt" data-c="Finance">$ Finance</div><div class="chip-opt sel" data-c="Career">▲ Career</div>
         <div class="chip-opt" data-c="Maintenance">⚙ Maintenance</div><div class="chip-opt" data-c="Growth">↑ Growth</div><div class="chip-opt" data-c="Relationships">♥ Relationships</div><div class="chip-opt" data-c="Sol">◐ Sol</div>
       </div></div>
+      <div class="field"><label>secondary areas (optional)</label>
+        <div class="dropdown-multi" id="goalSecondaryCatDropdown">
+          <button type="button" class="dropdown-multi-btn" id="goalSecondaryCatBtn">none selected ▾</button>
+          <div class="dropdown-multi-panel chip-select" id="goalSecondaryCatSelect" hidden></div>
+        </div>
+        <p class="panel-hint">This goal also touches these areas — its primary area above is unaffected.</p>
+      </div>
+      <div class="field"><label>secondary goals (optional)</label>
+        <div class="dropdown-multi" id="goalSecondaryGoalsDropdown">
+          <button type="button" class="dropdown-multi-btn" id="goalSecondaryGoalsBtn">none selected ▾</button>
+          <div class="dropdown-multi-panel chip-select" id="goalSecondaryGoalsSelect" hidden></div>
+        </div>
+        <p class="panel-hint">Related goals worth connecting on the Graph — not a parent/child link.</p>
+      </div>
       <div class="field"><label>health (optional override)</label>
         <div class="field-row">
           <div class="field"><div class="chip-select" id="goalHealthLevelSelect">
@@ -2111,7 +2125,7 @@
     weekdays: "habit day selection", tracker_variable_id: "habit's tracker link", time_of_day: "scheduled time",
     duration_minutes: "duration", category: "area", skip_dates: "skipped habit days",
     categories: "area(s)", custom_interval_days: "custom repeat interval", extra_dates: "manually scheduled habit days",
-    secondary_goal_ids: "secondary goals"
+    secondary_goal_ids: "secondary goals", secondary_categories: "secondary areas"
   };
   function warnDroppedFields(dropped){
     if(!dropped || !dropped.length) return;
@@ -2328,7 +2342,7 @@
     // position defaults to 0 (via ||0) when the migration_positions.sql column doesn't exist yet —
     // Array.sort is stable, so that's a no-op and rows keep the server's created_at order until
     // the migration runs and real position values exist.
-    state.goals = (results[0].data || []).map(function(r){ return { id:r.id, title:r.title, priority:r.priority, category:r.category, due:r.due, ongoing:r.ongoing, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null) }; });
+    state.goals = (results[0].data || []).map(function(r){ return { id:r.id, title:r.title, priority:r.priority, category:r.category, secondaryCategories:r.secondary_categories || [], secondaryGoalIds:r.secondary_goal_ids || [], due:r.due, ongoing:r.ongoing, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null) }; });
     state.goals.sort(function(a,b){ return a.position - b.position; });
     state.projects = (results[1].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), categories:r.categories||[] }; });
     state.projects.sort(function(a,b){ return a.position - b.position; });
@@ -2520,6 +2534,24 @@
     var set = {};
     (values || []).forEach(function(v){ set[v] = true; });
     container.querySelectorAll(".chip-opt").forEach(function(o){ o.classList.toggle("sel", !!set[o.dataset[attr]]); });
+  }
+  // Generic "N selected ▾" dropdown: a button toggles a checkable chip panel that stays open across
+  // multiple picks (closing after every click would defeat the point of a multi-select) and closes
+  // on any click outside it. Shared by every secondary-goal(s)/area(s) picker in the app — returns
+  // the label-updater so callers can re-invoke it after rebuilding the panel's own chip options.
+  function wireDropdownMulti(btnId, panelId, dropdownId, attr){
+    var btn = document.getElementById(btnId), panel = document.getElementById(panelId);
+    function updateLabel(){
+      var count = multiChipValues(panel, attr).length;
+      btn.textContent = (count ? count + " selected" : "none selected") + " ▾";
+    }
+    wireMultiChipSelect(panel);
+    panel.addEventListener("click", function(e){ if(e.target.closest(".chip-opt")) updateLabel(); });
+    btn.addEventListener("click", function(e){ e.stopPropagation(); panel.hidden = !panel.hidden; });
+    document.addEventListener("click", function(e){
+      if(!panel.hidden && !document.getElementById(dropdownId).contains(e.target)) panel.hidden = true;
+    });
+    return updateLabel;
   }
 
   [["goalPrioSelect","p"],["projectPrioSelect","p"],["habitPrioSelect","p"],["habitFreqSelect","f"],
@@ -3014,7 +3046,7 @@
     });
   }
   function goalPayload(snapshot){
-    return { id:snapshot.id, title:snapshot.title, priority:snapshot.priority, category:snapshot.category, due:snapshot.due, ongoing:snapshot.ongoing, position:snapshot.position, health_override:snapshot.healthOverride, health_pct_override:snapshot.healthPctOverride, icon:snapshot.icon, whiteboard_x:snapshot.wbX, whiteboard_y:snapshot.wbY };
+    return { id:snapshot.id, title:snapshot.title, priority:snapshot.priority, category:snapshot.category, secondary_categories:snapshot.secondaryCategories, secondary_goal_ids:snapshot.secondaryGoalIds, due:snapshot.due, ongoing:snapshot.ongoing, position:snapshot.position, health_override:snapshot.healthOverride, health_pct_override:snapshot.healthPctOverride, icon:snapshot.icon, whiteboard_x:snapshot.wbX, whiteboard_y:snapshot.wbY };
   }
   async function deleteGoal(goalId){
     var g = state.goals.find(function(x){ return x.id === goalId; });
@@ -4048,6 +4080,10 @@
     var edges = [];
     state.goals.forEach(function(g){
       if(g.category) edges.push({ fromType:"area", fromId:g.category, toType:"goal", toId:g.id });
+      (g.secondaryCategories || []).forEach(function(cat){ edges.push({ fromType:"area", fromId:cat, toType:"goal", toId:g.id, secondary:true }); });
+      // Lateral/related connections between two goals — not a parent/child hierarchy, so unlike
+      // every other edge here this one's "from" side is itself a goal, not that goal's own parent.
+      (g.secondaryGoalIds || []).forEach(function(gid){ edges.push({ fromType:"goal", fromId:gid, toType:"goal", toId:g.id, secondary:true }); });
     });
     state.projects.forEach(function(p){
       if(p.goalId) edges.push({ fromType:"goal", fromId:p.goalId, toType:"project", toId:p.id });
@@ -4256,13 +4292,15 @@
       var a = wbNodeCenter(c.fromType, c.fromId);
       var b = wbNodeCenter(c.toType, c.toId);
       if(!a || !b) return "";
-      // A secondary goal link renders as a faint streak of *that goal's own area* color reaching
-      // toward the habit, instead of the normal neutral dashed line — the area hue visibly extends
-      // out to every habit it's secondarily connected to, just much more translucent than any other
-      // use of that color on the graph (a hull, a node, a primary connection).
+      // A secondary link (habit->goal, goal->goal, or goal->area) renders as a faint streak of the
+      // *source* area's color reaching toward its target, instead of the normal neutral dashed line
+      // — the area hue visibly extends out to everything it's secondarily connected to, just much
+      // more translucent than any other use of that color on the graph (a hull, a node, a primary
+      // connection). The source is either an area hub directly (fromId is already a category name)
+      // or a goal (resolve its own category).
       if(c.secondary){
-        var g = goalById(c.fromId);
-        var color = categoryColorVar(g ? g.category : null);
+        var cat = c.fromType === "area" ? c.fromId : (goalById(c.fromId) ? goalById(c.fromId).category : null);
+        var color = categoryColorVar(cat);
         return '<line class="wb-hier-line wb-hier-line-secondary" x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '" style="stroke:' + color + ';"></line>';
       }
       return '<line class="wb-hier-line" x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '"></line>';
@@ -4414,6 +4452,12 @@
     // is what keeps the two from firing at the same time when you start the drag ON a node.
     var wbPanning = false, wbPanPointerId = null, wbPanStartClientX, wbPanStartClientY, wbPanStartX, wbPanStartY;
     wbWrapEl.addEventListener("pointerdown", function(e){
+      // Anything inside the floating toolbar (zoom buttons, the force slider, etc.) is left
+      // completely alone — preventDefault()+setPointerCapture() below would otherwise swallow the
+      // range slider's native drag-to-move behavior (buttons "accidentally" survived this before,
+      // since a click still synthesizes after pointerdown propagation is stopped; a slider's thumb
+      // drag does not, so it silently panned the map instead of moving).
+      if(e.target.closest(".wb-toolbar-float")) return;
       if(e.button === 1 || (e.button === 0 && !e.target.closest(".wb-goal-node"))){
         e.preventDefault();
         e.stopPropagation();
@@ -6733,6 +6777,33 @@
   var goalIconDraft = null;
   var setGoalIconPreview = wireIconUploader("goal", function(v){ goalIconDraft = v; }, function(){ return chipValue(document.getElementById("goalCatSelect"), "c"); });
   document.getElementById("goalCatSelect").addEventListener("click", function(){ if(goalIconDraft) setGoalIconPreview(goalIconDraft); });
+  // Secondary areas: every OTHER category as toggleable chips — the goal's own primary area (set
+  // above) is excluded and unaffected by anything picked here. Rebuilt whenever the primary category
+  // changes so it can never also appear in the secondary list.
+  var updateGoalSecondaryCatBtn = wireDropdownMulti("goalSecondaryCatBtn", "goalSecondaryCatSelect", "goalSecondaryCatDropdown", "c");
+  function renderGoalSecondaryCatChips(preSelectedIds){
+    var primaryCat = chipValue(document.getElementById("goalCatSelect"), "c");
+    var container = document.getElementById("goalSecondaryCatSelect");
+    var options = CATEGORIES.filter(function(cat){ return cat !== primaryCat; });
+    container.innerHTML = options.map(function(cat){ return '<div class="chip-opt" data-c="' + cat + '">' + CATEGORY_ICONS[cat] + " " + cat + '</div>'; }).join("");
+    setMultiChip(container, "c", (preSelectedIds || []).filter(function(id){ return id !== primaryCat; }));
+    updateGoalSecondaryCatBtn();
+  }
+  document.getElementById("goalCatSelect").addEventListener("click", function(){
+    renderGoalSecondaryCatChips(multiChipValues(document.getElementById("goalSecondaryCatSelect"), "c"));
+  });
+  // Secondary goals: every OTHER goal (excluding itself — a goal can't be its own secondary link).
+  // These are lateral/related connections, not a parent/child hierarchy — see wbHierarchyEdges.
+  var updateGoalSecondaryGoalsBtn = wireDropdownMulti("goalSecondaryGoalsBtn", "goalSecondaryGoalsSelect", "goalSecondaryGoalsDropdown", "gid");
+  function renderGoalSecondaryGoalsChips(preSelectedIds){
+    var container = document.getElementById("goalSecondaryGoalsSelect");
+    var options = state.goals.filter(function(g){ return g.id !== editingGoalId; });
+    container.innerHTML = options.length
+      ? options.map(function(g){ return '<div class="chip-opt" data-gid="' + g.id + '">' + escapeHtml(g.title) + '</div>'; }).join("")
+      : '<span class="panel-hint" style="margin:0;">No other goals yet.</span>';
+    setMultiChip(container, "gid", preSelectedIds || []);
+    updateGoalSecondaryGoalsBtn();
+  }
   function openGoalModal(editGoalObj, presetCategory){
     editingGoalId = editGoalObj ? editGoalObj.id : null;
     document.getElementById("goalModalTitle").textContent = editGoalObj ? "edit_goal.json" : "new_goal.json";
@@ -6742,6 +6813,10 @@
     document.getElementById("goalInfiniteCheckbox").checked = editGoalObj ? !!editGoalObj.ongoing : false;
     setChip(document.getElementById("goalPrioSelect"), "p", editGoalObj ? editGoalObj.priority : "P1");
     setChip(document.getElementById("goalCatSelect"), "c", editGoalObj ? editGoalObj.category : (presetCategory || "Career"));
+    renderGoalSecondaryCatChips(editGoalObj ? (editGoalObj.secondaryCategories || []) : []);
+    renderGoalSecondaryGoalsChips(editGoalObj ? (editGoalObj.secondaryGoalIds || []) : []);
+    document.getElementById("goalSecondaryCatSelect").hidden = true;
+    document.getElementById("goalSecondaryGoalsSelect").hidden = true;
     setChip(document.getElementById("goalHealthLevelSelect"), "hl", editGoalObj ? (editGoalObj.healthOverride || "") : "");
     document.getElementById("goalHealthPctInput").value = editGoalObj && editGoalObj.healthPctOverride != null ? editGoalObj.healthPctOverride : "";
     goalIconDraft = editGoalObj ? (editGoalObj.icon || null) : null;
@@ -6763,6 +6838,8 @@
       title: title,
       priority: chipValue(document.getElementById("goalPrioSelect"), "p"),
       category: chipValue(document.getElementById("goalCatSelect"), "c"),
+      secondary_categories: multiChipValues(document.getElementById("goalSecondaryCatSelect"), "c"),
+      secondary_goal_ids: multiChipValues(document.getElementById("goalSecondaryGoalsSelect"), "gid"),
       due: ongoing ? null : (document.getElementById("goalDueInput").value || null),
       ongoing: ongoing,
       health_override: chipValue(document.getElementById("goalHealthLevelSelect"), "hl") || null,
@@ -6777,7 +6854,7 @@
     this.disabled = false;
     if(res.error){ alert(res.error.message); return; }
     var r = res.data;
-    var mapped = { id:r.id, title:r.title, priority:r.priority, category:r.category, due:r.due, ongoing:r.ongoing, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null) };
+    var mapped = { id:r.id, title:r.title, priority:r.priority, category:r.category, secondaryCategories:r.secondary_categories || [], secondaryGoalIds:r.secondary_goal_ids || [], due:r.due, ongoing:r.ongoing, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null) };
     if(isEdit){
       var idx = state.goals.findIndex(function(x){ return x.id === editingGoalId; });
       if(idx !== -1) state.goals[idx] = mapped;
@@ -6893,10 +6970,7 @@
   // goal changes, since the parent itself is excluded from the list — preSelectedIds lets a caller
   // re-apply whatever was already checked (modal open with saved data, or a live parent-goal switch
   // re-filtering out whichever goal just became the new parent).
-  function updateHabitSecondaryGoalsBtn(){
-    var count = multiChipValues(document.getElementById("habitSecondaryGoalsSelect"), "gid").length;
-    document.getElementById("habitSecondaryGoalsBtn").textContent = (count ? count + " selected" : "none selected") + " ▾";
-  }
+  var updateHabitSecondaryGoalsBtn = wireDropdownMulti("habitSecondaryGoalsBtn", "habitSecondaryGoalsSelect", "habitSecondaryGoalsDropdown", "gid");
   function renderHabitSecondaryGoalsChips(preSelectedIds){
     var primaryId = document.getElementById("habitGoalSelect").value;
     var container = document.getElementById("habitSecondaryGoalsSelect");
@@ -6907,22 +6981,8 @@
     setMultiChip(container, "gid", (preSelectedIds || []).filter(function(id){ return id !== primaryId; }));
     updateHabitSecondaryGoalsBtn();
   }
-  wireMultiChipSelect(document.getElementById("habitSecondaryGoalsSelect"));
-  document.getElementById("habitSecondaryGoalsSelect").addEventListener("click", function(e){
-    if(e.target.closest(".chip-opt")) updateHabitSecondaryGoalsBtn();
-  });
   document.getElementById("habitGoalSelect").addEventListener("change", function(){
     renderHabitSecondaryGoalsChips(multiChipValues(document.getElementById("habitSecondaryGoalsSelect"), "gid"));
-  });
-  // The panel stays open across multiple picks (closing after every click would defeat the point of
-  // a multi-select) — only the button itself toggles it, and clicking anywhere outside closes it.
-  document.getElementById("habitSecondaryGoalsBtn").addEventListener("click", function(e){
-    e.stopPropagation();
-    document.getElementById("habitSecondaryGoalsSelect").hidden = !document.getElementById("habitSecondaryGoalsSelect").hidden;
-  });
-  document.addEventListener("click", function(e){
-    var panel = document.getElementById("habitSecondaryGoalsSelect");
-    if(!panel.hidden && !document.getElementById("habitSecondaryGoalsDropdown").contains(e.target)) panel.hidden = true;
   });
   // Icon gallery: every HABIT_ICON_LIBRARY entry, highlighting whichever key is currently drafted.
   // habitIconDraft/habitIconManuallySet are updated by the title-input live-suggest and the gallery
