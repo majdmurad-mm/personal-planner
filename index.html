@@ -310,23 +310,18 @@
 
   /* ===== WHITEBOARD ===== */
   .wb-toolbar{ display:flex; align-items:center; gap:14px; margin:18px 0 14px; flex-wrap:wrap; }
-  .wb-colors{ display:flex; gap:6px; }
-  .wb-swatch{ width:22px; height:22px; border-radius:50%; border:2px solid var(--border-bright); cursor:pointer; padding:0; }
-  .wb-swatch.sel{ box-shadow:0 0 0 2px var(--bg-inset), 0 0 0 3px var(--accent); }
-  .wb-toolbar input[type="color"]{ width:34px; height:30px; padding:2px; cursor:pointer; }
-  .wb-width-label{ font-family:var(--mono); font-size:11px; color:var(--text-dim); display:flex; align-items:center; gap:6px; }
   .wb-save-status{ margin-left:auto; font-family:var(--mono); font-size:10px; color:var(--text-faint); }
   #wbConnectBtn.on{ background:var(--accent); color:var(--bg); border-color:var(--accent); }
   .wb-zoom-group{ display:flex; align-items:center; gap:6px; }
   .wb-zoom-label{ font-family:var(--mono); font-size:10.5px; color:var(--text-dim); min-width:34px; text-align:center; }
-  /* .wb-canvas-wrap is the fixed viewport (clips); .wb-world is the large pannable/zoomable
-     surface inside it — sized and transformed from JS (see WB_WORLD_W/H, applyWbTransform). */
-  .wb-canvas-wrap{ position:relative; border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; touch-action:none; height:60vh; background:var(--bg-inset); cursor:crosshair; }
-  .wb-canvas-wrap.space-down, .wb-canvas-wrap.panning{ cursor:grab; }
+  /* .wb-canvas-wrap is the fixed viewport (clips); .wb-world is the large pannable/zoomable graph
+     surface inside it — sized and transformed from JS (see WB_WORLD_W/H, applyWbTransform). Plain
+     white background (no more drawing canvas to paint it) so the plain-black node labels read
+     cleanly with no shadow/blur trick needed for contrast. */
+  .wb-canvas-wrap{ position:relative; border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; touch-action:none; height:60vh; background:var(--bg-inset); cursor:grab; }
   .wb-canvas-wrap.panning{ cursor:grabbing; }
   .wb-canvas-wrap:fullscreen{ height:100vh; border-radius:0; border:none; }
-  .wb-world{ position:absolute; top:0; left:0; transform-origin:0 0; }
-  #wbCanvas{ display:block; background:#fff; }
+  .wb-world{ position:absolute; top:0; left:0; transform-origin:0 0; background:#fff; }
   .wb-conn-svg{ position:absolute; inset:0; width:100%; height:100%; pointer-events:none; overflow:visible; }
   .wb-conn-hit{ pointer-events:stroke; cursor:pointer; }
   .wb-conn-line{ stroke:var(--text-faint); stroke-width:1.5; pointer-events:none; }
@@ -353,7 +348,7 @@
   .wb-goal-node.Growth{ background:var(--cat-growth); }
   .wb-goal-node.Relationships{ background:var(--cat-relationships); }
   .wb-goal-node.Life{ background:var(--cat-life); }
-  .wb-goal-node-label{ position:absolute; left:22px; top:50%; transform:translateY(-50%); font-family:var(--mono); font-size:11px; font-weight:600; color:var(--text-dim); white-space:nowrap; pointer-events:none; text-shadow:0 1px 3px var(--bg), 0 1px 3px var(--bg); }
+  .wb-goal-node-label{ position:absolute; left:22px; top:50%; transform:translateY(-50%); font-family:var(--mono); font-size:11px; font-weight:600; color:#000; white-space:nowrap; pointer-events:none; }
   .wb-empty-hint{ position:absolute; top:12px; left:12px; font-family:var(--mono); font-size:11px; color:var(--text-faint); pointer-events:none; }
   .entity-icon-img{ width:22px; height:22px; border-radius:5px; display:block; flex-shrink:0; mask-size:contain; -webkit-mask-size:contain; mask-repeat:no-repeat; -webkit-mask-repeat:no-repeat; mask-position:center; -webkit-mask-position:center; }
   /* Built-in habit icons (see HABIT_ICON_LIBRARY) — inline usage, tinted by area via `color` since
@@ -1212,15 +1207,11 @@
       <div class="main-header">
         <div>
           <h1>whiteboard</h1>
-          <p class="subhead">A mind map — goals and projects as movable dots colored by area, connect them into relations, sketch around them.</p>
+          <p class="subhead">A living mind map — goals and projects as dots colored by area, pulled together by their connections.</p>
         </div>
       </div>
       <div class="wb-toolbar">
-        <div class="wb-colors" id="wbColorSwatches"></div>
-        <input type="color" id="wbColorPicker" value="#1A1A1A" aria-label="Custom color">
-        <label class="wb-width-label">width <input type="range" id="wbWidthInput" min="1" max="24" value="3"></label>
-        <button class="btn" id="wbClearBtn" type="button">clear drawing</button>
-        <button class="btn" id="wbConnectBtn" type="button" title="Click two cards in a row to link them">🔗 connect</button>
+        <button class="btn" id="wbConnectBtn" type="button" title="Click two nodes in a row to link them">🔗 connect</button>
         <div class="wb-zoom-group">
           <button class="cal-nav-btn" id="wbZoomOutBtn" type="button" aria-label="Zoom out">−</button>
           <span class="wb-zoom-label" id="wbZoomLabel">100%</span>
@@ -1230,11 +1221,10 @@
         <button class="btn" id="wbFullscreenBtn" type="button">⤢ fullscreen</button>
         <span class="wb-save-status" id="wbSaveStatus"></span>
       </div>
-      <p class="panel-hint" id="wbConnectHint" style="display:none;">Connect mode on — click a card, then click another to link them. Click the same card again to cancel. Right-click a line to remove it.</p>
-      <p class="panel-hint">Pan: hold space and drag, or drag with the middle mouse button. Zoom: scroll, or the +/− buttons.</p>
+      <p class="panel-hint" id="wbConnectHint" style="display:none;">Connect mode on — click a node, then click another to link them. Click the same node again to cancel. Right-click a line to remove it.</p>
+      <p class="panel-hint">Pan: drag empty space, or drag with the middle mouse button. Zoom: scroll, or the +/− buttons.</p>
       <div class="wb-canvas-wrap" id="wbCanvasWrap">
         <div class="wb-world" id="wbWorld">
-          <canvas id="wbCanvas"></canvas>
           <svg class="wb-conn-svg" id="wbConnSvg"></svg>
           <div class="wb-overlay" id="wbOverlay"></div>
         </div>
@@ -3582,15 +3572,11 @@
   });
 
   /* ---------------- Whiteboard ---------------- */
-  var wbCanvas, wbCtx, wbWorldEl, wbWrapEl;
-  var wbDrawing = false;
-  var wbColor = "#1A1A1A";
-  var wbWidth = 3;
-  var wbLastX = 0, wbLastY = 0;
-  var wbSaveTimer = null;
+  var wbWorldEl, wbWrapEl;
   var wbLoadStarted = false;
   // The board is a large fixed-size surface you pan/zoom around within a small viewport — not
-  // literally infinite, but big enough (roughly a wall-sized whiteboard) that it reads as one.
+  // literally infinite, but big enough (roughly a wall-sized whiteboard) that it reads as one, and
+  // it's also the physics simulation's coordinate space (see WB_CENTER_X/Y below).
   var WB_WORLD_W = 4000, WB_WORLD_H = 2800;
   var wbPanX = 0, wbPanY = 0, wbZoom = 1;
 
@@ -3608,53 +3594,104 @@
     wbPanY = viewportY - worldY * wbZoom;
     applyWbTransform();
   }
-  // Converts a pointer event into WORLD coordinates (i.e. canvas-internal pixel coordinates),
-  // independent of the current pan/zoom — this is what drawing and node-dragging both need.
-  function wbCanvasPos(e){
-    var rect = wbWrapEl.getBoundingClientRect();
-    var viewportX = e.clientX - rect.left, viewportY = e.clientY - rect.top;
-    return { x: (viewportX - wbPanX) / wbZoom, y: (viewportY - wbPanY) / wbZoom };
+
+  function activateWhiteboard(){
+    if(!wbLoadStarted){ wbLoadStarted = true; loadWbConnections(); }
+    wbSyncSimNodes();
+    renderWhiteboardNodes();
+    wbReheat(1);
   }
 
-  // The canvas backing store is sized once to the full world size — it doesn't get resized on
-  // window resize any more (pan/zoom handle fitting it to whatever viewport size you have).
-  function initWbCanvasSize(){
-    if(!wbCtx || wbCanvas.width === WB_WORLD_W) return;
-    var hadContent = wbCanvas.width > 0 && wbCanvas.height > 0;
-    var prev = hadContent ? wbCanvas.toDataURL() : null;
-    wbCanvas.width = WB_WORLD_W;
-    wbCanvas.height = WB_WORLD_H;
-    wbWorldEl.style.width = WB_WORLD_W + "px";
-    wbWorldEl.style.height = WB_WORLD_H + "px";
-    wbCtx.fillStyle = "#ffffff";
-    wbCtx.fillRect(0, 0, wbCanvas.width, wbCanvas.height);
-    if(prev){
-      var img = new Image();
-      // Drawn at natural size (not stretched) — old boards were saved at whatever the viewport
-      // happened to be, and this keeps them legible instead of blowing them up to fill 4000x2800.
-      img.onload = function(){ wbCtx.drawImage(img, 0, 0); };
-      img.src = prev;
+  /* ---- Force-directed physics (repulsion + link springs + center gravity), Obsidian-graph style —
+     nodes aren't manually positioned/persisted any more; every render they're wherever the
+     simulation currently has them, and connected nodes get pulled closer together while unconnected
+     ones push apart. Runs on requestAnimationFrame with a decaying "alpha" (energy) so it settles
+     smoothly and then stops burning CPU, the same technique d3-force uses — dragging, adding a node,
+     or adding a connection "reheats" it so it reacts and resettles. */
+  var wbSimNodes = []; // { type, id, x, y, vx, vy, fixed }
+  var WB_DOT_R = 8; // half of .wb-goal-node's 16px diameter — keep in sync with that CSS
+  var WB_CENTER_X = WB_WORLD_W / 2, WB_CENTER_Y = WB_WORLD_H / 2;
+  var WB_REPEL = 9000, WB_LINK_DIST = 130, WB_LINK_K = 0.02, WB_CENTER_K = 0.0025, WB_DAMPING = 0.82, WB_ALPHA_DECAY = 0.985;
+  var wbAlpha = 0, wbSimRunning = false;
+  function wbFindSimNode(type, id){
+    for(var i=0;i<wbSimNodes.length;i++){ if(wbSimNodes[i].type === type && wbSimNodes[i].id === id) return wbSimNodes[i]; }
+    return null;
+  }
+  // Keeps wbSimNodes in sync with the current goals/projects — existing nodes keep their live
+  // position/velocity (so this never causes a jump), new ones are seeded just off-center in a random
+  // direction so a burst of new items doesn't all spawn stacked on the exact same point.
+  function wbSyncSimNodes(){
+    var wantedKeys = {};
+    state.goals.forEach(function(g){ wantedKeys["goal:" + g.id] = true; });
+    state.projects.forEach(function(p){ wantedKeys["project:" + p.id] = true; });
+    wbSimNodes = wbSimNodes.filter(function(n){ return wantedKeys[n.type + ":" + n.id]; });
+    function ensure(type, id){
+      if(wbFindSimNode(type, id)) return;
+      var angle = Math.random() * Math.PI * 2, radius = 40 + Math.random() * 140;
+      wbSimNodes.push({ type:type, id:id, x: WB_CENTER_X + Math.cos(angle)*radius, y: WB_CENTER_Y + Math.sin(angle)*radius, vx:0, vy:0, fixed:false });
+    }
+    state.goals.forEach(function(g){ ensure("goal", g.id); });
+    state.projects.forEach(function(p){ ensure("project", p.id); });
+  }
+  function wbTickPhysics(){
+    var nodes = wbSimNodes;
+    for(var i=0;i<nodes.length;i++){
+      for(var j=i+1;j<nodes.length;j++){
+        var dx = nodes[j].x - nodes[i].x, dy = nodes[j].y - nodes[i].y;
+        var distSq = dx*dx + dy*dy || 0.01, dist = Math.sqrt(distSq);
+        var force = (WB_REPEL / distSq) * wbAlpha;
+        var fx = (dx/dist) * force, fy = (dy/dist) * force;
+        nodes[i].vx -= fx; nodes[i].vy -= fy;
+        nodes[j].vx += fx; nodes[j].vy += fy;
+      }
+    }
+    state.wbConnections.forEach(function(c){
+      var a = wbFindSimNode(c.fromType, c.fromId), b = wbFindSimNode(c.toType, c.toId);
+      if(!a || !b) return;
+      var dx = b.x - a.x, dy = b.y - a.y;
+      var dist = Math.sqrt(dx*dx + dy*dy) || 0.01;
+      var force = (dist - WB_LINK_DIST) * WB_LINK_K * wbAlpha;
+      var fx = (dx/dist) * force, fy = (dy/dist) * force;
+      a.vx += fx; a.vy += fy;
+      b.vx -= fx; b.vy -= fy;
+    });
+    nodes.forEach(function(n){
+      if(n.fixed){ n.vx = 0; n.vy = 0; return; }
+      n.vx += (WB_CENTER_X - n.x) * WB_CENTER_K * wbAlpha;
+      n.vy += (WB_CENTER_Y - n.y) * WB_CENTER_K * wbAlpha;
+      n.vx *= WB_DAMPING; n.vy *= WB_DAMPING;
+      n.x += n.vx; n.y += n.vy;
+    });
+  }
+  function wbApplyPositionsToDom(){
+    wbSimNodes.forEach(function(n){
+      var el = document.querySelector('.wb-goal-node[data-type="' + n.type + '"][data-id="' + n.id + '"]');
+      if(el){ el.style.left = n.x + "px"; el.style.top = n.y + "px"; }
+    });
+  }
+  function wbSimStep(){
+    if(!wbSimRunning) return;
+    if(activeSection !== "whiteboard"){ wbSimRunning = false; return; }
+    wbTickPhysics();
+    wbApplyPositionsToDom();
+    renderWbConnections();
+    wbAlpha *= WB_ALPHA_DECAY;
+    if(wbAlpha < 0.01){ wbSimRunning = false; return; }
+    requestAnimationFrame(wbSimStep);
+  }
+  function wbReheat(amount){
+    wbAlpha = Math.max(wbAlpha, amount == null ? 1 : amount);
+    if(!wbSimRunning && activeSection === "whiteboard"){
+      wbSimRunning = true;
+      requestAnimationFrame(wbSimStep);
     }
   }
 
-  function activateWhiteboard(){
-    initWbCanvasSize();
-    if(!wbLoadStarted){ wbLoadStarted = true; loadWhiteboard(); loadWbConnections(); }
-    renderWhiteboardNodes();
-  }
-
-  // Default cascade layout for goals/projects that haven't been dragged yet (no saved wbX/wbY) —
-  // a simple grid so nothing starts stacked on top of itself. Once dragged, a node's position is
-  // persisted and this is never used for it again.
-  function wbNodePosition(item, index){
-    if(item.wbX != null && item.wbY != null) return { x: item.wbX, y: item.wbY };
-    var col = index % 5, row = Math.floor(index / 5);
-    return { x: 16 + col * 164, y: 16 + row * 96 };
-  }
-  function wbNodeHtml(type, item, index){
-    var pos = wbNodePosition(item, index);
+  function wbNodeHtml(type, item){
+    var sim = wbFindSimNode(type, item.id);
+    var x = sim ? sim.x : WB_CENTER_X, y = sim ? sim.y : WB_CENTER_Y;
     var category = type === "goal" ? item.category : projectCategory(item);
-    return '<div class="wb-goal-node' + (category ? " " + category : "") + (type === "project" ? " is-project" : "") + '" data-type="' + type + '" data-id="' + item.id + '" style="left:' + pos.x + 'px; top:' + pos.y + 'px;" title="' + escapeHtml(item.title) + '">' +
+    return '<div class="wb-goal-node' + (category ? " " + category : "") + (type === "project" ? " is-project" : "") + '" data-type="' + type + '" data-id="' + item.id + '" style="left:' + x + 'px; top:' + y + 'px;" title="' + escapeHtml(item.title) + '">' +
       '<span class="wb-goal-node-label">' + (type === "project" ? "▸ " : "") + escapeHtml(item.title) + '</span>' +
     '</div>';
   }
@@ -3662,24 +3699,24 @@
     var overlay = document.getElementById("wbOverlay");
     if(!overlay) return;
     if(!state.goals.length && !state.projects.length){
-      overlay.innerHTML = '<div class="wb-empty-hint">Add a goal or project from the Planner or Areas tab — it\'ll show up here as a movable dot.</div>';
+      overlay.innerHTML = '<div class="wb-empty-hint">Add a goal or project from the Planner or Areas tab — it\'ll show up here as a node in the graph.</div>';
       renderWbConnections();
       return;
     }
-    var html = state.goals.map(function(g, i){ return wbNodeHtml("goal", g, i); }).join("");
-    html += state.projects.map(function(p, i){ return wbNodeHtml("project", p, state.goals.length + i); }).join("");
+    var html = state.goals.map(function(g){ return wbNodeHtml("goal", g); }).join("");
+    html += state.projects.map(function(p){ return wbNodeHtml("project", p); }).join("");
     overlay.innerHTML = html;
     renderWbConnections();
   }
 
-  /* ---- Connections: mind-map relations between goal/project cards ---- */
+  /* ---- Connections: mind-map relations between goal/project nodes ---- */
+  // Reads position straight from the simulation (not the DOM) — cheaper, and correct even before
+  // the next paint has happened.
   function wbNodeCenter(type, id){
-    var el = document.querySelector('.wb-goal-node[data-type="' + type + '"][data-id="' + id + '"]');
-    if(!el) return null;
-    return { x: parseFloat(el.style.left) + el.offsetWidth / 2, y: parseFloat(el.style.top) + el.offsetHeight / 2 };
+    var n = wbFindSimNode(type, id);
+    if(!n) return null;
+    return { x: n.x + WB_DOT_R, y: n.y + WB_DOT_R };
   }
-  // Redraws every connection line by reading the *live* DOM position of each endpoint node, rather
-  // than tracked coordinates — so a card mid-drag keeps its lines attached with no extra bookkeeping.
   function renderWbConnections(){
     var svg = document.getElementById("wbConnSvg");
     if(!svg) return;
@@ -3757,129 +3794,71 @@
   // Free 2D drag for goal/project nodes (distinct from the list drag-to-reorder in makeSortable —
   // this persists an absolute x/y instead of an index). A short click (no meaningful movement)
   // opens the item — or, in connect mode, selects it for linking — instead of registering as a drag.
+  // Dragging pins the node (physics leaves it alone, but everything else still reacts to it) and
+  // reheats the simulation so the rest of the graph responds live; releasing it unpins and lets it
+  // rejoin the simulation. Nothing is persisted — position is always whatever the simulation says,
+  // same as Obsidian's graph view not remembering exact pixel coordinates across reloads.
   function wireWhiteboardDrag(){
     var overlay = document.getElementById("wbOverlay");
-    var dragEl = null, dragPointerId = null, startClientX, startClientY, startLeft, startTop, moved;
+    var dragEl = null, dragSim = null, dragPointerId = null, startClientX, startClientY, startX, startY, moved;
     overlay.addEventListener("pointerdown", function(e){
       var node = e.target.closest(".wb-goal-node");
       if(!node) return;
-      dragEl = node;
+      var sim = wbFindSimNode(node.dataset.type, node.dataset.id);
+      if(!sim) return;
+      dragEl = node; dragSim = sim;
       dragPointerId = e.pointerId;
       moved = false;
       startClientX = e.clientX; startClientY = e.clientY;
-      startLeft = parseFloat(node.style.left) || 0;
-      startTop = parseFloat(node.style.top) || 0;
+      startX = sim.x; startY = sim.y;
+      sim.fixed = true; sim.vx = 0; sim.vy = 0;
       node.setPointerCapture(e.pointerId);
       node.classList.add("dragging");
+      wbReheat(1);
     });
     overlay.addEventListener("pointermove", function(e){
-      if(!dragEl || e.pointerId !== dragPointerId) return;
+      if(!dragSim || e.pointerId !== dragPointerId) return;
       // Viewport-pixel deltas have to be scaled back down by the current zoom to get the right
-      // world-space movement, since style.left/top live in the (untransformed) world coordinates.
+      // world-space movement, since sim coordinates live in the (untransformed) world space.
       var dx = (e.clientX - startClientX) / wbZoom, dy = (e.clientY - startClientY) / wbZoom;
       if(Math.abs(dx) > 3 || Math.abs(dy) > 3) moved = true;
-      dragEl.style.left = (startLeft + dx) + "px";
-      dragEl.style.top = (startTop + dy) + "px";
+      dragSim.x = startX + dx; dragSim.y = startY + dy;
+      dragEl.style.left = dragSim.x + "px";
+      dragEl.style.top = dragSim.y + "px";
       renderWbConnections();
     });
-    overlay.addEventListener("pointerup", async function(e){
-      if(!dragEl || e.pointerId !== dragPointerId) return;
-      var node = dragEl;
-      dragEl = null; dragPointerId = null;
+    overlay.addEventListener("pointerup", function(e){
+      if(!dragSim || e.pointerId !== dragPointerId) return;
+      var node = dragEl, sim = dragSim, type = node.dataset.type, id = node.dataset.id;
+      dragEl = null; dragSim = null; dragPointerId = null;
       node.classList.remove("dragging");
-      var type = node.dataset.type, id = node.dataset.id;
+      sim.fixed = false;
       if(!moved){
         if(wbConnectMode){ handleWbConnectClick(type, id, node); return; }
         if(type === "goal") openGoalDetailPage(id); else editProject(id);
         return;
       }
-      var x = Math.round(parseFloat(node.style.left) || 0);
-      var y = Math.round(parseFloat(node.style.top) || 0);
-      var item = type === "goal" ? goalById(id) : projectById(id);
-      if(item){ item.wbX = x; item.wbY = y; }
-      var statusEl = document.getElementById("wbSaveStatus");
-      if(statusEl) statusEl.textContent = "saving…";
-      var r = await safeUpdate(type === "goal" ? "goals" : "projects", id, { whiteboard_x: x, whiteboard_y: y });
-      if(r.error){ console.error(r.error); if(statusEl) statusEl.textContent = ""; return; }
-      warnDroppedFields(r.droppedFields);
-      if(statusEl){ statusEl.textContent = "saved"; setTimeout(function(){ statusEl.textContent = ""; }, 1500); }
+      wbReheat(1);
     });
     overlay.addEventListener("pointercancel", function(){
+      if(dragSim) dragSim.fixed = false;
       if(dragEl) dragEl.classList.remove("dragging");
-      dragEl = null; dragPointerId = null;
+      dragEl = null; dragSim = null; dragPointerId = null;
     });
-  }
-
-  function scheduleWhiteboardSave(){
-    document.getElementById("wbSaveStatus").textContent = "saving…";
-    clearTimeout(wbSaveTimer);
-    wbSaveTimer = setTimeout(saveWhiteboard, 900);
-  }
-  async function saveWhiteboard(){
-    if(!wbCtx) return;
-    var dataUri = wbCanvas.toDataURL("image/png");
-    var res = await sb.from("whiteboard").upsert({ image: dataUri, updated_at: new Date().toISOString() }, { onConflict: "user_id" }).select().single();
-    var statusEl = document.getElementById("wbSaveStatus");
-    if(res.error){ console.error(res.error); if(statusEl) statusEl.textContent = ""; return; }
-    if(statusEl) statusEl.textContent = "saved";
-    setTimeout(function(){ if(statusEl) statusEl.textContent = ""; }, 1500);
-  }
-  async function loadWhiteboard(){
-    var res = await sb.from("whiteboard").select("image").maybeSingle();
-    if(res.error){ console.error(res.error); return; }
-    if(wbCtx && res.data && res.data.image){
-      var img = new Image();
-      // Natural size, not stretched to fill the (much larger) world canvas — see initWbCanvasSize.
-      img.onload = function(){ wbCtx.drawImage(img, 0, 0); };
-      img.src = res.data.image;
-    }
   }
 
   function initWhiteboard(){
-    wbCanvas = document.getElementById("wbCanvas");
-    wbCtx = wbCanvas.getContext("2d");
     wbWorldEl = document.getElementById("wbWorld");
     wbWrapEl = document.getElementById("wbCanvasWrap");
+    wbWorldEl.style.width = WB_WORLD_W + "px";
+    wbWorldEl.style.height = WB_WORLD_H + "px";
 
-    wbCanvas.addEventListener("pointerdown", function(e){
-      if(!wbCtx) return;
-      wbDrawing = true;
-      wbCanvas.setPointerCapture(e.pointerId);
-      var pos = wbCanvasPos(e);
-      wbLastX = pos.x; wbLastY = pos.y;
-      wbCtx.beginPath();
-      wbCtx.arc(pos.x, pos.y, wbWidth / 2, 0, Math.PI * 2);
-      wbCtx.fillStyle = wbColor;
-      wbCtx.fill();
-    });
-    wbCanvas.addEventListener("pointermove", function(e){
-      if(!wbDrawing || !wbCtx) return;
-      var pos = wbCanvasPos(e);
-      wbCtx.strokeStyle = wbColor;
-      wbCtx.lineWidth = wbWidth;
-      wbCtx.lineCap = "round";
-      wbCtx.lineJoin = "round";
-      wbCtx.beginPath();
-      wbCtx.moveTo(wbLastX, wbLastY);
-      wbCtx.lineTo(pos.x, pos.y);
-      wbCtx.stroke();
-      wbLastX = pos.x; wbLastY = pos.y;
-    });
-    function endStroke(){
-      if(!wbDrawing) return;
-      wbDrawing = false;
-      scheduleWhiteboardSave();
-    }
-    wbCanvas.addEventListener("pointerup", endStroke);
-    wbCanvas.addEventListener("pointerleave", endStroke);
-    wbCanvas.addEventListener("pointercancel", endStroke);
-
-    // Panning: hold space and drag, or drag with the middle mouse button. Runs in the capture
-    // phase so it can claim the gesture before the canvas's own draw-stroke listener (or a node's
-    // drag listener) sees it — stopPropagation() is what keeps those from firing at the same time.
+    // Panning: drag empty space, or drag with the middle mouse button anywhere. Runs in the capture
+    // phase so it can claim the gesture before a node's own drag listener sees it — stopPropagation()
+    // is what keeps the two from firing at the same time when you start the drag ON a node.
     var wbPanning = false, wbPanPointerId = null, wbPanStartClientX, wbPanStartClientY, wbPanStartX, wbPanStartY;
     wbWrapEl.addEventListener("pointerdown", function(e){
-      if(e.button === 1 || (e.button === 0 && wbSpaceDown)){
+      if(e.button === 1 || (e.button === 0 && !e.target.closest(".wb-goal-node"))){
         e.preventDefault();
         e.stopPropagation();
         wbPanning = true;
@@ -3903,17 +3882,6 @@
     }
     wbWrapEl.addEventListener("pointerup", endWbPan, true);
     wbWrapEl.addEventListener("pointercancel", endWbPan, true);
-
-    var wbSpaceDown = false;
-    document.addEventListener("keydown", function(e){
-      if(e.code === "Space" && activeSection === "whiteboard" && !/^(INPUT|TEXTAREA|SELECT)$/.test((e.target && e.target.tagName) || "")){
-        wbSpaceDown = true;
-        wbWrapEl.classList.add("space-down");
-      }
-    });
-    document.addEventListener("keyup", function(e){
-      if(e.code === "Space"){ wbSpaceDown = false; wbWrapEl.classList.remove("space-down"); }
-    });
 
     // Zooming: scroll wheel (zooms toward the cursor), or the +/- buttons (zoom toward center).
     wbWrapEl.addEventListener("wheel", function(e){
@@ -3951,32 +3919,6 @@
         wbFullscreenBtn.textContent = isFs ? "⤡ exit fullscreen" : "⤢ fullscreen";
       });
     }
-
-    document.getElementById("wbColorPicker").addEventListener("input", function(){
-      wbColor = this.value;
-      document.querySelectorAll(".wb-swatch").forEach(function(s){ s.classList.remove("sel"); });
-    });
-    document.getElementById("wbWidthInput").addEventListener("input", function(){
-      wbWidth = Number(this.value);
-    });
-    document.getElementById("wbClearBtn").addEventListener("click", function(){
-      if(!wbCtx) return;
-      wbCtx.fillStyle = "#ffffff";
-      wbCtx.fillRect(0, 0, wbCanvas.width, wbCanvas.height);
-      scheduleWhiteboardSave();
-    });
-
-    var swatchColors = ["#1A1A1A","#FB6666","#4ADE80","#5FA8FF","#FF9F45","#A78BFA","#FFFFFF"];
-    document.getElementById("wbColorSwatches").innerHTML = swatchColors.map(function(c){
-      return '<button class="wb-swatch" style="background:' + c + '" data-color="' + c + '" type="button" aria-label="Color ' + c + '"></button>';
-    }).join("");
-    document.getElementById("wbColorSwatches").addEventListener("click", function(e){
-      var btn = e.target.closest(".wb-swatch");
-      if(!btn) return;
-      wbColor = btn.dataset.color;
-      document.getElementById("wbColorPicker").value = wbColor;
-      document.querySelectorAll(".wb-swatch").forEach(function(s){ s.classList.toggle("sel", s===btn); });
-    });
 
     document.getElementById("wbConnectBtn").addEventListener("click", function(){
       setWbConnectMode(!wbConnectMode);
