@@ -453,9 +453,10 @@
   .today-timeline-row-labels span.Relationships{ color:var(--cat-relationships); }
   .today-timeline-row-labels span.Life{ color:var(--cat-life); }
   .today-timeline-main{ flex:1; min-width:0; }
-  .today-timeline-unified{ position:relative; display:flex; flex-direction:column; height:306px; border:1px solid var(--border); border-radius:6px; overflow:hidden; background:var(--bg-raised); }
+  .today-timeline-unified{ position:relative; display:flex; flex-direction:column; height:326px; border:1px solid var(--border); border-radius:6px; overflow:hidden; background:var(--bg-raised); }
   .today-timeline-row{ position:relative; flex:1; touch-action:none; }
   .today-timeline-row + .today-timeline-row{ border-top:1px solid var(--border); }
+  .today-timeline-daynight-row{ flex:1.6; }
   .today-timeline-row.Health{ background:var(--cat-health-bg); }
   .today-timeline-row.Finance{ background:var(--cat-finance-bg); }
   .today-timeline-row.Career{ background:var(--cat-career-bg); }
@@ -481,14 +482,16 @@
   .timeline-block-title{ font-family:var(--mono); font-size:9.5px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; z-index:1; }
   .timeline-block.done{ opacity:0.5; }
   /* Filled area tint, not just a border accent — these blocks are often too narrow (short
-     duration) for a thin left-border to read as "colored" at a glance. */
-  .timeline-block.Health{ border-left-color:var(--cat-health); background:var(--cat-health-bg); }
-  .timeline-block.Finance{ border-left-color:var(--cat-finance); background:var(--cat-finance-bg); }
-  .timeline-block.Career{ border-left-color:var(--cat-career); background:var(--cat-career-bg); }
-  .timeline-block.Maintenance{ border-left-color:var(--cat-maintenance); background:var(--cat-maintenance-bg); }
-  .timeline-block.Growth{ border-left-color:var(--cat-growth); background:var(--cat-growth-bg); }
-  .timeline-block.Relationships{ border-left-color:var(--cat-relationships); background:var(--cat-relationships-bg); }
-  .timeline-block.Life{ border-left-color:var(--cat-life); background:var(--cat-life-bg); }
+     duration) for a thin left-border to read as "colored" at a glance. Brighter (higher alpha)
+     than the shared --cat-X-bg variable used elsewhere (cards, tiles, rows) — blocks need to stand
+     out on top of an already-tinted row, not just blend into it. */
+  .timeline-block.Health{ border-left-color:var(--cat-health); background:rgba(74,222,128,0.28); }
+  .timeline-block.Finance{ border-left-color:var(--cat-finance); background:rgba(253,224,71,0.3); }
+  .timeline-block.Career{ border-left-color:var(--cat-career); background:rgba(251,146,60,0.28); }
+  .timeline-block.Maintenance{ border-left-color:var(--cat-maintenance); background:rgba(234,179,8,0.3); }
+  .timeline-block.Growth{ border-left-color:var(--cat-growth); background:rgba(176,132,245,0.3); }
+  .timeline-block.Relationships{ border-left-color:var(--cat-relationships); background:rgba(95,168,255,0.28); }
+  .timeline-block.Life{ border-left-color:var(--cat-life); background:rgba(34,211,238,0.28); }
 
   /* ===== TIMELINE PAGE ===== */
   /* Fixed-pixel row heights (not flex:1) so the row-labels column and the scrollable world column
@@ -782,7 +785,7 @@
           </div>
           <div class="today-timeline-main">
             <div class="today-timeline-unified" id="todayTimelineUnified">
-              <div class="today-timeline-row">
+              <div class="today-timeline-row today-timeline-daynight-row">
                 <div class="today-timeline-daynight" id="todayTimelineDayNight"></div>
               </div>
               <div class="today-timeline-row Health" id="todayTimelineArea-Health"></div>
@@ -4570,7 +4573,7 @@
     var bp = berlinTodayParts();
     var sunrise = sunTimeUTC(bp.year, bp.month, bp.day, BERLIN_LAT, BERLIN_LON, true);
     var sunset = sunTimeUTC(bp.year, bp.month, bp.day, BERLIN_LAT, BERLIN_LON, false);
-    var night = "rgba(95,168,255,0.28)", day = "rgba(253,224,71,0.28)";
+    var night = "rgba(95,168,255,0.42)", day = "rgba(253,224,71,0.42)";
     if(sunrise == null || sunset == null){
       // polar day/night — doesn't happen at Berlin's latitude, but stay correct just in case
       overlay.style.background = night;
