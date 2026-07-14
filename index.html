@@ -511,7 +511,7 @@
   .daynight-badge.day{ background:#FDE047; box-shadow:0 0 6px rgba(253,224,71,0.6); }
   .daynight-badge.night{ background:#5FA8FF; box-shadow:0 0 6px rgba(95,168,255,0.6); }
   .daynight-times{ font-family:var(--mono); font-size:9.5px; color:var(--text-faint); }
-  .timeline-block{ position:absolute; top:2px; bottom:2px; min-width:32px; border-radius:4px; border-left:3px solid var(--border-bright); background:var(--bg-raised); border-top:1px solid var(--border-bright); border-right:1px solid var(--border-bright); border-bottom:1px solid var(--border-bright); cursor:grab; overflow:hidden; padding:0 5px; display:flex; align-items:center; user-select:none; touch-action:none; }
+  .timeline-block{ position:absolute; top:2px; bottom:2px; min-width:10px; border-radius:4px; border-left:3px solid var(--border-bright); background:var(--bg-raised); border-top:1px solid var(--border-bright); border-right:1px solid var(--border-bright); border-bottom:1px solid var(--border-bright); cursor:grab; overflow:hidden; padding:0 5px; display:flex; align-items:center; user-select:none; touch-action:none; }
   .timeline-block:hover{ border-color:var(--accent-dim); z-index:2; }
   .timeline-block.dragging{ cursor:grabbing; z-index:3; box-shadow:0 4px 14px rgba(0,0,0,0.4); }
   .timeline-block.resizing{ z-index:3; box-shadow:0 4px 14px rgba(0,0,0,0.4); }
@@ -4926,7 +4926,7 @@
     state.habits.filter(function(h){ return !!h.timeOfDay && habitOccursOnDate(h, todaySelectedDate) && habitCategory(h) === area; }).forEach(function(h){
       var startFrac = timeToFraction(h.timeOfDay) * 100;
       var widthFrac = Math.max(1.2, ((h.durationMinutes || 15) / 1440) * 100);
-      html += todayTimelineBlockHtml("habit-instance", h.id, todaySelectedDate, startFrac, widthFrac, h.title + " — " + fmtTimeOfDay(h.timeOfDay), escapeHtml(h.title), area, h.priority === "P0" ? " p0" : "", false, true, habitTimelineIconHtml(h.icon, area));
+      html += todayTimelineBlockHtml("habit-instance", h.id, todaySelectedDate, startFrac, widthFrac, h.title + " — " + fmtTimeOfDay(h.timeOfDay), escapeHtml(h.title), area, h.priority === "P0" ? " p0" : "", false, true);
     });
     // Habits that started yesterday and run past midnight (sleep being the obvious one — 11:30pm to
     // 7:30am) show their overnight tail here too, continued from the very start of today. Not
@@ -4937,7 +4937,7 @@
       var spillMin = overnightSpilloverMinutes(h.timeOfDay, h.durationMinutes);
       if(!spillMin) return;
       var widthFrac = spillMin / 1440 * 100;
-      html += todayTimelineBlockHtml("habit-instance", h.id, yesterday, 0, widthFrac, h.title + " — continued from " + fmtTimeOfDay(h.timeOfDay) + " yesterday", "‹ " + escapeHtml(h.title), area, h.priority === "P0" ? " p0" : "", true, "right", habitTimelineIconHtml(h.icon, area));
+      html += todayTimelineBlockHtml("habit-instance", h.id, yesterday, 0, widthFrac, h.title + " — continued from " + fmtTimeOfDay(h.timeOfDay) + " yesterday", "‹ " + escapeHtml(h.title), area, h.priority === "P0" ? " p0" : "", true, "right");
     });
     state.actions.filter(function(a){ return a.date === todaySelectedDate && !!a.timeOfDay && actionCategory(a) === area; }).forEach(function(a){
       var startFrac = timeToFraction(a.timeOfDay) * 100;
@@ -5253,10 +5253,9 @@
       state.habits.filter(function(h){ return !!h.timeOfDay && habitOccursOnDate(h, dateStr); }).forEach(function(h){
         var leftPx = i*tlPxPerDay + timeToFraction(h.timeOfDay)*tlPxPerDay;
         var widthPx = Math.max(10, ((h.durationMinutes || 15) / 1440) * tlPxPerDay);
-        var cat = habitCategory(h);
-        var catClass = cat ? " " + cat : "";
+        var catClass = habitCategory(h) ? " " + habitCategory(h) : "";
         html += '<div class="timeline-block' + catClass + '" data-kind="habit-instance" data-id="' + h.id + '" data-day-index="' + i + '" data-date="' + dateStr + '" style="left:' + leftPx + 'px; width:' + widthPx + 'px;" title="' + escapeHtml(h.title) + ' — ' + fmtTimeOfDay(h.timeOfDay) + '">' +
-          habitTimelineIconHtml(h.icon, cat) + '<span class="timeline-block-title">' + escapeHtml(h.title) + '</span></div>';
+          '<span class="timeline-block-title">' + escapeHtml(h.title) + '</span></div>';
       });
     }
     track.innerHTML = html;
