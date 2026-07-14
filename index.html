@@ -436,26 +436,26 @@
   :root[data-theme="dark"] .wb-hier-line{ stroke:#fff; }
   .wb-conn:hover .wb-conn-line{ stroke:var(--accent); stroke-width:2.25; }
   /* Implicit parent/child lines (goal -> its own habits/projects, from their existing goal_id link)
-     — distinct from the manual .wb-conn-line relations above: subtler and dashed since they're
-     structural (derived from the data itself), not a deliberate user-drawn annotation, and there's
-     nothing to click/delete since "removing" one means re-parenting the item, not this graph. */
-  .wb-hier-line{ stroke:var(--border-bright); stroke-width:1; stroke-dasharray:3,3; opacity:0.7; pointer-events:none; }
-  /* A secondary goal -> habit link (see wbHierarchyEdges/renderWbHierarchyLines): solid, area-hued,
-     and much fainter than every other use of that color on the graph — the "hue extends toward the
-     habit" effect the primary dashed/neutral line above doesn't give. The inline stroke color (set
-     per-edge in JS) always wins over both this and the dark-mode override, so it stays area-colored
-     in either theme. */
-  .wb-hier-line-secondary{ stroke-width:1.5; stroke-dasharray:none; opacity:0.3; }
+     — distinct from the manual .wb-conn-line relations above: a continuous line since it's the
+     "real"/primary relation, subtler (neutral color, partial opacity) since it's structural (derived
+     from the data itself), not a deliberate user-drawn annotation — there's nothing to click/delete
+     since "removing" one means re-parenting the item, not this graph. */
+  .wb-hier-line{ stroke:var(--border-bright); stroke-width:1; stroke-dasharray:none; opacity:0.7; pointer-events:none; }
+  /* A secondary goal -> habit link (see wbHierarchyEdges/renderWbHierarchyLines): dashed and
+     area-hued, much fainter than every other use of that color on the graph — the "hue extends
+     toward the habit" effect the primary continuous/neutral line above doesn't give. Dashed marks it
+     as the secondary relation at a glance. The inline stroke color (set per-edge in JS) always wins
+     over both this and the dark-mode override, so it stays area-colored in either theme. */
+  .wb-hier-line-secondary{ stroke-width:1.5; stroke-dasharray:4,3; opacity:0.3; }
   .wb-overlay{ position:absolute; inset:0; pointer-events:none; }
   /* Goal/project/habit nodes are a plain colored dot (area color), not a card — the wrapper's own
      box IS the dot (width/height = diameter), so wbNodeCenter's radius-map math keeps anchoring
      connection lines to the dot's true center. The title renders as a separate absolutely-positioned
      label alongside it, which — since absolutely-positioned children don't contribute to their
      parent's own box size — never affects that center math either.
-     Size reflects hierarchy (main > area > goal > project = habit > action — see WB_DOT_RADII, which
-     must stay in sync with these diameters), not just an arbitrary style choice. */
+     Size reflects hierarchy (area > goal > project = habit > action — see WB_DOT_RADII, which must
+     stay in sync with these diameters), not just an arbitrary style choice. */
   .wb-goal-node{ position:absolute; border-radius:50%; background:var(--text-faint); pointer-events:auto; cursor:grab; box-shadow:0 0 0 2px var(--bg-inset), 0 2px 8px rgba(0,0,0,0.35); user-select:none; touch-action:none; }
-  .wb-goal-node[data-type="main"]{ width:24px; height:24px; }
   .wb-goal-node[data-type="area"]{ width:19px; height:19px; }
   .wb-goal-node[data-type="goal"]{ width:17px; height:17px; }
   .wb-goal-node[data-type="project"]{ width:14px; height:14px; }
@@ -476,9 +476,6 @@
   .wb-goal-node.Growth{ background:var(--cat-growth); }
   .wb-goal-node.Relationships{ background:var(--cat-relationships); }
   .wb-goal-node.Sol{ background:var(--cat-sol); }
-  /* The single "main" hub isn't tied to any area, so it never gets a category class/color — a flat
-     accent fill instead, making it read as a distinct root rather than an eighth area. */
-  .wb-goal-node[data-type="main"]{ background:var(--accent); }
   /* A goal/project/habit that has its own icon lightens its dot to the area's -bg tint (instead of
      the full-saturation fill above) so the icon — drawn in the full saturated color via
      .wb-goal-node-symbol/iconMaskHtml — reads clearly on top of it, same light-bg/saturated-icon
@@ -505,7 +502,6 @@
   .wb-goal-node[data-type="area"].connect-pending{ box-shadow:none; }
   .wb-goal-node[data-type="area"].connect-pending .wb-goal-node-icon{ filter:drop-shadow(0 0 4px var(--accent)) drop-shadow(0 0 4px var(--accent)); }
   .wb-goal-node-label{ position:absolute; left:22px; top:50%; transform:translateY(-50%); font-family:var(--mono); font-size:11px; font-weight:600; color:var(--text); white-space:nowrap; pointer-events:none; }
-  .wb-goal-node[data-type="main"] .wb-goal-node-label{ left:32px; font-size:14px; font-weight:700; }
   .wb-goal-node[data-type="area"] .wb-goal-node-label{ left:27px; font-size:13px; font-weight:700; }
   .wb-goal-node[data-type="goal"] .wb-goal-node-label{ left:25px; }
   .wb-goal-node[data-type="project"] .wb-goal-node-label{ left:22px; }
@@ -4113,12 +4109,12 @@
      or adding a connection "reheats" it so it reacts and resettles. */
   var wbSimNodes = []; // { type, id, x, y, vx, vy, fixed }
   // Half of each type's .wb-goal-node diameter — keep in sync with that CSS. Sizes are a fixed ratio
-  // of WB_SIZE_UNIT (the single "main" hub = 1x, the biggest node in the graph): area 0.8x, goal
-  // 0.7x (not explicitly specified — interpolated between area and project/habit, matching the old
-  // hierarchy's ordering), habit and project tied at 0.6x, action smallest at 0.4x. Only ever present
-  // when the "actions" layer toggle is on.
+  // of WB_SIZE_UNIT: area is the biggest (0.8x the unit), goal 0.7x (not explicitly specified —
+  // interpolated between area and project/habit, matching the old hierarchy's ordering), habit and
+  // project tied at 0.6x, action smallest at 0.4x. Only ever present when the "actions" layer toggle
+  // is on.
   var WB_SIZE_UNIT = 12; // 40 * 0.3
-  var WB_DOT_RADII = { main: WB_SIZE_UNIT * 1, area: WB_SIZE_UNIT * 0.8, goal: WB_SIZE_UNIT * 0.7, project: WB_SIZE_UNIT * 0.6, habit: WB_SIZE_UNIT * 0.6, action: WB_SIZE_UNIT * 0.4 };
+  var WB_DOT_RADII = { area: WB_SIZE_UNIT * 0.8, goal: WB_SIZE_UNIT * 0.7, project: WB_SIZE_UNIT * 0.6, habit: WB_SIZE_UNIT * 0.6, action: WB_SIZE_UNIT * 0.4 };
   var WB_CENTER_X = WB_WORLD_W / 2, WB_CENTER_Y = WB_WORLD_H / 2;
   var WB_REPEL = 9000, WB_AREA_PUSH = 3000, WB_LINK_DIST = 130, WB_LINK_K = 0.02, WB_CENTER_K = 0.005, WB_DAMPING = 0.82, WB_ALPHA_DECAY = 0.985;
   var wbAlpha = 0, wbSimRunning = false;
@@ -4135,7 +4131,7 @@
   // Area hubs (one per CATEGORIES entry, id = the category name itself) always exist, even before
   // any goal has been added to that area — they're permanent landmarks, not derived from a row.
   function wbSyncSimNodes(){
-    var wantedKeys = { "main:main": true };
+    var wantedKeys = {};
     CATEGORIES.forEach(function(cat){ wantedKeys["area:" + cat] = true; });
     state.goals.forEach(function(g){ wantedKeys["goal:" + g.id] = true; });
     state.projects.forEach(function(p){ wantedKeys["project:" + p.id] = true; });
@@ -4147,7 +4143,6 @@
       var angle = Math.random() * Math.PI * 2, radius = 40 + Math.random() * 140;
       wbSimNodes.push({ type:type, id:id, x: WB_CENTER_X + Math.cos(angle)*radius, y: WB_CENTER_Y + Math.sin(angle)*radius, vx:0, vy:0, fixed:false });
     }
-    ensure("main", "main");
     CATEGORIES.forEach(function(cat){ ensure("area", cat); });
     state.goals.forEach(function(g){ ensure("goal", g.id); });
     state.projects.forEach(function(p){ ensure("project", p.id); });
@@ -4160,7 +4155,6 @@
   // (never straight to a project or habit — those already connect to their goal, one level down).
   function wbHierarchyEdges(){
     var edges = [];
-    CATEGORIES.forEach(function(cat){ edges.push({ fromType:"main", fromId:"main", toType:"area", toId:cat }); });
     state.goals.forEach(function(g){
       if(g.category) edges.push({ fromType:"area", fromId:g.category, toType:"goal", toId:g.id });
       (g.secondaryCategories || []).forEach(function(cat){ edges.push({ fromType:"area", fromId:cat, toType:"goal", toId:g.id, secondary:true }); });
@@ -4241,17 +4235,15 @@
     state.wbConnections.forEach(wbApplySpring);
     wbHierarchyEdges().forEach(wbApplySpring);
     wbAreaLeafEdges().forEach(wbApplySpring);
-    // Only the single "main" hub gets pulled toward the world center, and strongly (WB_CENTER_K is
-    // bigger than the link spring constant) — area hubs reach the center transitively by being
-    // spring-linked to main (same principle as every other level of the hierarchy). A true orphan —
-    // no resolvable area at all (areas[idx] is null: a standalone project/habit/action with no goal
-    // and no area of its own) — gets the same pull at half strength, since it has no area hub or
-    // spring-linked parent to anchor it near the middle either; everything else (goal/project/habit/
-    // action WITH an area) still has no direct center pull of its own, staying near the middle only
-    // by being spring-linked to an anchored area hub.
+    // Area hubs get pulled toward the world center, and strongly (WB_CENTER_K is bigger than the
+    // link spring constant). A true orphan — no resolvable area at all (areas[idx] is null: a
+    // standalone project/habit/action with no goal and no area of its own) — gets the same pull at
+    // half strength, since it has no area hub or spring-linked parent to anchor it near the middle
+    // either; everything else (goal/project/habit/action WITH an area) still has no direct center
+    // pull of its own, staying near the middle only by being spring-linked to an anchored area hub.
     nodes.forEach(function(n, idx){
       if(n.fixed){ n.vx = 0; n.vy = 0; return; }
-      if(n.type === "main"){
+      if(n.type === "area"){
         n.vx += (WB_CENTER_X - n.x) * WB_CENTER_K * wbAlpha;
         n.vy += (WB_CENTER_Y - n.y) * WB_CENTER_K * wbAlpha;
       } else if(!areas[idx]){
@@ -4314,11 +4306,8 @@
   function renderWhiteboardNodes(){
     var overlay = document.getElementById("wbOverlay");
     if(!overlay) return;
-    // The main hub is a single permanent landmark, always rendered first (behind nothing — it's not
-    // an SVG layer — just first in DOM order) — not a real domain object, so it has no icon/category.
-    var html = wbNodeHtml("main", { id:"main", title:"Main" }, null);
     // Area hubs are permanent landmarks — always rendered, even with zero goals/projects/habits yet.
-    html += CATEGORIES.map(function(cat){ return wbNodeHtml("area", { id:cat, title:cat }, cat); }).join("");
+    var html = CATEGORIES.map(function(cat){ return wbNodeHtml("area", { id:cat, title:cat }, cat); }).join("");
     if(!state.goals.length && !state.projects.length && !state.habits.length){
       overlay.innerHTML = html + '<div class="wb-empty-hint">Add a goal, project or habit from the Planner or Areas tab — it\'ll show up here as a node in the graph.</div>';
       renderWbConnections();
@@ -4342,7 +4331,6 @@
     return { x: n.x + r, y: n.y + r };
   }
   function wbNodeArea(n){
-    if(n.type === "main") return null;
     if(n.type === "area") return n.id;
     if(n.type === "goal"){ var g = goalById(n.id); return g ? g.category : null; }
     if(n.type === "project"){ var p = projectById(n.id); return p ? projectCategory(p) : null; }
@@ -4556,8 +4544,7 @@
       sim.fixed = false;
       if(!moved){
         if(wbConnectMode){ handleWbConnectClick(type, id, node); return; }
-        if(type === "main"){ /* not a real object — nothing to open */ }
-        else if(type === "area") openAreaDetailPage(id);
+        if(type === "area") openAreaDetailPage(id);
         else if(type === "goal") openGoalDetailPage(id);
         else if(type === "project") editProject(id);
         else if(type === "action") editAction(id);
