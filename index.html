@@ -462,6 +462,7 @@
   .timeline-block{ position:absolute; top:2px; bottom:2px; min-width:10px; border-radius:4px; border-left:3px solid var(--border-bright); background:var(--bg-raised); border-top:1px solid var(--border-bright); border-right:1px solid var(--border-bright); border-bottom:1px solid var(--border-bright); cursor:grab; overflow:hidden; padding:0 5px; display:flex; align-items:center; user-select:none; touch-action:none; }
   .timeline-block:hover{ border-color:var(--accent-dim); z-index:2; }
   .timeline-block.dragging{ cursor:grabbing; z-index:3; box-shadow:0 4px 14px rgba(0,0,0,0.4); }
+  .timeline-block[data-overnight]{ cursor:default; border-left-style:dashed; }
   .timeline-block-title{ font-family:var(--mono); font-size:9.5px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; z-index:1; }
   .timeline-block.done{ opacity:0.5; }
   /* Filled area tint, not just a border accent — these blocks are often too narrow (short
@@ -4589,11 +4590,19 @@
     var h = Math.floor(totalMin / 60), m = totalMin % 60;
     return String(h).padStart(2,"0") + ":" + String(m).padStart(2,"0");
   }
+  // Whether an item starting at hhmm with the given duration runs past midnight, and if so, how
+  // many minutes of it spill into the next day — e.g. sleep at 23:30 for 480 min (8h) ends at 7:30
+  // the next day, so 450 minutes of it belong on tomorrow's timeline too.
+  function overnightSpilloverMinutes(hhmm, durationMinutes){
+    var endMin = timeToFraction(hhmm) * 1440 + (durationMinutes || 15);
+    return endMin > 1440 ? Math.min(1440, endMin - 1440) : 0;
+  }
   function renderTodayTimelineHabits(){
     var track = document.getElementById("todayTimelineHabitsTrack");
     if(!track) return;
+    var yesterday = addDaysToDateStr(todaySelectedDate, -1);
     var timed = state.habits.filter(function(h){ return !!h.timeOfDay && habitOccursOnDate(h, todaySelectedDate); });
-    track.innerHTML = timed.map(function(h){
+    var html = timed.map(function(h){
       var startFrac = timeToFraction(h.timeOfDay) * 100;
       var widthFrac = Math.max(1.2, ((h.durationMinutes || 15) / 1440) * 100);
       var goal = h.goalId ? goalById(h.goalId) : null;
@@ -4602,12 +4611,28 @@
         '<span class="timeline-block-title">' + escapeHtml(h.title) + '</span>' +
       '</div>';
     }).join("");
+    // Habits that started yesterday and run past midnight (sleep being the obvious one — 11:30pm
+    // to 7:30am) show their overnight tail here too, continued from the very start of today. Not
+    // draggable: dragging this segment would have no sensible meaning for the habit's own start
+    // time, so wireTimelineLayerDrag skips anything with data-overnight.
+    html += state.habits.filter(function(h){ return !!h.timeOfDay && habitOccursOnDate(h, yesterday); }).map(function(h){
+      var spillMin = overnightSpilloverMinutes(h.timeOfDay, h.durationMinutes);
+      if(!spillMin) return "";
+      var widthFrac = spillMin / 1440 * 100;
+      var goal = h.goalId ? goalById(h.goalId) : null;
+      var catClass = goal ? " " + goal.category : "";
+      return '<div class="timeline-block' + catClass + '" data-kind="habit-instance" data-id="' + h.id + '" data-date="' + yesterday + '" data-overnight="1" style="left:0%; width:' + widthFrac + '%;" title="' + escapeHtml(h.title) + ' — continued from ' + fmtTimeOfDay(h.timeOfDay) + ' yesterday">' +
+        '<span class="timeline-block-title">‹ ' + escapeHtml(h.title) + '</span>' +
+      '</div>';
+    }).join("");
+    track.innerHTML = html;
   }
   function renderTodayTimelineActions(){
     var track = document.getElementById("todayTimelineActionsTrack");
     if(!track) return;
+    var yesterday = addDaysToDateStr(todaySelectedDate, -1);
     var timed = state.actions.filter(function(a){ return a.date === todaySelectedDate && !!a.timeOfDay; });
-    track.innerHTML = timed.map(function(a){
+    var html = timed.map(function(a){
       var startFrac = timeToFraction(a.timeOfDay) * 100;
       var widthFrac = Math.max(1.2, ((a.durationMinutes || 15) / 1440) * 100);
       var cat = actionCategory(a);
@@ -4616,6 +4641,19 @@
         '<span class="timeline-block-title">' + escapeHtml(a.title) + '</span>' +
       '</div>';
     }).join("");
+    // Same overnight-spillover treatment as habits, for actions scheduled yesterday with a duration
+    // that runs past midnight.
+    html += state.actions.filter(function(a){ return a.date === yesterday && !!a.timeOfDay; }).map(function(a){
+      var spillMin = overnightSpilloverMinutes(a.timeOfDay, a.durationMinutes);
+      if(!spillMin) return "";
+      var widthFrac = spillMin / 1440 * 100;
+      var cat = actionCategory(a);
+      var catClass = cat ? " " + cat : "";
+      return '<div class="timeline-block' + catClass + (a.done?' done':'') + '" data-kind="action" data-id="' + a.id + '" data-overnight="1" style="left:0%; width:' + widthFrac + '%;" title="' + escapeHtml(a.title) + ' — continued from ' + fmtTimeOfDay(a.timeOfDay) + ' yesterday">' +
+        '<span class="timeline-block-title">‹ ' + escapeHtml(a.title) + '</span>' +
+      '</div>';
+    }).join("");
+    track.innerHTML = html;
   }
   // Notes are a point in time, not a span — no duration field, so every block is the same small
   // fixed width, positioned by time_of_day like habits/actions.
@@ -4640,7 +4678,9 @@
     var dragEl = null, dragId = null, moved = false;
     track.addEventListener("pointerdown", function(e){
       var block = e.target.closest(".timeline-block");
-      if(!block) return;
+      // The overnight-spillover tail (yesterday's item continuing past midnight) has no sensible
+      // "new start time" to derive from its own left edge — it isn't draggable.
+      if(!block || block.dataset.overnight) return;
       dragEl = block; dragId = block.dataset.id; moved = false;
       block.setPointerCapture(e.pointerId);
       block.classList.add("dragging");
