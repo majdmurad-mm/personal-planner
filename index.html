@@ -820,6 +820,9 @@
   .ctx-menu-item:hover{ background:var(--bg-inset); color:var(--text); }
   .ctx-menu-item.danger:hover{ background:var(--p0-bg); color:var(--p0); }
   .ctx-menu-sep{ height:1px; background:var(--border); margin:4px 2px; }
+  .postpone-date-row{ display:flex; gap:6px; padding:2px 4px 4px; }
+  .postpone-date-row input[type="date"]{ flex:1; min-width:0; font-size:11px; padding:5px 6px; }
+  .postpone-date-row .btn{ font-size:11px; padding:5px 10px; }
   .global-toast{ position:fixed; left:50%; bottom:22px; transform:translateX(-50%); z-index:300; max-width:min(480px, 90vw); background:var(--bg-raised); border:1px solid var(--p1); color:var(--text); font-family:var(--mono); font-size:11.5px; line-height:1.5; padding:10px 14px; border-radius:6px; box-shadow:0 8px 30px rgba(0,0,0,0.45); }
 
   .empty-state{ text-align:center; padding:56px 20px; border:1px dashed var(--border); border-radius:var(--radius); color:var(--text-faint); margin-top:16px; }
@@ -1675,7 +1678,20 @@
 <!-- ===== GLOBAL RIGHT-CLICK MENU ===== -->
 <div class="ctx-menu" id="globalCtxMenu" hidden>
   <button class="ctx-menu-item" data-ctx="edit" type="button">edit</button>
+  <button class="ctx-menu-item" data-ctx="postpone" type="button">postpone…</button>
   <button class="ctx-menu-item danger" data-ctx="delete" type="button">delete</button>
+</div>
+
+<!-- ===== POSTPONE POPOVER (action / habit-instance) ===== -->
+<div class="ctx-menu" id="postponePopover" hidden>
+  <button class="ctx-menu-item" data-postpone="1" type="button">tomorrow</button>
+  <button class="ctx-menu-item" data-postpone="3" type="button">in 3 days</button>
+  <button class="ctx-menu-item" data-postpone="7" type="button">in a week</button>
+  <div class="ctx-menu-sep"></div>
+  <div class="postpone-date-row">
+    <input type="date" id="postponeDateInput">
+    <button class="btn" id="postponeDateGoBtn" type="button">move</button>
+  </div>
 </div>
 
 <!-- ===== TODAY TIMELINE "ADD" MENU (click empty row space) ===== -->
@@ -2998,11 +3014,86 @@
     action: editAction,
     journal: editJournalEntry
   };
+  // "postpone" moves an action's own date field forward, or — for a single day's occurrence of a
+  // recurring habit — skips that occurrence (skipHabitInstance, same as delete already does for
+  // habit-instance) and spins it off as a one-off standalone action on the target date, since a
+  // recurring habit has no notion of "this one occurrence now lives on a different day" of its own.
+  // The habit itself keeps recurring on its normal schedule; only that one day's copy moved.
+  var POSTPONE_KINDS = { action:true, "habit-instance":true };
+  async function postponeAction(id, toDate){
+    var a = state.actions.find(function(x){ return x.id === id; });
+    if(!a || !toDate || a.date === toDate) return;
+    var prevDate = a.date;
+    a.date = toDate; renderAll();
+    var r = await safeUpdate("actions", id, { date: toDate });
+    if(r.error){ console.error(r.error); a.date = prevDate; renderAll(); return; }
+    warnDroppedFields(r.droppedFields);
+    pushUndo("postpone \"" + a.title + "\" to " + toDate, async function(){
+      a.date = prevDate; renderAll();
+      await safeUpdate("actions", id, { date: prevDate });
+    });
+  }
+  async function postponeHabitInstance(id, fromDate, toDate){
+    var h = state.habits.find(function(x){ return x.id === id; });
+    if(!h || !fromDate || !toDate) return;
+    await skipHabitInstance(id, fromDate);
+    var payload = { title:h.title, type:"Task", priority:h.priority, parent_type:"none", parent_id:null, date:toDate, done:false, time_of_day:h.timeOfDay||null, duration_minutes:h.durationMinutes||null, category:habitCategory(h) };
+    var res = await safeInsert("actions", payload, state.actions);
+    if(res.error){ alert(res.error.message); return; }
+    var r = res.data;
+    state.actions.push({ id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null });
+    renderAll();
+    warnDroppedFields(res.droppedFields);
+    toast("\"" + h.title + "\" postponed to " + toDate + " as a one-off action — today's occurrence is skipped, the habit still recurs normally.");
+  }
+  async function postponeItem(kind, id, fromDate, toDate){
+    if(kind === "action") await postponeAction(id, toDate);
+    else if(kind === "habit-instance") await postponeHabitInstance(id, fromDate, toDate);
+  }
+  var postponeTarget = null;
+  function openPostponePopover(x, y, kind, id, date){
+    postponeTarget = { kind:kind, id:id, date:date };
+    var pop = document.getElementById("postponePopover");
+    document.getElementById("postponeDateInput").value = date || todayStr();
+    pop.hidden = false;
+    var maxX = window.innerWidth - pop.offsetWidth - 8;
+    var maxY = window.innerHeight - pop.offsetHeight - 8;
+    pop.style.left = Math.max(4, Math.min(x, maxX)) + "px";
+    pop.style.top = Math.max(4, Math.min(y, maxY)) + "px";
+  }
+  function closePostponePopover(){
+    document.getElementById("postponePopover").hidden = true;
+    postponeTarget = null;
+  }
+  document.addEventListener("click", function(e){
+    var pop = document.getElementById("postponePopover");
+    if(!pop.hidden && !pop.contains(e.target)) closePostponePopover();
+  });
+  document.getElementById("postponePopover").addEventListener("click", async function(e){
+    if(!postponeTarget) return;
+    var quick = e.target.closest("[data-postpone]");
+    if(quick){
+      var t = postponeTarget;
+      var toDate = addDaysToDateStr(t.date || todayStr(), Number(quick.dataset.postpone));
+      closePostponePopover();
+      await postponeItem(t.kind, t.id, t.date, toDate);
+      return;
+    }
+    if(e.target.id === "postponeDateGoBtn"){
+      var input = document.getElementById("postponeDateInput");
+      if(!input.value) return;
+      var t2 = postponeTarget;
+      closePostponePopover();
+      await postponeItem(t2.kind, t2.id, t2.date, input.value);
+    }
+  });
+
   var globalCtxTarget = null;
   function openGlobalCtxMenu(x, y, kind, id, date){
-    globalCtxTarget = { kind:kind, id:id, date:date };
+    globalCtxTarget = { kind:kind, id:id, date:date, x:x, y:y };
     var menu = document.getElementById("globalCtxMenu");
     menu.querySelector('[data-ctx="edit"]').style.display = EDIT_HANDLERS[kind] ? "" : "none";
+    menu.querySelector('[data-ctx="postpone"]').style.display = POSTPONE_KINDS[kind] ? "" : "none";
     menu.hidden = false;
     var maxX = window.innerWidth - menu.offsetWidth - 8;
     var maxY = window.innerHeight - menu.offsetHeight - 8;
@@ -3034,6 +3125,12 @@
     } else if(btn.dataset.ctx === "edit"){
       var editHandler = EDIT_HANDLERS[target.kind];
       if(editHandler) editHandler(target.id);
+    } else if(btn.dataset.ctx === "postpone"){
+      // Stop this same click from bubbling to document, where the "click outside closes it" listener
+      // for the popover we're about to open would otherwise see this click as "outside" and instantly
+      // close it again.
+      e.stopPropagation();
+      if(POSTPONE_KINDS[target.kind]) openPostponePopover(target.x, target.y, target.kind, target.id, target.date);
     }
   });
 
@@ -5204,7 +5301,7 @@
     state.habits.filter(function(h){ return !!h.timeOfDay && habitOccursOnDate(h, todaySelectedDate) && habitCategory(h) === area; }).forEach(function(h){
       var startFrac = timeToFraction(h.timeOfDay) * 100;
       var widthFrac = Math.max(1.2, ((h.durationMinutes || 15) / 1440) * 100);
-      html += todayTimelineBlockHtml("habit-instance", h.id, todaySelectedDate, startFrac, widthFrac, h.title + " — " + fmtTimeOfDay(h.timeOfDay), escapeHtml(h.title), area, h.priority === "P0" ? " p0" : "", false, true);
+      html += todayTimelineBlockHtml("habit-instance", h.id, todaySelectedDate, startFrac, widthFrac, h.title + " — " + fmtTimeOfDay(h.timeOfDay), escapeHtml(h.title), area, (habitDoneForDate(h, todaySelectedDate) ? " done" : "") + (h.priority === "P0" ? " p0" : ""), false, true);
     });
     // Habits that started yesterday and run past midnight (sleep being the obvious one — 11:30pm to
     // 7:30am) show their overnight tail here too, continued from the very start of today. Not
@@ -5215,7 +5312,7 @@
       var spillMin = overnightSpilloverMinutes(h.timeOfDay, h.durationMinutes);
       if(!spillMin) return;
       var widthFrac = spillMin / 1440 * 100;
-      html += todayTimelineBlockHtml("habit-instance", h.id, yesterday, 0, widthFrac, h.title + " — continued from " + fmtTimeOfDay(h.timeOfDay) + " yesterday", "‹ " + escapeHtml(h.title), area, h.priority === "P0" ? " p0" : "", true, "right");
+      html += todayTimelineBlockHtml("habit-instance", h.id, yesterday, 0, widthFrac, h.title + " — continued from " + fmtTimeOfDay(h.timeOfDay) + " yesterday", "‹ " + escapeHtml(h.title), area, (habitDoneForDate(h, yesterday) ? " done" : "") + (h.priority === "P0" ? " p0" : ""), true, "right");
     });
     state.actions.filter(function(a){ return a.date === todaySelectedDate && !!a.timeOfDay && actionCategory(a) === area; }).forEach(function(a){
       var startFrac = timeToFraction(a.timeOfDay) * 100;
@@ -5243,25 +5340,27 @@
     TODAY_TIMELINE_AREAS.forEach(renderTodayTimelineAreaRow);
   }
   // Dragging a block left/right updates its time-of-day (snapped to 5 min) — this is what "moving
-  // it along the timeline updates its properties" means. Clicking without dragging is a no-op here;
-  // use the existing right-click menu (already wired globally via data-kind/data-id) to edit/delete.
+  // it along the timeline updates its properties" means. A plain click (no drag) toggles the item
+  // done/not-done instead — notes have no done concept, so those clicks are a no-op, same as before.
+  // Use the right-click menu (already wired globally via data-kind/data-id) to edit/delete/postpone.
   // Each area row now mixes habit/action/note blocks together, so the kind is read from the block
   // being dragged (data-kind) rather than being fixed per track.
   function wireTimelineLayerDrag(trackId){
     var track = document.getElementById(trackId);
-    var dragEl = null, dragId = null, dragKind = null, moved = false;
+    var dragEl = null, dragId = null, dragKind = null, dragDate = null, dragOvernight = false, moved = false;
     track.addEventListener("pointerdown", function(e){
       if(e.target.closest("[data-resize-handle]")) return; // handled by wireTimelineBlockResize instead
       var block = e.target.closest(".timeline-block");
+      if(!block) return;
+      dragEl = block; dragId = block.dataset.id; dragKind = block.dataset.kind; dragDate = block.dataset.date;
+      dragOvernight = !!block.dataset.overnight; moved = false;
       // The overnight-spillover tail (yesterday's item continuing past midnight) has no sensible
-      // "new start time" to derive from its own left edge — it isn't draggable.
-      if(!block || block.dataset.overnight) return;
-      dragEl = block; dragId = block.dataset.id; dragKind = block.dataset.kind; moved = false;
-      block.setPointerCapture(e.pointerId);
-      block.classList.add("dragging");
+      // "new start time" to derive from its own left edge, so it isn't draggable — it's still
+      // click-to-toggle below, just never picks up pointer capture/the dragging visual state.
+      if(!dragOvernight){ block.setPointerCapture(e.pointerId); block.classList.add("dragging"); }
     });
     track.addEventListener("pointermove", function(e){
-      if(!dragEl) return;
+      if(!dragEl || dragOvernight) return;
       moved = true;
       var rect = track.getBoundingClientRect();
       var x = Math.min(rect.width, Math.max(0, e.clientX - rect.left));
@@ -5272,10 +5371,15 @@
     });
     track.addEventListener("pointerup", async function(){
       if(!dragEl) return;
-      var el = dragEl, id = dragId, kind = dragKind, newTime = el.dataset.pendingTime;
-      dragEl = null; dragId = null; dragKind = null;
+      var el = dragEl, id = dragId, kind = dragKind, date = dragDate, newTime = el.dataset.pendingTime;
+      dragEl = null; dragId = null; dragKind = null; dragDate = null; dragOvernight = false;
       el.classList.remove("dragging");
-      if(!moved || !newTime) return;
+      if(!moved){
+        if(kind === "habit-instance") await handleHabitMarkClick(id, date);
+        else if(kind === "action") await toggleActionDone(id);
+        return;
+      }
+      if(!newTime) return;
       if(kind === "habit-instance"){
         var h = state.habits.find(function(x){ return x.id === id; });
         if(h) h.timeOfDay = newTime;
@@ -5296,7 +5400,7 @@
     });
     track.addEventListener("pointercancel", function(){
       if(dragEl) dragEl.classList.remove("dragging");
-      dragEl = null; dragId = null; dragKind = null;
+      dragEl = null; dragId = null; dragKind = null; dragDate = null; dragOvernight = false;
     });
   }
   TODAY_TIMELINE_AREAS.forEach(function(area){ wireTimelineLayerDrag(todayTimelineRowId(area)); });
