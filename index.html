@@ -1558,6 +1558,8 @@
           <button class="btn" id="goalIconUploadBtn" type="button">upload image</button>
           <button class="btn" id="goalIconRemoveBtn" type="button" style="display:none;">remove</button>
         </div>
+        <p class="panel-hint">Or pick a built-in vector icon instead:</p>
+        <div class="icon-gallery" id="goalIconGallery"></div>
       </div>
       <div class="modal-actions"><button class="btn" id="cancelGoalModalBtn" type="button">cancel</button><button class="btn btn-accent" id="saveGoalBtn" type="button">save goal</button></div>
     </div>
@@ -1598,6 +1600,8 @@
           <button class="btn" id="projectIconUploadBtn" type="button">upload image</button>
           <button class="btn" id="projectIconRemoveBtn" type="button" style="display:none;">remove</button>
         </div>
+        <p class="panel-hint">Or pick a built-in vector icon instead:</p>
+        <div class="icon-gallery" id="projectIconGallery"></div>
       </div>
       <div class="modal-actions"><button class="btn" id="cancelProjectModalBtn" type="button">cancel</button><button class="btn btn-accent" id="saveProjectBtn" type="button">save project</button></div>
     </div>
@@ -1980,6 +1984,18 @@
     var uri = "data:image/svg+xml," + encodeURIComponent(maskSvg);
     habitIconDataUriCache[key] = uri;
     return uri;
+  }
+  // Goals/projects can now set their icon either by uploading an image (icon holds a raw data: URI
+  // directly) or by picking a built-in vector icon from the same HABIT_ICON_LIBRARY habits use (icon
+  // holds a short key like "dumbbell" instead) — every render site that turns a goal/project's icon
+  // into an actual mask-image source goes through this so both formats work everywhere, not just
+  // wherever happened to be updated first. A data: URI is passed through as-is; anything else is
+  // treated as a library key and resolved via habitIconDataUri. No schema change needed — the
+  // `icon` column already just stores whichever string wins.
+  function resolveEntityIconDataUri(icon){
+    if(!icon) return null;
+    if(icon.indexOf("data:") === 0) return icon;
+    return habitIconDataUri(icon);
   }
   // Timeline usage (Today timeline blocks, Timeline-page track) — the icon is the dominant visual
   // element here, not a small corner accent, so it goes through the same solid-fill CSS-mask
@@ -2583,6 +2599,27 @@
     });
     return updateLabel;
   }
+  // Generic vector-icon-gallery wiring: every HABIT_ICON_LIBRARY entry as a clickable swatch,
+  // highlighting whichever key is currently selected. Shared by the habit modal (where it's the only
+  // way to set an icon) and the goal/project modals (where it's offered alongside uploading an
+  // image — see resolveEntityIconDataUri for how the two formats coexist in the same `icon` field).
+  // Returns the render function so callers can re-highlight a different key later (e.g. habit's
+  // title-based live-suggest, or clearing the gallery's selection when an image gets uploaded instead).
+  function wireIconGallery(galleryId, onPick){
+    var gallery = document.getElementById(galleryId);
+    function render(selectedKey){
+      gallery.innerHTML = HABIT_ICON_LIBRARY.map(function(entry){
+        return '<button type="button" class="icon-gallery-btn' + (entry.key === selectedKey ? ' sel' : '') + '" data-icon-key="' + entry.key + '" title="' + entry.key + '">' + entry.svg + '</button>';
+      }).join("");
+    }
+    gallery.addEventListener("click", function(e){
+      var btn = e.target.closest(".icon-gallery-btn");
+      if(!btn) return;
+      onPick(btn.dataset.iconKey);
+      render(btn.dataset.iconKey);
+    });
+    return render;
+  }
 
   [["goalPrioSelect","p"],["projectPrioSelect","p"],["habitPrioSelect","p"],["habitFreqSelect","f"],
    ["actionPrioSelect","p"],["actionParentTypeSelect","pt"],["actionAreaSelect","ar"],["goalCatSelect","c"],["personRelSelect","r"],["tvTypeSelect","t"],["goalHealthLevelSelect","hl"],["habitTypeSelect","ty"],["habitAreaSelect","ar"],["journalAreaSelect","ar"],["journalEditAreaSelect","ar"]]
@@ -2811,7 +2848,7 @@
         return '<div class="matrix-tile ' + g.category + '" data-action="open-goal" data-kind="goal" data-id="' + g.id + '" title="' + escapeHtml(g.title) + '">' +
           '<span class="matrix-tile-status ' + status + '"></span>' +
           '<span class="matrix-tile-badge prio-badge ' + g.priority + '">' + g.priority + '</span>' +
-          (g.icon ? iconMaskHtml("matrix-tile-icon-img", g.icon, g.category) : '<span class="matrix-tile-initial">' + initial + '</span>') +
+          (g.icon ? iconMaskHtml("matrix-tile-icon-img", resolveEntityIconDataUri(g.icon), g.category) : '<span class="matrix-tile-initial">' + initial + '</span>') +
           '<div class="matrix-tile-scrim"><div class="matrix-tile-title">' + escapeHtml(g.title) + '</div></div>' +
           '<div class="matrix-tile-progress" title="health"><div class="matrix-tile-progress-fill ' + (status==="done"?"done":(health.level!=="good"?health.level:"")) + '" style="width:' + health.pct + '%"></div></div>' +
         '</div>';
@@ -2850,7 +2887,7 @@
       '</div>' +
       '<div class="card-body">' +
         '<div class="goal-body-head">' +
-          (g.icon ? iconMaskHtml("entity-icon-img", g.icon, g.category) : '') +
+          (g.icon ? iconMaskHtml("entity-icon-img", resolveEntityIconDataUri(g.icon), g.category) : '') +
           '<h3 class="goal-title">' + escapeHtml(g.title) + '</h3>' +
           '<div class="entity-actions">' +
             '<button class="icon-btn edit" data-action="edit-goal" data-id="' + g.id + '" aria-label="Edit goal">✎</button>' +
@@ -3509,7 +3546,7 @@
       '<div class="matrix-tile ' + g.category + '" title="' + escapeHtml(g.title) + '">' +
         '<span class="matrix-tile-status ' + status + '"></span>' +
         '<span class="matrix-tile-badge prio-badge ' + g.priority + '">' + g.priority + '</span>' +
-        (g.icon ? iconMaskHtml("matrix-tile-icon-img", g.icon, g.category) : '<span class="matrix-tile-initial">' + initial + '</span>') +
+        (g.icon ? iconMaskHtml("matrix-tile-icon-img", resolveEntityIconDataUri(g.icon), g.category) : '<span class="matrix-tile-initial">' + initial + '</span>') +
         '<div class="matrix-tile-progress" title="health"><div class="matrix-tile-progress-fill ' + (status==="done"?"done":(health.level!=="good"?health.level:"")) + '" style="width:' + health.pct + '%"></div></div>' +
       '</div>' +
       '<div class="area-tile-caption">' +
@@ -3667,7 +3704,7 @@
         '</div>' +
         '<div class="card-body">' +
           '<div class="goal-body-head">' +
-            (p.icon ? iconMaskHtml("entity-icon-img", p.icon, cat) : '') +
+            (p.icon ? iconMaskHtml("entity-icon-img", resolveEntityIconDataUri(p.icon), cat) : '') +
             '<h3 class="goal-title' + (p.done?' completed':'') + '" style="' + (p.done?'color:var(--text-faint);text-decoration:line-through;':'') + '">' + escapeHtml(p.title) + '</h3>' +
             '<div class="entity-actions">' +
               '<button class="icon-btn toggle" data-action="toggle-proj" data-id="' + p.id + '" aria-label="Toggle done">' + (p.done?'↺':'✓') + '</button>' +
@@ -4255,7 +4292,7 @@
   // pairing used everywhere else icons appear in this app, e.g. matrix tiles). Areas keep their own
   // existing icon-only treatment; actions have no icon field at all.
   function wbNodeIconDataUri(type, item){
-    if(type === "goal" || type === "project") return item.icon || null;
+    if(type === "goal" || type === "project") return resolveEntityIconDataUri(item.icon);
     if(type === "habit") return item.icon ? habitIconDataUri(item.icon) : null;
     return null;
   }
@@ -6370,7 +6407,7 @@
         var cat = habitCategory(h);
         var catClass = cat ? " " + cat : "";
         var initial = ((goal ? goal.title : h.title) || "?").trim().charAt(0).toUpperCase() || "?";
-        var iconSrc = h.icon ? habitIconDataUri(h.icon) : (goal && goal.icon);
+        var iconSrc = h.icon ? habitIconDataUri(h.icon) : (goal ? resolveEntityIconDataUri(goal.icon) : null);
         var iconCat = h.icon ? cat : (goal && goal.category);
         var titleAttr = escapeHtml(h.title) + (h.timeOfDay ? " — " + fmtTimeOfDay(h.timeOfDay) : "") + (value ? " — " + value : "");
         return '<div class="today-habit-tile' + catClass + '" data-kind="habit-instance" data-id="' + h.id + '" data-date="' + todaySelectedDate + '" title="' + titleAttr + '">' +
@@ -6878,8 +6915,15 @@
   // Goal modal
   var editingGoalId = null;
   var goalIconDraft = null;
-  var setGoalIconPreview = wireIconUploader("goal", function(v){ goalIconDraft = v; }, function(){ return chipValue(document.getElementById("goalCatSelect"), "c"); });
-  document.getElementById("goalCatSelect").addEventListener("click", function(){ if(goalIconDraft) setGoalIconPreview(goalIconDraft); });
+  // goalIconDraft holds either a raw uploaded-image data: URI or a HABIT_ICON_LIBRARY key — the
+  // preview always needs the *resolved* data URI (see resolveEntityIconDataUri), while the gallery
+  // needs the *raw* draft to know which swatch (if any) to highlight.
+  var setGoalIconPreview = wireIconUploader("goal", function(v){ goalIconDraft = v; renderGoalIconGallery(null); }, function(){ return chipValue(document.getElementById("goalCatSelect"), "c"); });
+  var renderGoalIconGallery = wireIconGallery("goalIconGallery", function(key){
+    goalIconDraft = key;
+    setGoalIconPreview(resolveEntityIconDataUri(key));
+  });
+  document.getElementById("goalCatSelect").addEventListener("click", function(){ if(goalIconDraft) setGoalIconPreview(resolveEntityIconDataUri(goalIconDraft)); });
   // Secondary areas: every OTHER category as toggleable chips — the goal's own primary area (set
   // above) is excluded and unaffected by anything picked here. Rebuilt whenever the primary category
   // changes so it can never also appear in the secondary list.
@@ -6923,7 +6967,11 @@
     setChip(document.getElementById("goalHealthLevelSelect"), "hl", editGoalObj ? (editGoalObj.healthOverride || "") : "");
     document.getElementById("goalHealthPctInput").value = editGoalObj && editGoalObj.healthPctOverride != null ? editGoalObj.healthPctOverride : "";
     goalIconDraft = editGoalObj ? (editGoalObj.icon || null) : null;
-    setGoalIconPreview(goalIconDraft);
+    setGoalIconPreview(resolveEntityIconDataUri(goalIconDraft));
+    // Only highlight a gallery swatch if the current icon actually IS a library key, not an
+    // uploaded image (a data: URI would never match any HABIT_ICON_LIBRARY entry anyway, but this
+    // keeps the gallery visibly showing "none selected" for that case rather than a coincidence).
+    renderGoalIconGallery(goalIconDraft && goalIconDraft.indexOf("data:") !== 0 ? goalIconDraft : null);
     openModal("goalModalOverlay");
     document.getElementById("goalTitleInput").focus();
   }
@@ -6971,11 +7019,16 @@
   // Project modal
   var editingProjectId = null;
   var projectIconDraft = null;
-  var setProjectIconPreview = wireIconUploader("project", function(v){ projectIconDraft = v; }, function(){
+  // Same raw-draft-vs-resolved-preview split as the goal modal above — see resolveEntityIconDataUri.
+  var setProjectIconPreview = wireIconUploader("project", function(v){ projectIconDraft = v; renderProjectIconGallery(null); }, function(){
     var g = goalById(document.getElementById("projectGoalSelect").value);
     return g ? g.category : null;
   });
-  document.getElementById("projectGoalSelect").addEventListener("change", function(){ if(projectIconDraft) setProjectIconPreview(projectIconDraft); });
+  var renderProjectIconGallery = wireIconGallery("projectIconGallery", function(key){
+    projectIconDraft = key;
+    setProjectIconPreview(resolveEntityIconDataUri(key));
+  });
+  document.getElementById("projectGoalSelect").addEventListener("change", function(){ if(projectIconDraft) setProjectIconPreview(resolveEntityIconDataUri(projectIconDraft)); });
   // Parent goal options are scoped to whichever area(s) are checked — a goal shows if its category
   // is among the selected areas. No areas selected means no filter (show every goal).
   function fillProjectGoalSelect(){
@@ -7025,7 +7078,8 @@
     document.getElementById("projectSecondaryGoalsSelect").hidden = true;
     setChip(document.getElementById("projectPrioSelect"), "p", editProjectObj ? editProjectObj.priority : "P2");
     projectIconDraft = editProjectObj ? (editProjectObj.icon || null) : null;
-    setProjectIconPreview(projectIconDraft);
+    setProjectIconPreview(resolveEntityIconDataUri(projectIconDraft));
+    renderProjectIconGallery(projectIconDraft && projectIconDraft.indexOf("data:") !== 0 ? projectIconDraft : null);
     openModal("projectModalOverlay");
     document.getElementById("projectTitleInput").focus();
   }
@@ -7111,17 +7165,9 @@
   // habitIconDraft/habitIconManuallySet are updated by the title-input live-suggest and the gallery
   // click handler below (see openHabitModal and the habitTitleInput listener for how they interact).
   var habitIconDraft = null, habitIconManuallySet = false;
-  function renderHabitIconGallery(selectedKey){
-    document.getElementById("habitIconGallery").innerHTML = HABIT_ICON_LIBRARY.map(function(entry){
-      return '<button type="button" class="icon-gallery-btn' + (entry.key === selectedKey ? ' sel' : '') + '" data-icon-key="' + entry.key + '" title="' + entry.key + '">' + entry.svg + '</button>';
-    }).join("");
-  }
-  document.getElementById("habitIconGallery").addEventListener("click", function(e){
-    var btn = e.target.closest(".icon-gallery-btn");
-    if(!btn) return;
-    habitIconDraft = btn.dataset.iconKey;
+  var renderHabitIconGallery = wireIconGallery("habitIconGallery", function(key){
+    habitIconDraft = key;
     habitIconManuallySet = true;
-    this.querySelectorAll(".icon-gallery-btn").forEach(function(b){ b.classList.toggle("sel", b === btn); });
   });
   // Live-suggest as the title is typed, same logic as the old fully-automatic assignment — but only
   // until the user overrides it by actually clicking a gallery icon (habitIconManuallySet).
