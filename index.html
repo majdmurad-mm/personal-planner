@@ -1444,8 +1444,8 @@
               <button class="btn" id="journalTimePickBtn" type="button">pick ▾</button>
             </div>
             <div class="chip-select" id="journalAreaSelect">
-              <div class="chip-opt" data-ar="Health">✚ Health</div><div class="chip-opt" data-ar="Finance">$ Finance</div><div class="chip-opt sel" data-ar="Career">▲ Career</div>
-              <div class="chip-opt" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" data-ar="Growth">↑ Growth</div><div class="chip-opt" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" data-ar="Sol">◐ Sol</div>
+              <div class="chip-opt" role="button" tabindex="0" data-ar="Health">✚ Health</div><div class="chip-opt" role="button" tabindex="0" data-ar="Finance">$ Finance</div><div class="chip-opt sel" role="button" tabindex="0" data-ar="Career">▲ Career</div>
+              <div class="chip-opt" role="button" tabindex="0" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" role="button" tabindex="0" data-ar="Growth">↑ Growth</div><div class="chip-opt" role="button" tabindex="0" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" role="button" tabindex="0" data-ar="Sol">◐ Sol</div>
             </div>
           </div>
           <button class="btn btn-accent" id="saveJournalBtn" type="button">+ add entry</button>
@@ -1493,7 +1493,7 @@
       <div class="field"><label for="goalTitleInput">title</label><input type="text" id="goalTitleInput" placeholder="e.g. Ship v2 of side project"></div>
       <div class="field-row">
         <div class="field"><label>priority</label><div class="chip-select" id="goalPrioSelect">
-          <div class="chip-opt" data-p="P0">P0</div><div class="chip-opt sel" data-p="P1">P1</div><div class="chip-opt" data-p="P2">P2</div><div class="chip-opt" data-p="P3">P3</div>
+          <div class="chip-opt" role="button" tabindex="0" data-p="P0">P0</div><div class="chip-opt sel" role="button" tabindex="0" data-p="P1">P1</div><div class="chip-opt" role="button" tabindex="0" data-p="P2">P2</div><div class="chip-opt" role="button" tabindex="0" data-p="P3">P3</div>
         </div></div>
         <div class="field"><label for="goalDueInput">target date</label>
           <input type="date" id="goalDueInput">
@@ -1501,8 +1501,8 @@
         </div>
       </div>
       <div class="field"><label>category</label><div class="chip-select" id="goalCatSelect">
-        <div class="chip-opt" data-c="Health">✚ Health</div><div class="chip-opt" data-c="Finance">$ Finance</div><div class="chip-opt sel" data-c="Career">▲ Career</div>
-        <div class="chip-opt" data-c="Maintenance">⚙ Maintenance</div><div class="chip-opt" data-c="Growth">↑ Growth</div><div class="chip-opt" data-c="Relationships">♥ Relationships</div><div class="chip-opt" data-c="Sol">◐ Sol</div>
+        <div class="chip-opt" role="button" tabindex="0" data-c="Health">✚ Health</div><div class="chip-opt" role="button" tabindex="0" data-c="Finance">$ Finance</div><div class="chip-opt sel" role="button" tabindex="0" data-c="Career">▲ Career</div>
+        <div class="chip-opt" role="button" tabindex="0" data-c="Maintenance">⚙ Maintenance</div><div class="chip-opt" role="button" tabindex="0" data-c="Growth">↑ Growth</div><div class="chip-opt" role="button" tabindex="0" data-c="Relationships">♥ Relationships</div><div class="chip-opt" role="button" tabindex="0" data-c="Sol">◐ Sol</div>
       </div></div>
       <div class="field"><label>secondary areas (optional)</label>
         <div class="dropdown-multi" id="goalSecondaryCatDropdown">
@@ -1521,7 +1521,7 @@
       <div class="field"><label>health (optional override)</label>
         <div class="field-row">
           <div class="field"><div class="chip-select" id="goalHealthLevelSelect">
-            <div class="chip-opt sel" data-hl="">auto</div><div class="chip-opt" data-hl="good">good</div><div class="chip-opt" data-hl="warn">warn</div><div class="chip-opt" data-hl="critical">critical</div>
+            <div class="chip-opt sel" role="button" tabindex="0" data-hl="">auto</div><div class="chip-opt" role="button" tabindex="0" data-hl="good">good</div><div class="chip-opt" role="button" tabindex="0" data-hl="warn">warn</div><div class="chip-opt" role="button" tabindex="0" data-hl="critical">critical</div>
           </div></div>
           <div class="field"><input type="number" min="0" max="100" id="goalHealthPctInput" placeholder="% (blank = auto)"></div>
         </div>
@@ -1548,8 +1548,8 @@
     <div class="modal-inner">
       <div class="field"><label for="projectTitleInput">project</label><input type="text" id="projectTitleInput" placeholder="e.g. Redesign onboarding flow"></div>
       <div class="field"><label>area(s)</label><div class="chip-select" id="projectAreaSelect">
-        <div class="chip-opt" data-ar="Health">✚ Health</div><div class="chip-opt" data-ar="Finance">$ Finance</div><div class="chip-opt" data-ar="Career">▲ Career</div>
-        <div class="chip-opt" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" data-ar="Growth">↑ Growth</div><div class="chip-opt" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" data-ar="Sol">◐ Sol</div>
+        <div class="chip-opt" role="button" tabindex="0" data-ar="Health">✚ Health</div><div class="chip-opt" role="button" tabindex="0" data-ar="Finance">$ Finance</div><div class="chip-opt" role="button" tabindex="0" data-ar="Career">▲ Career</div>
+        <div class="chip-opt" role="button" tabindex="0" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" role="button" tabindex="0" data-ar="Growth">↑ Growth</div><div class="chip-opt" role="button" tabindex="0" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" role="button" tabindex="0" data-ar="Sol">◐ Sol</div>
       </div>
         <p class="panel-hint">Select one or more to narrow the parent goal list below — leave all selected to see every goal.</p>
       </div>
@@ -1563,7 +1563,7 @@
       </div>
       <div class="field-row">
         <div class="field"><label>priority</label><div class="chip-select" id="projectPrioSelect">
-          <div class="chip-opt" data-p="P0">P0</div><div class="chip-opt" data-p="P1">P1</div><div class="chip-opt sel" data-p="P2">P2</div><div class="chip-opt" data-p="P3">P3</div>
+          <div class="chip-opt" role="button" tabindex="0" data-p="P0">P0</div><div class="chip-opt" role="button" tabindex="0" data-p="P1">P1</div><div class="chip-opt sel" role="button" tabindex="0" data-p="P2">P2</div><div class="chip-opt" role="button" tabindex="0" data-p="P3">P3</div>
         </div></div>
         <div class="field"><label for="projectDueInput">due date</label><input type="date" id="projectDueInput"></div>
       </div>
@@ -1590,8 +1590,8 @@
     <div class="modal-inner">
       <div class="field"><label for="habitTitleInput">habit</label><input type="text" id="habitTitleInput" placeholder="e.g. Read for 20 minutes"></div>
       <div class="field"><label>area</label><div class="chip-select" id="habitAreaSelect">
-        <div class="chip-opt" data-ar="Health">✚ Health</div><div class="chip-opt" data-ar="Finance">$ Finance</div><div class="chip-opt sel" data-ar="Career">▲ Career</div>
-        <div class="chip-opt" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" data-ar="Growth">↑ Growth</div><div class="chip-opt" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" data-ar="Sol">◐ Sol</div>
+        <div class="chip-opt" role="button" tabindex="0" data-ar="Health">✚ Health</div><div class="chip-opt" role="button" tabindex="0" data-ar="Finance">$ Finance</div><div class="chip-opt sel" role="button" tabindex="0" data-ar="Career">▲ Career</div>
+        <div class="chip-opt" role="button" tabindex="0" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" role="button" tabindex="0" data-ar="Growth">↑ Growth</div><div class="chip-opt" role="button" tabindex="0" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" role="button" tabindex="0" data-ar="Sol">◐ Sol</div>
       </div></div>
       <div class="field"><label for="habitGoalSelect">parent goal</label><select id="habitGoalSelect"></select></div>
       <div class="field"><label>secondary goals (optional)</label>
@@ -1604,10 +1604,10 @@
       <div class="field"><label>icon</label><div class="icon-gallery" id="habitIconGallery"></div></div>
       <div class="field-row">
         <div class="field"><label>priority</label><div class="chip-select" id="habitPrioSelect">
-          <div class="chip-opt" data-p="P0">P0</div><div class="chip-opt" data-p="P1">P1</div><div class="chip-opt sel" data-p="P2">P2</div><div class="chip-opt" data-p="P3">P3</div>
+          <div class="chip-opt" role="button" tabindex="0" data-p="P0">P0</div><div class="chip-opt" role="button" tabindex="0" data-p="P1">P1</div><div class="chip-opt sel" role="button" tabindex="0" data-p="P2">P2</div><div class="chip-opt" role="button" tabindex="0" data-p="P3">P3</div>
         </div></div>
         <div class="field"><label>frequency</label><div class="chip-select" id="habitFreqSelect">
-          <div class="chip-opt sel" data-f="daily">daily</div><div class="chip-opt" data-f="weekly">weekly</div><div class="chip-opt" data-f="custom">custom</div>
+          <div class="chip-opt sel" role="button" tabindex="0" data-f="daily">daily</div><div class="chip-opt" role="button" tabindex="0" data-f="weekly">weekly</div><div class="chip-opt" role="button" tabindex="0" data-f="custom">custom</div>
         </div></div>
         <div class="field"><label for="habitTimeInput">time (optional)</label>
           <div class="time-pick-row">
@@ -1619,13 +1619,13 @@
         <div class="field"><label for="habitDurationInput">duration (min)</label><input type="number" min="0" step="5" id="habitDurationInput" placeholder="e.g. 15"></div>
       </div>
       <div class="field" id="habitWeekdaysField" style="display:none;"><label>which day(s)</label><div class="chip-select" id="habitWeekdaysSelect">
-        <div class="chip-opt" data-wd="Mon">Mon</div><div class="chip-opt" data-wd="Tue">Tue</div><div class="chip-opt" data-wd="Wed">Wed</div><div class="chip-opt" data-wd="Thu">Thu</div>
-        <div class="chip-opt" data-wd="Fri">Fri</div><div class="chip-opt" data-wd="Sat">Sat</div><div class="chip-opt" data-wd="Sun">Sun</div>
+        <div class="chip-opt" role="button" tabindex="0" data-wd="Mon">Mon</div><div class="chip-opt" role="button" tabindex="0" data-wd="Tue">Tue</div><div class="chip-opt" role="button" tabindex="0" data-wd="Wed">Wed</div><div class="chip-opt" role="button" tabindex="0" data-wd="Thu">Thu</div>
+        <div class="chip-opt" role="button" tabindex="0" data-wd="Fri">Fri</div><div class="chip-opt" role="button" tabindex="0" data-wd="Sat">Sat</div><div class="chip-opt" role="button" tabindex="0" data-wd="Sun">Sun</div>
       </div></div>
       <div class="field" id="habitCustomIntervalField" style="display:none;"><label for="habitCustomIntervalInput">repeat every N days (from when it's created)</label><input type="number" min="1" step="1" id="habitCustomIntervalInput" placeholder="e.g. 3"></div>
       <div class="field-row">
         <div class="field"><label>tracking type</label><div class="chip-select" id="habitTypeSelect">
-          <div class="chip-opt sel" data-ty="boolean">yes/no</div><div class="chip-opt" data-ty="number">number</div><div class="chip-opt" data-ty="scale">scale</div><div class="chip-opt" data-ty="text">text</div>
+          <div class="chip-opt sel" role="button" tabindex="0" data-ty="boolean">yes/no</div><div class="chip-opt" role="button" tabindex="0" data-ty="number">number</div><div class="chip-opt" role="button" tabindex="0" data-ty="scale">scale</div><div class="chip-opt" role="button" tabindex="0" data-ty="text">text</div>
         </div></div>
         <div class="field" id="habitScaleField" style="display:none;"><label for="habitScaleMaxInput">scale max</label><input type="number" id="habitScaleMaxInput" min="2" max="10" value="5"></div>
       </div>
@@ -1644,15 +1644,15 @@
       <div class="field-row">
         <div class="field"><label for="actionTypeSelect">type</label><select id="actionTypeSelect"></select></div>
         <div class="field"><label>priority</label><div class="chip-select" id="actionPrioSelect">
-          <div class="chip-opt" data-p="P0">P0</div><div class="chip-opt sel" data-p="P1">P1</div><div class="chip-opt" data-p="P2">P2</div><div class="chip-opt" data-p="P3">P3</div>
+          <div class="chip-opt" role="button" tabindex="0" data-p="P0">P0</div><div class="chip-opt sel" role="button" tabindex="0" data-p="P1">P1</div><div class="chip-opt" role="button" tabindex="0" data-p="P2">P2</div><div class="chip-opt" role="button" tabindex="0" data-p="P3">P3</div>
         </div></div>
       </div>
       <div class="field" id="actionAreaField"><label>area</label><div class="chip-select" id="actionAreaSelect">
-        <div class="chip-opt" data-ar="Health">✚ Health</div><div class="chip-opt" data-ar="Finance">$ Finance</div><div class="chip-opt sel" data-ar="Career">▲ Career</div>
-        <div class="chip-opt" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" data-ar="Growth">↑ Growth</div><div class="chip-opt" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" data-ar="Sol">◐ Sol</div>
+        <div class="chip-opt" role="button" tabindex="0" data-ar="Health">✚ Health</div><div class="chip-opt" role="button" tabindex="0" data-ar="Finance">$ Finance</div><div class="chip-opt sel" role="button" tabindex="0" data-ar="Career">▲ Career</div>
+        <div class="chip-opt" role="button" tabindex="0" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" role="button" tabindex="0" data-ar="Growth">↑ Growth</div><div class="chip-opt" role="button" tabindex="0" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" role="button" tabindex="0" data-ar="Sol">◐ Sol</div>
       </div></div>
       <div class="field"><label>belongs to</label><div class="chip-select" id="actionParentTypeSelect">
-        <div class="chip-opt sel" data-pt="goal">Goal</div><div class="chip-opt" data-pt="project">Project</div><div class="chip-opt" data-pt="none">None</div>
+        <div class="chip-opt sel" role="button" tabindex="0" data-pt="goal">Goal</div><div class="chip-opt" role="button" tabindex="0" data-pt="project">Project</div><div class="chip-opt" role="button" tabindex="0" data-pt="none">None</div>
       </div></div>
       <div class="field" id="actionParentField"><label for="actionParentSelect">parent</label><select id="actionParentSelect"></select></div>
       <div class="field-row">
@@ -1678,8 +1678,8 @@
     <div class="modal-inner">
       <div class="field"><label for="personNameInput">name</label><input type="text" id="personNameInput" placeholder="e.g. Sam Rivera"></div>
       <div class="field"><label>relationship</label><div class="chip-select" id="personRelSelect">
-        <div class="chip-opt sel" data-r="Family">Family</div><div class="chip-opt" data-r="Friend">Friend</div><div class="chip-opt" data-r="Colleague">Colleague</div>
-        <div class="chip-opt" data-r="Mentor">Mentor</div><div class="chip-opt" data-r="Partner">Partner</div><div class="chip-opt" data-r="Other">Other</div>
+        <div class="chip-opt sel" role="button" tabindex="0" data-r="Family">Family</div><div class="chip-opt" role="button" tabindex="0" data-r="Friend">Friend</div><div class="chip-opt" role="button" tabindex="0" data-r="Colleague">Colleague</div>
+        <div class="chip-opt" role="button" tabindex="0" data-r="Mentor">Mentor</div><div class="chip-opt" role="button" tabindex="0" data-r="Partner">Partner</div><div class="chip-opt" role="button" tabindex="0" data-r="Other">Other</div>
       </div></div>
       <div class="field"><label for="personContactInput">contact (optional)</label><input type="text" id="personContactInput" placeholder="email, phone, or handle"></div>
       <div class="field"><label for="personNotesInput">notes</label><textarea id="personNotesInput" rows="3" placeholder="Anything worth remembering…"></textarea></div>
@@ -1704,8 +1704,8 @@
         </div>
       </div>
       <div class="field"><label>area</label><div class="chip-select" id="journalEditAreaSelect">
-        <div class="chip-opt" data-ar="Health">✚ Health</div><div class="chip-opt" data-ar="Finance">$ Finance</div><div class="chip-opt sel" data-ar="Career">▲ Career</div>
-        <div class="chip-opt" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" data-ar="Growth">↑ Growth</div><div class="chip-opt" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" data-ar="Sol">◐ Sol</div>
+        <div class="chip-opt" role="button" tabindex="0" data-ar="Health">✚ Health</div><div class="chip-opt" role="button" tabindex="0" data-ar="Finance">$ Finance</div><div class="chip-opt sel" role="button" tabindex="0" data-ar="Career">▲ Career</div>
+        <div class="chip-opt" role="button" tabindex="0" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" role="button" tabindex="0" data-ar="Growth">↑ Growth</div><div class="chip-opt" role="button" tabindex="0" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" role="button" tabindex="0" data-ar="Sol">◐ Sol</div>
       </div></div>
       <div class="field"><label for="journalEditTextInput">note</label><textarea id="journalEditTextInput" class="journal-textarea" rows="5"></textarea></div>
       <div class="modal-actions"><button class="btn" id="cancelJournalModalBtn" type="button">cancel</button><button class="btn btn-accent" id="saveJournalEditBtn" type="button">save note</button></div>
@@ -1748,7 +1748,7 @@
       <div class="field"><label for="tvNameInput">variable name</label><input type="text" id="tvNameInput" placeholder="e.g. Sleep, Mood, Water intake"></div>
       <div class="field-row">
         <div class="field"><label>type</label><div class="chip-select" id="tvTypeSelect">
-          <div class="chip-opt sel" data-t="number">number</div><div class="chip-opt" data-t="scale">scale</div><div class="chip-opt" data-t="boolean">yes/no</div><div class="chip-opt" data-t="text">text</div><div class="chip-opt" data-t="category">category</div>
+          <div class="chip-opt sel" role="button" tabindex="0" data-t="number">number</div><div class="chip-opt" role="button" tabindex="0" data-t="scale">scale</div><div class="chip-opt" role="button" tabindex="0" data-t="boolean">yes/no</div><div class="chip-opt" role="button" tabindex="0" data-t="text">text</div><div class="chip-opt" role="button" tabindex="0" data-t="category">category</div>
         </div></div>
         <div class="field" id="tvUnitField"><label for="tvUnitInput">unit (optional)</label><input type="text" id="tvUnitInput" placeholder="e.g. hrs, kg, $"></div>
         <div class="field" id="tvScaleField" style="display:none;"><label for="tvScaleMaxInput">scale max</label><input type="number" id="tvScaleMaxInput" min="2" max="10" value="5"></div>
@@ -2527,11 +2527,26 @@
   document.getElementById("todayLabel").textContent = "// " + new Date().toLocaleDateString(undefined, { weekday:"long", month:"long", day:"numeric", year:"numeric" });
 
   /* ---------------- Chip-select helper ---------------- */
+  // .chip-opt is a plain div (role="button" tabindex="0" in the markup) rather than a native
+  // <button>, so Enter/Space activation isn't automatic — every chip-select/multi-select wiring
+  // function below listens for both click and keydown so keyboard users can actually operate them,
+  // not just tab past them.
+  function isChipActivateKey(e){ return e.key === "Enter" || e.key === " " || e.key === "Spacebar"; }
   function wireChipSelect(container, attr){
+    function activate(opt){
+      container.querySelectorAll(".chip-opt").forEach(function(o){ o.classList.toggle("sel", o===opt); });
+    }
     container.addEventListener("click", function(e){
       var opt = e.target.closest(".chip-opt");
       if(!opt) return;
-      container.querySelectorAll(".chip-opt").forEach(function(o){ o.classList.toggle("sel", o===opt); });
+      activate(opt);
+    });
+    container.addEventListener("keydown", function(e){
+      if(!isChipActivateKey(e)) return;
+      var opt = e.target.closest(".chip-opt");
+      if(!opt) return;
+      e.preventDefault();
+      activate(opt);
     });
   }
   function chipValue(container, attr){
@@ -2547,6 +2562,13 @@
     container.addEventListener("click", function(e){
       var opt = e.target.closest(".chip-opt");
       if(!opt) return;
+      opt.classList.toggle("sel");
+    });
+    container.addEventListener("keydown", function(e){
+      if(!isChipActivateKey(e)) return;
+      var opt = e.target.closest(".chip-opt");
+      if(!opt) return;
+      e.preventDefault();
       opt.classList.toggle("sel");
     });
   }
@@ -2570,6 +2592,7 @@
     }
     wireMultiChipSelect(panel);
     panel.addEventListener("click", function(e){ if(e.target.closest(".chip-opt")) updateLabel(); });
+    panel.addEventListener("keydown", function(e){ if(isChipActivateKey(e) && e.target.closest(".chip-opt")) updateLabel(); });
     btn.addEventListener("click", function(e){ e.stopPropagation(); panel.hidden = !panel.hidden; });
     document.addEventListener("click", function(e){
       if(!panel.hidden && !document.getElementById(dropdownId).contains(e.target)) panel.hidden = true;
@@ -6967,7 +6990,7 @@
     var primaryCat = chipValue(document.getElementById("goalCatSelect"), "c");
     var container = document.getElementById("goalSecondaryCatSelect");
     var options = CATEGORIES.filter(function(cat){ return cat !== primaryCat; });
-    container.innerHTML = options.map(function(cat){ return '<div class="chip-opt" data-c="' + cat + '">' + CATEGORY_ICONS[cat] + " " + cat + '</div>'; }).join("");
+    container.innerHTML = options.map(function(cat){ return '<div class="chip-opt" role="button" tabindex="0" data-c="' + cat + '">' + CATEGORY_ICONS[cat] + " " + cat + '</div>'; }).join("");
     setMultiChip(container, "c", (preSelectedIds || []).filter(function(id){ return id !== primaryCat; }));
     updateGoalSecondaryCatBtn();
   }
@@ -6981,7 +7004,7 @@
     var container = document.getElementById("goalSecondaryGoalsSelect");
     var options = state.goals.filter(function(g){ return g.id !== editingGoalId; });
     container.innerHTML = options.length
-      ? options.map(function(g){ return '<div class="chip-opt" data-gid="' + g.id + '">' + escapeHtml(g.title) + '</div>'; }).join("")
+      ? options.map(function(g){ return '<div class="chip-opt" role="button" tabindex="0" data-gid="' + g.id + '">' + escapeHtml(g.title) + '</div>'; }).join("")
       : '<span class="panel-hint" style="margin:0;">No other goals yet.</span>';
     setMultiChip(container, "gid", preSelectedIds || []);
     updateGoalSecondaryGoalsBtn();
@@ -7085,7 +7108,7 @@
     var container = document.getElementById("projectSecondaryGoalsSelect");
     var options = state.goals.filter(function(g){ return g.id !== primaryId; });
     container.innerHTML = options.length
-      ? options.map(function(g){ return '<div class="chip-opt" data-gid="' + g.id + '">' + escapeHtml(g.title) + '</div>'; }).join("")
+      ? options.map(function(g){ return '<div class="chip-opt" role="button" tabindex="0" data-gid="' + g.id + '">' + escapeHtml(g.title) + '</div>'; }).join("")
       : '<span class="panel-hint" style="margin:0;">No other goals yet.</span>';
     setMultiChip(container, "gid", (preSelectedIds || []).filter(function(id){ return id !== primaryId; }));
     updateProjectSecondaryGoalsBtn();
@@ -7188,7 +7211,7 @@
     var container = document.getElementById("habitSecondaryGoalsSelect");
     var options = state.goals.filter(function(g){ return g.id !== primaryId; });
     container.innerHTML = options.length
-      ? options.map(function(g){ return '<div class="chip-opt" data-gid="' + g.id + '">' + escapeHtml(g.title) + '</div>'; }).join("")
+      ? options.map(function(g){ return '<div class="chip-opt" role="button" tabindex="0" data-gid="' + g.id + '">' + escapeHtml(g.title) + '</div>'; }).join("")
       : '<span class="panel-hint" style="margin:0;">No other goals yet.</span>';
     setMultiChip(container, "gid", (preSelectedIds || []).filter(function(id){ return id !== primaryId; }));
     updateHabitSecondaryGoalsBtn();
