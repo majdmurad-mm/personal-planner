@@ -480,6 +480,13 @@
   .today-timeline-row.Relationships{ background:var(--tl-hour-grid), var(--cat-relationships-bg); }
   .today-timeline-row.Life{ background:var(--tl-hour-grid), var(--cat-life-bg); }
   .today-timeline-daynight{ position:absolute; inset:0; transition:background 1s ease; }
+  /* Hourly Berlin forecast (Open-Meteo), overlaid directly on the day/night band — one tick every
+     3h (matching the medium gridline tier used on the area rows below) since the band is too short
+     to fit 24 legible ticks. */
+  .today-timeline-weather{ position:absolute; inset:0; pointer-events:none; }
+  .tl-weather-tick{ position:absolute; top:50%; transform:translate(-50%,-50%); display:flex; flex-direction:column; align-items:center; gap:0; font-family:var(--mono); }
+  .tl-weather-tick-icon{ font-size:13px; line-height:1; }
+  .tl-weather-tick-temp{ font-size:8.5px; line-height:1.3; color:var(--text); text-shadow:0 1px 2px rgba(0,0,0,0.6); }
   .today-timeline-now{ position:absolute; top:0; bottom:0; width:2px; background:var(--p0); box-shadow:0 0 6px var(--p0); z-index:5; }
   .today-timeline-now-label{ position:absolute; top:-17px; left:50%; transform:translateX(-50%); font-family:var(--mono); font-size:9px; font-weight:700; color:var(--p0); white-space:nowrap; }
   .today-timeline-labels{ display:flex; justify-content:space-between; margin-top:5px; font-family:var(--mono); font-size:9px; color:var(--text-faint); }
@@ -516,6 +523,9 @@
   .timeline-block.Growth{ border-left-color:var(--cat-growth); background:rgba(176,132,245,0.3); }
   .timeline-block.Relationships{ border-left-color:var(--cat-relationships); background:rgba(95,168,255,0.28); }
   .timeline-block.Life{ border-left-color:var(--cat-life); background:rgba(34,211,238,0.28); }
+  /* P0 overrides the area color entirely — defined after the area rules so it wins on equal
+     specificity regardless of which area class the block also carries. */
+  .timeline-block.p0{ border-left-color:var(--p0); background:rgba(251,102,102,0.32); }
 
   /* ===== TIMELINE PAGE ===== */
   /* Fixed-pixel row heights (not flex:1) so the row-labels column and the scrollable world column
@@ -811,6 +821,7 @@
             <div class="today-timeline-unified" id="todayTimelineUnified">
               <div class="today-timeline-row today-timeline-daynight-row">
                 <div class="today-timeline-daynight" id="todayTimelineDayNight"></div>
+                <div class="today-timeline-weather" id="todayTimelineWeather"></div>
               </div>
               <div class="today-timeline-row Health" id="todayTimelineArea-Health"></div>
               <div class="today-timeline-row Maintenance" id="todayTimelineArea-Maintenance"></div>
@@ -4595,6 +4606,62 @@
     if(hh === 24) hh = 0;
     return (hh + mm / 60) / 24;
   }
+  // Hourly Berlin forecast (Open-Meteo — free, no API key) overlaid on the day/night band. Fetched
+  // once per page load (forecast_days covers today plus the ±16-day range Open-Meteo offers), keyed
+  // by Berlin-local date so it lines up with whatever date the timeline is showing. Past dates simply
+  // have no data (forecasts don't go backwards) and render no ticks — that's expected, not an error.
+  var berlinWeatherByDate = {}; // "YYYY-MM-DD" -> [{ hour, temp, code }, ...]
+  var berlinWeatherFetchState = "idle"; // idle | loading | done | error
+  function weatherCodeIcon(code){
+    if(code === 0 || code === 1) return "☀️";
+    if(code === 2) return "⛅";
+    if(code === 3 || code === 45 || code === 48) return "☁️";
+    if((code >= 51 && code <= 67) || (code >= 80 && code <= 82) || (code >= 95 && code <= 99)) return "🌧️";
+    if((code >= 71 && code <= 77) || code === 85 || code === 86) return "❄️";
+    return "☁️";
+  }
+  async function fetchBerlinWeather(){
+    if(berlinWeatherFetchState !== "idle") return;
+    berlinWeatherFetchState = "loading";
+    try{
+      var url = "https://api.open-meteo.com/v1/forecast?latitude=" + BERLIN_LAT + "&longitude=" + BERLIN_LON +
+        "&hourly=temperature_2m,weathercode&timezone=Europe%2FBerlin&forecast_days=16";
+      var resp = await fetch(url);
+      var data = await resp.json();
+      var times = (data.hourly && data.hourly.time) || [];
+      var temps = (data.hourly && data.hourly.temperature_2m) || [];
+      var codes = (data.hourly && data.hourly.weathercode) || [];
+      var byDate = {};
+      times.forEach(function(t, i){
+        var date = t.slice(0, 10), hour = Number(t.slice(11, 13));
+        if(!byDate[date]) byDate[date] = [];
+        byDate[date].push({ hour: hour, temp: Math.round(temps[i]), code: codes[i] });
+      });
+      berlinWeatherByDate = byDate;
+      berlinWeatherFetchState = "done";
+      renderTodayTimelineWeather();
+    } catch(e){
+      console.error(e);
+      berlinWeatherFetchState = "error";
+    }
+  }
+  function renderTodayTimelineWeather(){
+    var el = document.getElementById("todayTimelineWeather");
+    if(!el) return;
+    var hours = berlinWeatherByDate[todaySelectedDate];
+    if(!hours){
+      el.innerHTML = "";
+      if(berlinWeatherFetchState === "idle") fetchBerlinWeather();
+      return;
+    }
+    // One tick every 3h — matches the medium gridline tier on the area rows below, and is as dense
+    // as the day/night band (only ~54px tall) can legibly fit.
+    el.innerHTML = hours.filter(function(h){ return h.hour % 3 === 0; }).map(function(h){
+      return '<span class="tl-weather-tick" style="left:' + (h.hour / 24 * 100) + '%;">' +
+        '<span class="tl-weather-tick-icon">' + weatherCodeIcon(h.code) + '</span>' +
+        '<span class="tl-weather-tick-temp">' + h.temp + '°</span></span>';
+    }).join("");
+  }
   // The whole timeline is anchored to Berlin's clock (matching the sunrise/sunset data), not the
   // viewer's local time — so the "now" line and the day/night band always line up correctly
   // regardless of what timezone the browser itself is in.
@@ -4645,6 +4712,7 @@
     var label = document.getElementById("todayTimelineNowLabel");
     if(label) label.textContent = now.toLocaleTimeString(undefined, { hour:"numeric", minute:"2-digit", timeZone:"Europe/Berlin" });
     renderTodayDayNight();
+    renderTodayTimelineWeather();
   }
   setInterval(function(){ if(activeSection === "today") renderTodayTimeline(); }, 60000);
 
@@ -4697,7 +4765,7 @@
     state.habits.filter(function(h){ return !!h.timeOfDay && habitOccursOnDate(h, todaySelectedDate) && habitCategory(h) === area; }).forEach(function(h){
       var startFrac = timeToFraction(h.timeOfDay) * 100;
       var widthFrac = Math.max(1.2, ((h.durationMinutes || 15) / 1440) * 100);
-      html += todayTimelineBlockHtml("habit-instance", h.id, todaySelectedDate, startFrac, widthFrac, h.title + " — " + fmtTimeOfDay(h.timeOfDay), escapeHtml(h.title), area, "", false, true);
+      html += todayTimelineBlockHtml("habit-instance", h.id, todaySelectedDate, startFrac, widthFrac, h.title + " — " + fmtTimeOfDay(h.timeOfDay), escapeHtml(h.title), area, h.priority === "P0" ? " p0" : "", false, true);
     });
     // Habits that started yesterday and run past midnight (sleep being the obvious one — 11:30pm to
     // 7:30am) show their overnight tail here too, continued from the very start of today. Not
@@ -4708,12 +4776,12 @@
       var spillMin = overnightSpilloverMinutes(h.timeOfDay, h.durationMinutes);
       if(!spillMin) return;
       var widthFrac = spillMin / 1440 * 100;
-      html += todayTimelineBlockHtml("habit-instance", h.id, yesterday, 0, widthFrac, h.title + " — continued from " + fmtTimeOfDay(h.timeOfDay) + " yesterday", "‹ " + escapeHtml(h.title), area, "", true, "right");
+      html += todayTimelineBlockHtml("habit-instance", h.id, yesterday, 0, widthFrac, h.title + " — continued from " + fmtTimeOfDay(h.timeOfDay) + " yesterday", "‹ " + escapeHtml(h.title), area, h.priority === "P0" ? " p0" : "", true, "right");
     });
     state.actions.filter(function(a){ return a.date === todaySelectedDate && !!a.timeOfDay && actionCategory(a) === area; }).forEach(function(a){
       var startFrac = timeToFraction(a.timeOfDay) * 100;
       var widthFrac = Math.max(1.2, ((a.durationMinutes || 15) / 1440) * 100);
-      html += todayTimelineBlockHtml("action", a.id, todaySelectedDate, startFrac, widthFrac, a.title + " — " + fmtTimeOfDay(a.timeOfDay), escapeHtml(a.title), area, a.done ? " done" : "", false, true);
+      html += todayTimelineBlockHtml("action", a.id, todaySelectedDate, startFrac, widthFrac, a.title + " — " + fmtTimeOfDay(a.timeOfDay), escapeHtml(a.title), area, (a.done ? " done" : "") + (a.priority === "P0" ? " p0" : ""), false, true);
     });
     // Same overnight-spillover treatment as habits, for actions scheduled yesterday with a duration
     // that runs past midnight.
@@ -4721,7 +4789,7 @@
       var spillMin = overnightSpilloverMinutes(a.timeOfDay, a.durationMinutes);
       if(!spillMin) return;
       var widthFrac = spillMin / 1440 * 100;
-      html += todayTimelineBlockHtml("action", a.id, yesterday, 0, widthFrac, a.title + " — continued from " + fmtTimeOfDay(a.timeOfDay) + " yesterday", "‹ " + escapeHtml(a.title), area, a.done ? " done" : "", true, "right");
+      html += todayTimelineBlockHtml("action", a.id, yesterday, 0, widthFrac, a.title + " — continued from " + fmtTimeOfDay(a.timeOfDay) + " yesterday", "‹ " + escapeHtml(a.title), area, (a.done ? " done" : "") + (a.priority === "P0" ? " p0" : ""), true, "right");
     });
     // Notes are a point in time, not a span — no duration field, so every block is the same small
     // fixed width, positioned by time_of_day.
