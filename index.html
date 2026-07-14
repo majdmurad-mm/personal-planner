@@ -8,10 +8,21 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<script>
+  // Applied synchronously, before first paint, so a saved dark-mode preference doesn't flash light
+  // first — the rest of the theme-toggle logic (button wiring, label text, color-scheme meta) lives
+  // in the main app script at the bottom, this is just the anti-flash half.
+  (function(){
+    try{
+      if(localStorage.getItem("pp_theme_v1") === "dark") document.documentElement.setAttribute("data-theme", "dark");
+    } catch(e){}
+  })();
+</script>
 <style>
   :root{
     --bg: #F4F2ED;
     --bg-raised: #FFFFFF;
+    --bg-raised-rgb: 255,255,255;
     --bg-inset: #EAE6DB;
     --border: #DEDACC;
     --border-bright: #C7C1AC;
@@ -54,6 +65,48 @@
     --mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
     --sans: "Archivo", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     --display: "Space Grotesk", var(--sans);
+  }
+  /* Dark mode — same brand (orange accent, same 3 fonts), dark background/surface/text values
+     reused from this app's original dark palette (already well-tuned for exactly this contrast
+     direction), and priority/category colors reverted to their original bright hues (darkened for
+     light mode's sake above, but bright reads best on a dark backdrop — verified >=11:1 contrast).
+     Toggled via [data-theme="dark"] on <html> (see the theme-toggle script), not prefers-color-
+     scheme, since this is a manual user choice, not a system-following default. */
+  :root[data-theme="dark"]{
+    --bg: #0B0E14;
+    --bg-raised: #11151F;
+    --bg-raised-rgb: 17,21,31;
+    --bg-inset: #080A10;
+    --border: #232838;
+    --border-bright: #313850;
+    --text: #E4E7EE;
+    --text-dim: #7C8394;
+    --text-faint: #4C5265;
+    --accent: #F15A22;
+    --accent-dim: #D9691F;
+    --accent-glow: rgba(241,90,34,0.18);
+    --violet: #A78BFA;
+    --violet-glow: rgba(167,139,250,0.14);
+    --p0: #FB6666; --p0-bg: rgba(251,102,102,0.12);
+    --p1: #FF9F45; --p1-bg: rgba(255,159,69,0.12);
+    --p2: #F2CB49; --p2-bg: rgba(242,203,73,0.12);
+    --p3: #A3D64C; --p3-bg: rgba(163,214,76,0.12);
+    --cat-health: #4ADE80; --cat-health-bg: rgba(74,222,128,0.12);
+    --cat-finance: #FDE047; --cat-finance-bg: rgba(253,224,71,0.14);
+    --cat-career: #FB923C; --cat-career-bg: rgba(251,146,60,0.12);
+    --cat-maintenance: #EAB308; --cat-maintenance-bg: rgba(234,179,8,0.14);
+    --cat-growth: #B084F5; --cat-growth-bg: rgba(176,132,245,0.14);
+    --cat-relationships: #5FA8FF; --cat-relationships-bg: rgba(95,168,255,0.12);
+    --cat-life: #22D3EE; --cat-life-bg: rgba(34,211,238,0.12);
+    /* Hour gridlines flip back to light-on-dark. */
+    --tl-hour-grid: repeating-linear-gradient(90deg,
+      rgba(255,255,255,0.22) 0, rgba(255,255,255,0.22) 2px, transparent 2px,
+      transparent calc(100%/24 - 1px), rgba(255,255,255,0.08) calc(100%/24 - 1px), rgba(255,255,255,0.08) calc(100%/24 + 1px), transparent calc(100%/24 + 1px),
+      transparent calc(100%/24*2 - 1px), rgba(255,255,255,0.08) calc(100%/24*2 - 1px), rgba(255,255,255,0.08) calc(100%/24*2 + 1px), transparent calc(100%/24*2 + 1px),
+      transparent calc(100%/24*3 - 1.5px), rgba(255,255,255,0.15) calc(100%/24*3 - 1.5px), rgba(255,255,255,0.15) calc(100%/24*3 + 1.5px), transparent calc(100%/24*3 + 1.5px),
+      transparent calc(100%/24*4 - 1px), rgba(255,255,255,0.08) calc(100%/24*4 - 1px), rgba(255,255,255,0.08) calc(100%/24*4 + 1px), transparent calc(100%/24*4 + 1px),
+      transparent calc(100%/24*5 - 1px), rgba(255,255,255,0.08) calc(100%/24*5 - 1px), rgba(255,255,255,0.08) calc(100%/24*5 + 1px), transparent calc(100%/24*5 + 1px),
+      transparent calc(100%/4));
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;height:100%;}
@@ -341,8 +394,8 @@
   .wb-toolbar-float{ position:absolute; top:12px; left:12px; z-index:100; background:var(--bg-raised); border:1px solid var(--border-bright); border-radius:var(--radius); padding:8px 10px; box-shadow:0 6px 20px rgba(0,0,0,0.35); pointer-events:auto; }
   .wb-hint-float{ position:absolute; z-index:100; margin:0; max-width:340px; pointer-events:none; }
   .wb-connect-hint{ top:12px; left:50%; transform:translateX(-50%); background:var(--accent-glow); border:1px solid var(--accent-dim); border-radius:var(--radius); padding:6px 12px; color:var(--accent); }
-  .wb-pan-hint{ bottom:10px; left:12px; color:var(--text-faint); text-shadow:0 1px 3px rgba(255,255,255,0.7); }
-  .wb-world{ position:absolute; top:0; left:0; transform-origin:0 0; background:#fff; }
+  .wb-pan-hint{ bottom:10px; left:12px; color:var(--text-faint); text-shadow:0 1px 3px rgba(var(--bg-raised-rgb),0.7); }
+  .wb-world{ position:absolute; top:0; left:0; transform-origin:0 0; background:var(--bg-raised); }
   .wb-conn-svg{ position:absolute; inset:0; width:100%; height:100%; pointer-events:none; overflow:visible; }
   .wb-conn-hit{ pointer-events:stroke; cursor:pointer; }
   .wb-conn-line{ stroke:var(--text-faint); stroke-width:1.5; pointer-events:none; }
@@ -392,7 +445,7 @@
   .wb-goal-node[data-type="area"].dragging .wb-goal-node-icon{ transform:scale(1.2); filter:drop-shadow(0 4px 10px rgba(0,0,0,0.4)); }
   .wb-goal-node[data-type="area"].connect-pending{ box-shadow:none; }
   .wb-goal-node[data-type="area"].connect-pending .wb-goal-node-icon{ filter:drop-shadow(0 0 4px var(--accent)) drop-shadow(0 0 4px var(--accent)); }
-  .wb-goal-node-label{ position:absolute; left:22px; top:50%; transform:translateY(-50%); font-family:var(--mono); font-size:11px; font-weight:600; color:#000; white-space:nowrap; pointer-events:none; }
+  .wb-goal-node-label{ position:absolute; left:22px; top:50%; transform:translateY(-50%); font-family:var(--mono); font-size:11px; font-weight:600; color:var(--text); white-space:nowrap; pointer-events:none; }
   .wb-goal-node[data-type="area"] .wb-goal-node-label{ left:62px; font-size:13px; font-weight:700; }
   .wb-goal-node[data-type="goal"] .wb-goal-node-label{ left:28px; }
   .wb-goal-node[data-type="habit"] .wb-goal-node-label{ left:17px; font-size:10px; font-weight:500; }
@@ -410,7 +463,7 @@
   /* Area cluster hulls — a soft blob (convex hull, padded + blurred) drawn behind every area's own
      group of nodes, see wbRenderClusters. */
   .wb-cluster-hull{ fill-opacity:0.16; stroke-opacity:0.4; stroke-width:1.5; }
-  .wb-empty-hint{ position:absolute; bottom:10px; right:12px; z-index:100; font-family:var(--mono); font-size:11px; color:var(--text-faint); text-shadow:0 1px 3px rgba(255,255,255,0.7); pointer-events:none; max-width:280px; text-align:right; }
+  .wb-empty-hint{ position:absolute; bottom:10px; right:12px; z-index:100; font-family:var(--mono); font-size:11px; color:var(--text-faint); text-shadow:0 1px 3px rgba(var(--bg-raised-rgb),0.7); pointer-events:none; max-width:280px; text-align:right; }
   .entity-icon-img{ width:22px; height:22px; border-radius:5px; display:block; flex-shrink:0; mask-size:contain; -webkit-mask-size:contain; mask-repeat:no-repeat; -webkit-mask-repeat:no-repeat; mask-position:center; -webkit-mask-position:center; }
   /* Built-in habit icons (see HABIT_ICON_LIBRARY) — inline usage, tinted by area via `color` since
      the source SVG uses stroke="currentColor" (no CSS mask needed, unlike uploaded goal/project
@@ -864,6 +917,7 @@
 
       <div class="user-foot">
         <div class="user-email" id="userEmailLabel"></div>
+        <button class="btn" id="themeToggleBtn" type="button" style="width:100%; margin-bottom:8px;">🌙 dark mode</button>
         <div class="user-foot-row">
           <button class="btn" id="openTrashBtn" type="button">trash</button>
           <button class="btn" id="exportDataBtn" type="button">export data</button>
@@ -1644,6 +1698,28 @@
   function safeGet(store, key){ try{ return store.getItem(key); }catch(e){ return null; } }
   function safeSet(store, key, value){ try{ store.setItem(key, value); }catch(e){} }
   function safeRemove(store, key){ try{ store.removeItem(key); }catch(e){} }
+
+  // Dark mode toggle. The actual <html data-theme="dark"> attribute is already applied (if saved)
+  // by the tiny inline script in <head>, before first paint — this just wires the button and keeps
+  // its label/the color-scheme meta tag in sync. Defaults to light (this app's current primary
+  // theme) rather than following prefers-color-scheme, since it's a manual per-app choice, not a
+  // system-following one.
+  function currentTheme(){ return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light"; }
+  function applyThemeChrome(theme){
+    var btn = document.getElementById("themeToggleBtn");
+    if(btn) btn.textContent = theme === "dark" ? "☀ light mode" : "🌙 dark mode";
+    var meta = document.querySelector('meta[name="color-scheme"]');
+    if(meta) meta.content = theme;
+  }
+  applyThemeChrome(currentTheme());
+  document.getElementById("themeToggleBtn").addEventListener("click", function(){
+    var next = currentTheme() === "dark" ? "light" : "dark";
+    if(next === "dark") document.documentElement.setAttribute("data-theme", "dark");
+    else document.documentElement.removeAttribute("data-theme");
+    safeSet(window.localStorage, "pp_theme_v1", next);
+    applyThemeChrome(next);
+  });
+
   function staySignedInPref(){ return safeGet(window.localStorage, "staySignedInPref") !== "false"; }
   function authStorageBackend(){ return staySignedInPref() ? window.localStorage : window.sessionStorage; }
   var sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
