@@ -394,6 +394,9 @@
   #wbConnectBtn.on{ background:var(--accent); color:var(--bg); border-color:var(--accent); }
   .wb-zoom-group{ display:flex; align-items:center; gap:6px; }
   .wb-zoom-label{ font-family:var(--mono); font-size:10.5px; color:var(--text-dim); min-width:34px; text-align:center; }
+  .wb-force-group{ display:flex; align-items:center; gap:6px; }
+  .wb-force-label{ font-family:var(--mono); font-size:10.5px; color:var(--text-dim); white-space:nowrap; }
+  .wb-force-slider{ width:90px; accent-color:var(--accent); cursor:pointer; }
   /* .wb-canvas-wrap is the fixed viewport (clips); .wb-world is the large pannable/zoomable graph
      surface inside it — sized and transformed from JS (see WB_WORLD_W/H, applyWbTransform). Plain
      white background (no more drawing canvas to paint it) so the plain-black node labels read
@@ -1380,6 +1383,10 @@
             <span class="wb-zoom-label" id="wbZoomLabel">100%</span>
             <button class="cal-nav-btn" id="wbZoomInBtn" type="button" aria-label="Zoom in">+</button>
             <button class="btn" id="wbZoomResetBtn" type="button">reset view</button>
+          </div>
+          <div class="wb-force-group" title="How strongly area nodes pull toward the center">
+            <span class="wb-force-label">center pull</span>
+            <input type="range" class="wb-force-slider" id="wbCenterForceSlider" min="0" max="0.08" step="0.002" value="0.03">
           </div>
           <button class="btn" id="wbFullscreenBtn" type="button">⤢ fullscreen</button>
           <span class="wb-save-status" id="wbSaveStatus"></span>
@@ -4432,6 +4439,11 @@
 
     document.getElementById("wbConnectBtn").addEventListener("click", function(){
       setWbConnectMode(!wbConnectMode);
+    });
+
+    document.getElementById("wbCenterForceSlider").addEventListener("input", function(){
+      WB_CENTER_K = Number(this.value);
+      wbReheat(1);
     });
 
     wireWhiteboardDrag();
