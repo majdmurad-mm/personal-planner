@@ -524,6 +524,14 @@
   .timeline-block-resize:hover{ background:rgba(255,255,255,0.18); }
   .timeline-block-resize-left{ left:0; }
   .timeline-block-resize-right{ right:0; }
+  /* Habit icons inside a timeline block are absolutely positioned (not a normal flex sibling of the
+     title) — most blocks are only a few % of a 24h-wide row, far too narrow to fit a 13px icon plus
+     any title text under normal flex sharing (the icon's flex-shrink:0 would just push it past the
+     block's overflow:hidden edge and it'd never actually paint). Pinning it to a fixed spot means it
+     always renders regardless of block width; the title gets a matching margin-left so it starts
+     after the icon instead of underneath it. */
+  .timeline-block .habit-icon-inline.icon-sm{ position:absolute; left:8px; top:50%; transform:translateY(-50%); z-index:2; }
+  .timeline-block .habit-icon-inline.icon-sm + .timeline-block-title{ margin-left:16px; }
   .timeline-block-title{ font-family:var(--mono); font-size:9.5px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; z-index:1; }
   .timeline-block.done{ opacity:0.5; }
   /* Filled area tint, not just a border accent — these blocks are often too narrow (short
