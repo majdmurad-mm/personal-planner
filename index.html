@@ -4581,6 +4581,12 @@
       node.classList.add("dragging");
       wbReheat(1);
     });
+    // renderWbConnections() rebuilds the whole connections layer's innerHTML (plus hierarchy lines
+    // and clusters) — cheap once, but pointermove can fire far faster than the screen repaints, so
+    // calling it on every event was doing that full rebuild dozens of times per frame. The node's own
+    // position still updates immediately every event (so the drag itself feels responsive); the
+    // connections re-render is coalesced to at most once per animation frame via rAF.
+    var wbDragRafPending = false;
     overlay.addEventListener("pointermove", function(e){
       if(!dragSim || e.pointerId !== dragPointerId) return;
       // Viewport-pixel deltas have to be scaled back down by the current zoom to get the right
@@ -4590,7 +4596,13 @@
       dragSim.x = startX + dx; dragSim.y = startY + dy;
       dragEl.style.left = dragSim.x + "px";
       dragEl.style.top = dragSim.y + "px";
-      renderWbConnections();
+      if(!wbDragRafPending){
+        wbDragRafPending = true;
+        requestAnimationFrame(function(){
+          wbDragRafPending = false;
+          renderWbConnections();
+        });
+      }
     });
     overlay.addEventListener("pointerup", function(e){
       if(!dragSim || e.pointerId !== dragPointerId) return;
