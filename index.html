@@ -3324,16 +3324,23 @@
     if(kind === "action") await postponeAction(id, toDate);
     else if(kind === "habit-instance") await postponeHabitInstance(id, fromDate, toDate);
   }
+  // Clamps a just-shown floating popover/context-menu so it never renders past the viewport edge —
+  // shared by every right-click menu and click-triggered popover in the app (postpone popover, the
+  // global/tracker/today-add context menus), which all otherwise repeated this same clamp-and-place
+  // logic against their own element.
+  function positionFloatingEl(el, x, y){
+    var maxX = window.innerWidth - el.offsetWidth - 8;
+    var maxY = window.innerHeight - el.offsetHeight - 8;
+    el.style.left = Math.max(4, Math.min(x, maxX)) + "px";
+    el.style.top = Math.max(4, Math.min(y, maxY)) + "px";
+  }
   var postponeTarget = null;
   function openPostponePopover(x, y, kind, id, date){
     postponeTarget = { kind:kind, id:id, date:date };
     var pop = document.getElementById("postponePopover");
     document.getElementById("postponeDateInput").value = date || todayStr();
     pop.hidden = false;
-    var maxX = window.innerWidth - pop.offsetWidth - 8;
-    var maxY = window.innerHeight - pop.offsetHeight - 8;
-    pop.style.left = Math.max(4, Math.min(x, maxX)) + "px";
-    pop.style.top = Math.max(4, Math.min(y, maxY)) + "px";
+    positionFloatingEl(pop, x, y);
   }
   function closePostponePopover(){
     document.getElementById("postponePopover").hidden = true;
@@ -3369,10 +3376,7 @@
     menu.querySelector('[data-ctx="edit"]').style.display = EDIT_HANDLERS[kind] ? "" : "none";
     menu.querySelector('[data-ctx="postpone"]').style.display = POSTPONE_KINDS[kind] ? "" : "none";
     menu.hidden = false;
-    var maxX = window.innerWidth - menu.offsetWidth - 8;
-    var maxY = window.innerHeight - menu.offsetHeight - 8;
-    menu.style.left = Math.max(4, Math.min(x, maxX)) + "px";
-    menu.style.top = Math.max(4, Math.min(y, maxY)) + "px";
+    positionFloatingEl(menu, x, y);
   }
   function closeGlobalCtxMenu(){
     document.getElementById("globalCtxMenu").hidden = true;
@@ -5225,10 +5229,7 @@
     trackerCtxVarId = varId;
     var menu = document.getElementById("trackerVarCtxMenu");
     menu.hidden = false;
-    var maxX = window.innerWidth - menu.offsetWidth - 8;
-    var maxY = window.innerHeight - menu.offsetHeight - 8;
-    menu.style.left = Math.max(4, Math.min(x, maxX)) + "px";
-    menu.style.top = Math.max(4, Math.min(y, maxY)) + "px";
+    positionFloatingEl(menu, x, y);
   }
   function closeTrackerCtxMenu(){
     document.getElementById("trackerVarCtxMenu").hidden = true;
@@ -6094,10 +6095,7 @@
     todayAddMenuTarget = { area: area, time: time };
     var menu = document.getElementById("todayAddMenu");
     menu.hidden = false;
-    var maxX = window.innerWidth - menu.offsetWidth - 8;
-    var maxY = window.innerHeight - menu.offsetHeight - 8;
-    menu.style.left = Math.max(4, Math.min(x, maxX)) + "px";
-    menu.style.top = Math.max(4, Math.min(y, maxY)) + "px";
+    positionFloatingEl(menu, x, y);
   }
   function closeTodayAddMenu(){
     document.getElementById("todayAddMenu").hidden = true;
