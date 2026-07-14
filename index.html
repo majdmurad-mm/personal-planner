@@ -1857,6 +1857,11 @@
   var CATEGORY_ICONS = { Health:"✚", Finance:"$", Career:"▲", Maintenance:"⚙", Growth:"↑", Relationships:"♥", Sol:"◐" };
   var CATEGORY_COLOR_VAR = { Health:"--cat-health", Finance:"--cat-finance", Career:"--cat-career", Maintenance:"--cat-maintenance", Growth:"--cat-growth", Relationships:"--cat-relationships", Sol:"--cat-sol" };
   function categoryColorVar(cat){ return "var(" + (CATEGORY_COLOR_VAR[cat] || "--text-dim") + ")"; }
+  // .status-dot/.matrix-tile-status convey status through color (+ a glow on "behind") alone — no
+  // text anywhere else on the tile/card says it. A title gives that same info to anyone who can't
+  // rely on color (or is just hovering to check without reading the rest of the card).
+  var STATUS_DOT_LABEL = { "on-track": "on track", "behind": "behind schedule", "done": "done" };
+  function statusDotTitle(status){ return STATUS_DOT_LABEL[status] || status; }
   // Uploaded icons are typically monochrome glyphs (black shape on a transparent background), so
   // instead of drawing the raw image we use it as a CSS mask and fill the shape with the goal/
   // project's area color — the icon recolors itself if the category ever changes, no re-upload
@@ -2844,7 +2849,7 @@
         var health = goalHealth(g);
         var initial = g.title.trim().charAt(0).toUpperCase() || "?";
         return '<div class="matrix-tile ' + g.category + '" data-action="open-goal" data-kind="goal" data-id="' + g.id + '" title="' + escapeHtml(g.title) + '">' +
-          '<span class="matrix-tile-status ' + status + '"></span>' +
+          '<span class="matrix-tile-status ' + status + '" title="' + statusDotTitle(status) + '"></span>' +
           '<span class="matrix-tile-badge prio-badge ' + g.priority + '">' + g.priority + '</span>' +
           (g.icon ? iconMaskHtml("matrix-tile-icon-img", resolveEntityIconDataUri(g.icon), g.category) : '<span class="matrix-tile-initial">' + initial + '</span>') +
           '<div class="matrix-tile-scrim"><div class="matrix-tile-title">' + escapeHtml(g.title) + '</div></div>' +
@@ -2880,7 +2885,7 @@
         '<span class="cat-badge ' + g.category + '">' + CATEGORY_ICONS[g.category] + ' ' + g.category + '</span>' +
         '<span class="due-tag">' +
           (g.ongoing ? '<span class="infinite-badge">∞ ongoing</span>' : (g.due ? '<span>' + fmtDate(g.due) + '</span>' : '')) +
-          '<span class="status-dot ' + status + '"></span>' +
+          '<span class="status-dot ' + status + '" title="' + statusDotTitle(status) + '"></span>' +
         '</span>' +
       '</div>' +
       '<div class="card-body">' +
@@ -3600,7 +3605,7 @@
     var initial = g.title.trim().charAt(0).toUpperCase() || "?";
     return '<div class="area-tile" data-action="open-goal-detail" data-kind="goal" data-id="' + g.id + '">' +
       '<div class="matrix-tile ' + g.category + '" title="' + escapeHtml(g.title) + '">' +
-        '<span class="matrix-tile-status ' + status + '"></span>' +
+        '<span class="matrix-tile-status ' + status + '" title="' + statusDotTitle(status) + '"></span>' +
         '<span class="matrix-tile-badge prio-badge ' + g.priority + '">' + g.priority + '</span>' +
         (g.icon ? iconMaskHtml("matrix-tile-icon-img", resolveEntityIconDataUri(g.icon), g.category) : '<span class="matrix-tile-initial">' + initial + '</span>') +
         '<div class="matrix-tile-progress" title="health"><div class="matrix-tile-progress-fill ' + (status==="done"?"done":(health.level!=="good"?health.level:"")) + '" style="width:' + health.pct + '%"></div></div>' +
@@ -3765,7 +3770,7 @@
           '<span class="prio-badge ' + p.priority + '">' + p.priority + '</span><span class="sep">·</span>' +
           '<span class="parent-tag">' + (g ? 'goal: <b>' + escapeHtml(g.title) + '</b>' : 'standalone') + '</span>' +
           '<span class="due-tag">' + (p.due ? '<span style="color:' + (overdue?'var(--p0)':'var(--text-dim)') + '">' + fmtDate(p.due) + '</span>' : '') +
-          '<span class="status-dot ' + (p.done?"done":(overdue?"behind":"on-track")) + '"></span></span>' +
+          '<span class="status-dot ' + (p.done?"done":(overdue?"behind":"on-track")) + '" title="' + statusDotTitle(p.done?"done":(overdue?"behind":"on-track")) + '"></span></span>' +
         '</div>' +
         '<div class="card-body">' +
           '<div class="goal-body-head">' +
@@ -3969,7 +3974,7 @@
           '<span class="type-badge">' + a.type + '</span><span class="sep">·</span>' +
           '<span class="parent-tag">' + (a.parentType === "none" ? "standalone" : (a.parentType + ': <b>' + escapeHtml(parentTitle(a)) + '</b>')) + '</span>' +
           '<span class="due-tag">' + (a.date ? '<span style="color:' + (overdue?'var(--p0)':'var(--text-dim)') + '">' + fmtDate(a.date) + '</span>' : '') +
-          '<span class="status-dot ' + (a.done?"done":(overdue?"behind":"on-track")) + '"></span></span>' +
+          '<span class="status-dot ' + (a.done?"done":(overdue?"behind":"on-track")) + '" title="' + statusDotTitle(a.done?"done":(overdue?"behind":"on-track")) + '"></span></span>' +
         '</div>' +
         '<div class="card-body">' +
           '<div class="goal-body-head">' +
