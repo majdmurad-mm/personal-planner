@@ -918,6 +918,11 @@
   .rec-waveform:hover .rec-waveform-bars span{ opacity:1; }
   .rec-waveform.loading{ opacity:0.5; pointer-events:none; }
   .rec-waveform-time{ font-family:var(--mono); font-size:10px; color:var(--text-faint); white-space:nowrap; }
+  /* The clip currently loaded in the shared player — bars turn green while actually playing (not
+     just loaded/paused), so "what's making sound right now" is unambiguous at a glance in a list. */
+  .rec-waveform.playing .rec-waveform-bars span{ background:#22C55E; opacity:1; }
+  .rec-player{ display:flex; align-items:center; gap:8px; margin:14px 0; padding:8px 12px; border:1px solid var(--border-bright); border-radius:var(--radius); background:var(--bg-raised); }
+  .rec-player-time{ font-family:var(--mono); font-size:11px; color:var(--text-dim); margin-left:auto; }
   .agent-msg-replay{ background:none; border:none; color:var(--text-faint); cursor:pointer; font-size:11px; padding:0; margin-left:8px; vertical-align:middle; }
   .agent-msg-replay:hover{ color:var(--accent); }
 
@@ -1716,6 +1721,14 @@
       <div class="sub-view-toggle" id="journalSubToggle">
         <button class="sub-view-tab active" data-sub="notes" type="button">notes</button>
         <button class="sub-view-tab" data-sub="recordings" type="button">recordings</button>
+      </div>
+      <!-- Persists across sub-tab switches (lives outside both panels) so playback keeps going if
+           you flip from notes to recordings or back mid-clip. -->
+      <div class="rec-player" id="journalPlayer" hidden>
+        <button class="btn" id="journalPlayerSkipBackBtn" type="button" title="Skip back 10s">⏪ 10s</button>
+        <button class="btn btn-accent" id="journalPlayerPlayBtn" type="button" title="Play/pause">▶</button>
+        <button class="btn" id="journalPlayerSkipFwdBtn" type="button" title="Skip forward 10s">10s ⏩</button>
+        <span class="rec-player-time" id="journalPlayerTime">0:00 / 0:00</span>
       </div>
       <div id="journalNotesPanel">
       <div class="journal-composer">
@@ -2930,7 +2943,7 @@
     state.gpsPings = (results[12].data || []).map(locMapGpsRow);
     // Empty until migration_action_habit_poi_location.sql has been run.
     state.pois = (results[13].data || []).map(function(r){ return { id:r.id, name:r.name, lat:r.lat, lng:r.lng, notes:r.notes||"" }; });
-    state.recordings = (results[14].data || []).map(function(r){ return { id:r.id, storagePath:r.storage_path, durationSeconds:r.duration_seconds, waveform:r.waveform||[], createdAt:r.created_at }; });
+    state.recordings = (results[14].data || []).map(function(r){ return { id:r.id, storagePath:r.storage_path, durationSeconds:r.duration_seconds, waveform:r.waveform||[], createdAt:r.created_at, transcript:r.transcript||"" }; });
     await backfillLegacyHabitTrackers();
     await backfillHabitIcons();
   }
@@ -7009,6 +7022,13 @@
         var input = document.getElementById("journalTextInput");
         if(text){
           input.value = (input.value.trim() ? input.value.trim() + " " : "") + text;
+          // Persisted on the recording itself, not just the composer textarea — the recording
+          // already exists in Storage+DB by this point regardless of whether this note ever gets
+          // saved (composer text cleared, tab closed, etc.), so without this the transcript would
+          // otherwise vanish the moment that unsaved text is gone, even though the audio survives.
+          journalPendingRecording.transcript = text;
+          var updateRes = await sb.from("recordings").update({ transcript: text }).eq("id", rec.id);
+          if(updateRes.error) console.error(updateRes.error);
         } else {
           toast("Recording saved, but couldn't make out any speech to transcribe — you can still type it in.");
         }
@@ -7078,38 +7098,23 @@
     document.getElementById("journalRecordingsList").innerHTML = sorted.map(function(rec){
       var linkedNote = state.journal.find(function(j){ return j.recordingId === rec.id; });
       var when = rec.createdAt ? new Date(rec.createdAt).toLocaleString(undefined, { month:"short", day:"numeric", hour:"numeric", minute:"2-digit" }) : "";
-      var peaks = (rec.waveform && rec.waveform.length) ? rec.waveform : [0.3];
-      var bars = peaks.map(function(p){ return '<span style="height:' + Math.max(10, Math.round(p * 100)) + '%"></span>'; }).join("");
       return '<div class="journal-entry" data-kind="recording" data-id="' + rec.id + '">' +
         '<div class="journal-entry-top"><span class="journal-entry-date">' + escapeHtml(when) +
           (linkedNote ? ' · attached to a note' : ' · not attached to any note') + '</span>' +
           '<div class="entity-actions"><button class="icon-btn" data-action="del-recording" data-id="' + rec.id + '" aria-label="Delete recording">&times;</button></div>' +
         '</div>' +
-        '<div class="rec-waveform" data-action="play-recording" data-id="' + rec.id + '" title="Play recording">' +
-          '<div class="rec-waveform-bars">' + bars + '</div>' +
-          '<span class="rec-waveform-time">' + formatClipTime(rec.durationSeconds || 0) + '</span>' +
-        '</div>' +
+        (rec.transcript ? '<div class="journal-entry-text">' + escapeHtml(rec.transcript) + '</div>' : '') +
+        renderWaveformBarHtml(rec) +
       '</div>';
     }).join("");
     document.getElementById("journalRecordingsEmptyState").style.display = sorted.length ? "none" : "";
   }
   document.getElementById("journalRecordingsList").addEventListener("click", async function(e){
     var playEl = e.target.closest('[data-action="play-recording"]');
-    if(playEl){ playRecordingById(playEl.dataset.id, playEl); return; }
+    if(playEl){ await playRecording(playEl.dataset.id, playEl, e); return; }
     var delBtn = e.target.closest('[data-action="del-recording"]');
     if(delBtn) await deleteRecording(delBtn.dataset.id);
   });
-  async function playRecordingById(id, btnEl){
-    var rec = state.recordings.find(function(r){ return r.id === id; });
-    if(!rec) return;
-    if(!journalAudioEl) journalAudioEl = new Audio();
-    if(btnEl) btnEl.classList.add("loading");
-    var signed = await sb.storage.from("notes-audio").createSignedUrl(rec.storagePath, 3600);
-    if(btnEl) btnEl.classList.remove("loading");
-    if(signed.error){ toast("Couldn't load that recording: " + signed.error.message); return; }
-    journalAudioEl.src = signed.data.signedUrl;
-    journalAudioEl.play();
-  }
   async function deleteRecording(id){
     var rec = state.recordings.find(function(r){ return r.id === id; });
     if(!rec) return;
@@ -7127,8 +7132,8 @@
   document.getElementById("journalEntries").addEventListener("click", async function(e){
     var tag = e.target.closest(".note-tag");
     if(tag){ openNoteTag(tag.dataset.kind, tag.dataset.id); return; }
-    var playBtn = e.target.closest('[data-action="play-journal-audio"]');
-    if(playBtn){ playJournalAudio(playBtn.dataset.id, playBtn); return; }
+    var playBtn = e.target.closest('[data-action="play-recording"]');
+    if(playBtn){ await playRecording(playBtn.dataset.id, playBtn, e); return; }
     var editBtn = e.target.closest('[data-action="edit-journal"]');
     if(editBtn){ editJournalEntry(editBtn.dataset.id); return; }
     var del = e.target.closest('[data-action="del-journal"]');
@@ -7136,35 +7141,89 @@
   });
   // SoundCloud-style amplitude bar — bar heights come straight from the recording's stored peak
   // array (computeWaveformPeaks, captured once when the recording finished), so this is just markup,
-  // no audio decoding happens at render time.
+  // no audio decoding happens at render time. data-id is the recording id (not the note id) so the
+  // same play-recording handler/data-action works whether it's rendered here or in the recordings list.
   function renderJournalWaveformHtml(entry){
     if(!entry.recordingId) return "";
     var rec = state.recordings.find(function(r){ return r.id === entry.recordingId; });
     if(!rec) return "";
+    return renderWaveformBarHtml(rec);
+  }
+  function renderWaveformBarHtml(rec){
     var peaks = (rec.waveform && rec.waveform.length) ? rec.waveform : [0.3];
     var bars = peaks.map(function(p){ return '<span style="height:' + Math.max(10, Math.round(p * 100)) + '%"></span>'; }).join("");
-    return '<div class="rec-waveform" data-action="play-journal-audio" data-id="' + entry.id + '" title="Play recording">' +
+    var playingClass = journalPlayerCurrentId === rec.id && journalAudioEl && !journalAudioEl.paused ? " playing" : "";
+    return '<div class="rec-waveform' + playingClass + '" data-action="play-recording" data-id="' + rec.id + '" title="Play recording">' +
       '<div class="rec-waveform-bars">' + bars + '</div>' +
       '<span class="rec-waveform-time">' + formatClipTime(rec.durationSeconds || 0) + '</span>' +
     '</div>';
   }
-  // Bucket is private, so playback needs a fresh signed URL each time rather than a stored public
-  // one — fetched lazily on click (not for every entry on every render) since most notes with a
-  // recording will never actually be replayed.
+  // A single shared <audio> + a small persistent player bar (#journalPlayer) — one recording plays
+  // at a time, and the bar sticks around across notes<->recordings tab switches so playback doesn't
+  // get interrupted by browsing. Bucket is private, so playback needs a fresh signed URL each time
+  // rather than a stored public one — fetched lazily on click, not for every row on every render,
+  // since most recordings will never actually be replayed.
   var journalAudioEl = null;
-  async function playJournalAudio(id, btnEl){
-    var entry = state.journal.find(function(x){ return x.id === id; });
-    if(!entry || !entry.recordingId) return;
-    var rec = state.recordings.find(function(r){ return r.id === entry.recordingId; });
+  var journalPlayerCurrentId = null;
+  function ensureJournalAudioEl(){
+    if(journalAudioEl) return journalAudioEl;
+    journalAudioEl = new Audio();
+    journalAudioEl.addEventListener("timeupdate", updateJournalPlayerUi);
+    journalAudioEl.addEventListener("loadedmetadata", updateJournalPlayerUi);
+    journalAudioEl.addEventListener("play", updateJournalPlayerUi);
+    journalAudioEl.addEventListener("pause", updateJournalPlayerUi);
+    journalAudioEl.addEventListener("ended", updateJournalPlayerUi);
+    return journalAudioEl;
+  }
+  function updateJournalPlayerUi(){
+    var playBtn = document.getElementById("journalPlayerPlayBtn");
+    var timeEl = document.getElementById("journalPlayerTime");
+    var playing = journalAudioEl && !journalAudioEl.paused && !journalAudioEl.ended;
+    if(playBtn) playBtn.textContent = playing ? "⏸" : "▶";
+    if(timeEl && journalAudioEl) timeEl.textContent = formatClipTime(journalAudioEl.currentTime) + " / " + formatClipTime(journalAudioEl.duration || 0);
+    document.querySelectorAll(".rec-waveform").forEach(function(el){
+      el.classList.toggle("playing", playing && el.dataset.id === journalPlayerCurrentId);
+    });
+  }
+  // Clicking a waveform always (re)starts playback from that point — pause is a dedicated action
+  // (the player bar's play/pause button), not something a waveform click also toggles, so seeking
+  // mid-listen can never accidentally stop playback instead of relocating it. If it's the clip
+  // that's already loaded, this just seeks to the clicked x-position (as a fraction of duration)
+  // and resumes; a different recording gets freshly fetched and started from the top.
+  async function playRecording(id, btnEl, clickEvent){
+    var rec = state.recordings.find(function(r){ return r.id === id; });
     if(!rec) return;
-    if(!journalAudioEl) journalAudioEl = new Audio();
+    ensureJournalAudioEl();
+    if(journalPlayerCurrentId === id){
+      if(clickEvent && journalAudioEl.duration){
+        var rect = btnEl.getBoundingClientRect();
+        var frac = Math.min(1, Math.max(0, (clickEvent.clientX - rect.left) / rect.width));
+        journalAudioEl.currentTime = frac * journalAudioEl.duration;
+      }
+      journalAudioEl.play();
+      return;
+    }
     if(btnEl) btnEl.classList.add("loading");
     var signed = await sb.storage.from("notes-audio").createSignedUrl(rec.storagePath, 3600);
     if(btnEl) btnEl.classList.remove("loading");
     if(signed.error){ toast("Couldn't load that recording: " + signed.error.message); return; }
+    journalPlayerCurrentId = id;
     journalAudioEl.src = signed.data.signedUrl;
     journalAudioEl.play();
+    document.getElementById("journalPlayer").hidden = false;
   }
+  document.getElementById("journalPlayerPlayBtn").addEventListener("click", function(){
+    if(!journalAudioEl) return;
+    if(journalAudioEl.paused) journalAudioEl.play(); else journalAudioEl.pause();
+  });
+  document.getElementById("journalPlayerSkipBackBtn").addEventListener("click", function(){
+    if(!journalAudioEl) return;
+    journalAudioEl.currentTime = Math.max(0, journalAudioEl.currentTime - 10);
+  });
+  document.getElementById("journalPlayerSkipFwdBtn").addEventListener("click", function(){
+    if(!journalAudioEl || !journalAudioEl.duration) return;
+    journalAudioEl.currentTime = Math.min(journalAudioEl.duration, journalAudioEl.currentTime + 10);
+  });
 
   // Journal entry edit modal — same field set as the composer (date/time/area/text). Doubles as the
   // create modal too (editingJournalId = null means create, same pattern the goal/project/habit/
