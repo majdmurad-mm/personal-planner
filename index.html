@@ -6089,6 +6089,11 @@
   var locLiveMarker = null, locLiveTrailLine = null, locLiveTrailLatLngs = [];
   var locLiveWatchId = null, locLastPingAt = 0, locLastPingLatLng = null;
   var LOC_MIN_PING_INTERVAL_MS = 60000, LOC_MIN_PING_DIST_M = 50;
+  // Auto-geocoding queue for people who have a free-text "location" (e.g. "Berlin Germany") but no
+  // pinned home_lat/home_lng yet — resolves it through Nominatim and writes the coordinates back to
+  // the person so it's only ever geocoded once. Sequential with a >1s gap between requests: Nominatim's
+  // usage policy caps free-tier search at one request per second, no bulk/parallel querying.
+  var locGeocodeQueue = [], locGeocodeQueued = {}, locGeocodeFailedIds = {}, locGeocodeRunning = false;
 
   function locToggleLayer(layer, btn){
     var on = !btn.classList.contains("on");
@@ -6098,15 +6103,58 @@
     return on;
   }
 
+  function locAddPersonMarker(p){
+    var marker = L.circleMarker([p.homeLat, p.homeLng], { radius:7, color:"#F15A22", fillColor:"#F15A22", fillOpacity:0.85, weight:2 });
+    marker.bindPopup(escapeHtml(p.name || "Unnamed"));
+    marker.on("click", function(){ editPerson(p.id); });
+    locPeopleLayer.addLayer(marker);
+  }
+  function locQueuePersonGeocode(p){
+    if(locGeocodeFailedIds[p.id] || locGeocodeQueued[p.id]) return;
+    locGeocodeQueued[p.id] = true;
+    locGeocodeQueue.push(p.id);
+    locProcessGeocodeQueue();
+  }
+  async function locProcessGeocodeQueue(){
+    if(locGeocodeRunning) return;
+    locGeocodeRunning = true;
+    var statusEl = document.getElementById("locStatus");
+    while(locGeocodeQueue.length){
+      var id = locGeocodeQueue.shift();
+      delete locGeocodeQueued[id];
+      var p = state.people.find(function(x){ return x.id === id; });
+      if(p && p.location && p.homeLat == null){
+        if(statusEl) statusEl.textContent = "locating " + p.name + "… (" + locGeocodeQueue.length + " left)";
+        try{
+          var res = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + encodeURIComponent(p.location), { headers: { "Accept": "application/json" } });
+          var rows = await res.json();
+          if(rows && rows.length){
+            p.homeLat = parseFloat(rows[0].lat);
+            p.homeLng = parseFloat(rows[0].lon);
+            if(locPeopleLayer) locAddPersonMarker(p);
+            safeUpdate("people", p.id, { home_lat: p.homeLat, home_lng: p.homeLng }).then(function(r){ if(r.error) console.error(r.error); });
+          } else {
+            locGeocodeFailedIds[id] = true;
+          }
+        } catch(err){
+          locGeocodeFailedIds[id] = true;
+        }
+      }
+      if(locGeocodeQueue.length) await new Promise(function(resolve){ setTimeout(resolve, 1100); });
+    }
+    locGeocodeRunning = false;
+    if(statusEl) statusEl.textContent = "";
+  }
+
   function locRenderPeopleLayer(){
     if(!locPeopleLayer) return;
     locPeopleLayer.clearLayers();
     state.people.forEach(function(p){
-      if(p.homeLat == null || p.homeLng == null) return;
-      var marker = L.circleMarker([p.homeLat, p.homeLng], { radius:7, color:"#F15A22", fillColor:"#F15A22", fillOpacity:0.85, weight:2 });
-      marker.bindPopup(escapeHtml(p.name || "Unnamed"));
-      marker.on("click", function(){ editPerson(p.id); });
-      locPeopleLayer.addLayer(marker);
+      if(p.homeLat != null && p.homeLng != null){
+        locAddPersonMarker(p);
+      } else if(p.location && p.location.trim()){
+        locQueuePersonGeocode(p);
+      }
     });
   }
 
@@ -9594,6 +9642,8 @@
           personalityType:ru.personality_type||"", location:ru.location||"", relatedPeople:ru.related_people||"", planets:ru.planets||"",
           homeLat:(ru.home_lat!=null?ru.home_lat:null), homeLng:(ru.home_lng!=null?ru.home_lng:null) };
       }
+      // A location edit may fix a string that previously failed to geocode — let it retry.
+      delete locGeocodeFailedIds[editingPersonId];
       renderAll(); closeModal("personModalOverlay"); locRenderPeopleLayer();
       warnDroppedFields(resU.droppedFields);
       return;
