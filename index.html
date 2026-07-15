@@ -5093,6 +5093,52 @@
     wbWrapEl.addEventListener("pointerup", endWbPan, true);
     wbWrapEl.addEventListener("pointercancel", endWbPan, true);
 
+    // Pinch-to-zoom (touch only) — registered after the pan listeners above so, for any given
+    // pointerdown event on this same element, wbPanning has already been set by the time this runs
+    // (same-target listeners fire in registration order regardless of capture/bubble). When a
+    // second touch finger lands, any single-finger pan the first finger started is cancelled and
+    // handed off to the pinch gesture instead of the two fighting over wbPanX/wbPanY at once.
+    var wbPinchPointers = {};
+    var wbPinchStartDist = null, wbPinchStartZoom = 1, wbPinchStartMidX = 0, wbPinchStartMidY = 0;
+    function wbPinchDistAndMid(){
+      var rect = wbWrapEl.getBoundingClientRect();
+      var ids = Object.keys(wbPinchPointers);
+      var a = wbPinchPointers[ids[0]], b = wbPinchPointers[ids[1]];
+      return { dist: Math.hypot(a.x - b.x, a.y - b.y), midX: (a.x + b.x) / 2 - rect.left, midY: (a.y + b.y) / 2 - rect.top };
+    }
+    wbWrapEl.addEventListener("pointerdown", function(e){
+      if(e.pointerType !== "touch") return;
+      wbPinchPointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+      if(Object.keys(wbPinchPointers).length === 2){
+        if(wbPanning){
+          wbPanning = false;
+          wbWrapEl.classList.remove("panning");
+          try{ wbWrapEl.releasePointerCapture(wbPanPointerId); }catch(err){}
+        }
+        var info = wbPinchDistAndMid();
+        wbPinchStartDist = info.dist || null;
+        wbPinchStartZoom = wbZoom;
+        wbPinchStartMidX = info.midX; wbPinchStartMidY = info.midY;
+      }
+    });
+    wbWrapEl.addEventListener("pointermove", function(e){
+      if(!(e.pointerId in wbPinchPointers)) return;
+      wbPinchPointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+      if(Object.keys(wbPinchPointers).length === 2 && wbPinchStartDist){
+        e.preventDefault();
+        var info = wbPinchDistAndMid();
+        wbZoomAt(wbPinchStartZoom * (info.dist / wbPinchStartDist), info.midX, info.midY);
+      }
+    }, { passive:false });
+    function endWbPinchPointer(e){
+      if(!(e.pointerId in wbPinchPointers)) return;
+      delete wbPinchPointers[e.pointerId];
+      if(Object.keys(wbPinchPointers).length < 2) wbPinchStartDist = null;
+    }
+    wbWrapEl.addEventListener("pointerup", endWbPinchPointer);
+    wbWrapEl.addEventListener("pointercancel", endWbPinchPointer);
+    wbWrapEl.addEventListener("pointerleave", endWbPinchPointer);
+
     // Zooming: scroll wheel (zooms toward the cursor), or the +/- buttons (zoom toward center).
     wbWrapEl.addEventListener("wheel", function(e){
       e.preventDefault();
@@ -5811,6 +5857,52 @@
     }
     pplWrapEl.addEventListener("pointerup", endPplPan, true);
     pplWrapEl.addEventListener("pointercancel", endPplPan, true);
+
+    // Pinch-to-zoom (touch only) — registered after the pan listeners above so, for any given
+    // pointerdown event on this same element, pplPanning has already been set by the time this runs
+    // (same-target listeners fire in registration order regardless of capture/bubble). When a
+    // second touch finger lands, any single-finger pan the first finger started is cancelled and
+    // handed off to the pinch gesture instead of the two fighting over pplPanX/pplPanY at once.
+    var pplPinchPointers = {};
+    var pplPinchStartDist = null, pplPinchStartZoom = 1, pplPinchStartMidX = 0, pplPinchStartMidY = 0;
+    function pplPinchDistAndMid(){
+      var rect = pplWrapEl.getBoundingClientRect();
+      var ids = Object.keys(pplPinchPointers);
+      var a = pplPinchPointers[ids[0]], b = pplPinchPointers[ids[1]];
+      return { dist: Math.hypot(a.x - b.x, a.y - b.y), midX: (a.x + b.x) / 2 - rect.left, midY: (a.y + b.y) / 2 - rect.top };
+    }
+    pplWrapEl.addEventListener("pointerdown", function(e){
+      if(e.pointerType !== "touch") return;
+      pplPinchPointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+      if(Object.keys(pplPinchPointers).length === 2){
+        if(pplPanning){
+          pplPanning = false;
+          pplWrapEl.classList.remove("panning");
+          try{ pplWrapEl.releasePointerCapture(pplPanPointerId); }catch(err){}
+        }
+        var info = pplPinchDistAndMid();
+        pplPinchStartDist = info.dist || null;
+        pplPinchStartZoom = pplZoom;
+        pplPinchStartMidX = info.midX; pplPinchStartMidY = info.midY;
+      }
+    });
+    pplWrapEl.addEventListener("pointermove", function(e){
+      if(!(e.pointerId in pplPinchPointers)) return;
+      pplPinchPointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+      if(Object.keys(pplPinchPointers).length === 2 && pplPinchStartDist){
+        e.preventDefault();
+        var info = pplPinchDistAndMid();
+        pplZoomAt(pplPinchStartZoom * (info.dist / pplPinchStartDist), info.midX, info.midY);
+      }
+    }, { passive:false });
+    function endPplPinchPointer(e){
+      if(!(e.pointerId in pplPinchPointers)) return;
+      delete pplPinchPointers[e.pointerId];
+      if(Object.keys(pplPinchPointers).length < 2) pplPinchStartDist = null;
+    }
+    pplWrapEl.addEventListener("pointerup", endPplPinchPointer);
+    pplWrapEl.addEventListener("pointercancel", endPplPinchPointer);
+    pplWrapEl.addEventListener("pointerleave", endPplPinchPointer);
 
     pplWrapEl.addEventListener("wheel", function(e){
       e.preventDefault();
@@ -7844,6 +7936,55 @@
     }
     viewport.addEventListener("pointerup", endPan);
     viewport.addEventListener("pointercancel", endPan);
+
+    // Pinch-to-zoom (touch only) — added inside the same closure as the pan handlers above so it
+    // can read/clear their panning/panPointerId state directly: when a second touch finger lands,
+    // any single-finger pan the first finger may have already started is cancelled and handed off
+    // to the pinch gesture instead, so the two never fight over viewport.scrollLeft at once. These
+    // new listeners are registered AFTER the pan ones above, so for any given pointerdown event on
+    // this same element, the pan handler has already run and set its state by the time this one
+    // sees it (same-target listeners always fire in registration order, capture/bubble is
+    // irrelevant here since there's no ancestor propagation involved).
+    var pinchPointers = {};
+    var pinchStartDist = null, pinchStartPxPerDay = tlPxPerDay, pinchStartMidX = 0;
+    function pinchDistAndMid(){
+      var rect = viewport.getBoundingClientRect();
+      var ids = Object.keys(pinchPointers);
+      var a = pinchPointers[ids[0]], b = pinchPointers[ids[1]];
+      return { dist: Math.hypot(a.x - b.x, a.y - b.y), midX: (a.x + b.x) / 2 - rect.left };
+    }
+    viewport.addEventListener("pointerdown", function(e){
+      if(e.pointerType !== "touch") return;
+      pinchPointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+      if(Object.keys(pinchPointers).length === 2){
+        if(panning){
+          panning = false;
+          viewport.classList.remove("panning");
+          try{ viewport.releasePointerCapture(panPointerId); }catch(err){}
+        }
+        var info = pinchDistAndMid();
+        pinchStartDist = info.dist || null;
+        pinchStartPxPerDay = tlPxPerDay;
+        pinchStartMidX = info.midX;
+      }
+    });
+    viewport.addEventListener("pointermove", function(e){
+      if(!(e.pointerId in pinchPointers)) return;
+      pinchPointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+      if(Object.keys(pinchPointers).length === 2 && pinchStartDist){
+        e.preventDefault();
+        var info = pinchDistAndMid();
+        tlSetZoom(pinchStartPxPerDay * (info.dist / pinchStartDist), info.midX);
+      }
+    }, { passive:false });
+    function endPinchPointer(e){
+      if(!(e.pointerId in pinchPointers)) return;
+      delete pinchPointers[e.pointerId];
+      if(Object.keys(pinchPointers).length < 2) pinchStartDist = null;
+    }
+    viewport.addEventListener("pointerup", endPinchPointer);
+    viewport.addEventListener("pointercancel", endPinchPointer);
+    viewport.addEventListener("pointerleave", endPinchPointer);
   })();
   // Dragging a block updates its time-of-day (snapped to 5 min); for actions/notes, dragging across
   // a day boundary also moves it to that day (habits recur on a weekday pattern, not a single date,
