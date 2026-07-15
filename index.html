@@ -858,10 +858,17 @@
   .person-verified{ color:var(--accent); font-weight:700; }
   /* People graph — reuses the main Graph view's generic canvas/toolbar/connection-line chrome
      (.wb-canvas-wrap, .wb-world, .wb-conn-svg, .wb-conn-line, .wb-toolbar-float, .wb-zoom-group, ...)
-     directly, since none of that is area/goal-specific. .wb-canvas-wrap normally sizes itself via
-     flex:1 inside #whiteboardSection's own flex column (height:100vh) — embedded in the People page's
-     ordinary scrolling layout instead, it needs an explicit height of its own. */
+     directly, since none of that is area/goal-specific. Cards/table stay in #peopleSection's normal
+     scrolling page layout (fixed height below); graph mode instead switches #peopleSection into the
+     same full-viewport flex-column technique #whiteboardSection uses (see its own comment above) —
+     .ppl-fullscreen-graph is toggled by renderPeople() whenever views.people === "graph". */
   .ppl-canvas-wrap{ height:600px; margin-top:16px; }
+  #peopleSection.ppl-fullscreen-graph{ margin:-32px -40px -70px; padding:14px 40px 14px; height:100vh; box-sizing:border-box; display:flex; flex-direction:column; }
+  #peopleSection.ppl-fullscreen-graph .main-header{ margin-bottom:10px; flex-shrink:0; }
+  #peopleSection.ppl-fullscreen-graph .main-header .subhead{ display:none; }
+  #peopleSection.ppl-fullscreen-graph .sub-view-toggle{ flex-shrink:0; }
+  #peopleSection.ppl-fullscreen-graph #peopleGraphPanel{ flex:1; min-height:0; display:flex; flex-direction:column; }
+  #peopleSection.ppl-fullscreen-graph .ppl-canvas-wrap{ flex:1; height:auto; min-height:0; margin-top:0; }
   .ppl-node{ position:absolute; border-radius:50%; width:15px; height:15px; pointer-events:auto; cursor:grab; box-shadow:0 0 0 2px var(--bg-inset), 0 2px 8px rgba(0,0,0,0.35); user-select:none; touch-action:none; }
   .ppl-node:hover{ box-shadow:0 0 0 2px var(--bg-inset), 0 0 0 5px var(--accent-glow), 0 2px 8px rgba(0,0,0,0.35); }
   .ppl-node.dragging{ cursor:grabbing; z-index:50; box-shadow:0 0 0 2px var(--bg-inset), 0 4px 16px rgba(0,0,0,0.5); }
@@ -902,6 +909,9 @@
   /* Invisible fat hit-target layered under each visible (thin) connection line — see
      renderPeopleGraphConnections/handlePplEdgeClick — a 1-2px stroke is too thin to click reliably. */
   .ppl-conn-hit{ stroke:transparent; stroke-width:14; pointer-events:stroke; cursor:pointer; }
+  /* Watermark-style social-group name drawn over its own cluster hull (see pplRenderClusters) —
+     large and faint so it reads as a backdrop label, not competing with node labels on top of it. */
+  .ppl-cluster-label{ font-family:var(--mono); font-size:34px; font-weight:800; fill:var(--text); opacity:0.14; text-anchor:middle; dominant-baseline:middle; text-transform:uppercase; letter-spacing:0.04em; pointer-events:none; }
 
   /* People table — same wrap/cell chrome as .tracker-grid-wrap/.tracker-cell-input (see TRACKER
      section), just with its own column set. Every column but "verified"/"delete" is a plain text
@@ -1034,6 +1044,7 @@
     .main{ padding:24px 18px 60px; }
     h1{ font-size:19px; }
     #whiteboardSection{ margin:-24px -18px -60px; padding:12px 18px 12px; }
+    #peopleSection.ppl-fullscreen-graph{ margin:-24px -18px -60px; padding:12px 18px 12px; }
     .today-two-col{ grid-template-columns:1fr; }
   }
 </style>
@@ -1611,7 +1622,6 @@
               <button class="btn" id="pplZoomResetBtn" type="button">reset view</button>
             </div>
             <button class="btn" id="pplConnectModeBtn" type="button" title="Toggle connect mode: click one person then another to link them">🔗 connect</button>
-            <button class="btn" id="pplLinkGroupsBtn" type="button" title="Connect everyone who shares the same social group but isn't linked yet">🕸 link groups</button>
             <button class="btn" id="pplFullscreenBtn" type="button">⤢ fullscreen</button>
           </div>
           <p class="panel-hint wb-hint-float wb-pan-hint">Pan: drag empty space, or drag with the middle mouse button. Zoom: scroll, or the +/− buttons. Click a person to edit them. Toggle "connect" then click two people to link them (and set a weight) — click an existing connection line to edit or remove it.</p>
@@ -5157,7 +5167,6 @@
   // people without a contact score keep the old "don't drift off forever" anchoring behavior.
   var pplCachedContactPull = {};
   function pplRebuildGraphCache(){
-    pplCachedEdges = pplRelatedEdges();
     pplCachedNodeGroups = {};
     state.people.forEach(function(p){ pplCachedNodeGroups[p.id] = pplNodeGroup(p); });
     var groups = {};
@@ -5169,6 +5178,34 @@
     state.people.forEach(function(p){
       pplCachedContactPull[p.id] = p.contactScore != null ? Math.max(0, p.contactScore) / 2 : 1;
     });
+    // People who share a primary social group are linked by default — not an opt-in action — at
+    // the unknown/default weight, on top of the real relatedPeople-derived edges. A real edge always
+    // wins for a given pair (its explicit/custom weight is kept); same-group pairing only fills in
+    // where no real connection exists yet. Clicking one of these auto-linked lines still works via
+    // the normal edit flow (handlePplEdgeClick) and will persist it into relatedPeople as soon as a
+    // weight is set, "promoting" it from implicit to a real, editable connection.
+    var edges = pplRelatedEdges();
+    var seen = {};
+    edges.forEach(function(e){ seen[[e.fromId, e.toId].sort().join(":")] = true; });
+    var byGroup = {};
+    state.people.forEach(function(p){
+      var g = pplCachedNodeGroups[p.id];
+      if(!g) return;
+      if(!byGroup[g]) byGroup[g] = [];
+      byGroup[g].push(p.id);
+    });
+    Object.keys(byGroup).forEach(function(g){
+      var ids = byGroup[g];
+      for(var i=0;i<ids.length;i++){
+        for(var j=i+1;j<ids.length;j++){
+          var key = [ids[i], ids[j]].sort().join(":");
+          if(seen[key]) continue;
+          seen[key] = true;
+          edges.push({ fromId: ids[i], toId: ids[j], weight: 1 });
+        }
+      }
+    });
+    pplCachedEdges = edges;
   }
   function pplApplySpring(edge){
     var a = pplFindSimNode(edge.fromId), b = pplFindSimNode(edge.toId);
@@ -5296,7 +5333,13 @@
       var shape = pts.length === 2 ? wbCapsuleFromTwoPoints(pts[0], pts[1], WB_CLUSTER_PAD) : wbPadHull(wbConvexHull(pts), WB_CLUSTER_PAD);
       var pointsAttr = shape.map(function(p){ return p.x.toFixed(1) + "," + p.y.toFixed(1); }).join(" ");
       var color = pplCachedGroupColors[g] || "var(--text-faint)";
-      return '<polygon class="wb-cluster-hull" points="' + pointsAttr + '" style="fill:' + color + '; stroke:' + color + '; filter:url(#pplClusterBlur);"></polygon>';
+      // Large, low-opacity watermark-style label centered on the cluster's own points (not the
+      // padded hull shape — same center, simpler math) so the group name reads at a glance without
+      // competing visually with the node labels sitting on top of it.
+      var cx = pts.reduce(function(s, p){ return s + p.x; }, 0) / pts.length;
+      var cy = pts.reduce(function(s, p){ return s + p.y; }, 0) / pts.length;
+      return '<polygon class="wb-cluster-hull" points="' + pointsAttr + '" style="fill:' + color + '; stroke:' + color + '; filter:url(#pplClusterBlur);"></polygon>' +
+        '<text class="ppl-cluster-label" x="' + cx.toFixed(1) + '" y="' + cy.toFixed(1) + '">' + escapeHtml(g) + '</text>';
     }).join("");
   }
   // Each edge draws two overlapping lines: a thin visible one whose stroke-width scales with the
@@ -5366,13 +5409,8 @@
   // Creates/edits (weight given) or removes (weight null) the connection between two people,
   // writing the change into BOTH people's "related people" text field via pplUpsertRelatedEntry so
   // it's mutual and visible/editable from the person modal and table view too, not just the graph.
-  // Reuses savePersonField (see the People table view) for the actual save/rollback plumbing.
-  // The actual read-modify-write, with no cache rebuild/render of its own — pplSetConnection wraps
-  // this for a single pair (rebuild+render immediately after), while pplConnectAllInSameGroup calls
-  // it directly in a sequential loop and only rebuilds/renders once at the end. Sequential (always
-  // awaited one at a time, never Promise.all'd) is required, not just tidy — two connections sharing
-  // a person would otherwise race on that person's relatedPeople field and one write would clobber
-  // the other's read-before-write.
+  // Reuses savePersonField (see the People table view) for the actual save/rollback plumbing. No
+  // cache rebuild/render of its own — pplSetConnection wraps this and does that immediately after.
   async function pplWriteConnection(fromId, toId, weight){
     if(fromId === toId) return;
     var a = state.people.find(function(x){ return x.id === fromId; });
@@ -5387,40 +5425,6 @@
     await pplWriteConnection(fromId, toId, weight);
     pplRebuildGraphCache();
     renderPeopleGraphConnections();
-  }
-  // Bulk action (see #pplLinkGroupsBtn): connects every pair of people who share the same primary
-  // social group (pplNodeGroup) and aren't already linked, at the unknown/default weight — existing
-  // connections (even within the same group) are left untouched, so a manually-set weight never gets
-  // silently reset to the default just because two people also happen to share a group.
-  async function pplConnectAllInSameGroup(){
-    pplRebuildGraphCache();
-    var existing = {};
-    pplCachedEdges.forEach(function(e){ existing[[e.fromId, e.toId].sort().join(":")] = true; });
-    var byGroup = {};
-    state.people.forEach(function(p){
-      var g = pplCachedNodeGroups[p.id];
-      if(!g) return;
-      if(!byGroup[g]) byGroup[g] = [];
-      byGroup[g].push(p.id);
-    });
-    var pairs = [];
-    Object.keys(byGroup).forEach(function(g){
-      var ids = byGroup[g];
-      for(var i=0;i<ids.length;i++){
-        for(var j=i+1;j<ids.length;j++){
-          var key = [ids[i], ids[j]].sort().join(":");
-          if(!existing[key]) pairs.push([ids[i], ids[j]]);
-        }
-      }
-    });
-    if(!pairs.length){ toast("Everyone who shares a social group is already connected."); return; }
-    if(!confirm("Connect " + pairs.length + " pair" + (pairs.length===1?"":"s") + " of people who share a social group but aren't linked yet?")) return;
-    for(var k=0;k<pairs.length;k++){
-      await pplWriteConnection(pairs[k][0], pairs[k][1], 1);
-    }
-    pplRebuildGraphCache();
-    renderPeopleGraphConnections();
-    toast("Connected " + pairs.length + " pair" + (pairs.length===1?"":"s") + ".");
   }
   // Weight is unknown/default (1, stored as a plain unlabeled name — see pplUpsertRelatedEntry)
   // unless the user actually types a number in — leaving the prompt blank never deletes anything by
@@ -5605,10 +5609,6 @@
       if(!hit) return;
       handlePplEdgeClick(hit.dataset.from, hit.dataset.to, Number(hit.dataset.weight));
     });
-    document.getElementById("pplLinkGroupsBtn").addEventListener("click", function(){
-      pplConnectAllInSameGroup();
-    });
-
     wirePeopleGraphDrag();
   }
   initPeopleGraph();
@@ -5743,6 +5743,7 @@
     document.getElementById("peopleGraphPanel").style.display = view === "graph" ? "" : "none";
     document.getElementById("peopleTablePanel").style.display = view === "table" ? "" : "none";
     document.getElementById("peopleFilterRow").style.display = view === "graph" ? "none" : "";
+    document.getElementById("peopleSection").classList.toggle("ppl-fullscreen-graph", view === "graph");
     pplRefreshSocialGroupDatalist();
     if(view === "graph"){ activatePeopleGraph(); return; }
     if(view === "table"){ renderPeopleTable(list); return; }
