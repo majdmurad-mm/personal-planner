@@ -4377,14 +4377,24 @@
     }
   }
 
-  // A goal/project's own uploaded icon, or a habit's built-in vector icon, renders as a symbol on
-  // top of the node's dot (see .wb-goal-node.has-icon in CSS, which lightens the dot to its area's
-  // -bg tint so the full-saturation icon reads clearly against it — the same light-bg/saturated-icon
-  // pairing used everywhere else icons appear in this app, e.g. matrix tiles). Areas keep their own
-  // existing icon-only treatment; actions have no icon field at all.
+  // Habits, projects, and actions each get one fixed symbol on the Graph regardless of the item's own
+  // icon — a repeat glyph (habits are recurring), a plain square (projects), and a play triangle
+  // (actions) — rather than every node showing its own distinct icon. Built the same way
+  // habitIconDataUri() builds a library icon's mask source (data:image/svg+xml URI, alpha-only —
+  // color comes from iconMaskHtml's background-color, not the SVG itself).
+  var WB_FIXED_ICON_URIS = {
+    habit: "data:image/svg+xml," + encodeURIComponent('<svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>'),
+    project: "data:image/svg+xml," + encodeURIComponent('<svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>'),
+    action: "data:image/svg+xml," + encodeURIComponent('<svg viewBox="0 0 24 24" fill="#000" stroke="none"><path d="M7 4v16l13-8z"/></svg>')
+  };
+  // A goal's own uploaded icon (or a built-in vector icon picked from the same library) renders as a
+  // symbol on top of the node's dot (see .wb-goal-node.has-icon in CSS, which lightens the dot to its
+  // area's -bg tint so the full-saturation icon reads clearly against it — the same light-bg/
+  // saturated-icon pairing used everywhere else icons appear in this app, e.g. matrix tiles). Areas
+  // keep their own existing icon-only treatment.
   function wbNodeIconDataUri(type, item){
-    if(type === "goal" || type === "project") return resolveEntityIconDataUri(item.icon);
-    if(type === "habit") return item.icon ? habitIconDataUri(item.icon) : null;
+    if(type === "habit" || type === "project" || type === "action") return WB_FIXED_ICON_URIS[type];
+    if(type === "goal") return resolveEntityIconDataUri(item.icon);
     return null;
   }
   function wbNodeHtml(type, item, category){
