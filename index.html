@@ -1217,7 +1217,8 @@
   /* The hero hosts the (later) Three.js canvas as an absolutely-positioned backdrop; the dashboard
      core is a DOM overlay on top of it — sharp text, zero-cost accessibility, and it IS the page
      when WebGL is unavailable. Tiles are real buttons: the 3D layer only ever mirrors them. */
-  .home-hero{ position:relative; border:1px solid var(--line); border-radius:12px; background:var(--bg-raised); overflow:hidden; min-height:180px; display:flex; align-items:center; justify-content:center; margin-bottom:18px; }
+  .home-hero{ position:relative; border:1px solid var(--line); border-radius:12px; background:var(--bg-raised); overflow:hidden; min-height:300px; display:flex; align-items:center; justify-content:center; margin-bottom:18px; }
+  @media (max-width:700px){ .home-hero{ min-height:210px; } }
   #homeCanvas{ position:absolute; inset:0; width:100%; height:100%; display:block; }
   .home-hero-core{ position:relative; text-align:center; padding:28px 16px; pointer-events:none; }
   .home-clock-time{ font-family:var(--mono); font-size:52px; font-weight:700; letter-spacing:2px; line-height:1; }
@@ -3113,6 +3114,7 @@
     ALL_SECTION_IDS.forEach(function(id){
       document.getElementById(id).style.display = (id === name + "Section") ? "" : "none";
     });
+    homeSceneSetActive(name === "home");
     if(name === "today"){ renderToday(); todayApplyZoomWidth(); }
     else if(name === "timeline") activateTimeline();
     else if(name === "location") activateLocation();
@@ -3146,6 +3148,9 @@
     return { date: out.year + "-" + out.month + "-" + out.day, hour: Number(out.hour) };
   }
   function renderHomeDashboard(){
+    // First paint happens post-auth with the section visible and laid out — the right moment to
+    // spin up the (lazy, guarded) 3D layer; ensureHomeScene() is a no-op ever after.
+    ensureHomeScene();
     var now = new Date();
     document.getElementById("homeClockTime").textContent = now.toLocaleTimeString(undefined, { hour:"2-digit", minute:"2-digit", second:"2-digit" });
     document.getElementById("homeClockDate").textContent = now.toLocaleDateString(undefined, { weekday:"long", month:"long", day:"numeric", year:"numeric" });
@@ -3169,6 +3174,219 @@
   // cost while elsewhere is a single string compare — simpler than start/stop bookkeeping in
   // every showSection transition.
   setInterval(function(){ if(activeSection === "home") renderHomeDashboard(); }, 1000);
+
+  /* ---------------- Home Three.js constellation ---------------- */
+  // A decorative-but-interactive 3D layer behind the dashboard core: one floating glass panel per
+  // destination orbiting a glowing wireframe core, plus a starfield for depth. Strictly an
+  // enhancement — the DOM tile grid below stays the accessible source of truth, and this whole
+  // block no-ops (leaving the plain page) when WebGL is missing, reduced motion is requested, or
+  // the CDN import fails. Three.js loads lazily via dynamic import the first time the home page
+  // is actually on screen, same pattern as the transformers.js speech model.
+  var homeScene3d = null, homeSceneIniting = false, homeSceneFailed = false;
+  // One panel per DOM tile below (data-go matches); capture is the grouped Agent+Notes panel and
+  // shows both glyphs. Colors come from the app's CSS custom properties at init time so the scene
+  // always matches the current theme + area palette.
+  var HOME_PANEL_DEFS = [
+    { go:"today", glyphs:"◷", label:"today", colorVar:"--accent" },
+    { go:"planner", glyphs:"▤", label:"planner", colorVar:"--cat-career" },
+    { go:"agent", glyphs:"◈ ✎", label:"capture", colorVar:"--violet" },
+    { go:"tracker", glyphs:"▥", label:"tracker", colorVar:"--cat-growth" },
+    { go:"timeline", glyphs:"↔", label:"timeline", colorVar:"--cat-finance" },
+    { go:"people", glyphs:"☺", label:"people", colorVar:"--cat-relationships" },
+    { go:"location", glyphs:"⚲", label:"location", colorVar:"--cat-sol" }
+  ];
+  function homeWebGLUsable(){
+    if(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return false;
+    try{
+      var c = document.createElement("canvas");
+      return !!(window.WebGLRenderingContext && (c.getContext("webgl2") || c.getContext("webgl")));
+    } catch(err){ return false; }
+  }
+  function cssVarColor(name){
+    var v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return v || "#7aa2ff";
+  }
+  // Glyph + label drawn onto a canvas texture — crisper and far cheaper than font/geometry text,
+  // and it inherits the app's mono typeface for free.
+  function homeGlyphTexture(THREE, def, color){
+    var cv = document.createElement("canvas");
+    cv.width = 256; cv.height = 256;
+    var ctx = cv.getContext("2d");
+    ctx.fillStyle = color;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = '104px "IBM Plex Mono", monospace';
+    ctx.fillText(def.glyphs, 128, 108);
+    ctx.font = '600 30px "IBM Plex Mono", monospace';
+    ctx.globalAlpha = 0.9;
+    ctx.fillText(def.label, 128, 204);
+    var tex = new THREE.CanvasTexture(cv);
+    tex.anisotropy = 4;
+    return tex;
+  }
+  function ensureHomeScene(){
+    if(homeScene3d || homeSceneIniting || homeSceneFailed) return;
+    if(!homeWebGLUsable()){ homeSceneFailed = true; return; }
+    homeSceneIniting = true;
+    initHomeScene().catch(function(err){
+      homeSceneFailed = true;
+      console.warn("home 3D scene unavailable:", err.message);
+    }).finally(function(){ homeSceneIniting = false; });
+  }
+  async function initHomeScene(){
+    var THREE = await import("https://cdn.jsdelivr.net/npm/three@0.170.0/+esm");
+    var hero = document.querySelector(".home-hero");
+    var canvas = document.getElementById("homeCanvas");
+    var w = hero.clientWidth || 800, h = hero.clientHeight || 300;
+    var renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(w, h, false);
+    var scene = new THREE.Scene();
+    var camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 100);
+    camera.position.set(0, 0, 14);
+
+    var accent = new THREE.Color(cssVarColor("--accent"));
+
+    // Central core: a slowly-tumbling wireframe icosahedron + a point halo, sitting visually
+    // behind the DOM clock overlay so the time reads as the heart of the system.
+    var core = new THREE.Group();
+    core.add(new THREE.LineSegments(
+      new THREE.WireframeGeometry(new THREE.IcosahedronGeometry(1.7, 1)),
+      new THREE.LineBasicMaterial({ color: accent, transparent: true, opacity: 0.35 })
+    ));
+    var haloCount = 90, haloPos = new Float32Array(haloCount * 3);
+    for(var i = 0; i < haloCount; i++){
+      var a = Math.random() * Math.PI * 2, r = 2.1 + Math.random() * 0.7;
+      haloPos[i*3] = Math.cos(a) * r;
+      haloPos[i*3+1] = Math.sin(a) * r * 0.55;
+      haloPos[i*3+2] = (Math.random() - 0.5) * 1.2;
+    }
+    var haloGeo = new THREE.BufferGeometry();
+    haloGeo.setAttribute("position", new THREE.BufferAttribute(haloPos, 3));
+    core.add(new THREE.Points(haloGeo, new THREE.PointsMaterial({ color: accent, size: 0.05, transparent: true, opacity: 0.7 })));
+    scene.add(core);
+
+    // Background starfield for depth.
+    var starCount = 220, starPos = new Float32Array(starCount * 3);
+    for(var s = 0; s < starCount; s++){
+      starPos[s*3] = (Math.random() - 0.5) * 34;
+      starPos[s*3+1] = (Math.random() - 0.5) * 12;
+      starPos[s*3+2] = -3 - Math.random() * 10;
+    }
+    var starGeo = new THREE.BufferGeometry();
+    starGeo.setAttribute("position", new THREE.BufferAttribute(starPos, 3));
+    scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: new THREE.Color(cssVarColor("--text-dim")), size: 0.04, transparent: true, opacity: 0.55 })));
+
+    // One orbiting glass panel per destination: a translucent tinted plate, a neon edge outline,
+    // and the glyph texture floated just in front. Billboarded toward the camera every frame.
+    var panels = HOME_PANEL_DEFS.map(function(def, idx){
+      var color = new THREE.Color(cssVarColor(def.colorVar));
+      var group = new THREE.Group();
+      var plateGeo = new THREE.PlaneGeometry(1.9, 1.9);
+      group.add(new THREE.Mesh(plateGeo, new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 0.14, side: THREE.DoubleSide, depthWrite: false })));
+      var edges = new THREE.LineSegments(new THREE.EdgesGeometry(plateGeo), new THREE.LineBasicMaterial({ color: color, transparent: true, opacity: 0.85 }));
+      group.add(edges);
+      var glyph = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 1.7), new THREE.MeshBasicMaterial({ map: homeGlyphTexture(THREE, def, "#" + color.getHexString()), transparent: true, depthWrite: false }));
+      glyph.position.z = 0.03;
+      group.add(glyph);
+      scene.add(group);
+      return { def: def, group: group, phase: idx / HOME_PANEL_DEFS.length * Math.PI * 2, targetScale: 1 };
+    });
+
+    // Pointer parallax + raycast hover/click on the panels. The canvas sits behind the DOM overlay
+    // (which is pointer-events:none), so it receives the hero's pointer events directly.
+    var pointer = { x: 0, y: 0 }, raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2(), hovered = null;
+    function pickPanel(e){
+      var rect = canvas.getBoundingClientRect();
+      ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(ndc, camera);
+      var groups = panels.map(function(p){ return p.group; });
+      var hit = raycaster.intersectObjects(groups, true)[0];
+      if(!hit) return null;
+      var obj = hit.object;
+      while(obj && groups.indexOf(obj) === -1) obj = obj.parent;
+      return panels.find(function(p){ return p.group === obj; }) || null;
+    }
+    function onMove(e){
+      var rect = canvas.getBoundingClientRect();
+      pointer.x = ((e.clientX - rect.left) / rect.width - 0.5) * 2;
+      pointer.y = ((e.clientY - rect.top) / rect.height - 0.5) * 2;
+      hovered = pickPanel(e);
+      canvas.style.cursor = hovered ? "pointer" : "";
+    }
+    function onClick(e){
+      var p = pickPanel(e);
+      if(p) showSection(p.def.go);
+    }
+    canvas.addEventListener("pointermove", onMove);
+    canvas.addEventListener("click", onClick);
+    // Hovering a DOM tile below pulses its 3D counterpart — ties the two layers together.
+    function onTileOver(e){
+      var tile = e.target.closest("[data-go]");
+      panels.forEach(function(p){ p.domHot = !!(tile && (tile.dataset.go === p.def.go || (p.def.go === "agent" && tile.dataset.go === "journal"))); });
+    }
+    var homeGrid = document.getElementById("homeGrid");
+    homeGrid.addEventListener("mouseover", onTileOver);
+    homeGrid.addEventListener("mouseout", function(){ panels.forEach(function(p){ p.domHot = false; }); });
+
+    function onResize(){
+      var nw = hero.clientWidth || w, nh = hero.clientHeight || h;
+      renderer.setSize(nw, nh, false);
+      camera.aspect = nw / nh;
+      camera.updateProjectionMatrix();
+    }
+    window.addEventListener("resize", onResize);
+
+    var t0 = performance.now();
+    function frame(){
+      var t = (performance.now() - t0) / 1000;
+      core.rotation.y = t * 0.15;
+      core.rotation.x = Math.sin(t * 0.1) * 0.2;
+      panels.forEach(function(p){
+        var a = p.phase + t * 0.07;
+        p.group.position.set(Math.cos(a) * 7.4, Math.sin(a) * 2.1 + Math.sin(t * 0.8 + p.phase * 3) * 0.12, Math.sin(a) * 1.6);
+        p.group.lookAt(camera.position);
+        var want = (hovered === p || p.domHot) ? 1.16 : 1;
+        p.targetScale += (want - p.targetScale) * 0.12;
+        p.group.scale.setScalar(p.targetScale);
+      });
+      camera.position.x += (pointer.x * 1.1 - camera.position.x) * 0.05;
+      camera.position.y += (-pointer.y * 0.6 - camera.position.y) * 0.05;
+      camera.lookAt(0, 0, 0);
+      renderer.render(scene, camera);
+    }
+    renderer.setAnimationLoop(frame);
+
+    homeScene3d = {
+      setRunning: function(on){ renderer.setAnimationLoop(on ? frame : null); },
+      dispose: function(){
+        renderer.setAnimationLoop(null);
+        canvas.removeEventListener("pointermove", onMove);
+        canvas.removeEventListener("click", onClick);
+        window.removeEventListener("resize", onResize);
+        scene.traverse(function(o){
+          if(o.geometry) o.geometry.dispose();
+          if(o.material){
+            if(o.material.map) o.material.map.dispose();
+            o.material.dispose();
+          }
+        });
+        renderer.dispose();
+      }
+    };
+  }
+  // Pause the loop whenever home isn't what's on screen (hooked from showSection) or the tab is
+  // hidden — a running loop on an invisible canvas is pure battery drain.
+  function homeSceneSetActive(on){ if(homeScene3d) homeScene3d.setRunning(on); }
+  document.addEventListener("visibilitychange", function(){
+    homeSceneSetActive(!document.hidden && activeSection === "home");
+  });
+  // Theme flips change every CSS-var-derived color baked into the scene's materials/textures —
+  // cheapest correct answer is a full rebuild (the next renderHomeDashboard tick re-inits).
+  document.getElementById("themeToggleBtn").addEventListener("click", function(){
+    if(homeScene3d){ homeScene3d.dispose(); homeScene3d = null; homeSceneFailed = false; }
+  });
 
   var addBtn = document.getElementById("panelAddBtn");
   var plannerH1 = document.getElementById("plannerH1");
