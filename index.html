@@ -875,6 +875,21 @@
   .ppl-node.Partner{ background:var(--violet); }
   .ppl-node.Other{ background:var(--cat-sol); }
   .ppl-node-label{ position:absolute; left:21px; top:50%; transform:translateY(-50%); font-family:var(--mono); font-size:11px; font-weight:600; color:var(--text); white-space:nowrap; pointer-events:none; }
+  /* The central "you" node (see #pplSunNode) — deliberately not a .ppl-node: bigger than every
+     person node, fixed at the world center, not draggable/editable/connectable. Every person's pull
+     toward it (pplTickPhysics' center-pull step) is scaled by their own contact score instead of a
+     single uniform strength, so well-contacted people sit closer to the sun. */
+  .ppl-sun-node{ position:absolute; width:52px; height:52px; margin-left:-26px; margin-top:-26px; border-radius:50%;
+    background:radial-gradient(circle at 38% 35%, #fff8d6 0%, #ffd651 32%, #ffa733 62%, #ff7a1a 100%);
+    box-shadow:0 0 22px 8px rgba(255,170,40,0.55), 0 0 54px 22px rgba(255,140,20,0.28);
+    display:flex; align-items:center; justify-content:center; z-index:2; cursor:default; user-select:none;
+    animation:pplSunPulse 4s ease-in-out infinite; }
+  .ppl-sun-node::before{ content:""; position:absolute; inset:-14px; border-radius:50%;
+    background:repeating-conic-gradient(rgba(255,190,60,0.35) 0deg 6deg, transparent 6deg 18deg);
+    z-index:-1; opacity:0.6; animation:pplSunSpin 40s linear infinite; }
+  .ppl-sun-label{ font-family:var(--mono); font-size:10.5px; font-weight:700; color:#3a2405; text-shadow:0 1px 1px rgba(255,255,255,0.4); pointer-events:none; }
+  @keyframes pplSunPulse{ 0%,100%{ box-shadow:0 0 22px 8px rgba(255,170,40,0.55), 0 0 54px 22px rgba(255,140,20,0.28); } 50%{ box-shadow:0 0 30px 12px rgba(255,170,40,0.7), 0 0 70px 30px rgba(255,140,20,0.38); } }
+  @keyframes pplSunSpin{ from{ transform:rotate(0deg); } to{ transform:rotate(360deg); } }
   /* Connect mode: toggled via #pplConnectModeBtn (see initPeopleGraph/handlePplConnectNodeClick).
      While active, clicking a node selects it as the pending "from" end instead of dragging it. */
   #pplConnectModeBtn.ppl-connect-active{ background:var(--accent); color:var(--bg); border-color:var(--accent); }
@@ -1591,8 +1606,8 @@
               <button class="cal-nav-btn" id="pplZoomInBtn" type="button" aria-label="Zoom in">+</button>
               <button class="btn" id="pplZoomResetBtn" type="button">reset view</button>
             </div>
-            <div class="wb-force-group" title="How strongly people pull toward the center">
-              <span class="wb-force-label">center pull</span>
+            <div class="wb-force-group" title="How strongly people pull toward you (scaled per-person by their contact score)">
+              <span class="wb-force-label">pull to you</span>
               <input type="range" class="wb-force-slider" id="pplCenterForceSlider" min="0" max="0.3" step="0.001" value="0.02">
             </div>
             <button class="btn" id="pplConnectModeBtn" type="button" title="Toggle connect mode: click one person then another to link them">🔗 connect</button>
@@ -1609,6 +1624,12 @@
               <g id="pplClusterLayer"></g>
               <g id="pplConnLayer"></g>
             </svg>
+            <!-- Fixed at the world center (positioned by JS in initPeopleGraph, not simulated —
+                 see pplTickPhysics' center-pull step) — not a person, so it's a plain static element
+                 rather than a .ppl-node (keeps it out of drag/connect-mode/edit click handling). -->
+            <div class="ppl-sun-node" id="pplSunNode" title="You — everyone's pull toward you is set by their contact score">
+              <span class="ppl-sun-label">You</span>
+            </div>
             <div class="wb-overlay" id="pplOverlay"></div>
           </div>
         </div>
@@ -5120,6 +5141,12 @@
   var pplCachedEdges = [];
   var pplCachedNodeGroups = {};
   var pplCachedGroupColors = {};
+  // Per-person multiplier on the center-pull force (see pplTickPhysics), derived from contact score
+  // (0-4 scale, same as the person modal's "contact score" field) rather than one uniform strength
+  // for everyone — score 2 (the midpoint) reproduces the old uniform pull exactly, 4 pulls twice as
+  // hard, 0 doesn't pull at all. No score set at all defaults to the same neutral 1x as score 2, so
+  // people without a contact score keep the old "don't drift off forever" anchoring behavior.
+  var pplCachedContactPull = {};
   function pplRebuildGraphCache(){
     pplCachedEdges = pplRelatedEdges();
     pplCachedNodeGroups = {};
@@ -5129,6 +5156,10 @@
     var sortedGroups = Object.keys(groups).sort();
     pplCachedGroupColors = {};
     sortedGroups.forEach(function(g, i){ pplCachedGroupColors[g] = PPL_GROUP_PALETTE[i % PPL_GROUP_PALETTE.length]; });
+    pplCachedContactPull = {};
+    state.people.forEach(function(p){
+      pplCachedContactPull[p.id] = p.contactScore != null ? Math.max(0, p.contactScore) / 2 : 1;
+    });
   }
   function pplApplySpring(edge){
     var a = pplFindSimNode(edge.fromId), b = pplFindSimNode(edge.toId);
@@ -5169,13 +5200,15 @@
       }
     }
     pplCachedEdges.forEach(pplApplySpring);
-    // Every node gets a mild pull toward the world center — there's no area-hub structure here to
-    // anchor clusters instead, so without this a person with no related-people matches would just
-    // drift outward indefinitely with nothing pulling them back.
+    // Every node gets a pull toward the world center — where the "you" sun node sits (see
+    // #pplSunNode) — scaled per-person by pplCachedContactPull (contact score), so how close
+    // someone sits to the sun reflects how in-touch you are with them, not a uniform strength.
     nodes.forEach(function(n){
       if(n.fixed){ n.vx = 0; n.vy = 0; return; }
-      n.vx += (PPL_CENTER_X - n.x) * PPL_CENTER_K * pplAlpha;
-      n.vy += (PPL_CENTER_Y - n.y) * PPL_CENTER_K * pplAlpha;
+      var pullMult = pplCachedContactPull[n.id];
+      if(pullMult == null) pullMult = 1;
+      n.vx += (PPL_CENTER_X - n.x) * PPL_CENTER_K * pullMult * pplAlpha;
+      n.vy += (PPL_CENTER_Y - n.y) * PPL_CENTER_K * pullMult * pplAlpha;
       n.vx *= PPL_DAMPING; n.vy *= PPL_DAMPING;
       n.x += n.vx; n.y += n.vy;
     });
@@ -5417,9 +5450,15 @@
     pplWorldEl.style.width = PPL_WORLD_W + "px";
     pplWorldEl.style.height = PPL_WORLD_H + "px";
 
+    var pplSunEl = document.getElementById("pplSunNode");
+    if(pplSunEl){
+      pplSunEl.style.left = PPL_CENTER_X + "px";
+      pplSunEl.style.top = PPL_CENTER_Y + "px";
+    }
+
     var pplPanning = false, pplPanPointerId = null, pplPanStartClientX, pplPanStartClientY, pplPanStartX, pplPanStartY;
     pplWrapEl.addEventListener("pointerdown", function(e){
-      if(e.target.closest(".wb-toolbar-float")) return;
+      if(e.target.closest(".wb-toolbar-float") || e.target.closest("#pplSunNode")) return;
       if(e.button === 1 || (e.button === 0 && !e.target.closest(".ppl-node"))){
         e.preventDefault();
         e.stopPropagation();
