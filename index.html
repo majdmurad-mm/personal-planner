@@ -890,6 +890,10 @@
   .ppl-sun-label{ font-family:var(--mono); font-size:10.5px; font-weight:700; color:#3a2405; text-shadow:0 1px 1px rgba(255,255,255,0.4); pointer-events:none; }
   @keyframes pplSunPulse{ 0%,100%{ box-shadow:0 0 22px 8px rgba(255,170,40,0.55), 0 0 54px 22px rgba(255,140,20,0.28); } 50%{ box-shadow:0 0 30px 12px rgba(255,170,40,0.7), 0 0 70px 30px rgba(255,140,20,0.38); } }
   @keyframes pplSunSpin{ from{ transform:rotate(0deg); } to{ transform:rotate(360deg); } }
+  /* Faint ray from the sun to every person (see renderPeopleGraphSunLines) — purely ambient, not a
+     real weighted connection like .wb-conn-line, so it's undashed-thin, non-interactive, and its
+     opacity is the only thing that varies (by contact-score pull strength, see pplCachedContactPull). */
+  .ppl-sun-line{ stroke:#ffa733; stroke-width:1; stroke-dasharray:2 4; pointer-events:none; }
   /* Connect mode: toggled via #pplConnectModeBtn (see initPeopleGraph/handlePplConnectNodeClick).
      While active, clicking a node selects it as the pending "from" end instead of dragging it. */
   #pplConnectModeBtn.ppl-connect-active{ background:var(--accent); color:var(--bg); border-color:var(--accent); }
@@ -1621,6 +1625,7 @@
                   <feGaussianBlur stdDeviation="14"></feGaussianBlur>
                 </filter>
               </defs>
+              <g id="pplSunLinesLayer"></g>
               <g id="pplClusterLayer"></g>
               <g id="pplConnLayer"></g>
             </svg>
@@ -5043,6 +5048,10 @@
   var pplSimNodes = []; // { id, x, y, vx, vy, fixed }
   var PPL_NODE_R = 8.4; // matches the main Graph's goal-node weight (WB_SIZE_UNIT * 0.7)
   var PPL_REPEL = 9000, PPL_LINK_DIST = 130, PPL_LINK_K = 0.02, PPL_CENTER_K = 0.02, PPL_DAMPING = 0.82, PPL_ALPHA_DECAY = 0.985;
+  // Knocks the "pull to you" slider's effect down to a tenth of its raw value — the slider itself
+  // keeps its existing range/length (see #pplCenterForceSlider, still min=0 max=0.3), just each
+  // value on it now produces a much subtler pull than before.
+  var PPL_CENTER_EFFECT_SCALE = 0.1;
   var pplAlpha = 0, pplSimRunning = false;
   // Connect mode: toggled by #pplConnectModeBtn (see initPeopleGraph). While on, a node click is
   // handled by handlePplConnectNodeClick instead of starting a drag — see wirePeopleGraphDrag.
@@ -5207,8 +5216,8 @@
       if(n.fixed){ n.vx = 0; n.vy = 0; return; }
       var pullMult = pplCachedContactPull[n.id];
       if(pullMult == null) pullMult = 1;
-      n.vx += (PPL_CENTER_X - n.x) * PPL_CENTER_K * pullMult * pplAlpha;
-      n.vy += (PPL_CENTER_Y - n.y) * PPL_CENTER_K * pullMult * pplAlpha;
+      n.vx += (PPL_CENTER_X - n.x) * PPL_CENTER_K * PPL_CENTER_EFFECT_SCALE * pullMult * pplAlpha;
+      n.vy += (PPL_CENTER_Y - n.y) * PPL_CENTER_K * PPL_CENTER_EFFECT_SCALE * pullMult * pplAlpha;
       n.vx *= PPL_DAMPING; n.vy *= PPL_DAMPING;
       n.x += n.vx; n.y += n.vy;
     });
@@ -5296,6 +5305,22 @@
   function pplEdgeStrokeWidth(weight){
     return Math.max(1, Math.min(5, 1.5 + ((weight || 1) - 1) * 0.7));
   }
+  // Faint ambient ray from the sun (#pplSunNode) to every person — purely visual, not a stored
+  // connection like pplCachedEdges, so it's recomputed straight from pplSimNodes each render rather
+  // than cached. Opacity leans on the same contact-score multiplier the center-pull physics use
+  // (pplCachedContactPull), so a more in-touch person's ray reads slightly brighter.
+  function renderPeopleGraphSunLines(){
+    var layer = document.getElementById("pplSunLinesLayer");
+    if(!layer) return;
+    layer.innerHTML = pplSimNodes.map(function(n){
+      var c = pplNodeCenter(n.id);
+      if(!c) return "";
+      var mult = pplCachedContactPull[n.id];
+      if(mult == null) mult = 1;
+      var opacity = Math.max(0.08, Math.min(0.6, 0.12 + mult * 0.12));
+      return '<line class="ppl-sun-line" style="opacity:' + opacity + ';" x1="' + PPL_CENTER_X + '" y1="' + PPL_CENTER_Y + '" x2="' + c.x + '" y2="' + c.y + '"></line>';
+    }).join("");
+  }
   function renderPeopleGraphConnections(){
     var layer = document.getElementById("pplConnLayer");
     if(!layer) return;
@@ -5308,6 +5333,7 @@
       return '<line class="ppl-conn-hit"' + dataAttrs + coords + '></line>' +
         '<line class="wb-conn-line" style="stroke-width:' + pplEdgeStrokeWidth(w) + ';"' + coords + '></line>';
     }).join("");
+    renderPeopleGraphSunLines();
     pplRenderClusters();
   }
   function applyPplTransform(){
