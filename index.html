@@ -2688,7 +2688,8 @@
     verified: "verified status", like_score: "like score", contact_score: "contact score", year_met: "year met",
     relationship_status: "relationship status", social_group: "social group", personality_type: "personality type",
     location: "location", related_people: "related people", planets: "people group",
-    home_lat: "home location", home_lng: "home location"
+    home_lat: "home location", home_lng: "home location",
+    transcript: "recording transcript", duration_seconds: "recording length", waveform: "recording waveform"
   };
   function warnDroppedFields(dropped){
     if(!dropped || !dropped.length) return;
@@ -7005,11 +7006,12 @@
         var path = (currentUser ? currentUser.id : "anon") + "/" + Date.now() + "." + ext;
         var upload = await sb.storage.from("notes-audio").upload(path, blob, { contentType: mimeType });
         if(upload.error) throw new Error(upload.error.message);
-        var recRes = await sb.from("recordings").insert({ storage_path: path, duration_seconds: durationSeconds, waveform: waveform }).select().single();
+        var recRes = await safeWrite(function(p){ return sb.from("recordings").insert(p).select().single(); }, { storage_path: path, duration_seconds: durationSeconds, waveform: waveform });
         if(recRes.error) throw new Error(recRes.error.message);
         var rec = recRes.data;
         journalPendingRecording = { id: rec.id, storagePath: rec.storage_path, durationSeconds: rec.duration_seconds, waveform: rec.waveform, createdAt: rec.created_at };
         state.recordings.push(journalPendingRecording);
+        warnDroppedFields(recRes.droppedFields);
         if(statusEl) statusEl.textContent = "recording saved — transcribing…";
       } catch(err){
         if(statusEl) statusEl.textContent = "";
@@ -7028,8 +7030,9 @@
           // saved (composer text cleared, tab closed, etc.), so without this the transcript would
           // otherwise vanish the moment that unsaved text is gone, even though the audio survives.
           journalPendingRecording.transcript = text;
-          var updateRes = await sb.from("recordings").update({ transcript: text }).eq("id", rec.id);
+          var updateRes = await safeWrite(function(p){ return sb.from("recordings").update(p).eq("id", rec.id).select().single(); }, { transcript: text });
           if(updateRes.error) console.error(updateRes.error);
+          else warnDroppedFields(updateRes.droppedFields);
         } else {
           toast("Recording saved, but couldn't make out any speech to transcribe — you can still type it in.");
         }
@@ -7142,10 +7145,11 @@
       var wavBase64 = await blobToWavBase64(blob);
       var text = await transcribeAudioViaGemini(wavBase64);
       if(!text){ toast("Couldn't make out any speech in that recording."); return; }
-      var updateRes = await sb.from("recordings").update({ transcript: text }).eq("id", id);
+      var updateRes = await safeWrite(function(p){ return sb.from("recordings").update(p).eq("id", id).select().single(); }, { transcript: text });
       if(updateRes.error) throw new Error(updateRes.error.message);
       rec.transcript = text;
-      toast("Transcript saved.");
+      if(updateRes.droppedFields && updateRes.droppedFields.length) warnDroppedFields(updateRes.droppedFields);
+      else toast("Transcript saved.");
     } catch(err){
       toast(err.message === "no_api_key" ? 'No Gemini API key set yet — click "api key" in the agent tab to add one.' : ("Transcription failed: " + err.message));
     } finally {
