@@ -5051,14 +5051,13 @@
     return edges;
   }
   // Area-style grouping for the cluster hulls (see pplRenderClusters) and the extra between-group
-  // repulsion below — mirrors the main Graph's area clustering (wbRenderClusters/WB_AREA_PUSH). The
-  // underlying field is still called "planets" (the DB column/CSV source), but it's labeled "people
-  // group" everywhere user-facing — open-ended/data-driven text (the CSV's own Notion group tags), not
-  // a fixed CATEGORIES enum, and a person can list several ("Family, Friends") — the FIRST one listed
-  // is treated as their primary group for clustering purposes, same "first wins" rule pplNodeGroup's
-  // caller relies on. Colors are assigned dynamically (cycling a fixed palette in alphabetical group
-  // order) since there's no pre-themed --cat-* variable for an arbitrary group name the way there is
-  // for the fixed areas.
+  // repulsion below — mirrors the main Graph's area clustering (wbRenderClusters/WB_AREA_PUSH). Driven
+  // by the "social group" field (social_group column, e.g. "Discord, Syria") rather than "people group"
+  // (planets) — open-ended/data-driven text, not a fixed CATEGORIES enum, and a person can list several
+  // ("Discord, Syria") — the FIRST one listed is treated as their primary group for clustering purposes,
+  // same "first wins" rule pplNodeGroup's caller relies on. Colors are assigned dynamically (cycling a
+  // fixed palette in alphabetical group order) since there's no pre-themed --cat-* variable for an
+  // arbitrary group name the way there is for the fixed areas.
   var PPL_GROUP_PALETTE = ["#4ADE80", "#5FA8FF", "#F15A22", "#A78BFA", "#FDE047", "#FB7185", "#2DD4BF", "#FB923C"];
   var PPL_GROUP_PUSH = 3000; // mirrors WB_AREA_PUSH
   // Extra attraction between every pair of same-group nodes (not just ones with an explicit
@@ -5069,8 +5068,8 @@
   // has 435 pairs) rather than just the handful of explicit edges a person actually lists.
   var PPL_GROUP_PULL_K = 0.002;
   function pplNodeGroup(p){
-    if(!p.planets) return null;
-    var first = p.planets.split(",")[0].trim();
+    if(!p.socialGroup) return null;
+    var first = p.socialGroup.split(",")[0].trim();
     return first || null;
   }
   // Cached the same way wbRebuildGraphCache() caches the main Graph's edges — pure function of state,
@@ -5101,7 +5100,7 @@
   }
   function pplTickPhysics(){
     var nodes = pplSimNodes;
-    // Each node's primary people group, from the cache (not recomputed per tick) — used below to add
+    // Each node's primary social group, from the cache (not recomputed per tick) — used below to add
     // a small extra push between nodes from *different* groups, on top of the base repulsion every
     // pair already gets, reinforcing the grouping the cluster hulls also show (mirrors the main
     // Graph's area-vs-area push, see WB_AREA_PUSH).
@@ -5192,7 +5191,7 @@
     if(!n) return null;
     return { x: n.x + PPL_NODE_R, y: n.y + PPL_NODE_R };
   }
-  // Groups every node by its primary people group and draws a soft blurred hull behind that group —
+  // Groups every node by its primary social group and draws a soft blurred hull behind that group —
   // the exact same shape logic the main Graph's wbRenderClusters uses (wbConvexHull/wbPadHull/
   // wbCapsuleFromTwoPoints/WB_CLUSTER_PAD are all generic geometry, not area-specific, so reused
   // directly here rather than duplicated). Single-node "clusters" get no shape (a hull around one
