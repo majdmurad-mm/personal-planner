@@ -1713,6 +1713,11 @@
           <p class="subhead">A running log — reflections, notes, whatever's on your mind that day.</p>
         </div>
       </div>
+      <div class="sub-view-toggle" id="journalSubToggle">
+        <button class="sub-view-tab active" data-sub="notes" type="button">notes</button>
+        <button class="sub-view-tab" data-sub="recordings" type="button">recordings</button>
+      </div>
+      <div id="journalNotesPanel">
       <div class="journal-composer">
         <div class="journal-composer-top">
           <div class="journal-composer-meta">
@@ -1747,6 +1752,16 @@
       <div id="journalEntries"></div>
       <div class="empty-state" id="journalEmptyState" style="display:none;">
         <div class="glyph">✎</div><h3>no entries yet</h3><p>Write your first note above.</p>
+      </div>
+      </div>
+      <!-- All recordings, independent of whether a note is attached — a voice note recorded but
+           never saved to an entry (composer closed/navigated away before "+ add entry") would
+           otherwise be an orphaned Storage file with no way to find it again; this list is that way. -->
+      <div id="journalRecordingsPanel" style="display:none;">
+        <div id="journalRecordingsList"></div>
+        <div class="empty-state" id="journalRecordingsEmptyState" style="display:none;">
+          <div class="glyph">🎤</div><h3>no recordings yet</h3><p>Record a voice note above to see it here.</p>
+        </div>
       </div>
     </section>
 
@@ -2915,7 +2930,7 @@
     state.gpsPings = (results[12].data || []).map(locMapGpsRow);
     // Empty until migration_action_habit_poi_location.sql has been run.
     state.pois = (results[13].data || []).map(function(r){ return { id:r.id, name:r.name, lat:r.lat, lng:r.lng, notes:r.notes||"" }; });
-    state.recordings = (results[14].data || []).map(function(r){ return { id:r.id, storagePath:r.storage_path, durationSeconds:r.duration_seconds, waveform:r.waveform||[] }; });
+    state.recordings = (results[14].data || []).map(function(r){ return { id:r.id, storagePath:r.storage_path, durationSeconds:r.duration_seconds, waveform:r.waveform||[], createdAt:r.created_at }; });
     await backfillLegacyHabitTrackers();
     await backfillHabitIcons();
   }
@@ -2980,7 +2995,7 @@
   var activeSection = "agent";
   var activePlannerTab = "goals";
   var filters = { goals:"all", projects:"all", habits:"all", actions:"all", people:"all" };
-  var views = { goals:"list", projects:"matrix", habits:"matrix", actions:"matrix", sleep:"daily", people:"cards" };
+  var views = { goals:"list", projects:"matrix", habits:"matrix", actions:"matrix", sleep:"daily", people:"cards", journal:"notes" };
 
   function wireSubViewToggle(containerId, panelKey, renderFn){
     var el = document.getElementById(containerId);
@@ -3064,6 +3079,7 @@
   wireSubViewToggle("habitsSubToggle", "habits", renderHabits);
   wireSubViewToggle("actionsSubToggle", "actions", renderActions);
   wireSubViewToggle("peopleSubToggle", "people", renderPeople);
+  wireSubViewToggle("journalSubToggle", "journal", renderJournal);
 
   document.getElementById("todayLabel").textContent = "// " + new Date().toLocaleDateString(undefined, { weekday:"long", month:"long", day:"numeric", year:"numeric" });
 
@@ -6978,7 +6994,7 @@
         var recRes = await sb.from("recordings").insert({ storage_path: path, duration_seconds: durationSeconds, waveform: waveform }).select().single();
         if(recRes.error) throw new Error(recRes.error.message);
         var rec = recRes.data;
-        journalPendingRecording = { id: rec.id, storagePath: rec.storage_path, durationSeconds: rec.duration_seconds, waveform: rec.waveform };
+        journalPendingRecording = { id: rec.id, storagePath: rec.storage_path, durationSeconds: rec.duration_seconds, waveform: rec.waveform, createdAt: rec.created_at };
         state.recordings.push(journalPendingRecording);
         if(statusEl) statusEl.textContent = "recording saved — transcribing…";
       } catch(err){
@@ -7030,6 +7046,10 @@
     warnDroppedFields(res.droppedFields);
   });
   function renderJournal(){
+    var view = views.journal;
+    document.getElementById("journalNotesPanel").style.display = view === "recordings" ? "none" : "";
+    document.getElementById("journalRecordingsPanel").style.display = view === "recordings" ? "" : "none";
+    if(view === "recordings"){ renderRecordingsList(); return; }
     var sorted = state.journal.slice().sort(function(a,b){ return b.date.localeCompare(a.date); });
     var monthsSeen = {};
     var html = sorted.map(function(entry){
@@ -7050,6 +7070,59 @@
     }).join("");
     document.getElementById("journalEntries").innerHTML = html;
     document.getElementById("journalEmptyState").style.display = sorted.length ? "none" : "";
+  }
+  // Every recording, independent of whether a journal entry still references it — includes ones
+  // recorded but never attached to a saved note. Sorted newest first, same as the notes list.
+  function renderRecordingsList(){
+    var sorted = state.recordings.slice().sort(function(a,b){ return new Date(b.createdAt) - new Date(a.createdAt); });
+    document.getElementById("journalRecordingsList").innerHTML = sorted.map(function(rec){
+      var linkedNote = state.journal.find(function(j){ return j.recordingId === rec.id; });
+      var when = rec.createdAt ? new Date(rec.createdAt).toLocaleString(undefined, { month:"short", day:"numeric", hour:"numeric", minute:"2-digit" }) : "";
+      var peaks = (rec.waveform && rec.waveform.length) ? rec.waveform : [0.3];
+      var bars = peaks.map(function(p){ return '<span style="height:' + Math.max(10, Math.round(p * 100)) + '%"></span>'; }).join("");
+      return '<div class="journal-entry" data-kind="recording" data-id="' + rec.id + '">' +
+        '<div class="journal-entry-top"><span class="journal-entry-date">' + escapeHtml(when) +
+          (linkedNote ? ' · attached to a note' : ' · not attached to any note') + '</span>' +
+          '<div class="entity-actions"><button class="icon-btn" data-action="del-recording" data-id="' + rec.id + '" aria-label="Delete recording">&times;</button></div>' +
+        '</div>' +
+        '<div class="rec-waveform" data-action="play-recording" data-id="' + rec.id + '" title="Play recording">' +
+          '<div class="rec-waveform-bars">' + bars + '</div>' +
+          '<span class="rec-waveform-time">' + formatClipTime(rec.durationSeconds || 0) + '</span>' +
+        '</div>' +
+      '</div>';
+    }).join("");
+    document.getElementById("journalRecordingsEmptyState").style.display = sorted.length ? "none" : "";
+  }
+  document.getElementById("journalRecordingsList").addEventListener("click", async function(e){
+    var playEl = e.target.closest('[data-action="play-recording"]');
+    if(playEl){ playRecordingById(playEl.dataset.id, playEl); return; }
+    var delBtn = e.target.closest('[data-action="del-recording"]');
+    if(delBtn) await deleteRecording(delBtn.dataset.id);
+  });
+  async function playRecordingById(id, btnEl){
+    var rec = state.recordings.find(function(r){ return r.id === id; });
+    if(!rec) return;
+    if(!journalAudioEl) journalAudioEl = new Audio();
+    if(btnEl) btnEl.classList.add("loading");
+    var signed = await sb.storage.from("notes-audio").createSignedUrl(rec.storagePath, 3600);
+    if(btnEl) btnEl.classList.remove("loading");
+    if(signed.error){ toast("Couldn't load that recording: " + signed.error.message); return; }
+    journalAudioEl.src = signed.data.signedUrl;
+    journalAudioEl.play();
+  }
+  async function deleteRecording(id){
+    var rec = state.recordings.find(function(r){ return r.id === id; });
+    if(!rec) return;
+    if(!confirm("Delete this recording? This can't be undone.")) return;
+    state.recordings = state.recordings.filter(function(r){ return r.id !== id; });
+    // The DB's on-delete-set-null FK handles this server-side too, but the local copy needs the same
+    // update or the note would keep pointing at a recording that no longer exists until next reload.
+    state.journal.forEach(function(j){ if(j.recordingId === id) j.recordingId = null; });
+    renderAll();
+    var removeRes = await sb.storage.from("notes-audio").remove([rec.storagePath]);
+    if(removeRes.error) console.error(removeRes.error);
+    var delRes = await sb.from("recordings").delete().eq("id", id);
+    if(delRes.error) console.error(delRes.error);
   }
   document.getElementById("journalEntries").addEventListener("click", async function(e){
     var tag = e.target.closest(".note-tag");
@@ -9643,15 +9716,25 @@
     document.getElementById("agentApiKeyInput").value = safeGet(window.localStorage, "geminiApiKey") || "";
     openModal("agentKeyModalOverlay");
   });
+  // safeSet/safeGet/safeRemove already swallow storage exceptions (private-browsing Safari throws
+  // on setItem, some privacy extensions block it entirely) so the app never crashes over it — but
+  // that silence is exactly why "did my key actually get remembered?" was invisible before: a
+  // failed save and a successful one looked identical (modal just closes either way). Reading the
+  // value straight back after writing it turns that into a concrete, visible answer.
   document.getElementById("agentKeySaveBtn").addEventListener("click", function(){
     var key = document.getElementById("agentApiKeyInput").value.trim();
-    if(key) safeSet(window.localStorage, "geminiApiKey", key);
+    if(!key){ closeModal("agentKeyModalOverlay"); return; }
+    safeSet(window.localStorage, "geminiApiKey", key);
+    var roundTripped = safeGet(window.localStorage, "geminiApiKey") === key;
     closeModal("agentKeyModalOverlay");
+    if(roundTripped) toast("Gemini key saved — it'll be remembered next time you open this browser.");
+    else toast("Couldn't save the key: this browser is blocking local storage (common in private/incognito mode). You'll need to re-enter it next session.");
   });
   document.getElementById("agentKeyClearBtn").addEventListener("click", function(){
     safeRemove(window.localStorage, "geminiApiKey");
     document.getElementById("agentApiKeyInput").value = "";
     closeModal("agentKeyModalOverlay");
+    toast("Gemini key cleared.");
   });
 
   /* ---------------- Modals ---------------- */
