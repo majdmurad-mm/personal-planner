@@ -504,6 +504,12 @@
   .wb-goal-node.has-icon.Relationships{ background:var(--cat-relationships-bg); }
   .wb-goal-node.has-icon.Sol{ background:var(--cat-sol-bg); }
   .wb-goal-node-symbol{ position:absolute; inset:20%; -webkit-mask-size:contain; mask-size:contain; -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat; -webkit-mask-position:center; mask-position:center; pointer-events:none; }
+  /* Project/habit/action nodes are the smallest in the graph (10-14px) — the default 20% inset would
+     leave their fixed symbol (see WB_FIXED_ICON_URIS) only 6-8 physical pixels wide, so they get a
+     smaller inset to give the symbol more room to actually read at that size. */
+  .wb-goal-node[data-type="project"] .wb-goal-node-symbol,
+  .wb-goal-node[data-type="habit"] .wb-goal-node-symbol,
+  .wb-goal-node[data-type="action"] .wb-goal-node-symbol{ inset:8%; }
   /* Area hubs are just their icon glyph — no circle, no fill, no ring — so declared after (and more
      specific than) the .Health/.Finance/etc background rules above to win the override. The glyph
      itself carries the area color instead (see .wb-goal-node-icon), since there's no colored disc
@@ -4382,10 +4388,16 @@
   // (actions) — rather than every node showing its own distinct icon. Built the same way
   // habitIconDataUri() builds a library icon's mask source (data:image/svg+xml URI, alpha-only —
   // color comes from iconMaskHtml's background-color, not the SVG itself).
+  // These render inside .wb-goal-node-symbol's inset:20% box on top of an already-small node (10-14px
+  // — smaller than every other place an icon appears in this app, which are all 16px+), so mask-size:
+  // contain scales the 24-unit viewBox down to roughly 6-8 physical pixels. A thin stroke (the
+  // HABIT_ICON_LIBRARY style used elsewhere, ~1.4-1.6 units) becomes sub-pixel at that scale and
+  // anti-aliases down to essentially invisible — these three are deliberately bold/filled instead so
+  // they stay legible at Graph-node size specifically.
   var WB_FIXED_ICON_URIS = {
-    habit: "data:image/svg+xml," + encodeURIComponent('<svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>'),
-    project: "data:image/svg+xml," + encodeURIComponent('<svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="1.8"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>'),
-    action: "data:image/svg+xml," + encodeURIComponent('<svg viewBox="0 0 24 24" fill="#000" stroke="none"><path d="M7 4v16l13-8z"/></svg>')
+    habit: "data:image/svg+xml," + encodeURIComponent('<svg viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 5 22 10 17 10"/><polyline points="2 19 2 14 7 14"/><path d="M4 10.5a8.5 8.5 0 0 1 14-4.9L22 9M2 13.5A8.5 8.5 0 0 0 16 18.4L18.5 15"/></svg>'),
+    project: "data:image/svg+xml," + encodeURIComponent('<svg viewBox="0 0 24 24" fill="#000" stroke="none"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>'),
+    action: "data:image/svg+xml," + encodeURIComponent('<svg viewBox="0 0 24 24" fill="#000" stroke="none"><path d="M6 3v18l15-9z"/></svg>')
   };
   // A goal's own uploaded icon (or a built-in vector icon picked from the same library) renders as a
   // symbol on top of the node's dot (see .wb-goal-node.has-icon in CSS, which lightens the dot to its
