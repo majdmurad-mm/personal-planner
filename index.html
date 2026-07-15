@@ -7026,8 +7026,12 @@
           // saved (composer text cleared, tab closed, etc.), so without this the transcript would
           // otherwise vanish the moment that unsaved text is gone, even though the audio survives.
           journalPendingRecording.transcript = text;
-          var updateRes = await safeWrite(function(p){ return sb.from("recordings").update(p).eq("id", rec.id).select().single(); }, { transcript: text });
+          // maybeSingle(), not single() — if this row can no longer be found (RLS, or it was deleted
+          // in another tab in the seconds since it was created), that's a 0-row result, not an error;
+          // single() would throw an opaque "Cannot coerce the result to a single JSON object" for it.
+          var updateRes = await safeWrite(function(p){ return sb.from("recordings").update(p).eq("id", rec.id).select().maybeSingle(); }, { transcript: text });
           if(updateRes.error) console.error(updateRes.error);
+          else if(!updateRes.data) console.warn("Couldn't find recording " + rec.id + " to save its transcript — it may have been deleted.");
           else warnDroppedFields(updateRes.droppedFields);
         } else {
           toast("Recording saved, but couldn't make out any speech to transcribe — you can still type it in.");
@@ -7139,8 +7143,10 @@
       var blob = await audioResp.blob();
       var text = await transcribeAudioLocally(blob);
       if(!text){ toast("Couldn't make out any speech in that recording."); return; }
-      var updateRes = await safeWrite(function(p){ return sb.from("recordings").update(p).eq("id", id).select().single(); }, { transcript: text });
+      // maybeSingle(), not single() — see the matching comment in handleRecordingComplete above.
+      var updateRes = await safeWrite(function(p){ return sb.from("recordings").update(p).eq("id", id).select().maybeSingle(); }, { transcript: text });
       if(updateRes.error) throw new Error(updateRes.error.message);
+      if(!updateRes.data){ toast("Couldn't save the transcript — this recording may have been deleted."); return; }
       rec.transcript = text;
       if(updateRes.droppedFields && updateRes.droppedFields.length) warnDroppedFields(updateRes.droppedFields);
       else toast("Transcript saved.");
