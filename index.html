@@ -854,6 +854,8 @@
   .person-relation{ font-family:var(--mono); font-weight:700; font-size:9px; padding:1px 6px; border-radius:3px; letter-spacing:0.03em; color:var(--violet); background:var(--violet-glow); margin-top:5px; display:inline-block; }
   .person-contact{ font-family:var(--mono); font-size:11px; color:var(--text-dim); margin-top:8px; }
   .person-notes{ font-size:12px; color:var(--text-dim); margin-top:8px; line-height:1.4; }
+  .person-meta{ font-family:var(--mono); font-size:10.5px; color:var(--text-faint); margin-top:6px; }
+  .person-verified{ color:var(--accent); font-weight:700; }
 
   /* ===== DRAG-TO-REORDER (list views) ===== */
   [draggable="true"]{ cursor:grab; }
@@ -1720,14 +1722,32 @@
 <!-- ===== PERSON MODAL ===== -->
 <div class="modal-overlay" id="personModalOverlay" hidden>
   <div class="modal">
-    <div class="modal-head"><span class="dot g"></span><h2>new_person.json</h2></div>
+    <div class="modal-head"><span class="dot g"></span><h2 id="personModalTitle">new_person.json</h2></div>
     <div class="modal-inner">
       <div class="field"><label for="personNameInput">name</label><input type="text" id="personNameInput" placeholder="e.g. Sam Rivera"></div>
       <div class="field"><label>relationship</label><div class="chip-select" id="personRelSelect">
         <div class="chip-opt sel" role="button" tabindex="0" data-r="Family">Family</div><div class="chip-opt" role="button" tabindex="0" data-r="Friend">Friend</div><div class="chip-opt" role="button" tabindex="0" data-r="Colleague">Colleague</div>
         <div class="chip-opt" role="button" tabindex="0" data-r="Mentor">Mentor</div><div class="chip-opt" role="button" tabindex="0" data-r="Partner">Partner</div><div class="chip-opt" role="button" tabindex="0" data-r="Other">Other</div>
       </div></div>
-      <div class="field"><label for="personContactInput">contact (optional)</label><input type="text" id="personContactInput" placeholder="email, phone, or handle"></div>
+      <div class="field-row">
+        <div class="field"><label for="personContactInput">contact (optional)</label><input type="text" id="personContactInput" placeholder="email, phone, or handle"></div>
+        <div class="field"><label for="personLocationInput">location (optional)</label><input type="text" id="personLocationInput" placeholder="e.g. Berlin Germany"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label for="personYearMetInput">year met</label><input type="number" step="1" id="personYearMetInput" placeholder="e.g. 2018"></div>
+        <div class="field"><label for="personContactScoreInput">contact score</label><input type="number" step="1" id="personContactScoreInput" placeholder="0-4"></div>
+        <div class="field"><label for="personLikeScoreInput">like score</label><input type="number" step="1" id="personLikeScoreInput" placeholder="0-4"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label for="personStatusInput">relationship status</label><input type="text" id="personStatusInput" placeholder="e.g. Best, Trusted"></div>
+        <div class="field"><label for="personPersonalityInput">personality type</label><input type="text" id="personPersonalityInput" placeholder="e.g. ENFP"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label for="personGroupInput">social group</label><input type="text" id="personGroupInput" placeholder="e.g. Discord, Syria"></div>
+        <div class="field"><label for="personPlanetsInput">planets / group pages</label><input type="text" id="personPlanetsInput" placeholder="e.g. Family, Friends"></div>
+      </div>
+      <div class="field"><label for="personRelatedInput">related people</label><input type="text" id="personRelatedInput" placeholder="e.g. Jad Murad"></div>
+      <label class="infinite-toggle"><input type="checkbox" id="personVerifiedCheckbox"><span>verified</span></label>
       <div class="field"><label for="personNotesInput">notes</label><textarea id="personNotesInput" rows="3" placeholder="Anything worth remembering…"></textarea></div>
       <div class="modal-actions"><button class="btn" id="cancelPersonModalBtn" type="button">cancel</button><button class="btn btn-accent" id="savePersonBtn" type="button">save person</button></div>
     </div>
@@ -2236,7 +2256,10 @@
     weekdays: "habit day selection", tracker_variable_id: "habit's tracker link", time_of_day: "scheduled time",
     duration_minutes: "duration", category: "area", skip_dates: "skipped habit days",
     categories: "area(s)", custom_interval_days: "custom repeat interval", extra_dates: "manually scheduled habit days",
-    secondary_goal_ids: "secondary goals", secondary_categories: "secondary areas"
+    secondary_goal_ids: "secondary goals", secondary_categories: "secondary areas",
+    verified: "verified status", like_score: "like score", contact_score: "contact score", year_met: "year met",
+    relationship_status: "relationship status", social_group: "social group", personality_type: "personality type",
+    location: "location", related_people: "related people", planets: "planets"
   };
   function warnDroppedFields(dropped){
     if(!dropped || !dropped.length) return;
@@ -2463,7 +2486,12 @@
     state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null }; });
     state.actions.sort(function(a,b){ return a.position - b.position; });
     state.journal = (results[4].data || []).map(function(r){ return { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null }; });
-    state.people = (results[5].data || []).map(function(r){ return { id:r.id, name:r.name, relationship:r.relationship, contact:r.contact, notes:r.notes, position:r.position||0 }; });
+    state.people = (results[5].data || []).map(function(r){
+      return { id:r.id, name:r.name, relationship:r.relationship, contact:r.contact, notes:r.notes, position:r.position||0,
+        verified:!!r.verified, likeScore:(r.like_score!=null?r.like_score:null), contactScore:(r.contact_score!=null?r.contact_score:null),
+        yearMet:(r.year_met!=null?r.year_met:null), relationshipStatus:r.relationship_status||"", socialGroup:r.social_group||"",
+        personalityType:r.personality_type||"", location:r.location||"", relatedPeople:r.related_people||"", planets:r.planets||"" };
+    });
     state.people.sort(function(a,b){ return a.position - b.position; });
     chatMessages = (results[6].data || []).map(function(r){ return { role:r.role, content:r.content }; });
     state.trackerVars = (results[7].data || []).map(function(r){ return { id:r.id, name:r.name, type:r.type, unit:r.unit, scaleMax:r.scale_max, categories:r.categories || [], position:r.position }; });
@@ -3317,7 +3345,10 @@
     });
   }
   function personPayload(snapshot){
-    return { id:snapshot.id, name:snapshot.name, relationship:snapshot.relationship, contact:snapshot.contact, notes:snapshot.notes, position:snapshot.position };
+    return { id:snapshot.id, name:snapshot.name, relationship:snapshot.relationship, contact:snapshot.contact, notes:snapshot.notes, position:snapshot.position,
+      verified:snapshot.verified, like_score:snapshot.likeScore, contact_score:snapshot.contactScore, year_met:snapshot.yearMet,
+      relationship_status:snapshot.relationshipStatus, social_group:snapshot.socialGroup, personality_type:snapshot.personalityType,
+      location:snapshot.location, related_people:snapshot.relatedPeople, planets:snapshot.planets };
   }
   async function deletePerson(id){
     var pe = state.people.find(function(x){ return x.id === id; });
@@ -3360,7 +3391,8 @@
     habit: editHabit,
     "habit-instance": editHabit,
     action: editAction,
-    journal: editJournalEntry
+    journal: editJournalEntry,
+    person: editPerson
   };
   // "postpone" moves an action's own date field forward, or — for a single day's occurrence of a
   // recurring habit — skips that occurrence (skipHabitInstance, same as delete already does for
@@ -4982,10 +5014,25 @@
     var f = filters.people;
     var list = state.people.filter(function(p){ return f === "all" || p.relationship === f; });
     document.getElementById("peopleGrid").innerHTML = list.map(function(p){
+      var metaParts = [];
+      if(p.location) metaParts.push(p.location);
+      if(p.yearMet != null) metaParts.push("met " + p.yearMet);
+      if(p.personalityType) metaParts.push(p.personalityType);
+      if(p.relationshipStatus) metaParts.push(p.relationshipStatus);
+      if(p.socialGroup) metaParts.push(p.socialGroup);
+      if(p.contactScore != null) metaParts.push("contact " + p.contactScore + "/4");
+      if(p.likeScore != null) metaParts.push("like " + p.likeScore + "/4");
+      var metaLine = metaParts.map(escapeHtml).join(" · ");
+      var extraLine = [p.planets, p.relatedPeople].filter(Boolean).map(escapeHtml).join(" · ");
       return '<div class="person-card" data-kind="person" data-id="' + p.id + '" draggable="true">' +
-        '<div class="person-top"><div><div class="person-name">' + escapeHtml(p.name) + '</div>' +
+        '<div class="person-top"><div><div class="person-name">' + escapeHtml(p.name) + (p.verified ? ' <span class="person-verified" title="Verified">✓</span>' : '') + '</div>' +
         '<span class="person-relation">' + p.relationship + '</span></div>' +
-        '<button class="icon-btn" data-action="del-person" data-id="' + p.id + '" aria-label="Delete person">&times;</button></div>' +
+        '<div class="entity-actions">' +
+          '<button class="icon-btn edit" data-action="edit-person" data-id="' + p.id + '" aria-label="Edit person">✎</button>' +
+          '<button class="icon-btn" data-action="del-person" data-id="' + p.id + '" aria-label="Delete person">&times;</button>' +
+        '</div></div>' +
+        (metaLine ? '<div class="person-meta">' + metaLine + '</div>' : '') +
+        (extraLine ? '<div class="person-meta">' + extraLine + '</div>' : '') +
         (p.contact ? '<div class="person-contact">' + escapeHtml(p.contact) + '</div>' : '') +
         (p.notes ? '<div class="person-notes">' + escapeHtml(p.notes) + '</div>' : '') +
       '</div>';
@@ -4993,6 +5040,8 @@
     document.getElementById("peopleEmptyState").style.display = list.length ? "none" : "";
   }
   document.getElementById("peopleGrid").addEventListener("click", async function(e){
+    var edit = e.target.closest('[data-action="edit-person"]');
+    if(edit){ editPerson(edit.dataset.id); return; }
     var del = e.target.closest('[data-action="del-person"]');
     if(!del) return;
     await deletePerson(del.dataset.id);
@@ -7620,31 +7669,85 @@
   });
 
   // Person modal
-  document.getElementById("openPersonModalBtn").addEventListener("click", function(){
-    document.getElementById("personNameInput").value = "";
-    document.getElementById("personContactInput").value = "";
-    document.getElementById("personNotesInput").value = "";
-    setChip(document.getElementById("personRelSelect"), "r", "Family");
+  // editingPersonId = null means create (same pattern the goal/project/habit/action/journal modals
+  // already use) — the button, journal-style dynamic title, and single save handler below all branch
+  // on it rather than having separate create/edit code paths.
+  var editingPersonId = null;
+  function openPersonEditModal(p){
+    editingPersonId = p ? p.id : null;
+    document.getElementById("personModalTitle").textContent = p ? "edit_person.json" : "new_person.json";
+    document.getElementById("savePersonBtn").textContent = p ? "save changes" : "save person";
+    document.getElementById("personNameInput").value = (p && p.name) || "";
+    document.getElementById("personContactInput").value = (p && p.contact) || "";
+    document.getElementById("personLocationInput").value = (p && p.location) || "";
+    document.getElementById("personYearMetInput").value = (p && p.yearMet != null) ? p.yearMet : "";
+    document.getElementById("personContactScoreInput").value = (p && p.contactScore != null) ? p.contactScore : "";
+    document.getElementById("personLikeScoreInput").value = (p && p.likeScore != null) ? p.likeScore : "";
+    document.getElementById("personStatusInput").value = (p && p.relationshipStatus) || "";
+    document.getElementById("personPersonalityInput").value = (p && p.personalityType) || "";
+    document.getElementById("personGroupInput").value = (p && p.socialGroup) || "";
+    document.getElementById("personPlanetsInput").value = (p && p.planets) || "";
+    document.getElementById("personRelatedInput").value = (p && p.relatedPeople) || "";
+    document.getElementById("personVerifiedCheckbox").checked = !!(p && p.verified);
+    document.getElementById("personNotesInput").value = (p && p.notes) || "";
+    setChip(document.getElementById("personRelSelect"), "r", (p && p.relationship) || "Family");
     openModal("personModalOverlay");
     document.getElementById("personNameInput").focus();
-  });
+  }
+  function editPerson(id){
+    var p = state.people.find(function(x){ return x.id === id; });
+    if(!p) return;
+    openPersonEditModal(p);
+  }
+  document.getElementById("openPersonModalBtn").addEventListener("click", function(){ openPersonEditModal(null); });
   document.getElementById("cancelPersonModalBtn").addEventListener("click", function(){ closeModal("personModalOverlay"); });
   document.getElementById("savePersonBtn").addEventListener("click", async function(){
     var name = document.getElementById("personNameInput").value.trim();
     if(!name) return;
+    function numOrNull(id){ var v = document.getElementById(id).value; return v === "" ? null : Number(v); }
     var payload = {
       name: name,
       relationship: chipValue(document.getElementById("personRelSelect"), "r"),
       contact: document.getElementById("personContactInput").value.trim(),
+      location: document.getElementById("personLocationInput").value.trim(),
+      year_met: numOrNull("personYearMetInput"),
+      contact_score: numOrNull("personContactScoreInput"),
+      like_score: numOrNull("personLikeScoreInput"),
+      relationship_status: document.getElementById("personStatusInput").value.trim(),
+      personality_type: document.getElementById("personPersonalityInput").value.trim(),
+      social_group: document.getElementById("personGroupInput").value.trim(),
+      planets: document.getElementById("personPlanetsInput").value.trim(),
+      related_people: document.getElementById("personRelatedInput").value.trim(),
+      verified: document.getElementById("personVerifiedCheckbox").checked,
       notes: document.getElementById("personNotesInput").value.trim()
     };
     this.disabled = true;
+    if(editingPersonId){
+      var resU = await safeUpdate("people", editingPersonId, payload);
+      this.disabled = false;
+      if(resU.error){ alert(resU.error.message); return; }
+      var ru = resU.data;
+      var idx = state.people.findIndex(function(x){ return x.id === editingPersonId; });
+      if(idx !== -1){
+        state.people[idx] = { id:ru.id, name:ru.name, relationship:ru.relationship, contact:ru.contact, notes:ru.notes, position:ru.position||0,
+          verified:!!ru.verified, likeScore:(ru.like_score!=null?ru.like_score:null), contactScore:(ru.contact_score!=null?ru.contact_score:null),
+          yearMet:(ru.year_met!=null?ru.year_met:null), relationshipStatus:ru.relationship_status||"", socialGroup:ru.social_group||"",
+          personalityType:ru.personality_type||"", location:ru.location||"", relatedPeople:ru.related_people||"", planets:ru.planets||"" };
+      }
+      renderAll(); closeModal("personModalOverlay");
+      warnDroppedFields(resU.droppedFields);
+      return;
+    }
     var res = await safeInsert("people", payload, state.people);
     this.disabled = false;
     if(res.error){ alert(res.error.message); return; }
     var r = res.data;
-    state.people.push({ id:r.id, name:r.name, relationship:r.relationship, contact:r.contact, notes:r.notes, position:r.position||0 });
+    state.people.push({ id:r.id, name:r.name, relationship:r.relationship, contact:r.contact, notes:r.notes, position:r.position||0,
+      verified:!!r.verified, likeScore:(r.like_score!=null?r.like_score:null), contactScore:(r.contact_score!=null?r.contact_score:null),
+      yearMet:(r.year_met!=null?r.year_met:null), relationshipStatus:r.relationship_status||"", socialGroup:r.social_group||"",
+      personalityType:r.personality_type||"", location:r.location||"", relatedPeople:r.related_people||"", planets:r.planets||"" });
     renderAll(); closeModal("personModalOverlay");
+    warnDroppedFields(res.droppedFields);
   });
 
   /* ---------------- Render all ---------------- */
