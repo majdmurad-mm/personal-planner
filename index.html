@@ -1615,6 +1615,7 @@
               <input type="range" class="wb-force-slider" id="pplCenterForceSlider" min="0" max="0.3" step="0.001" value="0.02">
             </div>
             <button class="btn" id="pplConnectModeBtn" type="button" title="Toggle connect mode: click one person then another to link them">🔗 connect</button>
+            <button class="btn" id="pplLinkGroupsBtn" type="button" title="Connect everyone who shares the same social group but isn't linked yet">🕸 link groups</button>
             <button class="btn" id="pplFullscreenBtn" type="button">⤢ fullscreen</button>
           </div>
           <p class="panel-hint wb-hint-float wb-pan-hint">Pan: drag empty space, or drag with the middle mouse button. Zoom: scroll, or the +/− buttons. Click a person to edit them. Toggle "connect" then click two people to link them (and set a weight) — click an existing connection line to edit or remove it.</p>
@@ -5367,7 +5368,13 @@
   // writing the change into BOTH people's "related people" text field via pplUpsertRelatedEntry so
   // it's mutual and visible/editable from the person modal and table view too, not just the graph.
   // Reuses savePersonField (see the People table view) for the actual save/rollback plumbing.
-  async function pplSetConnection(fromId, toId, weight){
+  // The actual read-modify-write, with no cache rebuild/render of its own — pplSetConnection wraps
+  // this for a single pair (rebuild+render immediately after), while pplConnectAllInSameGroup calls
+  // it directly in a sequential loop and only rebuilds/renders once at the end. Sequential (always
+  // awaited one at a time, never Promise.all'd) is required, not just tidy — two connections sharing
+  // a person would otherwise race on that person's relatedPeople field and one write would clobber
+  // the other's read-before-write.
+  async function pplWriteConnection(fromId, toId, weight){
     if(fromId === toId) return;
     var a = state.people.find(function(x){ return x.id === fromId; });
     var b = state.people.find(function(x){ return x.id === toId; });
@@ -5376,15 +5383,57 @@
     var newBRelated = pplUpsertRelatedEntry(b.relatedPeople, a.name, weight);
     await savePersonField(a.id, "relatedPeople", newARelated);
     await savePersonField(b.id, "relatedPeople", newBRelated);
+  }
+  async function pplSetConnection(fromId, toId, weight){
+    await pplWriteConnection(fromId, toId, weight);
     pplRebuildGraphCache();
     renderPeopleGraphConnections();
   }
-  function pplPromptWeight(label, current){
-    var input = prompt(label, current == null ? "1" : String(current));
+  // Bulk action (see #pplLinkGroupsBtn): connects every pair of people who share the same primary
+  // social group (pplNodeGroup) and aren't already linked, at the unknown/default weight — existing
+  // connections (even within the same group) are left untouched, so a manually-set weight never gets
+  // silently reset to the default just because two people also happen to share a group.
+  async function pplConnectAllInSameGroup(){
+    pplRebuildGraphCache();
+    var existing = {};
+    pplCachedEdges.forEach(function(e){ existing[[e.fromId, e.toId].sort().join(":")] = true; });
+    var byGroup = {};
+    state.people.forEach(function(p){
+      var g = pplCachedNodeGroups[p.id];
+      if(!g) return;
+      if(!byGroup[g]) byGroup[g] = [];
+      byGroup[g].push(p.id);
+    });
+    var pairs = [];
+    Object.keys(byGroup).forEach(function(g){
+      var ids = byGroup[g];
+      for(var i=0;i<ids.length;i++){
+        for(var j=i+1;j<ids.length;j++){
+          var key = [ids[i], ids[j]].sort().join(":");
+          if(!existing[key]) pairs.push([ids[i], ids[j]]);
+        }
+      }
+    });
+    if(!pairs.length){ toast("Everyone who shares a social group is already connected."); return; }
+    if(!confirm("Connect " + pairs.length + " pair" + (pairs.length===1?"":"s") + " of people who share a social group but aren't linked yet?")) return;
+    for(var k=0;k<pairs.length;k++){
+      await pplWriteConnection(pairs[k][0], pairs[k][1], 1);
+    }
+    pplRebuildGraphCache();
+    renderPeopleGraphConnections();
+    toast("Connected " + pairs.length + " pair" + (pairs.length===1?"":"s") + ".");
+  }
+  // Weight is unknown/default (1, stored as a plain unlabeled name — see pplUpsertRelatedEntry)
+  // unless the user actually types a number in — leaving the prompt blank never deletes anything by
+  // itself. Only an explicit "0", and only where allowRemove is true (editing an *existing*
+  // connection — there's nothing to remove yet when creating a new one), removes the connection.
+  function pplPromptWeight(label, current, allowRemove){
+    var input = prompt(label, current == null ? "" : String(current));
     if(input === null) return undefined; // cancelled
     input = input.trim();
-    if(input === "" || Number(input) <= 0) return null; // remove
+    if(input === "") return 1; // left blank -> unknown/default weight
     var w = Number(input);
+    if(allowRemove && isFinite(w) && w <= 0) return null; // explicit 0 -> remove
     if(!isFinite(w) || w <= 0) w = 1;
     return Math.max(0.1, Math.min(10, w));
   }
@@ -5398,9 +5447,9 @@
     var a = state.people.find(function(x){ return x.id === fromId; });
     var b = state.people.find(function(x){ return x.id === id; });
     if(!a || !b) return;
-    var weight = pplPromptWeight("Connection weight between " + a.name + " and " + b.name + " (1-10):", 1);
+    var weight = pplPromptWeight("Connection weight between " + a.name + " and " + b.name + " (1-10, blank = unknown):", null, false);
     if(weight === undefined) return;
-    await pplSetConnection(fromId, id, weight == null ? 1 : weight);
+    await pplSetConnection(fromId, id, weight);
   }
   // Click on an existing connection line (its fat invisible .ppl-conn-hit sibling) — always active,
   // independent of connect mode, since editing/removing an existing link is a distinct action from
@@ -5409,7 +5458,7 @@
     var a = state.people.find(function(x){ return x.id === fromId; });
     var b = state.people.find(function(x){ return x.id === toId; });
     if(!a || !b) return;
-    var weight = pplPromptWeight("Connection weight between " + a.name + " and " + b.name + " (1-10, 0 to remove):", currentWeight);
+    var weight = pplPromptWeight("Connection weight between " + a.name + " and " + b.name + " (1-10, blank = unknown, 0 to remove):", currentWeight, true);
     if(weight === undefined) return;
     await pplSetConnection(fromId, toId, weight);
   }
@@ -5561,6 +5610,9 @@
       var hit = e.target.closest(".ppl-conn-hit");
       if(!hit) return;
       handlePplEdgeClick(hit.dataset.from, hit.dataset.to, Number(hit.dataset.weight));
+    });
+    document.getElementById("pplLinkGroupsBtn").addEventListener("click", function(){
+      pplConnectAllInSameGroup();
     });
 
     wirePeopleGraphDrag();
