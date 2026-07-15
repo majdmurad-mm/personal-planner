@@ -7020,11 +7020,11 @@
         var text = await transcribeAudioBufferLocally(audioBuffer);
         var input = document.getElementById("journalTextInput");
         if(text){
-          input.value = (input.value.trim() ? input.value.trim() + " " : "") + text;
-          // Persisted on the recording itself, not just the composer textarea — the recording
-          // already exists in Storage+DB by this point regardless of whether this note ever gets
-          // saved (composer text cleared, tab closed, etc.), so without this the transcript would
-          // otherwise vanish the moment that unsaved text is gone, even though the audio survives.
+          var mergedText = (input.value.trim() ? input.value.trim() + " " : "") + text;
+          input.value = mergedText;
+          // Persisted on the recording itself, not just the note about to be saved below — the
+          // recording already exists in Storage+DB by this point regardless of whether that note
+          // insert succeeds, so without this the transcript would otherwise vanish if it ever fails.
           journalPendingRecording.transcript = text;
           // maybeSingle(), not single() — if this row can no longer be found (RLS, or it was deleted
           // in another tab in the seconds since it was created), that's a 0-row result, not an error;
@@ -7033,6 +7033,27 @@
           if(updateRes.error) console.error(updateRes.error);
           else if(!updateRes.data) console.warn("Couldn't find recording " + rec.id + " to save its transcript — it may have been deleted.");
           else warnDroppedFields(updateRes.droppedFields);
+          // Auto-save straight to a note. Date/time come from when the recording was actually made
+          // (rec.created_at), not "now" — transcription can take a few seconds, or ~15s the very
+          // first time while the speech model downloads. Area is whatever's selected in the composer
+          // at save time, same as a manual save would use.
+          var recordedAt = new Date(rec.created_at);
+          var notePayload = {
+            date: dateToLocalStr(recordedAt), text: mergedText,
+            time_of_day: String(recordedAt.getHours()).padStart(2,"0") + ":" + String(recordedAt.getMinutes()).padStart(2,"0"),
+            category: chipValue(document.getElementById("journalAreaSelect"), "ar") || null,
+            recording_id: rec.id
+          };
+          var saveRes = await saveJournalEntry(notePayload);
+          if(saveRes.error){
+            toast("Transcribed, but couldn't save the note automatically: " + saveRes.error.message + " — you can still save it manually.");
+          } else {
+            input.value = "";
+            document.getElementById("journalTimeInput").value = "";
+            journalPendingRecording = null;
+            renderAll();
+            toast("Recording transcribed and saved as a new note.");
+          }
         } else {
           toast("Recording saved, but couldn't make out any speech to transcribe — you can still type it in.");
         }
@@ -7046,6 +7067,16 @@
     }
   }
   var journalPendingRecording = null;
+  // Shared by the manual "save" button and the auto-save-on-transcribe path below — inserts the
+  // note and mirrors it into local state the same way regardless of who triggered the save.
+  async function saveJournalEntry(payload){
+    var res = await safeWrite(function(p){ return sb.from("journal").insert(p).select().single(); }, payload);
+    if(res.error) return res;
+    var r = res.data;
+    state.journal.push({ id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null, recordingId:r.recording_id||null });
+    warnDroppedFields(res.droppedFields);
+    return res;
+  }
   wireNotesRecorder();
   document.getElementById("saveJournalBtn").addEventListener("click", async function(){
     var date = document.getElementById("journalDateInput").value || todayStr();
@@ -7058,16 +7089,13 @@
       recording_id: journalPendingRecording ? journalPendingRecording.id : null
     };
     this.disabled = true;
-    var res = await safeWrite(function(p){ return sb.from("journal").insert(p).select().single(); }, payload);
+    var res = await saveJournalEntry(payload);
     this.disabled = false;
     if(res.error){ alert(res.error.message); return; }
-    var r = res.data;
-    state.journal.push({ id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null, recordingId:r.recording_id||null });
     document.getElementById("journalTextInput").value = "";
     document.getElementById("journalTimeInput").value = "";
     journalPendingRecording = null;
     renderAll();
-    warnDroppedFields(res.droppedFields);
   });
   function renderJournal(){
     var view = views.journal;
