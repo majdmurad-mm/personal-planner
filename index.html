@@ -1031,6 +1031,13 @@
   .chip-opt.sel[data-ar="Relationships"]{ background:var(--cat-relationships-bg); color:var(--cat-relationships); border-color:var(--cat-relationships); }
   .chip-opt.sel[data-ar="Sol"]{ background:var(--cat-sol-bg); color:var(--cat-sol); border-color:var(--cat-sol); }
   .chip-opt.sel[data-r]{ background:var(--violet-glow); color:var(--violet); border-color:var(--violet); }
+  .chip-opt.sel[data-g]{ background:var(--violet-glow); color:var(--violet); border-color:var(--violet); }
+  /* "Add a new group" row appended after the chip options inside #personGroupSelect (see
+     renderPersonGroupChips) — social groups are open-ended user text, not a fixed enum like
+     categories, so the multi-select chip list alone can't introduce a brand-new one. */
+  .dropdown-multi-add-row{ display:flex; gap:6px; margin-top:8px; padding-top:8px; border-top:1px solid var(--border); }
+  .dropdown-multi-add-row input{ flex:1; min-width:0; background:var(--bg-inset); border:1px solid var(--border); border-radius:var(--radius); padding:6px 8px; font-family:var(--mono); font-size:11px; color:var(--text); }
+  .dropdown-multi-add-row .btn{ padding:6px 10px; font-size:11px; white-space:nowrap; }
   .infinite-toggle{ display:flex; align-items:center; gap:7px; margin-top:9px; cursor:pointer; user-select:none; }
   .infinite-toggle input{ width:14px; height:14px; accent-color:var(--violet); cursor:pointer; }
   .infinite-toggle span{ font-family:var(--mono); font-size:11px; color:var(--text-dim); }
@@ -1880,7 +1887,11 @@
         <div class="field"><label for="personPersonalityInput">personality type</label><input type="text" id="personPersonalityInput" placeholder="e.g. ENFP"></div>
       </div>
       <div class="field-row">
-        <div class="field"><label for="personGroupInput">social group</label><input type="text" id="personGroupInput" list="personGroupList" placeholder="e.g. Discord, Syria">
+        <div class="field"><label>social group</label>
+          <div class="dropdown-multi" id="personGroupDropdown">
+            <button type="button" class="dropdown-multi-btn" id="personGroupBtn">none selected ▾</button>
+            <div class="dropdown-multi-panel chip-select" id="personGroupSelect" hidden></div>
+          </div>
           <datalist id="personGroupList"></datalist>
         </div>
         <div class="field"><label for="personPlanetsInput">people group</label><input type="text" id="personPlanetsInput" placeholder="e.g. Family, Friends"></div>
@@ -5778,10 +5789,12 @@
   });
 
   /* ---------------- People ---------------- */
-  // Feeds the personGroupInput/people-table social-group cells' shared <datalist> (see
-  // personGroupList) with every distinct social group already in use, so picking one is a dropdown
-  // rather than retyping — the field stays free text (a person can still type a brand-new group;
-  // list="..." only adds suggestions, it doesn't restrict input), since group names are open-ended.
+  // Feeds the People table's social-group cells' shared <datalist> (see personGroupList) with every
+  // distinct social group already in use, so picking one is a dropdown rather than retyping — the
+  // field stays free text (a person can still type a brand-new group; list="..." only adds
+  // suggestions, it doesn't restrict input), since group names are open-ended. The person MODAL's own
+  // social-group field is a proper multi-select instead (see renderPersonGroupChips) — this datalist
+  // is only for the table's quick-edit cell now.
   function pplRefreshSocialGroupDatalist(){
     var datalist = document.getElementById("personGroupList");
     if(!datalist) return;
@@ -8529,6 +8542,41 @@
   // editingPersonId = null means create (same pattern the goal/project/habit/action/journal modals
   // already use) — the button, journal-style dynamic title, and single save handler below all branch
   // on it rather than having separate create/edit code paths.
+  // Social group multi-select — reuses the app's existing dropdown-multi/chip-select pattern (see
+  // renderGoalSecondaryGoalsChips for the template this is modeled on). Unlike that pattern's fixed
+  // enum/entity-list sources, group names are open-ended user text, so the chip options are built
+  // from every distinct group already in use PLUS the person's own current groups (in case one of
+  // theirs isn't used by anyone else), and an "add a new group" row is appended into the same panel
+  // for introducing a name that doesn't exist yet anywhere.
+  var updatePersonGroupBtn = wireDropdownMulti("personGroupBtn", "personGroupSelect", "personGroupDropdown", "g");
+  function renderPersonGroupChips(selectedGroups){
+    var container = document.getElementById("personGroupSelect");
+    var known = {};
+    state.people.forEach(function(p){
+      if(!p.socialGroup) return;
+      p.socialGroup.split(",").forEach(function(g){ g = g.trim(); if(g) known[g] = true; });
+    });
+    (selectedGroups || []).forEach(function(g){ if(g) known[g] = true; });
+    var sorted = Object.keys(known).sort(function(a, b){ return a.localeCompare(b); });
+    container.innerHTML = sorted.map(function(g){
+      return '<div class="chip-opt" role="button" tabindex="0" data-g="' + escapeHtml(g) + '">' + escapeHtml(g) + '</div>';
+    }).join("") +
+      '<div class="dropdown-multi-add-row"><input type="text" id="personGroupNewInput" placeholder="add a new group…"><button type="button" class="btn" id="personGroupAddBtn">+ add</button></div>';
+    setMultiChip(container, "g", selectedGroups || []);
+    updatePersonGroupBtn();
+    function addNewPersonGroup(){
+      var input = document.getElementById("personGroupNewInput");
+      var name = input.value.replace(/,/g, "").trim();
+      if(!name) return;
+      var current = multiChipValues(container, "g");
+      if(current.indexOf(name) === -1) current.push(name);
+      renderPersonGroupChips(current);
+    }
+    document.getElementById("personGroupAddBtn").addEventListener("click", addNewPersonGroup);
+    document.getElementById("personGroupNewInput").addEventListener("keydown", function(e){
+      if(e.key === "Enter"){ e.preventDefault(); addNewPersonGroup(); }
+    });
+  }
   var editingPersonId = null;
   function openPersonEditModal(p){
     pplRefreshSocialGroupDatalist();
@@ -8543,7 +8591,8 @@
     document.getElementById("personLikeScoreInput").value = (p && p.likeScore != null) ? p.likeScore : "";
     document.getElementById("personStatusInput").value = (p && p.relationshipStatus) || "";
     document.getElementById("personPersonalityInput").value = (p && p.personalityType) || "";
-    document.getElementById("personGroupInput").value = (p && p.socialGroup) || "";
+    renderPersonGroupChips(p && p.socialGroup ? p.socialGroup.split(",").map(function(g){ return g.trim(); }).filter(Boolean) : []);
+    document.getElementById("personGroupSelect").hidden = true;
     document.getElementById("personPlanetsInput").value = (p && p.planets) || "";
     document.getElementById("personRelatedInput").value = (p && p.relatedPeople) || "";
     document.getElementById("personVerifiedCheckbox").checked = !!(p && p.verified);
@@ -8573,7 +8622,7 @@
       like_score: numOrNull("personLikeScoreInput"),
       relationship_status: document.getElementById("personStatusInput").value.trim(),
       personality_type: document.getElementById("personPersonalityInput").value.trim(),
-      social_group: document.getElementById("personGroupInput").value.trim(),
+      social_group: multiChipValues(document.getElementById("personGroupSelect"), "g").join(", "),
       planets: document.getElementById("personPlanetsInput").value.trim(),
       related_people: document.getElementById("personRelatedInput").value.trim(),
       verified: document.getElementById("personVerifiedCheckbox").checked,
