@@ -1610,10 +1610,6 @@
               <button class="cal-nav-btn" id="pplZoomInBtn" type="button" aria-label="Zoom in">+</button>
               <button class="btn" id="pplZoomResetBtn" type="button">reset view</button>
             </div>
-            <div class="wb-force-group" title="How strongly people pull toward you (scaled per-person by their contact score)">
-              <span class="wb-force-label">pull to you</span>
-              <input type="range" class="wb-force-slider" id="pplCenterForceSlider" min="0" max="0.3" step="0.001" value="0.02">
-            </div>
             <button class="btn" id="pplConnectModeBtn" type="button" title="Toggle connect mode: click one person then another to link them">🔗 connect</button>
             <button class="btn" id="pplLinkGroupsBtn" type="button" title="Connect everyone who shares the same social group but isn't linked yet">🕸 link groups</button>
             <button class="btn" id="pplFullscreenBtn" type="button">⤢ fullscreen</button>
@@ -1874,7 +1870,9 @@
         <div class="field"><label for="personPersonalityInput">personality type</label><input type="text" id="personPersonalityInput" placeholder="e.g. ENFP"></div>
       </div>
       <div class="field-row">
-        <div class="field"><label for="personGroupInput">social group</label><input type="text" id="personGroupInput" placeholder="e.g. Discord, Syria"></div>
+        <div class="field"><label for="personGroupInput">social group</label><input type="text" id="personGroupInput" list="personGroupList" placeholder="e.g. Discord, Syria">
+          <datalist id="personGroupList"></datalist>
+        </div>
         <div class="field"><label for="personPlanetsInput">people group</label><input type="text" id="personPlanetsInput" placeholder="e.g. Family, Friends"></div>
       </div>
       <div class="field"><label for="personRelatedInput">related people</label><input type="text" id="personRelatedInput" placeholder="e.g. Jad Murad"></div>
@@ -5048,11 +5046,12 @@
   var pplWorldEl, pplWrapEl;
   var pplSimNodes = []; // { id, x, y, vx, vy, fixed }
   var PPL_NODE_R = 8.4; // matches the main Graph's goal-node weight (WB_SIZE_UNIT * 0.7)
-  var PPL_REPEL = 9000, PPL_LINK_DIST = 130, PPL_LINK_K = 0.02, PPL_CENTER_K = 0.02, PPL_DAMPING = 0.82, PPL_ALPHA_DECAY = 0.985;
-  // Knocks the "pull to you" slider's effect down to a tenth of its raw value — the slider itself
-  // keeps its existing range/length (see #pplCenterForceSlider, still min=0 max=0.3), just each
-  // value on it now produces a much subtler pull than before.
-  var PPL_CENTER_EFFECT_SCALE = 0.1;
+  var PPL_REPEL = 9000, PPL_LINK_DIST = 130, PPL_LINK_K = 0.02, PPL_DAMPING = 0.82, PPL_ALPHA_DECAY = 0.985;
+  // Pull toward the sun (#pplSunNode) — no globally-adjustable knob anymore (the old
+  // #pplCenterForceSlider/PPL_CENTER_K was removed), just this fixed base rate scaled per-person by
+  // contact score (pplCachedContactPull, see pplTickPhysics) — matches the slider's old default
+  // effective strength (0.02 * the old 0.1 scale-down) so the default feel is unchanged.
+  var PPL_CONTACT_PULL_K = 0.002;
   var pplAlpha = 0, pplSimRunning = false;
   // Connect mode: toggled by #pplConnectModeBtn (see initPeopleGraph). While on, a node click is
   // handled by handlePplConnectNodeClick instead of starting a drag — see wirePeopleGraphDrag.
@@ -5217,8 +5216,8 @@
       if(n.fixed){ n.vx = 0; n.vy = 0; return; }
       var pullMult = pplCachedContactPull[n.id];
       if(pullMult == null) pullMult = 1;
-      n.vx += (PPL_CENTER_X - n.x) * PPL_CENTER_K * PPL_CENTER_EFFECT_SCALE * pullMult * pplAlpha;
-      n.vy += (PPL_CENTER_Y - n.y) * PPL_CENTER_K * PPL_CENTER_EFFECT_SCALE * pullMult * pplAlpha;
+      n.vx += (PPL_CENTER_X - n.x) * PPL_CONTACT_PULL_K * pullMult * pplAlpha;
+      n.vy += (PPL_CENTER_Y - n.y) * PPL_CONTACT_PULL_K * pullMult * pplAlpha;
       n.vx *= PPL_DAMPING; n.vy *= PPL_DAMPING;
       n.x += n.vx; n.y += n.vy;
     });
@@ -5593,11 +5592,6 @@
       });
     }
 
-    document.getElementById("pplCenterForceSlider").addEventListener("input", function(){
-      PPL_CENTER_K = Number(this.value);
-      pplReheat(1);
-    });
-
     var pplConnectBtn = document.getElementById("pplConnectModeBtn");
     pplConnectBtn.addEventListener("click", function(){
       pplConnectMode = !pplConnectMode;
@@ -5726,6 +5720,21 @@
   });
 
   /* ---------------- People ---------------- */
+  // Feeds the personGroupInput/people-table social-group cells' shared <datalist> (see
+  // personGroupList) with every distinct social group already in use, so picking one is a dropdown
+  // rather than retyping — the field stays free text (a person can still type a brand-new group;
+  // list="..." only adds suggestions, it doesn't restrict input), since group names are open-ended.
+  function pplRefreshSocialGroupDatalist(){
+    var datalist = document.getElementById("personGroupList");
+    if(!datalist) return;
+    var groups = {};
+    state.people.forEach(function(p){
+      if(!p.socialGroup) return;
+      p.socialGroup.split(",").forEach(function(g){ g = g.trim(); if(g) groups[g] = true; });
+    });
+    var sorted = Object.keys(groups).sort(function(a, b){ return a.localeCompare(b); });
+    datalist.innerHTML = sorted.map(function(g){ return '<option value="' + escapeHtml(g) + '"></option>'; }).join("");
+  }
   function renderPeople(){
     var f = filters.people;
     var list = state.people.filter(function(p){ return f === "all" || p.relationship === f; });
@@ -5734,6 +5743,7 @@
     document.getElementById("peopleGraphPanel").style.display = view === "graph" ? "" : "none";
     document.getElementById("peopleTablePanel").style.display = view === "table" ? "" : "none";
     document.getElementById("peopleFilterRow").style.display = view === "graph" ? "none" : "";
+    pplRefreshSocialGroupDatalist();
     if(view === "graph"){ activatePeopleGraph(); return; }
     if(view === "table"){ renderPeopleTable(list); return; }
     renderPeopleCards(list);
@@ -5774,8 +5784,9 @@
   });
   var PEOPLE_RELATIONSHIP_OPTS = ["Family","Friend","Colleague","Mentor","Partner","Other"];
   function renderPeopleTable(list){
-    function textCell(field, val){
-      return '<td><input type="text" class="people-cell-input" data-action="person-text-input" data-id="{id}" data-field="' + field + '" value="' + escapeHtml(val || "") + '"></td>';
+    function textCell(field, val, listId){
+      var listAttr = listId ? ' list="' + listId + '"' : '';
+      return '<td><input type="text" class="people-cell-input" data-action="person-text-input" data-id="{id}" data-field="' + field + '"' + listAttr + ' value="' + escapeHtml(val || "") + '"></td>';
     }
     function numCell(field, val){
       return '<td><input type="number" step="1" class="people-cell-input" data-action="person-num-input" data-id="{id}" data-field="' + field + '" value="' + (val != null ? val : "") + '"></td>';
@@ -5795,7 +5806,7 @@
         numCell("likeScore", p.likeScore) +
         textCell("relationshipStatus", p.relationshipStatus) +
         textCell("personalityType", p.personalityType) +
-        textCell("socialGroup", p.socialGroup) +
+        textCell("socialGroup", p.socialGroup, "personGroupList") +
         textCell("planets", p.planets) +
         textCell("relatedPeople", p.relatedPeople) +
         textCell("notes", p.notes) +
@@ -8461,6 +8472,7 @@
   // on it rather than having separate create/edit code paths.
   var editingPersonId = null;
   function openPersonEditModal(p){
+    pplRefreshSocialGroupDatalist();
     editingPersonId = p ? p.id : null;
     document.getElementById("personModalTitle").textContent = p ? "edit_person.json" : "new_person.json";
     document.getElementById("savePersonBtn").textContent = p ? "save changes" : "save person";
