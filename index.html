@@ -801,7 +801,11 @@
   .tl-h-daylabels{ height:26px; flex:none; }
   .tl-h-daynight{ height:18px; flex:none; }
   .tl-h-track{ height:42px; flex:none; }
-  .tl-viewport{ position:relative; flex:1; min-width:0; overflow-x:auto; overflow-y:hidden; border:1px solid var(--border); border-radius:6px; background:var(--bg-raised); cursor:grab; touch-action:pan-x; }
+  /* touch-action:none (not pan-x) — the pointerdown/pointermove pan handler below already drags
+     viewport.scrollLeft on touch same as mouse, so native pan-x scrolling would just fight it for
+     control of the same gesture (this is what made touch dragging feel broken); leaving pan fully
+     to the JS handler is the same approach .wb-canvas-wrap/.ppl-node already use successfully. */
+  .tl-viewport{ position:relative; flex:1; min-width:0; overflow-x:auto; overflow-y:hidden; border:1px solid var(--border); border-radius:6px; background:var(--bg-raised); cursor:grab; touch-action:none; }
   .tl-viewport.panning{ cursor:grabbing; }
   .tl-world{ position:relative; display:flex; flex-direction:column; }
   .tl-world .tl-h-track{ position:relative; border-top:1px solid var(--border); }
@@ -1116,7 +1120,12 @@
   .field.disabled{ opacity:0.4; pointer-events:none; }
   .modal-actions{ display:flex; justify-content:flex-end; gap:9px; margin-top:20px; }
 
-  @media (max-width: 820px){
+  /* A width breakpoint alone misses phones held sideways — plenty of phones are wider than 820px
+     in landscape (e.g. ~844-930px), which would otherwise fall through to the desktop two-column
+     layout on a screen that's still phone-sized, just short. The (max-height:500px) clause catches
+     that case by height instead, since landscape phones are wide but short — the same mobile rules
+     below apply either way a phone is held. */
+  @media (max-width: 820px), (max-height: 500px) and (orientation: landscape){
     .app{ grid-template-columns:1fr; }
     .side-nav{ margin-bottom:16px; }
     /* Extra top padding (vs. desktop's 32px) clears #sidebarToggleBtn — on mobile the drawer is
@@ -1132,9 +1141,18 @@
        entirely) and opened only via data-mobile-menu-open (see wireSidebarToggle), a separate,
        never-persisted flag that always starts closed on a fresh page load. Full-bleed and opaque
        (.term's own --bg-inset background) so nothing from the page underneath is visible while
-       it's open — not a partial slide-in with the page peeking out beside it. */
+       it's open — not a partial slide-in with the page peeking out beside it. Scrolls internally
+       (overflow-y) since the full nav + stats block doesn't fit a short landscape-phone height. */
     .term{ display:none; border-right:none; border-bottom:1px solid var(--border); }
-    html[data-mobile-menu-open] .term{ display:flex; position:fixed; inset:0; z-index:140; width:100%; }
+    html[data-mobile-menu-open] .term{ display:flex; position:fixed; inset:0; z-index:140; width:100%; overflow-y:auto; }
+  }
+  /* Landscape phones specifically (short height, not just narrow width) — the portrait mobile rules
+     above still apply, this only claws back some of the vertical padding they reserve, since height
+     is the scarce dimension here rather than width. */
+  @media (max-height: 500px) and (orientation: landscape){
+    .main{ padding:44px 24px 20px; }
+    #whiteboardSection, #locationSection{ margin:-44px -24px -20px; padding:10px 24px 10px; }
+    #peopleSection.ppl-fullscreen-graph{ margin:-44px -24px -20px; padding:10px 24px 10px; }
   }
 </style>
 </head>
@@ -4575,13 +4593,26 @@
     wbPanY = viewportY - worldY * wbZoom;
     applyWbTransform();
   }
+  // Centers the viewport on the world's center point (WB_CENTER_X/Y — also where center-gravity
+  // pulls every node, so it's the natural "middle of the graph" regardless of how nodes happen to
+  // be scattered at the moment). wbPanX/Y default to 0,0, which shows the world's top-left corner
+  // instead — without this the graph would start off-center every time.
+  function wbCenterView(){
+    if(!wbWrapEl) return;
+    var w = wbWrapEl.clientWidth, h = wbWrapEl.clientHeight;
+    wbPanX = w / 2 - WB_CENTER_X * wbZoom;
+    wbPanY = h / 2 - WB_CENTER_Y * wbZoom;
+    applyWbTransform();
+  }
 
+  var wbCenteredOnce = false;
   function activateWhiteboard(){
     if(!wbLoadStarted){ wbLoadStarted = true; loadWbConnections(); }
     wbSyncSimNodes();
     wbRebuildGraphCache();
     renderWhiteboardNodes();
     wbReheat(1);
+    if(!wbCenteredOnce){ wbCenteredOnce = true; wbCenterView(); }
   }
 
   /* ---- Force-directed physics (repulsion + link springs + center gravity), Obsidian-graph style —
@@ -5207,8 +5238,8 @@
       wbZoomAt(wbZoom / 1.25, rect.width / 2, rect.height / 2);
     });
     document.getElementById("wbZoomResetBtn").addEventListener("click", function(){
-      wbZoom = 1; wbPanX = 0; wbPanY = 0;
-      applyWbTransform();
+      wbZoom = 1;
+      wbCenterView();
     });
     applyWbTransform();
 
@@ -5740,11 +5771,22 @@
     pplPanY = viewportY - worldY * pplZoom;
     applyPplTransform();
   }
+  // Same reasoning as wbCenterView — pplPanX/Y default to 0,0, which shows the world's top-left
+  // corner rather than the sun (PPL_CENTER_X/Y) the graph is actually built around.
+  function pplCenterView(){
+    if(!pplWrapEl) return;
+    var w = pplWrapEl.clientWidth, h = pplWrapEl.clientHeight;
+    pplPanX = w / 2 - PPL_CENTER_X * pplZoom;
+    pplPanY = h / 2 - PPL_CENTER_Y * pplZoom;
+    applyPplTransform();
+  }
+  var pplCenteredOnce = false;
   function activatePeopleGraph(){
     pplSyncSimNodes();
     pplRebuildGraphCache();
     renderPeopleGraphNodes();
     pplReheat(1);
+    if(!pplCenteredOnce){ pplCenteredOnce = true; pplCenterView(); }
   }
   // Marks (or clears, when id is null) the pending "from" node of a connect-mode selection —
   // toggles the highlight directly on the cached element rather than a full re-render.
@@ -5971,8 +6013,8 @@
       pplZoomAt(pplZoom / 1.25, rect.width / 2, rect.height / 2);
     });
     document.getElementById("pplZoomResetBtn").addEventListener("click", function(){
-      pplZoom = 1; pplPanX = 0; pplPanY = 0;
-      applyPplTransform();
+      pplZoom = 1;
+      pplCenterView();
     });
     applyPplTransform();
 
