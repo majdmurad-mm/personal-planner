@@ -1118,6 +1118,14 @@
             <div class="today-row-list" id="todayActionsList"></div>
             <p class="today-empty-note" id="todayActionsEmpty">Nothing scheduled for this day.</p>
           </div>
+
+          <div class="today-section-block">
+            <div class="today-section-block-head"><h2>notes</h2>
+              <button class="btn" id="addTodayNoteBtn" type="button">+ note</button>
+            </div>
+            <div class="today-row-list" id="todayNotesList"></div>
+            <p class="today-empty-note" id="todayNotesEmpty">No notes for this day.</p>
+          </div>
         </div>
       </div>
     </section>
@@ -1722,7 +1730,7 @@
 <!-- ===== JOURNAL ENTRY MODAL ===== -->
 <div class="modal-overlay" id="journalModalOverlay" hidden>
   <div class="modal">
-    <div class="modal-head"><span class="dot g"></span><h2>edit_note.json</h2></div>
+    <div class="modal-head"><span class="dot g"></span><h2 id="journalModalTitle">edit_note.json</h2></div>
     <div class="modal-inner">
       <div class="field-row">
         <div class="field"><label for="journalEditDateInput">date</label><input type="date" id="journalEditDateInput"></div>
@@ -4907,25 +4915,32 @@
     if(del) await deleteJournalEntry(del.dataset.id);
   });
 
-  // Journal entry edit modal — same field set as the composer (date/time/area/text), opened via the
-  // entry list's edit button or the generic right-click menu (EDIT_HANDLERS.journal).
+  // Journal entry edit modal — same field set as the composer (date/time/area/text). Doubles as the
+  // create modal too (editingJournalId = null means create, same pattern the goal/project/habit/
+  // action modals already use) — opened via the entry list's edit button, the generic right-click
+  // menu (EDIT_HANDLERS.journal), or the Today page's "+ note" button for a brand-new entry.
   var editingJournalId = null;
   wireTimePicker("journalEditTimeInput", "journalEditTimePickBtn", "journalEditTimePickPanel");
-  function editJournalEntry(id){
-    var n = state.journal.find(function(x){ return x.id === id; });
-    if(!n) return;
-    editingJournalId = id;
-    document.getElementById("journalEditDateInput").value = n.date || todayStr();
-    document.getElementById("journalEditTimeInput").value = n.timeOfDay || "";
-    setChip(document.getElementById("journalEditAreaSelect"), "ar", n.category || "Career");
-    document.getElementById("journalEditTextInput").value = n.text || "";
+  function openJournalEditModal(n){
+    editingJournalId = n ? n.id : null;
+    document.getElementById("journalModalTitle").textContent = n ? "edit_note.json" : "new_note.json";
+    document.getElementById("saveJournalEditBtn").textContent = n ? "save note" : "add note";
+    document.getElementById("journalEditDateInput").value = (n && n.date) || todaySelectedDate || todayStr();
+    document.getElementById("journalEditTimeInput").value = (n && n.timeOfDay) || "";
+    setChip(document.getElementById("journalEditAreaSelect"), "ar", (n && n.category) || "Career");
+    document.getElementById("journalEditTextInput").value = (n && n.text) || "";
     document.getElementById("journalEditTimePickPanel").hidden = true;
     openModal("journalModalOverlay");
     document.getElementById("journalEditTextInput").focus();
   }
+  function editJournalEntry(id){
+    var n = state.journal.find(function(x){ return x.id === id; });
+    if(!n) return;
+    openJournalEditModal(n);
+  }
+  document.getElementById("addTodayNoteBtn").addEventListener("click", function(){ openJournalEditModal(null); });
   document.getElementById("cancelJournalModalBtn").addEventListener("click", function(){ closeModal("journalModalOverlay"); });
   document.getElementById("saveJournalEditBtn").addEventListener("click", async function(){
-    if(!editingJournalId) return;
     var text = document.getElementById("journalEditTextInput").value.trim();
     if(!text) return;
     var payload = {
@@ -4935,14 +4950,24 @@
       category: chipValue(document.getElementById("journalEditAreaSelect"), "ar") || null
     };
     this.disabled = true;
-    var res = await safeUpdate("journal", editingJournalId, payload);
-    this.disabled = false;
-    if(res.error){ alert(res.error.message); return; }
-    var r = res.data;
-    var idx = state.journal.findIndex(function(x){ return x.id === editingJournalId; });
-    if(idx !== -1) state.journal[idx] = { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null };
-    renderAll(); closeModal("journalModalOverlay");
-    warnDroppedFields(res.droppedFields);
+    if(editingJournalId){
+      var res = await safeUpdate("journal", editingJournalId, payload);
+      this.disabled = false;
+      if(res.error){ alert(res.error.message); return; }
+      var r = res.data;
+      var idx = state.journal.findIndex(function(x){ return x.id === editingJournalId; });
+      if(idx !== -1) state.journal[idx] = { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null };
+      renderAll(); closeModal("journalModalOverlay");
+      warnDroppedFields(res.droppedFields);
+    } else {
+      var res2 = await safeWrite(function(p){ return sb.from("journal").insert(p).select().single(); }, payload);
+      this.disabled = false;
+      if(res2.error){ alert(res2.error.message); return; }
+      var r2 = res2.data;
+      state.journal.push({ id:r2.id, date:r2.date, text:r2.text, timeOfDay:r2.time_of_day ? r2.time_of_day.slice(0,5) : null, category:r2.category||null });
+      renderAll(); closeModal("journalModalOverlay");
+      warnDroppedFields(res2.droppedFields);
+    }
   });
 
   /* ---------------- People ---------------- */
@@ -6586,6 +6611,19 @@
       '</div>';
     }).join("");
 
+    var notesToday = state.journal.filter(function(n){ return n.date === todaySelectedDate; });
+    document.getElementById("todayNotesEmpty").style.display = notesToday.length ? "none" : "";
+    document.getElementById("todayNotesList").innerHTML = notesToday.map(function(n){
+      var nCatClass = n.category ? " " + n.category : "";
+      var preview = n.text.length > 80 ? n.text.slice(0, 80) + "…" : n.text;
+      return '<div class="today-row' + nCatClass + '" data-kind="journal" data-id="' + n.id + '">' +
+        '<span class="today-row-title">' + escapeHtml(preview) + '</span>' +
+        (n.timeOfDay ? '<span class="today-row-meta">' + fmtTimeOfDay(n.timeOfDay) + '</span>' : '') +
+        '<button class="icon-btn edit" data-action="edit-journal" data-id="' + n.id + '" aria-label="Edit note">✎</button>' +
+        '<button class="icon-btn" data-action="del-journal" data-id="' + n.id + '" aria-label="Delete note">&times;</button>' +
+      '</div>';
+    }).join("");
+
     renderTodayCalGrid();
   }
 
@@ -6659,6 +6697,12 @@
     if(t.dataset.action === "toggle-action") await toggleActionDone(t.dataset.id);
     else if(t.dataset.action === "edit-action") editAction(t.dataset.id);
     else if(t.dataset.action === "del-action") await deleteAction(t.dataset.id);
+  });
+  document.getElementById("todayNotesList").addEventListener("click", async function(e){
+    var t = e.target.closest("[data-action]");
+    if(!t) return;
+    if(t.dataset.action === "edit-journal") editJournalEntry(t.dataset.id);
+    else if(t.dataset.action === "del-journal") await deleteJournalEntry(t.dataset.id);
   });
   document.getElementById("addTodayActionBtn").addEventListener("click", function(){
     openActionModal(null, null);
