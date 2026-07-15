@@ -6,7 +6,7 @@
 <title>personal_system // planner</title>
 <meta name="color-scheme" content="light">
 <meta name="theme-color" content="#F4F2ED">
-<meta name="description" content="A terminal-styled personal planner — goals, projects, habits, actions, tracker, journal, and a relationship graph view.">
+<meta name="description" content="A terminal-styled personal planner — goals, projects, habits, actions, tracker, notes, and a relationship graph view.">
 <link rel="manifest" href="manifest.json">
 <!-- iOS ignores the manifest's icons/display mode for "Add to Home Screen" — these are what it
      actually reads, so they're duplicated here rather than relied on solely through manifest.json. -->
@@ -896,9 +896,11 @@
   .agent-input-row textarea{ flex:1; min-height:52px; }
   .agent-empty{ color:var(--text-faint); font-size:12.5px; text-align:center; padding:30px 0; }
   #agentVoiceToggleBtn.on{ background:var(--accent); color:var(--bg); border-color:var(--accent); }
-  /* Red + a subtle pulse while actively recording, so it's obvious the mic is live. */
-  #agentMicBtn.on{ background:#DC2626; color:#fff; border-color:#DC2626; animation:agentMicPulse 1.2s ease-in-out infinite; }
-  #agentMicBtn.transcribing{ opacity:0.6; cursor:wait; }
+  /* Shared record-button states (wireVoiceRecordButton) — both #agentMicBtn and #journalRecordBtn
+     use these classes, so a mic button reads the same "live/busy" way everywhere it appears. Red +
+     a subtle pulse while actively recording, so it's obvious the mic is live. */
+  #agentMicBtn.on, #journalRecordBtn.on{ background:#DC2626; color:#fff; border-color:#DC2626; animation:agentMicPulse 1.2s ease-in-out infinite; }
+  #agentMicBtn.transcribing, #journalRecordBtn.transcribing{ opacity:0.6; cursor:wait; }
   @keyframes agentMicPulse{ 0%, 100%{ box-shadow:0 0 0 0 rgba(220,38,38,0.5); } 50%{ box-shadow:0 0 0 6px rgba(220,38,38,0); } }
   .agent-msg-replay{ background:none; border:none; color:var(--text-faint); cursor:pointer; font-size:11px; padding:0; margin-left:8px; vertical-align:middle; }
   .agent-msg-replay:hover{ color:var(--accent); }
@@ -1229,7 +1231,7 @@
         <button class="side-link" data-section="whiteboard" type="button"><span class="sl-glyph">▧</span>Graph</button>
         <button class="side-link" data-section="calendar" type="button"><span class="sl-glyph">▦</span>Calendar</button>
         <button class="side-link" data-section="timeline" type="button"><span class="sl-glyph">↔</span>Timeline</button>
-        <button class="side-link" data-section="journal" type="button"><span class="sl-glyph">✎</span>Journal</button>
+        <button class="side-link" data-section="journal" type="button"><span class="sl-glyph">✎</span>Notes</button>
         <button class="side-link" data-section="people" type="button"><span class="sl-glyph">☺</span>People</button>
         <button class="side-link" data-section="location" type="button"><span class="sl-glyph">⚲</span>Location</button>
       </nav>
@@ -1691,7 +1693,7 @@
     <section id="journalSection" style="display:none;">
       <div class="main-header">
         <div>
-          <h1>journal</h1>
+          <h1>notes</h1>
           <p class="subhead">A running log — reflections, notes, whatever's on your mind that day.</p>
         </div>
       </div>
@@ -1708,14 +1710,16 @@
               <div class="chip-opt" role="button" tabindex="0" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" role="button" tabindex="0" data-ar="Growth">↑ Growth</div><div class="chip-opt" role="button" tabindex="0" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" role="button" tabindex="0" data-ar="Sol">◐ Sol</div>
             </div>
           </div>
+          <button class="btn" id="journalRecordBtn" type="button" title="Record a voice note — saves the audio, then transcribes it here">🎤</button>
           <button class="btn btn-accent" id="saveJournalBtn" type="button">+ add entry</button>
         </div>
         <div class="time-pick-panel" id="journalTimePickPanel" hidden></div>
+        <div class="loc-geocode-status" id="journalRecordStatus"></div>
         <textarea id="journalTextInput" class="journal-textarea" placeholder="Write today's entry…" rows="3"></textarea>
       </div>
       <div id="journalEntries"></div>
       <div class="empty-state" id="journalEmptyState" style="display:none;">
-        <div class="glyph">✎</div><h3>no entries yet</h3><p>Write your first journal entry above.</p>
+        <div class="glyph">✎</div><h3>no entries yet</h3><p>Write your first note above.</p>
       </div>
     </section>
 
@@ -2859,7 +2863,7 @@
     state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null,
       locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null) }; });
     state.actions.sort(function(a,b){ return a.position - b.position; });
-    state.journal = (results[4].data || []).map(function(r){ return { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null }; });
+    state.journal = (results[4].data || []).map(function(r){ return { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null, audioPath:r.audio_path||null }; });
     state.people = (results[5].data || []).map(function(r){
       return { id:r.id, name:r.name, relationship:r.relationship, contact:r.contact, notes:r.notes, position:r.position||0,
         verified:!!r.verified, likeScore:(r.like_score!=null?r.like_score:null), contactScore:(r.contact_score!=null?r.contact_score:null),
@@ -3722,7 +3726,7 @@
     });
   }
   function journalPayload(snapshot){
-    return { id:snapshot.id, date:snapshot.date, text:snapshot.text, time_of_day:snapshot.timeOfDay, category:snapshot.category };
+    return { id:snapshot.id, date:snapshot.date, text:snapshot.text, time_of_day:snapshot.timeOfDay, category:snapshot.category, audio_path:snapshot.audioPath };
   }
   async function deleteJournalEntry(id){
     var n = state.journal.find(function(x){ return x.id === id; });
@@ -6780,6 +6784,42 @@
   wireNoteTagAutocomplete(document.getElementById("journalEditTextInput"));
   document.getElementById("journalDateInput").value = todayStr();
   wireTimePicker("journalTimeInput", "journalTimePickBtn", "journalTimePickPanel");
+
+  // Voice notes: record -> upload the raw audio to Storage first (so it's saved even if
+  // transcription then fails) -> transcribe via Gemini into the composer textarea. The uploaded
+  // path is held here until the entry is actually saved (see saveJournalBtn below), same "pending"
+  // pattern the Location page's POI-create flow uses for a click-then-confirm value.
+  var journalPendingAudioPath = null;
+  wireVoiceRecordButton(document.getElementById("journalRecordBtn"), async function(blob, mimeType){
+    var statusEl = document.getElementById("journalRecordStatus");
+    if(statusEl) statusEl.textContent = "saving recording…";
+    try{
+      var ext = mimeType.indexOf("ogg") !== -1 ? "ogg" : "webm";
+      var path = (currentUser ? currentUser.id : "anon") + "/" + Date.now() + "." + ext;
+      var upload = await sb.storage.from("notes-audio").upload(path, blob, { contentType: mimeType });
+      if(upload.error) throw new Error(upload.error.message);
+      journalPendingAudioPath = path;
+      if(statusEl) statusEl.textContent = "recording saved — transcribing…";
+    } catch(err){
+      if(statusEl) statusEl.textContent = "";
+      toast("Couldn't save that recording: " + err.message);
+      return;
+    }
+    try{
+      var wavBase64 = await blobToWavBase64(blob);
+      var text = await transcribeAudioViaGemini(wavBase64);
+      var input = document.getElementById("journalTextInput");
+      if(text){
+        input.value = (input.value.trim() ? input.value.trim() + " " : "") + text;
+      } else {
+        toast("Recording saved, but couldn't make out any speech to transcribe — you can still type it in.");
+      }
+    } catch(err){
+      toast(err.message === "no_api_key" ? "Recording saved, but no Gemini API key is set for transcription — add one from the agent tab." : ("Recording saved, but transcription failed: " + err.message));
+    } finally {
+      if(statusEl) statusEl.textContent = "";
+    }
+  });
   document.getElementById("saveJournalBtn").addEventListener("click", async function(){
     var date = document.getElementById("journalDateInput").value || todayStr();
     var text = document.getElementById("journalTextInput").value.trim();
@@ -6787,16 +6827,18 @@
     var payload = {
       date: date, text: text,
       time_of_day: document.getElementById("journalTimeInput").value || null,
-      category: chipValue(document.getElementById("journalAreaSelect"), "ar") || null
+      category: chipValue(document.getElementById("journalAreaSelect"), "ar") || null,
+      audio_path: journalPendingAudioPath
     };
     this.disabled = true;
     var res = await safeWrite(function(p){ return sb.from("journal").insert(p).select().single(); }, payload);
     this.disabled = false;
     if(res.error){ alert(res.error.message); return; }
     var r = res.data;
-    state.journal.push({ id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null });
+    state.journal.push({ id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null, audioPath:r.audio_path||null });
     document.getElementById("journalTextInput").value = "";
     document.getElementById("journalTimeInput").value = "";
+    journalPendingAudioPath = null;
     renderAll();
     warnDroppedFields(res.droppedFields);
   });
@@ -6812,6 +6854,7 @@
       return head + '<div class="journal-entry' + catClass + '" data-kind="journal" data-id="' + entry.id + '">' +
         '<div class="journal-entry-top"><span class="journal-entry-date">' + d.toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" }) + (entry.timeOfDay ? " · " + fmtTimeOfDay(entry.timeOfDay) : "") + '</span>' +
         '<div class="entity-actions">' +
+          (entry.audioPath ? '<button class="icon-btn" data-action="play-journal-audio" data-id="' + entry.id + '" aria-label="Play recording" title="Play the original recording">🔊</button>' : '') +
           '<button class="icon-btn edit" data-action="edit-journal" data-id="' + entry.id + '" aria-label="Edit entry">✎</button>' +
           '<button class="icon-btn" data-action="del-journal" data-id="' + entry.id + '" aria-label="Delete entry">&times;</button>' +
         '</div></div>' +
@@ -6824,11 +6867,29 @@
   document.getElementById("journalEntries").addEventListener("click", async function(e){
     var tag = e.target.closest(".note-tag");
     if(tag){ openNoteTag(tag.dataset.kind, tag.dataset.id); return; }
+    var playBtn = e.target.closest('[data-action="play-journal-audio"]');
+    if(playBtn){ playJournalAudio(playBtn.dataset.id, playBtn); return; }
     var editBtn = e.target.closest('[data-action="edit-journal"]');
     if(editBtn){ editJournalEntry(editBtn.dataset.id); return; }
     var del = e.target.closest('[data-action="del-journal"]');
     if(del) await deleteJournalEntry(del.dataset.id);
   });
+  // Bucket is private, so playback needs a fresh signed URL each time rather than a stored public
+  // one — fetched lazily on click (not for every entry on every render) since most notes with a
+  // recording will never actually be replayed.
+  var journalAudioEl = null;
+  async function playJournalAudio(id, btnEl){
+    var entry = state.journal.find(function(x){ return x.id === id; });
+    if(!entry || !entry.audioPath) return;
+    if(!journalAudioEl) journalAudioEl = new Audio();
+    var originalLabel = btnEl ? btnEl.textContent : "";
+    if(btnEl){ btnEl.textContent = "…"; btnEl.disabled = true; }
+    var signed = await sb.storage.from("notes-audio").createSignedUrl(entry.audioPath, 3600);
+    if(btnEl){ btnEl.textContent = originalLabel; btnEl.disabled = false; }
+    if(signed.error){ toast("Couldn't load that recording: " + signed.error.message); return; }
+    journalAudioEl.src = signed.data.signedUrl;
+    journalAudioEl.play();
+  }
 
   // Journal entry edit modal — same field set as the composer (date/time/area/text). Doubles as the
   // create modal too (editingJournalId = null means create, same pattern the goal/project/habit/
@@ -6871,7 +6932,7 @@
       if(res.error){ alert(res.error.message); return; }
       var r = res.data;
       var idx = state.journal.findIndex(function(x){ return x.id === editingJournalId; });
-      if(idx !== -1) state.journal[idx] = { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null };
+      if(idx !== -1) state.journal[idx] = { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null, audioPath:r.audio_path||null };
       renderAll(); closeModal("journalModalOverlay");
       warnDroppedFields(res.droppedFields);
     } else {
@@ -6879,7 +6940,7 @@
       this.disabled = false;
       if(res2.error){ alert(res2.error.message); return; }
       var r2 = res2.data;
-      state.journal.push({ id:r2.id, date:r2.date, text:r2.text, timeOfDay:r2.time_of_day ? r2.time_of_day.slice(0,5) : null, category:r2.category||null });
+      state.journal.push({ id:r2.id, date:r2.date, text:r2.text, timeOfDay:r2.time_of_day ? r2.time_of_day.slice(0,5) : null, category:r2.category||null, audioPath:r2.audio_path||null });
       renderAll(); closeModal("journalModalOverlay");
       warnDroppedFields(res2.droppedFields);
     }
@@ -8861,7 +8922,7 @@
       id:{ type:"string" }, title:{ type:"string" }, type:{ type:"string", enum:ACTION_TYPES }, priority:{ type:"string", enum:PRIORITIES },
       parent_type:{ type:"string", enum:["goal","project","none"] }, parent_id:{ type:"string" }, date:{ type:"string" }, done:{ type:"boolean" }
     }, required:["id"] } },
-    { name:"add_journal_entry", description:"Add a new journal entry.", input_schema:{ type:"object", properties:{
+    { name:"add_journal_entry", description:"Add a new note.", input_schema:{ type:"object", properties:{
       date:{ type:"string", description:"YYYY-MM-DD, defaults to today if omitted" }, text:{ type:"string" }
     }, required:["text"] } },
     { name:"create_person", description:"Add a new person.", input_schema:{ type:"object", properties:{
@@ -8875,7 +8936,7 @@
   function buildAgentSystemPrompt(){
     var lines = [];
     lines.push("You are the capture assistant inside a personal terminal-styled planner app called personal_system.");
-    lines.push("The user describes things in natural language (tasks, goals, projects, habits, journal reflections, people) and you record them accurately using the tools provided.");
+    lines.push("The user describes things in natural language (tasks, goals, projects, habits, notes, people) and you record them accurately using the tools provided.");
     lines.push("Prefer calling a tool over just describing what you would do. You can create new items and edit existing ones, but you can NEVER delete anything — if asked to delete or remove something, tell the user to do it manually in the app instead.");
     lines.push("Today's date is " + todayStr() + ".");
     lines.push("");
@@ -9295,59 +9356,71 @@
     return parts.filter(function(p){ return typeof p.text === "string"; }).map(function(p){ return p.text; }).join("\n").trim();
   }
 
-  var agentMicBtnEl = document.getElementById("agentMicBtn");
+  // Generic recorder wiring — shared by the Agent's mic button and the Notes composer's record
+  // button (see wireVoiceRecordButton call sites). Handles the record/stop toggle, the "busy" guard
+  // while onStop's async work is in flight, and hides the button entirely when the underlying APIs
+  // aren't available, rather than offering a control that would silently fail. `onStop(blob,
+  // mimeType)` gets the raw recorded Blob (native browser format — webm on Chrome/Edge, ogg on
+  // Firefox — NOT re-encoded; callers that need WAV for Gemini call blobToWavBase64 themselves) and
+  // is awaited with the button held in a disabled "transcribing" state until it resolves.
   function agentRecorderSupported(){ return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder); }
-  if(!agentRecorderSupported()){
-    agentMicBtnEl.style.display = "none";
-  } else {
-    var agentMediaRecorder = null, agentRecordedChunks = [], agentRecordingStream = null;
-    var agentRecording = false, agentTranscribing = false;
-    agentMicBtnEl.addEventListener("click", async function(){
-      if(agentTranscribing) return;
-      if(agentRecording){ agentMediaRecorder.stop(); return; }
+  function wireVoiceRecordButton(btnEl, onStop){
+    if(!btnEl) return;
+    if(!agentRecorderSupported()){ btnEl.style.display = "none"; return; }
+    var mediaRecorder = null, recordedChunks = [], recordingStream = null;
+    var recording = false, busy = false;
+    btnEl.addEventListener("click", async function(){
+      if(busy) return;
+      if(recording){ mediaRecorder.stop(); return; }
       try{
-        agentRecordingStream = await navigator.mediaDevices.getUserMedia({ audio:true });
+        recordingStream = await navigator.mediaDevices.getUserMedia({ audio:true });
       } catch(err){
         toast("Microphone access was denied or unavailable.");
         return;
       }
-      agentRecordedChunks = [];
+      recordedChunks = [];
       var candidateType = ["audio/webm;codecs=opus","audio/webm","audio/ogg;codecs=opus"].find(function(t){
         return window.MediaRecorder.isTypeSupported && window.MediaRecorder.isTypeSupported(t);
       });
-      agentMediaRecorder = candidateType ? new MediaRecorder(agentRecordingStream, { mimeType: candidateType }) : new MediaRecorder(agentRecordingStream);
-      agentMediaRecorder.addEventListener("dataavailable", function(e){ if(e.data && e.data.size) agentRecordedChunks.push(e.data); });
-      agentMediaRecorder.addEventListener("stop", async function(){
-        agentRecording = false;
-        agentMicBtnEl.classList.remove("on");
-        agentRecordingStream.getTracks().forEach(function(t){ t.stop(); });
-        var blob = new Blob(agentRecordedChunks, { type: agentMediaRecorder.mimeType || "audio/webm" });
+      mediaRecorder = candidateType ? new MediaRecorder(recordingStream, { mimeType: candidateType }) : new MediaRecorder(recordingStream);
+      mediaRecorder.addEventListener("dataavailable", function(e){ if(e.data && e.data.size) recordedChunks.push(e.data); });
+      mediaRecorder.addEventListener("stop", async function(){
+        recording = false;
+        btnEl.classList.remove("on");
+        recordingStream.getTracks().forEach(function(t){ t.stop(); });
+        var blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || "audio/webm" });
         if(!blob.size) return;
-        agentTranscribing = true;
-        agentMicBtnEl.classList.add("transcribing");
-        agentMicBtnEl.disabled = true;
+        busy = true;
+        btnEl.classList.add("transcribing");
+        btnEl.disabled = true;
         try{
-          var wavBase64 = await blobToWavBase64(blob);
-          var text = await transcribeAudioViaGemini(wavBase64);
-          if(text){
-            var input = document.getElementById("agentInput");
-            input.value = (input.value.trim() ? input.value.trim() + " " : "") + text;
-          } else {
-            toast("Couldn't make out any speech in that recording.");
-          }
-        } catch(err){
-          toast(err.message === "no_api_key" ? 'No Gemini API key set yet — click "api key" above to add one.' : ("Transcription failed: " + err.message));
+          await onStop(blob, mediaRecorder.mimeType || "audio/webm");
         } finally {
-          agentTranscribing = false;
-          agentMicBtnEl.classList.remove("transcribing");
-          agentMicBtnEl.disabled = false;
+          busy = false;
+          btnEl.classList.remove("transcribing");
+          btnEl.disabled = false;
         }
       });
-      agentMediaRecorder.start();
-      agentRecording = true;
-      agentMicBtnEl.classList.add("on");
+      mediaRecorder.start();
+      recording = true;
+      btnEl.classList.add("on");
     });
   }
+
+  wireVoiceRecordButton(document.getElementById("agentMicBtn"), async function(blob){
+    try{
+      var wavBase64 = await blobToWavBase64(blob);
+      var text = await transcribeAudioViaGemini(wavBase64);
+      if(text){
+        var input = document.getElementById("agentInput");
+        input.value = (input.value.trim() ? input.value.trim() + " " : "") + text;
+      } else {
+        toast("Couldn't make out any speech in that recording.");
+      }
+    } catch(err){
+      toast(err.message === "no_api_key" ? 'No Gemini API key set yet — click "api key" above to add one.' : ("Transcription failed: " + err.message));
+    }
+  });
 
   document.getElementById("agentSendBtn").addEventListener("click", async function(){
     var input = document.getElementById("agentInput");
