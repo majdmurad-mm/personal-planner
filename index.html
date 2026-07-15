@@ -1639,7 +1639,7 @@
             <!-- Fixed at the world center (positioned by JS in initPeopleGraph, not simulated —
                  see pplTickPhysics' center-pull step) — not a person, so it's a plain static element
                  rather than a .ppl-node (keeps it out of drag/connect-mode/edit click handling). -->
-            <div class="ppl-sun-node" id="pplSunNode" title="You — everyone's pull toward you is set by their contact score">
+            <div class="ppl-sun-node" id="pplSunNode" title="You — everyone's pull toward you is set by their contact score (negative pushes them away)">
               <span class="ppl-sun-label">You</span>
             </div>
             <div class="wb-overlay" id="pplOverlay"></div>
@@ -1872,7 +1872,7 @@
       </div>
       <div class="field-row">
         <div class="field"><label for="personYearMetInput">year met</label><input type="number" step="1" id="personYearMetInput" placeholder="e.g. 2018"></div>
-        <div class="field"><label for="personContactScoreInput">contact score</label><input type="number" step="1" id="personContactScoreInput" placeholder="0-4"></div>
+        <div class="field"><label for="personContactScoreInput">contact score</label><input type="number" step="1" id="personContactScoreInput" placeholder="0-4, negative pushes away in the graph"></div>
         <div class="field"><label for="personLikeScoreInput">like score</label><input type="number" step="1" id="personLikeScoreInput" placeholder="0-4"></div>
       </div>
       <div class="field-row">
@@ -5080,19 +5080,28 @@
       pplSimNodes.push({ id:p.id, x: PPL_CENTER_X + Math.cos(angle)*radius, y: PPL_CENTER_Y + Math.sin(angle)*radius, vx:0, vy:0, fixed:false });
     });
   }
+  // Clamps a weight's magnitude to 0.1-10 while keeping its sign — sign is what turns a connection's
+  // spring force (pplApplySpring) from a pull into a push (see PPL_CONTACT_PULL_K/pplTickPhysics for
+  // the same signed-multiplier idea applied to contact score). 0 or anything unparseable is not a
+  // meaningful signed weight, so it falls back to the neutral default of 1.
+  function pplClampWeight(w){
+    if(!isFinite(w) || w === 0) return 1;
+    var sign = w < 0 ? -1 : 1;
+    return sign * Math.max(0.1, Math.min(10, Math.abs(w)));
+  }
   // Each "related people" entry is a plain name ("Jad Murad") or a name with a connection weight
-  // suffix ("Jad Murad:3") — the weight drives both the spring physics (pplApplySpring) and the
-  // line thickness in renderPeopleGraphConnections. Missing/invalid weight defaults to 1 so existing
-  // plain-name CSV-imported data keeps working unchanged.
+  // suffix ("Jad Murad:3" or "Jad Murad:-3" — negative pushes the two people apart instead of
+  // pulling them together) — the weight drives both the spring physics (pplApplySpring) and the
+  // line thickness/color in renderPeopleGraphConnections. Missing/invalid weight defaults to 1 so
+  // existing plain-name CSV-imported data keeps working unchanged.
   function pplParseRelatedEntry(rawEntry){
     var raw = (rawEntry || "").trim();
     if(!raw) return null;
-    var m = raw.match(/^(.*):([0-9]+(?:\.[0-9]+)?)$/);
+    var m = raw.match(/^(.*):(-?[0-9]+(?:\.[0-9]+)?)$/);
     if(!m) return { name: raw, weight: 1 };
     var name = m[1].trim();
     if(!name) return null;
-    var weight = Math.max(0.1, Math.min(10, Number(m[2]) || 1));
-    return { name: name, weight: weight };
+    return { name: name, weight: pplClampWeight(Number(m[2])) };
   }
   // Replaces (or removes, when weight is null) a single person's entry for `name` within a
   // "related people" text blob, leaving every other entry untouched — used by pplSetConnection so
@@ -5161,10 +5170,12 @@
   var pplCachedNodeGroups = {};
   var pplCachedGroupColors = {};
   // Per-person multiplier on the center-pull force (see pplTickPhysics), derived from contact score
-  // (0-4 scale, same as the person modal's "contact score" field) rather than one uniform strength
-  // for everyone — score 2 (the midpoint) reproduces the old uniform pull exactly, 4 pulls twice as
-  // hard, 0 doesn't pull at all. No score set at all defaults to the same neutral 1x as score 2, so
-  // people without a contact score keep the old "don't drift off forever" anchoring behavior.
+  // (typically 0-4, same as the person modal's "contact score" field, but unclamped) rather than one
+  // uniform strength for everyone — score 2 (the old midpoint) reproduces the old uniform pull
+  // exactly, 4 pulls twice as hard, 0 doesn't pull at all, and a NEGATIVE score pushes away from the
+  // sun instead (pplTickPhysics' formula flips sign automatically, same trick as connection weight —
+  // see pplClampWeight). No score set at all defaults to the same neutral 1x as score 2, so people
+  // without a contact score keep the old "don't drift off forever" anchoring behavior.
   var pplCachedContactPull = {};
   function pplRebuildGraphCache(){
     pplCachedNodeGroups = {};
@@ -5176,7 +5187,7 @@
     sortedGroups.forEach(function(g, i){ pplCachedGroupColors[g] = PPL_GROUP_PALETTE[i % PPL_GROUP_PALETTE.length]; });
     pplCachedContactPull = {};
     state.people.forEach(function(p){
-      pplCachedContactPull[p.id] = p.contactScore != null ? Math.max(0, p.contactScore) / 2 : 1;
+      pplCachedContactPull[p.id] = p.contactScore != null ? p.contactScore / 2 : 1;
     });
     // People who share a primary social group are linked by default — not an opt-in action — at
     // the unknown/default weight, on top of the real relatedPeople-derived edges. A real edge always
@@ -5343,10 +5354,17 @@
     }).join("");
   }
   // Each edge draws two overlapping lines: a thin visible one whose stroke-width scales with the
-  // connection's weight, and a fat invisible one (.ppl-conn-hit) that's the actual click target for
-  // handlePplEdgeClick — a 1-2px line is too thin to reliably click otherwise.
+  // connection's weight MAGNITUDE (a strong push and a strong pull are both "strong", just opposite
+  // directions — see pplEdgeColor for how the direction itself is shown), and a fat invisible one
+  // (.ppl-conn-hit) that's the actual click target for handlePplEdgeClick — a 1-2px line is too thin
+  // to reliably click otherwise.
   function pplEdgeStrokeWidth(weight){
-    return Math.max(1, Math.min(5, 1.5 + ((weight || 1) - 1) * 0.7));
+    return Math.max(1, Math.min(5, 1.5 + (Math.abs(weight || 1) - 1) * 0.7));
+  }
+  // Negative weight (push) renders in red instead of the default line color, so a repelling
+  // connection reads as visually distinct from an attracting one at a glance, not just by thickness.
+  function pplEdgeColor(weight){
+    return (weight || 1) < 0 ? "#ef4444" : "";
   }
   // Faint ambient ray from the sun (#pplSunNode) to every person — purely visual, not a stored
   // connection like pplCachedEdges, so it's recomputed straight from pplSimNodes each render rather
@@ -5373,8 +5391,10 @@
       var w = edge.weight || 1;
       var coords = ' x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '"';
       var dataAttrs = ' data-from="' + edge.fromId + '" data-to="' + edge.toId + '" data-weight="' + w + '"';
+      var color = pplEdgeColor(w);
+      var lineStyle = 'stroke-width:' + pplEdgeStrokeWidth(w) + ';' + (color ? (' stroke:' + color + ';') : '');
       return '<line class="ppl-conn-hit"' + dataAttrs + coords + '></line>' +
-        '<line class="wb-conn-line" style="stroke-width:' + pplEdgeStrokeWidth(w) + ';"' + coords + '></line>';
+        '<line class="wb-conn-line" style="' + lineStyle + '"' + coords + '></line>';
     }).join("");
     renderPeopleGraphSunLines();
     pplRenderClusters();
@@ -5428,17 +5448,18 @@
   }
   // Weight is unknown/default (1, stored as a plain unlabeled name — see pplUpsertRelatedEntry)
   // unless the user actually types a number in — leaving the prompt blank never deletes anything by
-  // itself. Only an explicit "0", and only where allowRemove is true (editing an *existing*
-  // connection — there's nothing to remove yet when creating a new one), removes the connection.
+  // itself. Only an explicit "0" (exactly zero, not "any non-positive number" — negative numbers are
+  // now a real value, a push instead of a pull, see pplClampWeight), and only where allowRemove is
+  // true (editing an *existing* connection — there's nothing to remove yet when creating one),
+  // removes the connection.
   function pplPromptWeight(label, current, allowRemove){
     var input = prompt(label, current == null ? "" : String(current));
     if(input === null) return undefined; // cancelled
     input = input.trim();
     if(input === "") return 1; // left blank -> unknown/default weight
     var w = Number(input);
-    if(allowRemove && isFinite(w) && w <= 0) return null; // explicit 0 -> remove
-    if(!isFinite(w) || w <= 0) w = 1;
-    return Math.max(0.1, Math.min(10, w));
+    if(allowRemove && w === 0) return null; // explicit 0 -> remove
+    return pplClampWeight(w);
   }
   // First click in connect mode picks the "from" person; the second (different) person completes
   // the connection and prompts for a weight. Clicking the same person again cancels the selection.
@@ -5450,7 +5471,7 @@
     var a = state.people.find(function(x){ return x.id === fromId; });
     var b = state.people.find(function(x){ return x.id === id; });
     if(!a || !b) return;
-    var weight = pplPromptWeight("Connection weight between " + a.name + " and " + b.name + " (1-10, blank = unknown):", null, false);
+    var weight = pplPromptWeight("Connection weight between " + a.name + " and " + b.name + " (-10 to 10, negative pushes apart, blank = unknown):", null, false);
     if(weight === undefined) return;
     await pplSetConnection(fromId, id, weight);
   }
@@ -5461,7 +5482,7 @@
     var a = state.people.find(function(x){ return x.id === fromId; });
     var b = state.people.find(function(x){ return x.id === toId; });
     if(!a || !b) return;
-    var weight = pplPromptWeight("Connection weight between " + a.name + " and " + b.name + " (1-10, blank = unknown, 0 to remove):", currentWeight, true);
+    var weight = pplPromptWeight("Connection weight between " + a.name + " and " + b.name + " (-10 to 10, negative pushes apart, blank = unknown, 0 to remove):", currentWeight, true);
     if(weight === undefined) return;
     await pplSetConnection(fromId, toId, weight);
   }
