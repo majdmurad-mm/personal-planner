@@ -5270,23 +5270,42 @@
   // float freely, positioned only by the base repulsion, real relatedPeople connections, and the
   // pull toward the sun. This is the person's MAIN (primary/first-listed) group — see pplNodeGroupList
   // for the full multi-group list, which additionally feeds hull coverage for secondary groups.
-  function pplNodeGroup(p){
-    if(!p.socialGroup) return null;
-    var first = p.socialGroup.split(",")[0].trim();
-    return first || null;
+  // Parses a person's raw social_group text into its groups plus which one (if any) is MAIN.
+  // Encoding, invisible to anyone just reading the group names: a "*" prefix on one entry marks it
+  // as main ("*Discord, Syria"); a leading "!" on the whole string means main was deliberately left
+  // empty even though groups exist ("!Discord, Syria" — both purely secondary, on purpose). Neither
+  // marker present (every value saved before "main" was a real, clearable choice) falls back to
+  // treating the first-listed group as main, so existing data's behavior doesn't silently change.
+  function parseSocialGroupField(raw){
+    if(!raw) return { groups: [], main: null };
+    var text = raw.trim();
+    var explicitNoMain = text.charAt(0) === "!";
+    if(explicitNoMain) text = text.slice(1);
+    var main = null;
+    var groups = text.split(",").map(function(g){
+      g = g.trim();
+      if(!g) return "";
+      if(g.charAt(0) === "*"){ g = g.slice(1).trim(); if(g) main = g; }
+      return g;
+    }).filter(Boolean);
+    if(!main && !explicitNoMain && groups.length) main = groups[0];
+    return { groups: groups, main: main };
   }
-  // Every group a person belongs to (not just the first/MAIN one pplNodeGroup returns) — used only
-  // for hull membership (pplRenderClusters): a person in both "Discord" and "Syria" ends up inside
-  // both hulls, so their spot on the canvas is visibly covered by both groups' translucent colors
-  // (.wb-cluster-hull's fill-opacity:0.16 lets them blend rather than one hiding the other).
-  // Everything else — auto-linking to group-mates (pplRebuildGraphCache) and the single-group
-  // PPL_GROUP_PUSH/PULL_K physics — deliberately uses only the MAIN group (pplNodeGroup): a
-  // "secondary" group membership shows up in the hull hue but doesn't create a direct connection or
-  // pull someone toward that group's cluster. No social group at all means an empty list — same
-  // free-floating "no group" behavior as pplNodeGroup's null, just list-shaped for this use.
+  function pplNodeGroup(p){
+    return parseSocialGroupField(p.socialGroup).main;
+  }
+  // Every group a person belongs to (not just MAIN, pplNodeGroup) — used only for hull membership
+  // (pplRenderClusters): a person in both "Discord" and "Syria" ends up inside both hulls, so their
+  // spot on the canvas is visibly covered by both groups' translucent colors (.wb-cluster-hull's
+  // fill-opacity:0.16 lets them blend rather than one hiding the other). Everything else — auto-
+  // linking to group-mates (pplRebuildGraphCache) and the single-group PPL_GROUP_PUSH/PULL_K physics
+  // — deliberately uses only MAIN (pplNodeGroup, which can be null even with groups present, see
+  // parseSocialGroupField): a "secondary" group membership shows up in the hull hue but doesn't
+  // create a direct connection or pull someone toward that group's cluster. No social group at all
+  // means an empty list — same free-floating "no group" behavior as pplNodeGroup's null, just
+  // list-shaped for this use.
   function pplNodeGroupList(p){
-    if(!p.socialGroup) return [];
-    return p.socialGroup.split(",").map(function(g){ return g.trim(); }).filter(Boolean);
+    return parseSocialGroupField(p.socialGroup).groups;
   }
   // Cached the same way wbRebuildGraphCache() caches the main Graph's edges — pure function of state,
   // recomputing it every physics tick (up to 60/sec while the sim is hot) would be wasted work.
@@ -6076,8 +6095,7 @@
     if(!datalist) return;
     var groups = {};
     state.people.forEach(function(p){
-      if(!p.socialGroup) return;
-      p.socialGroup.split(",").forEach(function(g){ g = g.trim(); if(g) groups[g] = true; });
+      parseSocialGroupField(p.socialGroup).groups.forEach(function(g){ groups[g] = true; });
     });
     var sorted = Object.keys(groups).sort(function(a, b){ return a.localeCompare(b); });
     datalist.innerHTML = sorted.map(function(g){ return '<option value="' + escapeHtml(g) + '"></option>'; }).join("");
@@ -6154,7 +6172,7 @@
         numCell("likeScore", p.likeScore) +
         textCell("relationshipStatus", p.relationshipStatus) +
         textCell("personalityType", p.personalityType) +
-        textCell("socialGroup", p.socialGroup, "personGroupList") +
+        textCell("socialGroup", parseSocialGroupField(p.socialGroup).groups.join(", "), "personGroupList") +
         textCell("planets", p.planets) +
         textCell("relatedPeople", p.relatedPeople) +
         textCell("notes", p.notes) +
@@ -8834,12 +8852,13 @@
   }
   // If the group that was main just got deselected (chip toggled off), fall back to whichever
   // selected group comes first in the list; if nothing is selected at all, there's no main either.
+  // Main is only ever set by an explicit pick (or cleared by clicking the checked radio again, or
+  // by that group getting deselected) — never auto-assigned. A person can have several selected
+  // groups and no main at all; that's a real, intentional state now, not something to "fix" by
+  // silently reassigning main to whichever group happens to still be selected.
   function ensureMainRadioValid(container){
     var checked = container.querySelector(".person-group-main-radio:checked");
-    if(checked && checked.closest(".chip-opt").classList.contains("sel")) return;
-    var fallback = container.querySelector(".chip-opt.sel .person-group-main-radio");
-    if(fallback) fallback.checked = true;
-    else if(checked) checked.checked = false;
+    if(checked && !checked.closest(".chip-opt").classList.contains("sel")) checked.checked = false;
   }
   // The saved social_group text's FIRST entry is what pplNodeGroup treats as MAIN — this puts the
   // radio-picked main group there regardless of the chips' own (alphabetical) DOM order, followed by
@@ -8847,11 +8866,18 @@
   function buildPersonSocialGroupValue(){
     var container = document.getElementById("personGroupSelect");
     var selected = multiChipValues(container, "g");
+    if(!selected.length) return "";
     var main = currentMainGroup(container);
     if(main && selected.indexOf(main) !== -1){
-      selected = [main].concat(selected.filter(function(g){ return g !== main; }));
+      // Marks the chosen main with "*" — see parseSocialGroupField — order no longer matters for
+      // deciding main (it's the marker, not position), but main first still reads naturally.
+      return [main].concat(selected.filter(function(g){ return g !== main; }))
+        .map(function(g){ return g === main ? "*" + g : g; }).join(", ");
     }
-    return selected.join(", ");
+    // No main chosen even though groups are selected — "!" marks this as deliberate (not just
+    // legacy data saved before main could be picked/cleared), so pplNodeGroup doesn't fall back to
+    // treating the first entry as main.
+    return "!" + selected.join(", ");
   }
   // Delegated once on the panel (which persists across renderPersonGroupChips' innerHTML rebuilds,
   // unlike its children) rather than re-attached per chip — picking a color saves immediately, it's
@@ -8866,10 +8892,18 @@
     var radio = e.target.closest(".person-group-main-radio");
     if(radio) radio.closest(".chip-opt").classList.add("sel"); // marking a group main implies including it
   });
-  // Runs after wireMultiChipSelect's own toggle listener (registered earlier, when
-  // wireDropdownMulti was called above) — by the time this fires, .sel has already been updated for
-  // whichever chip was just clicked/keyed, so it's safe to check here.
+  // Native radios can't be unchecked by clicking the already-checked one again — but "no main" needs
+  // to be reachable, so mousedown snapshots whether it was already checked, and click forces it back
+  // off if so (after the browser's own default action would otherwise leave it checked). The chip's
+  // own group-selection is untouched — clearing main doesn't remove the group, it stays secondary.
+  var personGroupMainWasChecked = false;
+  personGroupPanelEl.addEventListener("mousedown", function(e){
+    var radio = e.target.closest(".person-group-main-radio");
+    personGroupMainWasChecked = !!(radio && radio.checked);
+  });
   personGroupPanelEl.addEventListener("click", function(e){
+    var radio = e.target.closest(".person-group-main-radio");
+    if(radio && personGroupMainWasChecked){ radio.checked = false; return; }
     if(e.target.tagName === "INPUT") return;
     if(e.target.closest(".chip-opt")) ensureMainRadioValid(personGroupPanelEl);
   });
@@ -8881,8 +8915,7 @@
     var container = document.getElementById("personGroupSelect");
     var known = {};
     state.people.forEach(function(p){
-      if(!p.socialGroup) return;
-      p.socialGroup.split(",").forEach(function(g){ g = g.trim(); if(g) known[g] = true; });
+      parseSocialGroupField(p.socialGroup).groups.forEach(function(g){ known[g] = true; });
     });
     (selectedGroups || []).forEach(function(g){ if(g) known[g] = true; });
     var sorted = Object.keys(known).sort(function(a, b){ return a.localeCompare(b); });
@@ -8925,8 +8958,8 @@
     document.getElementById("personLikeScoreInput").value = (p && p.likeScore != null) ? p.likeScore : "";
     document.getElementById("personStatusInput").value = (p && p.relationshipStatus) || "";
     document.getElementById("personPersonalityInput").value = (p && p.personalityType) || "";
-    var personGroupsForEdit = p && p.socialGroup ? p.socialGroup.split(",").map(function(g){ return g.trim(); }).filter(Boolean) : [];
-    renderPersonGroupChips(personGroupsForEdit, personGroupsForEdit[0] || null);
+    var personGroupParsed = parseSocialGroupField(p && p.socialGroup);
+    renderPersonGroupChips(personGroupParsed.groups, personGroupParsed.main);
     document.getElementById("personGroupSelect").hidden = true;
     document.getElementById("personPlanetsInput").value = (p && p.planets) || "";
     document.getElementById("personRelatedInput").value = (p && p.relatedPeople) || "";
