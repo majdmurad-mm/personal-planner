@@ -1032,6 +1032,14 @@
   .chip-opt.sel[data-ar="Sol"]{ background:var(--cat-sol-bg); color:var(--cat-sol); border-color:var(--cat-sol); }
   .chip-opt.sel[data-r]{ background:var(--violet-glow); color:var(--violet); border-color:var(--violet); }
   .chip-opt.sel[data-g]{ background:var(--violet-glow); color:var(--violet); border-color:var(--violet); }
+  /* Color swatch nested inside a social-group chip (see renderPersonGroupChips) — a native
+     <input type="color">, sized down to a small square dot so it reads as a color indicator rather
+     than a full form control. wireMultiChipSelect ignores clicks/keys on nested <input>s, so picking
+     a color doesn't also toggle the chip's own selection. */
+  #personGroupSelect .chip-opt{ display:inline-flex; align-items:center; gap:6px; }
+  .person-group-color-swatch{ width:14px; height:14px; padding:0; border:1px solid var(--border); border-radius:3px; cursor:pointer; background:none; }
+  .person-group-color-swatch::-webkit-color-swatch-wrapper{ padding:0; }
+  .person-group-color-swatch::-webkit-color-swatch{ border:none; border-radius:2px; }
   /* "Add a new group" row appended after the chip options inside #personGroupSelect (see
      renderPersonGroupChips) — social groups are open-ended user text, not a fixed enum like
      categories, so the multi-select chip list alone can't introduce a brand-new one. */
@@ -2506,7 +2514,7 @@
     return setPreview;
   }
 
-  var state = { goals:[], projects:[], habits:[], actions:[], journal:[], people:[], trackerVars:[], trackerEntries:[], trackerDays:[], wbConnections:[], sleepScores:[], trash:[] };
+  var state = { goals:[], projects:[], habits:[], actions:[], journal:[], people:[], trackerVars:[], trackerEntries:[], trackerDays:[], wbConnections:[], sleepScores:[], trash:[], socialGroupColors:[] };
   var currentUser = null;
 
   function goalById(id){ return state.goals.find(function(g){ return g.id === id; }); }
@@ -2621,7 +2629,8 @@
       sb.from("tracker_variables").select("*").order("position", { ascending:true }),
       sb.from("tracker_entries").select("*"),
       sb.from("tracker_days").select("*"),
-      sb.from("sleep_scores").select("*").order("date", { ascending:false })
+      sb.from("sleep_scores").select("*").order("date", { ascending:false }),
+      sb.from("social_group_colors").select("*")
     ]);
     results.forEach(function(r){ if(r.error) console.error(r.error); });
     // position defaults to 0 (via ||0) when the migration_positions.sql column doesn't exist yet —
@@ -2648,6 +2657,11 @@
     state.trackerEntries = (results[8].data || []).map(function(r){ return { id:r.id, date:r.date, variableId:r.variable_id, value:r.value }; });
     state.trackerDays = (results[9].data || []).map(function(r){ return { id:r.id, date:r.date, summary:r.summary }; });
     state.sleepScores = (results[10].data || []).map(function(r){ return { id:r.id, date:r.date, score:r.score, source:r.source||"manual" }; });
+    // Empty (rather than erroring) until migration_social_group_colors.sql has been run — the
+    // Promise.all entry above still fails outright (relation doesn't exist), but the ||[] fallback
+    // here means the People graph just falls back to its auto-cycled palette for every group, same
+    // graceful-degradation shape as every other not-yet-migrated field in this app.
+    state.socialGroupColors = (results[11].data || []).map(function(r){ return { id:r.id, groupName:r.group_name, color:r.color }; });
     await backfillLegacyHabitTrackers();
     await backfillHabitIcons();
   }
@@ -2828,13 +2842,17 @@
   // Multi-select variant (projects can span more than one area) — each chip toggles independently
   // instead of being mutually exclusive.
   function wireMultiChipSelect(container){
+    // A chip can nest its own interactive control (e.g. the social-group color swatch in
+    // renderPersonGroupChips) — clicking/keying THAT shouldn't also toggle the chip's own selection.
     container.addEventListener("click", function(e){
+      if(e.target.tagName === "INPUT") return;
       var opt = e.target.closest(".chip-opt");
       if(!opt) return;
       opt.classList.toggle("sel");
     });
     container.addEventListener("keydown", function(e){
       if(!isChipActivateKey(e)) return;
+      if(e.target.tagName === "INPUT") return;
       var opt = e.target.closest(".chip-opt");
       if(!opt) return;
       e.preventDefault();
@@ -5161,6 +5179,53 @@
   // fixed palette in alphabetical group order) since there's no pre-themed --cat-* variable for an
   // arbitrary group name the way there is for the fixed areas.
   var PPL_GROUP_PALETTE = ["#4ADE80", "#5FA8FF", "#F15A22", "#A78BFA", "#FDE047", "#FB7185", "#2DD4BF", "#FB923C"];
+  // Every group's color: a user-chosen one (state.socialGroupColors, set from the person modal's
+  // group multi-select — see saveSocialGroupColor) if it has one, otherwise the same deterministic
+  // auto-cycled palette color as before (alphabetical index into PPL_GROUP_PALETTE) — a group without
+  // a custom color keeps the exact same color it always would have, custom colors don't reshuffle
+  // anyone else's. Shared by pplRebuildGraphCache (the graph's own cache) and the person modal's chip
+  // swatches (renderPersonGroupChips), so both always agree on what color a group "currently is".
+  function pplComputeGroupColors(){
+    var groups = {};
+    state.people.forEach(function(p){ pplNodeGroupList(p).forEach(function(g){ groups[g] = true; }); });
+    var sortedGroups = Object.keys(groups).sort();
+    var colors = {};
+    sortedGroups.forEach(function(g, i){
+      var custom = state.socialGroupColors.find(function(x){ return x.groupName === g; });
+      colors[g] = custom ? custom.color : PPL_GROUP_PALETTE[i % PPL_GROUP_PALETTE.length];
+    });
+    return colors;
+  }
+  // Sets (or clears, when color is null) a group's custom color — upsert-shaped by hand (find the
+  // existing row locally, update vs insert) rather than a real Supabase upsert() call, matching every
+  // other write in this app (see savePersonField/pplWriteConnection). If the migration hasn't been
+  // run yet the table itself is missing, which safeWrite can't gracefully drop a single column for
+  // (that only handles missing COLUMNS) — so this surfaces a clear toast instead of failing silently.
+  async function saveSocialGroupColor(groupName, color){
+    var existing = state.socialGroupColors.find(function(x){ return x.groupName === groupName; });
+    if(existing){
+      var prevColor = existing.color;
+      existing.color = color;
+      var res = await safeUpdate("social_group_colors", existing.id, { color: color });
+      if(res.error){
+        console.error(res.error);
+        existing.color = prevColor;
+        toast("Could not save group color — has migration_social_group_colors.sql been run? See _Memory/.");
+        return;
+      }
+    } else {
+      var res2 = await safeInsert("social_group_colors", { group_name: groupName, color: color }, state.socialGroupColors);
+      if(res2.error){
+        console.error(res2.error);
+        toast("Could not save group color — has migration_social_group_colors.sql been run? See _Memory/.");
+        return;
+      }
+      var r = res2.data;
+      state.socialGroupColors.push({ id: r.id, groupName: r.group_name, color: r.color });
+    }
+    pplRebuildGraphCache();
+    renderPeopleGraphConnections();
+  }
   var PPL_GROUP_PUSH = 3000; // mirrors WB_AREA_PUSH
   // Extra attraction between every pair of same-group nodes (not just ones with an explicit
   // related-people edge) — same "virtual spring" formula as pplApplySpring (force ∝ dist - restLength,
@@ -5215,13 +5280,10 @@
       pplCachedNodeGroupLists[p.id] = pplNodeGroupList(p);
     });
     // Colors need to cover every group a person can appear under, including secondary/extra
-    // memberships (pplCachedNodeGroupLists) — not just each person's primary group — since a
-    // multi-group person's hulls all need a real color to blend together (see pplRenderClusters).
-    var groups = {};
-    state.people.forEach(function(p){ pplCachedNodeGroupLists[p.id].forEach(function(g){ groups[g] = true; }); });
-    var sortedGroups = Object.keys(groups).sort();
-    pplCachedGroupColors = {};
-    sortedGroups.forEach(function(g, i){ pplCachedGroupColors[g] = PPL_GROUP_PALETTE[i % PPL_GROUP_PALETTE.length]; });
+    // memberships — not just each person's primary group — since a multi-group person's hulls all
+    // need a real color to blend together (see pplRenderClusters). pplComputeGroupColors also
+    // applies any user-chosen custom colors (state.socialGroupColors) on top of the auto-cycled ones.
+    pplCachedGroupColors = pplComputeGroupColors();
     pplCachedContactPull = {};
     state.people.forEach(function(p){
       pplCachedContactPull[p.id] = p.contactScore != null ? p.contactScore / 2 : 1;
@@ -8549,6 +8611,15 @@
   // theirs isn't used by anyone else), and an "add a new group" row is appended into the same panel
   // for introducing a name that doesn't exist yet anywhere.
   var updatePersonGroupBtn = wireDropdownMulti("personGroupBtn", "personGroupSelect", "personGroupDropdown", "g");
+  // Delegated once on the panel (which persists across renderPersonGroupChips' innerHTML rebuilds,
+  // unlike its children) rather than re-attached per chip — picking a color saves immediately, it's
+  // not staged behind the main "save person" button, since it's really an attribute of the GROUP,
+  // not of whichever person happens to be open in the modal right now.
+  document.getElementById("personGroupSelect").addEventListener("change", function(e){
+    var swatch = e.target.closest(".person-group-color-swatch");
+    if(!swatch) return;
+    saveSocialGroupColor(swatch.dataset.groupColor, swatch.value);
+  });
   function renderPersonGroupChips(selectedGroups){
     var container = document.getElementById("personGroupSelect");
     var known = {};
@@ -8558,8 +8629,13 @@
     });
     (selectedGroups || []).forEach(function(g){ if(g) known[g] = true; });
     var sorted = Object.keys(known).sort(function(a, b){ return a.localeCompare(b); });
+    var colors = pplComputeGroupColors();
     container.innerHTML = sorted.map(function(g){
-      return '<div class="chip-opt" role="button" tabindex="0" data-g="' + escapeHtml(g) + '">' + escapeHtml(g) + '</div>';
+      var color = colors[g] || PPL_GROUP_PALETTE[0];
+      return '<div class="chip-opt" role="button" tabindex="0" data-g="' + escapeHtml(g) + '">' +
+        '<input type="color" class="person-group-color-swatch" data-group-color="' + escapeHtml(g) + '" value="' + color + '" title="Set color for ' + escapeHtml(g) + '">' +
+        '<span>' + escapeHtml(g) + '</span>' +
+      '</div>';
     }).join("") +
       '<div class="dropdown-multi-add-row"><input type="text" id="personGroupNewInput" placeholder="add a new group…"><button type="button" class="btn" id="personGroupAddBtn">+ add</button></div>';
     setMultiChip(container, "g", selectedGroups || []);
