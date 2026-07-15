@@ -2203,6 +2203,20 @@
   </div>
 </div>
 
+<!-- ===== RECORDING MODEL CHOICE MODAL ===== -->
+<div class="modal-overlay" id="recordModelModalOverlay" hidden>
+  <div class="modal">
+    <div class="modal-head"><span class="dot g"></span><h2>transcription model</h2></div>
+    <div class="modal-inner">
+      <p class="panel-hint">Pick how this recording gets transcribed once you stop.</p>
+      <div class="modal-actions">
+        <button class="btn" id="recordModelWhisperBtn" type="button">🖥 whisper — local &amp; free</button>
+        <button class="btn btn-accent" id="recordModelGeminiBtn" type="button">☁ gemini — cloud, uses your api key</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ===== AGENT API KEY MODAL ===== -->
 <div class="modal-overlay" id="agentKeyModalOverlay" hidden>
   <div class="modal">
@@ -6887,6 +6901,7 @@
     var mediaRecorder = null, recordedChunks = [], recordingStream = null;
     var meterCtx = null, analyser = null, meterData = null, meterRAF = null;
     var recordStartMs = 0, pausedElapsedMs = 0, timerInterval = null, cancelled = false;
+    var selectedEngine = "whisper";
 
     function updateTimer(){
       var live = mediaRecorder && mediaRecorder.state === "recording" ? (Date.now() - recordStartMs) : 0;
@@ -6916,7 +6931,23 @@
       stopMeter();
     }
 
-    recordBtn.addEventListener("click", async function(){
+    // Recording doesn't start the moment the mic button is pressed — a small modal opens first so
+    // the transcription model (local Whisper vs. cloud Gemini) can be chosen per-recording, since
+    // that choice can't be changed once the audio's already been captured.
+    recordBtn.addEventListener("click", function(){
+      openModal("recordModelModalOverlay");
+    });
+    document.getElementById("recordModelWhisperBtn").addEventListener("click", function(){
+      closeModal("recordModelModalOverlay");
+      startRecording("whisper");
+    });
+    document.getElementById("recordModelGeminiBtn").addEventListener("click", function(){
+      closeModal("recordModelModalOverlay");
+      startRecording("gemini");
+    });
+
+    async function startRecording(engine){
+      selectedEngine = engine;
       try{
         recordingStream = await navigator.mediaDevices.getUserMedia({ audio:true });
       } catch(err){
@@ -6957,7 +6988,7 @@
       recordBtn.style.display = "none";
       timerInterval = setInterval(updateTimer, 250);
       if(meterCtx) meterLoop();
-    });
+    }
 
     pauseBtn.addEventListener("click", function(){
       if(!mediaRecorder) return;
@@ -7017,7 +7048,7 @@
         return;
       }
       try{
-        var text = await transcribeAudioBufferLocally(audioBuffer);
+        var text = await transcribeAudioBufferWithEngine(audioBuffer, selectedEngine);
         var input = document.getElementById("journalTextInput");
         if(text){
           var mergedText = (input.value.trim() ? input.value.trim() + " " : "") + text;
@@ -7058,7 +7089,9 @@
           toast("Recording saved, but couldn't make out any speech to transcribe — you can still type it in.");
         }
       } catch(err){
-        toast("Recording saved, but transcription failed: " + err.message);
+        toast(err.message === "no_api_key"
+          ? "Recording saved, but no Gemini API key is set — add one from the agent tab, or record again and pick whisper instead."
+          : ("Recording saved, but transcription failed: " + err.message));
       } finally {
         if(statusEl) statusEl.textContent = "";
         recordBtn.disabled = false;
@@ -9740,6 +9773,79 @@
   }
   async function transcribeAudioLocally(blob){
     return transcribeAudioBufferLocally(await decodeBlobToAudioBuffer(blob));
+  }
+
+  // Cloud alternative to the local Whisper path above — same call shape (takes a decoded
+  // AudioBuffer, returns trimmed text) but sends the audio to Gemini instead. Only used when the
+  // recording modal's "gemini" option was picked; requires the same Gemini key already used for
+  // chat. Gemini's documented audio support is wav/mp3/aiff/aac/ogg/flac (not webm/ogg-as-recorded),
+  // so the buffer is re-encoded to WAV first.
+  function audioBufferToWavBlob(audioBuffer){
+    var numChannels = audioBuffer.numberOfChannels;
+    var sampleRate = audioBuffer.sampleRate;
+    var numFrames = audioBuffer.length;
+    var blockAlign = numChannels * 2; // 16-bit PCM
+    var dataSize = numFrames * blockAlign;
+    var buffer = new ArrayBuffer(44 + dataSize);
+    var view = new DataView(buffer);
+    function writeString(offset, str){ for(var i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i)); }
+    writeString(0, "RIFF"); view.setUint32(4, 36 + dataSize, true); writeString(8, "WAVE");
+    writeString(12, "fmt "); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
+    view.setUint16(22, numChannels, true); view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * blockAlign, true); view.setUint16(32, blockAlign, true); view.setUint16(34, 16, true);
+    writeString(36, "data"); view.setUint32(40, dataSize, true);
+    var channels = [];
+    for(var c = 0; c < numChannels; c++) channels.push(audioBuffer.getChannelData(c));
+    var offset = 44;
+    for(var i = 0; i < numFrames; i++){
+      for(var c2 = 0; c2 < numChannels; c2++){
+        var sample = Math.max(-1, Math.min(1, channels[c2][i]));
+        view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+        offset += 2;
+      }
+    }
+    return new Blob([buffer], { type: "audio/wav" });
+  }
+  function blobToBase64(blob){
+    return new Promise(function(resolve, reject){
+      var reader = new FileReader();
+      reader.onloadend = function(){ resolve(reader.result.split(",")[1]); };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+  async function transcribeAudioBufferViaGemini(audioBuffer){
+    var apiKey = safeGet(window.localStorage, "geminiApiKey");
+    if(!apiKey) throw new Error("no_api_key");
+    var wavBase64 = await blobToBase64(audioBufferToWavBlob(audioBuffer));
+    var model = "gemini-3.5-flash";
+    var url = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + encodeURIComponent(apiKey);
+    var body = JSON.stringify({
+      contents: [{ role:"user", parts: [
+        { text: "Transcribe this audio recording exactly as spoken. Reply with only the transcript text — no commentary, no quotation marks." },
+        { inlineData: { mimeType: "audio/wav", data: wavBase64 } }
+      ] }]
+    });
+    // Gemini returns 503 "UNAVAILABLE" fairly often under load and it's almost always
+    // transient — retry a couple of times with backoff before surfacing an error to the user.
+    var maxAttempts = 3, resp, errBody;
+    for(var attempt = 1; attempt <= maxAttempts; attempt++){
+      resp = await fetch(url, { method:"POST", headers:{ "Content-Type":"application/json" }, body: body });
+      if(resp.ok) break;
+      if((resp.status === 503 || resp.status === 429) && attempt < maxAttempts){
+        await new Promise(function(resolve){ setTimeout(resolve, attempt * 1500); });
+        continue;
+      }
+      errBody = await resp.text();
+      throw new Error("Gemini API error " + resp.status + ": " + errBody.slice(0,300));
+    }
+    var data = await resp.json();
+    var candidate = (data.candidates && data.candidates[0]) || {};
+    var parts = (candidate.content && candidate.content.parts) || [];
+    return parts.filter(function(p){ return typeof p.text === "string"; }).map(function(p){ return p.text; }).join("\n").trim();
+  }
+  function transcribeAudioBufferWithEngine(audioBuffer, engine){
+    return engine === "gemini" ? transcribeAudioBufferViaGemini(audioBuffer) : transcribeAudioBufferLocally(audioBuffer);
   }
 
   // Generic recorder wiring — shared by the Agent's mic button and the Notes composer's record
