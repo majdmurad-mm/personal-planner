@@ -1571,6 +1571,12 @@
           <p class="panel-hint wb-hint-float wb-pan-hint">Pan: drag empty space, or drag with the middle mouse button. Zoom: scroll, or the +/− buttons. Click a person to edit them.</p>
           <div class="wb-world" id="pplWorld">
             <svg class="wb-conn-svg" id="pplConnSvg">
+              <defs>
+                <filter id="pplClusterBlur" x="-50%" y="-50%" width="200%" height="200%">
+                  <feGaussianBlur stdDeviation="14"></feGaussianBlur>
+                </filter>
+              </defs>
+              <g id="pplClusterLayer"></g>
               <g id="pplConnLayer"></g>
             </svg>
             <div class="wb-overlay" id="pplOverlay"></div>
@@ -5003,11 +5009,36 @@
     });
     return edges;
   }
+  // Area-style grouping for the cluster hulls (see pplRenderClusters) and the extra between-group
+  // repulsion below — mirrors the main Graph's area clustering (wbRenderClusters/WB_AREA_PUSH), but
+  // "planets" is open-ended/data-driven text (the CSV's own Notion group tags), not a fixed CATEGORIES
+  // enum, and a person can list several ("Family, Friends") — the FIRST one listed is treated as their
+  // primary group for clustering purposes, same "first wins" rule pplNodeGroup's caller relies on.
+  // Colors are assigned dynamically (cycling a fixed palette in alphabetical group order) since there's
+  // no pre-themed --cat-* variable for an arbitrary group name the way there is for the fixed areas.
+  var PPL_GROUP_PALETTE = ["#4ADE80", "#5FA8FF", "#F15A22", "#A78BFA", "#FDE047", "#FB7185", "#2DD4BF", "#FB923C"];
+  var PPL_GROUP_PUSH = 3000; // mirrors WB_AREA_PUSH
+  function pplNodeGroup(p){
+    if(!p.planets) return null;
+    var first = p.planets.split(",")[0].trim();
+    return first || null;
+  }
   // Cached the same way wbRebuildGraphCache() caches the main Graph's edges — pure function of state,
   // recomputing it every physics tick (up to 60/sec while the sim is hot) would be wasted work.
   // Rebuilt only when the graph tab is (re)activated, same checkpoint node membership itself uses.
   var pplCachedEdges = [];
-  function pplRebuildGraphCache(){ pplCachedEdges = pplRelatedEdges(); }
+  var pplCachedNodeGroups = {};
+  var pplCachedGroupColors = {};
+  function pplRebuildGraphCache(){
+    pplCachedEdges = pplRelatedEdges();
+    pplCachedNodeGroups = {};
+    state.people.forEach(function(p){ pplCachedNodeGroups[p.id] = pplNodeGroup(p); });
+    var groups = {};
+    state.people.forEach(function(p){ var g = pplCachedNodeGroups[p.id]; if(g) groups[g] = true; });
+    var sortedGroups = Object.keys(groups).sort();
+    pplCachedGroupColors = {};
+    sortedGroups.forEach(function(g, i){ pplCachedGroupColors[g] = PPL_GROUP_PALETTE[i % PPL_GROUP_PALETTE.length]; });
+  }
   function pplApplySpring(edge){
     var a = pplFindSimNode(edge.fromId), b = pplFindSimNode(edge.toId);
     if(!a || !b) return;
@@ -5020,11 +5051,18 @@
   }
   function pplTickPhysics(){
     var nodes = pplSimNodes;
+    // Each node's primary planet group, from the cache (not recomputed per tick) — used below to add
+    // a small extra push between nodes from *different* groups, on top of the base repulsion every
+    // pair already gets, reinforcing the grouping the cluster hulls also show (mirrors the main
+    // Graph's area-vs-area push, see WB_AREA_PUSH).
+    var groups = nodes.map(function(n){ return pplCachedNodeGroups[n.id]; });
     for(var i=0;i<nodes.length;i++){
       for(var j=i+1;j<nodes.length;j++){
         var dx = nodes[j].x - nodes[i].x, dy = nodes[j].y - nodes[i].y;
         var distSq = dx*dx + dy*dy || 0.01, dist = Math.sqrt(distSq);
-        var force = (PPL_REPEL / distSq) * pplAlpha;
+        var repel = PPL_REPEL;
+        if(groups[i] && groups[j] && groups[i] !== groups[j]) repel += PPL_GROUP_PUSH;
+        var force = (repel / distSq) * pplAlpha;
         var fx = (dx/dist) * force, fy = (dy/dist) * force;
         nodes[i].vx -= fx; nodes[i].vy -= fy;
         nodes[j].vx += fx; nodes[j].vy += fy;
@@ -5095,6 +5133,30 @@
     if(!n) return null;
     return { x: n.x + PPL_NODE_R, y: n.y + PPL_NODE_R };
   }
+  // Groups every node by its primary planet and draws a soft blurred hull behind that group — the
+  // exact same shape logic the main Graph's wbRenderClusters uses (wbConvexHull/wbPadHull/
+  // wbCapsuleFromTwoPoints/WB_CLUSTER_PAD are all generic geometry, not area-specific, so reused
+  // directly here rather than duplicated). Single-node "clusters" get no shape (a hull around one
+  // point is meaningless); people with no planet at all are simply absent from every hull.
+  function pplRenderClusters(){
+    var layer = document.getElementById("pplClusterLayer");
+    if(!layer) return;
+    var byGroup = {};
+    pplSimNodes.forEach(function(n){
+      var g = pplCachedNodeGroups[n.id];
+      if(!g) return;
+      if(!byGroup[g]) byGroup[g] = [];
+      byGroup[g].push({ x: n.x + PPL_NODE_R, y: n.y + PPL_NODE_R });
+    });
+    layer.innerHTML = Object.keys(byGroup).map(function(g){
+      var pts = byGroup[g];
+      if(pts.length < 2) return "";
+      var shape = pts.length === 2 ? wbCapsuleFromTwoPoints(pts[0], pts[1], WB_CLUSTER_PAD) : wbPadHull(wbConvexHull(pts), WB_CLUSTER_PAD);
+      var pointsAttr = shape.map(function(p){ return p.x.toFixed(1) + "," + p.y.toFixed(1); }).join(" ");
+      var color = pplCachedGroupColors[g] || "var(--text-faint)";
+      return '<polygon class="wb-cluster-hull" points="' + pointsAttr + '" style="fill:' + color + '; stroke:' + color + '; filter:url(#pplClusterBlur);"></polygon>';
+    }).join("");
+  }
   function renderPeopleGraphConnections(){
     var layer = document.getElementById("pplConnLayer");
     if(!layer) return;
@@ -5103,6 +5165,7 @@
       if(!a || !b) return "";
       return '<line class="wb-conn-line" x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '"></line>';
     }).join("");
+    pplRenderClusters();
   }
   function applyPplTransform(){
     if(pplWorldEl) pplWorldEl.style.transform = "translate(" + pplPanX + "px, " + pplPanY + "px) scale(" + pplZoom + ")";
