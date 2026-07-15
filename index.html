@@ -471,7 +471,7 @@
      Size reflects hierarchy (area > goal > project = habit > action — see WB_DOT_RADII, which must
      stay in sync with these diameters), not just an arbitrary style choice. */
   .wb-goal-node{ position:absolute; border-radius:50%; background:var(--text-faint); pointer-events:auto; cursor:grab; box-shadow:0 0 0 2px var(--bg-inset), 0 2px 8px rgba(0,0,0,0.35); user-select:none; touch-action:none; }
-  .wb-goal-node[data-type="area"]{ width:19px; height:19px; }
+  .wb-goal-node[data-type="area"]{ width:13px; height:13px; }
   .wb-goal-node[data-type="goal"]{ width:17px; height:17px; }
   .wb-goal-node[data-type="project"]{ width:14px; height:14px; }
   .wb-goal-node[data-type="habit"]{ width:14px; height:14px; }
@@ -4194,7 +4194,7 @@
   // project tied at 0.6x, action smallest at 0.4x. Only ever present when the "actions" layer toggle
   // is on.
   var WB_SIZE_UNIT = 12; // 40 * 0.3
-  var WB_DOT_RADII = { area: WB_SIZE_UNIT * 0.8, goal: WB_SIZE_UNIT * 0.7, project: WB_SIZE_UNIT * 0.6, habit: WB_SIZE_UNIT * 0.6, action: WB_SIZE_UNIT * 0.4 };
+  var WB_DOT_RADII = { area: WB_SIZE_UNIT * 0.8 * 0.7, goal: WB_SIZE_UNIT * 0.7, project: WB_SIZE_UNIT * 0.6, habit: WB_SIZE_UNIT * 0.6, action: WB_SIZE_UNIT * 0.4 };
   var WB_CENTER_X = WB_WORLD_W / 2, WB_CENTER_Y = WB_WORLD_H / 2;
   var WB_REPEL = 9000, WB_AREA_PUSH = 3000, WB_LINK_DIST = 130, WB_LINK_K = 0.02, WB_CENTER_K = 0.005, WB_DAMPING = 0.82, WB_ALPHA_DECAY = 0.985;
   var wbAlpha = 0, wbSimRunning = false;
