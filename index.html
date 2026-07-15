@@ -5,6 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>personal_system // planner</title>
 <meta name="color-scheme" content="light">
+<meta name="theme-color" content="#F4F2ED">
+<meta name="description" content="A terminal-styled personal planner — goals, projects, habits, actions, tracker, journal, and a relationship graph view.">
+<link rel="manifest" href="manifest.json">
+<!-- iOS ignores the manifest's icons/display mode for "Add to Home Screen" — these are what it
+     actually reads, so they're duplicated here rather than relied on solely through manifest.json. -->
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="planner">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
@@ -1849,6 +1858,10 @@
     if(btn) btn.textContent = theme === "dark" ? "☀ light mode" : "🌙 dark mode";
     var meta = document.querySelector('meta[name="color-scheme"]');
     if(meta) meta.content = theme;
+    // Keeps the mobile browser/status-bar tint (and the PWA's own chrome once installed) matching
+    // --bg for whichever theme is active, instead of staying frozen on the light default from <head>.
+    var themeColorMeta = document.querySelector('meta[name="theme-color"]');
+    if(themeColorMeta) themeColorMeta.content = theme === "dark" ? "#0B0E14" : "#F4F2ED";
   }
   applyThemeChrome(currentTheme());
   document.getElementById("themeToggleBtn").addEventListener("click", function(){
@@ -1858,6 +1871,16 @@
     safeSet(window.localStorage, "pp_theme_v1", next);
     applyThemeChrome(next);
   });
+
+  // PWA install support (Add to Home Screen on iOS/Android) — registers the app-shell service
+  // worker (see sw.js) so the UI itself loads instantly and opens offline; real data still needs a
+  // network connection, this only covers the static shell. Silently no-ops on file:// or browsers
+  // without SW support rather than failing loudly, since this is a progressive enhancement.
+  if("serviceWorker" in navigator && location.protocol !== "file:"){
+    window.addEventListener("load", function(){
+      navigator.serviceWorker.register("sw.js").catch(function(e){ console.error("Service worker registration failed:", e); });
+    });
+  }
 
   function staySignedInPref(){ return safeGet(window.localStorage, "staySignedInPref") !== "false"; }
   function authStorageBackend(){ return staySignedInPref() ? window.localStorage : window.sessionStorage; }
