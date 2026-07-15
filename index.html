@@ -819,6 +819,20 @@
      specificity regardless of which area class the block also carries. */
   .timeline-block.p0{ border-left-color:var(--p0); background:rgba(251,102,102,0.32); }
 
+  /* ===== Today timeline WebGL skin ===== */
+  /* Everything here applies ONLY while the Three.js layer is live (.gl-on set by ensureTodayGl):
+     the canvas draws lanes/bars/now-blade in 3D underneath, and the DOM blocks go transparent so
+     they become pure interaction proxies + text labels over their 3D counterparts. Without WebGL
+     the class never appears and the timeline looks and works exactly as it always has. */
+  .today-timeline-main{ position:relative; }
+  #todayGlCanvas{ position:absolute; inset:0; z-index:0; pointer-events:none; display:none; }
+  .today-timeline-body.gl-on #todayGlCanvas{ display:block; }
+  .today-timeline-body.gl-on .today-timeline-viewport{ z-index:1; background:transparent; }
+  .today-timeline-body.gl-on .today-timeline-row:not(.today-timeline-daynight-row){ background:var(--tl-hour-grid); }
+  /* !important because the per-area .timeline-block.Health{...} tints above would otherwise win —
+     the 3D bar underneath is the fill now; the DOM block keeps only its text (and icon). */
+  .today-timeline-body.gl-on .today-timeline-row .timeline-block{ background:transparent !important; border-color:transparent !important; box-shadow:none; }
+
   /* ===== TIMELINE PAGE ===== */
   /* Fixed-pixel row heights (not flex:1) so the row-labels column and the scrollable world column
      stay aligned purely by using the same heights in the same order — no shared-container trick
@@ -1403,6 +1417,7 @@
             <span title="No area set">○</span>
           </div>
           <div class="today-timeline-main">
+            <canvas id="todayGlCanvas" aria-hidden="true"></canvas>
             <div class="today-timeline-viewport" id="todayTimelineViewport">
               <div class="today-timeline-unified" id="todayTimelineUnified">
                 <div class="today-timeline-row today-timeline-daynight-row">
@@ -3115,7 +3130,8 @@
       document.getElementById(id).style.display = (id === name + "Section") ? "" : "none";
     });
     homeSceneSetActive(name === "home");
-    if(name === "today"){ renderToday(); todayApplyZoomWidth(); }
+    todayGlSetActive(name === "today");
+    if(name === "today"){ renderToday(); todayApplyZoomWidth(); ensureTodayGl(); }
     else if(name === "timeline") activateTimeline();
     else if(name === "location") activateLocation();
     // The graph lives inside the Planner now — entering the planner with its Graph tab still active
@@ -3183,6 +3199,14 @@
   // the CDN import fails. Three.js loads lazily via dynamic import the first time the home page
   // is actually on screen, same pattern as the transformers.js speech model.
   var homeScene3d = null, homeSceneIniting = false, homeSceneFailed = false;
+  // One pinned module, shared by every 3D surface (home constellation, today timeline skin) — a
+  // second import() of the same URL is a cache hit, but sharing the promise also shares a failure,
+  // so an offline first paint doesn't retry per-surface forever.
+  var threeModulePromise = null;
+  function loadThree(){
+    if(!threeModulePromise) threeModulePromise = import("https://cdn.jsdelivr.net/npm/three@0.170.0/+esm");
+    return threeModulePromise;
+  }
   // One panel per DOM tile below (data-go matches); capture is the grouped Agent+Notes panel and
   // shows both glyphs. Colors come from the app's CSS custom properties at init time so the scene
   // always matches the current theme + area palette.
@@ -3234,7 +3258,7 @@
     }).finally(function(){ homeSceneIniting = false; });
   }
   async function initHomeScene(){
-    var THREE = await import("https://cdn.jsdelivr.net/npm/three@0.170.0/+esm");
+    var THREE = await loadThree();
     var hero = document.querySelector(".home-hero");
     var canvas = document.getElementById("homeCanvas");
     var w = hero.clientWidth || 800, h = hero.clientHeight || 300;
@@ -8796,6 +8820,180 @@
     }
   }, { passive:false });
   window.addEventListener("resize", function(){ if(activeSection === "today") todayApplyZoomWidth(); });
+
+  /* ---------------- Today timeline WebGL skin ---------------- */
+  // A Three.js layer that re-renders the day timeline's VISUALS — tinted area lanes, extruded
+  // rounded bars with real lighting, a glowing now-blade — while the existing DOM keeps doing
+  // everything else: layout math, drag/resize/click handlers, zoom/pan, text. The DOM blocks turn
+  // transparent (see the .gl-on CSS) and become interaction proxies; every frame this layer reads
+  // their live getBoundingClientRect() and places a 3D bar exactly underneath, so dragging,
+  // resizing, scrolling and zooming all mirror for free with zero changes to the handlers.
+  // Same guard set as the home scene: no WebGL / reduced motion / failed CDN import → the class
+  // never goes on and the timeline renders exactly as before.
+  var todayGl = null, todayGlIniting = false, todayGlFailed = false;
+  var TODAY_GL_ROWS = ["Health","Maintenance","Career","Relationships","Growth","Sol","Finance","Other"];
+  function ensureTodayGl(){
+    if(todayGl || todayGlIniting || todayGlFailed) return;
+    if(!homeWebGLUsable()){ todayGlFailed = true; return; }
+    todayGlIniting = true;
+    initTodayGl().catch(function(err){
+      todayGlFailed = true;
+      console.warn("today 3D skin unavailable:", err.message);
+    }).finally(function(){ todayGlIniting = false; });
+  }
+  async function initTodayGl(){
+    var THREE = await loadThree();
+    var body = document.querySelector(".today-timeline-body");
+    var mainEl = document.querySelector(".today-timeline-main");
+    var canvas = document.getElementById("todayGlCanvas");
+    var renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    var scene = new THREE.Scene();
+    // Orthographic, pixel-true: world x/y map 1:1 onto the container's CSS pixels (y negated so
+    // "down the page" is down), which makes mirroring DOM rects trivial. z is depth for lighting.
+    var camera = new THREE.OrthographicCamera(0, 100, 0, -100, -200, 200);
+    camera.position.z = 100;
+    scene.add(new THREE.AmbientLight(0xffffff, 0.85));
+    var key = new THREE.DirectionalLight(0xffffff, 1.1);
+    key.position.set(-120, 160, 220);
+    scene.add(key);
+
+    function roundedBarGeometry(w, h){
+      var r = Math.min(5, h / 2, Math.max(1, w / 2));
+      var s = new THREE.Shape();
+      var x = -w / 2, y = -h / 2;
+      s.moveTo(x + r, y);
+      s.lineTo(x + w - r, y); s.quadraticCurveTo(x + w, y, x + w, y + r);
+      s.lineTo(x + w, y + h - r); s.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      s.lineTo(x + r, y + h); s.quadraticCurveTo(x, y + h, x, y + h - r);
+      s.lineTo(x, y + r); s.quadraticCurveTo(x, y, x + r, y);
+      // A slim extrusion + bevel is what actually reads as "3D" here — the beveled rim catches the
+      // key light along the top edge of every bar.
+      return new THREE.ExtrudeGeometry(s, { depth: 7, bevelEnabled: true, bevelThickness: 1.4, bevelSize: 1.4, bevelSegments: 2 });
+    }
+    function areaOfRow(rowEl){
+      var m = /todayTimelineArea-(\w+)/.exec(rowEl.id || "");
+      return m ? m[1] : "Other";
+    }
+    function colorForBlock(blockEl, area){
+      if(blockEl.classList.contains("p0")) return cssVarColor("--p0");
+      return cssVarColor(CATEGORY_COLOR_VAR[area] || "--text-dim");
+    }
+
+    // Static-ish meshes: one translucent lane plate per area row (repositioned each frame — they
+    // only move on window resize), the now-blade, and its soft glow.
+    var laneMeshes = TODAY_GL_ROWS.map(function(area){
+      var color = new THREE.Color(cssVarColor(CATEGORY_COLOR_VAR[area] || "--text-dim"));
+      var mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 0.09, depthWrite: false }));
+      mesh.visible = false;
+      scene.add(mesh);
+      return { area: area, mesh: mesh };
+    });
+    var accent = new THREE.Color(cssVarColor("--accent"));
+    var nowBlade = new THREE.Mesh(new THREE.PlaneGeometry(2, 1), new THREE.MeshBasicMaterial({ color: accent, transparent: true, opacity: 0.95, depthWrite: false }));
+    var glowCv = document.createElement("canvas");
+    glowCv.width = 64; glowCv.height = 8;
+    var gctx = glowCv.getContext("2d");
+    var grad = gctx.createLinearGradient(0, 0, 64, 0);
+    grad.addColorStop(0, "rgba(255,255,255,0)"); grad.addColorStop(0.5, "rgba(255,255,255,0.8)"); grad.addColorStop(1, "rgba(255,255,255,0)");
+    gctx.fillStyle = grad; gctx.fillRect(0, 0, 64, 8);
+    var nowGlow = new THREE.Mesh(new THREE.PlaneGeometry(18, 1), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(glowCv), color: accent, transparent: true, opacity: 0.45, depthWrite: false, blending: THREE.AdditiveBlending }));
+    nowBlade.visible = nowGlow.visible = false;
+    scene.add(nowBlade); scene.add(nowGlow);
+
+    var barMeshes = new Map(); // DOM block element -> { mesh, w, h }
+    var W = 0, H = 0;
+    function syncSize(rect){
+      if(Math.abs(rect.width - W) < 1 && Math.abs(rect.height - H) < 1) return;
+      W = rect.width; H = rect.height;
+      renderer.setSize(W, H, false);
+      camera.right = W; camera.bottom = -H;
+      camera.updateProjectionMatrix();
+    }
+    function frame(){
+      var mrect = mainEl.getBoundingClientRect();
+      if(mrect.width < 2 || mrect.height < 2){ renderer.render(scene, camera); return; }
+      syncSize(mrect);
+      var seen = new Set();
+      TODAY_GL_ROWS.forEach(function(area, li){
+        var rowEl = document.getElementById(area === "Other" ? "todayTimelineAreaOther" : "todayTimelineArea-" + area);
+        var lane = laneMeshes[li].mesh;
+        if(!rowEl){ lane.visible = false; return; }
+        var rr = rowEl.getBoundingClientRect();
+        lane.visible = true;
+        lane.scale.set(W, Math.max(rr.height - 1, 1), 1);
+        lane.position.set(W / 2, -(rr.top - mrect.top + rr.height / 2), 0);
+        rowEl.querySelectorAll(".timeline-block").forEach(function(blockEl){
+          seen.add(blockEl);
+          var r = blockEl.getBoundingClientRect();
+          var w = Math.max(r.width, 3), h = Math.max(r.height - 2, 3);
+          var entry = barMeshes.get(blockEl);
+          if(!entry){
+            var color = new THREE.Color(colorForBlock(blockEl, area));
+            var mat = new THREE.MeshStandardMaterial({ color: color, emissive: color, emissiveIntensity: 0.22, roughness: 0.55, metalness: 0.1, transparent: true });
+            entry = { mesh: new THREE.Mesh(roundedBarGeometry(w, h), mat), w: w, h: h };
+            scene.add(entry.mesh);
+            barMeshes.set(blockEl, entry);
+          } else if(Math.abs(entry.w - w) > 1.5 || Math.abs(entry.h - h) > 1.5){
+            entry.mesh.geometry.dispose();
+            entry.mesh.geometry = roundedBarGeometry(w, h);
+            entry.w = w; entry.h = h;
+          }
+          var done = blockEl.classList.contains("done");
+          entry.mesh.material.opacity = done ? 0.4 : 0.92;
+          // Done blocks sit flatter; pending ones float a little prouder off the lane.
+          entry.mesh.position.set(r.left - mrect.left + w / 2, -(r.top - mrect.top + (r.height / 2)), done ? 2 : 8);
+        });
+      });
+      barMeshes.forEach(function(entry, blockEl){
+        if(seen.has(blockEl)) return;
+        entry.mesh.geometry.dispose();
+        entry.mesh.material.dispose();
+        scene.remove(entry.mesh);
+        barMeshes.delete(blockEl);
+      });
+      var nowEl = document.getElementById("todayTimelineNow");
+      var showNow = nowEl && nowEl.getClientRects().length > 0;
+      nowBlade.visible = nowGlow.visible = !!showNow;
+      if(showNow){
+        var nr = nowEl.getBoundingClientRect();
+        var nx = nr.left - mrect.left, ny = -(nr.top - mrect.top + nr.height / 2);
+        nowBlade.scale.set(1, Math.max(nr.height, 1), 1);
+        nowBlade.position.set(nx, ny, 20);
+        nowGlow.scale.set(1, Math.max(nr.height, 1), 1);
+        nowGlow.position.set(nx, ny, 19);
+      }
+      renderer.render(scene, camera);
+    }
+    renderer.setAnimationLoop(frame);
+    body.classList.add("gl-on");
+    todayGl = {
+      setRunning: function(on){ renderer.setAnimationLoop(on ? frame : null); },
+      dispose: function(){
+        renderer.setAnimationLoop(null);
+        body.classList.remove("gl-on");
+        scene.traverse(function(o){
+          if(o.geometry) o.geometry.dispose();
+          if(o.material){
+            if(o.material.map) o.material.map.dispose();
+            o.material.dispose();
+          }
+        });
+        renderer.dispose();
+        barMeshes.clear();
+      }
+    };
+  }
+  function todayGlSetActive(on){ if(todayGl) todayGl.setRunning(on); }
+  document.addEventListener("visibilitychange", function(){
+    todayGlSetActive(!document.hidden && activeSection === "today");
+  });
+  // Theme flip: every baked color is stale — tear down and rebuild immediately if the timeline is
+  // what's on screen (otherwise the next entry to Today re-creates it lazily).
+  document.getElementById("themeToggleBtn").addEventListener("click", function(){
+    if(todayGl){ todayGl.dispose(); todayGl = null; todayGlFailed = false; }
+    if(activeSection === "today") ensureTodayGl();
+  });
 
   // Pinch-to-zoom on mobile — tracks up to two simultaneous *touch* pointers (pointerType check
   // keeps this from ever engaging for mouse/pen, which already zoom via the Ctrl/Cmd+wheel handler
