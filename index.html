@@ -344,6 +344,7 @@
   .goal-title{ font-family:var(--display); font-size:16px; font-weight:600; margin:0; color:var(--text); }
   .entity-actions{ display:flex; gap:2px; flex-shrink:0; }
   .icon-btn{ background:none; border:none; cursor:pointer; color:var(--text-faint); font-family:var(--mono); font-size:13px; padding:2px 6px; border-radius:3px; transition:all .15s ease; }
+  .icon-btn.loading{ opacity:0.5; cursor:wait; pointer-events:none; }
   .icon-btn:hover{ color:var(--p0); background:var(--p0-bg); }
   .icon-btn.toggle:hover{ color:var(--accent); background:var(--accent-glow); }
   .icon-btn.edit:hover{ color:var(--accent); background:var(--accent-glow); }
@@ -7101,7 +7102,10 @@
       return '<div class="journal-entry" data-kind="recording" data-id="' + rec.id + '">' +
         '<div class="journal-entry-top"><span class="journal-entry-date">' + escapeHtml(when) +
           (linkedNote ? ' · attached to a note' : ' · not attached to any note') + '</span>' +
-          '<div class="entity-actions"><button class="icon-btn" data-action="del-recording" data-id="' + rec.id + '" aria-label="Delete recording">&times;</button></div>' +
+          '<div class="entity-actions">' +
+            '<button class="icon-btn" data-action="transcribe-recording" data-id="' + rec.id + '" aria-label="' + (rec.transcript ? "Re-transcribe" : "Transcribe") + '" title="' + (rec.transcript ? "Re-transcribe this recording" : "Transcribe this recording") + '">' + (rec.transcript ? "🔁" : "📝") + '</button>' +
+            '<button class="icon-btn" data-action="del-recording" data-id="' + rec.id + '" aria-label="Delete recording">&times;</button>' +
+          '</div>' +
         '</div>' +
         (rec.transcript ? '<div class="journal-entry-text">' + escapeHtml(rec.transcript) + '</div>' : '') +
         renderWaveformBarHtml(rec) +
@@ -7112,9 +7116,42 @@
   document.getElementById("journalRecordingsList").addEventListener("click", async function(e){
     var playEl = e.target.closest('[data-action="play-recording"]');
     if(playEl){ await playRecording(playEl.dataset.id, playEl, e); return; }
+    var transcribeBtn = e.target.closest('[data-action="transcribe-recording"]');
+    if(transcribeBtn){ await transcribeRecordingById(transcribeBtn.dataset.id, transcribeBtn); return; }
     var delBtn = e.target.closest('[data-action="del-recording"]');
     if(delBtn) await deleteRecording(delBtn.dataset.id);
   });
+  // Manual (re-)transcription, on demand — covers recordings that predate the auto-transcribe-on-
+  // stop flow, ones where that first attempt failed (no API key set yet, a network blip) or found
+  // no speech, or just a recording the user wants transcribed again. Re-downloads the audio from its
+  // signed URL (the original in-memory Blob is long gone by the time this button exists) and runs it
+  // through the exact same WAV re-encode + Gemini path recording finish already uses. Deliberately
+  // only ever updates the recording's own transcript column, never a linked note's text — the note
+  // may have been hand-edited since, and silently overwriting that would be more surprising than
+  // helpful.
+  async function transcribeRecordingById(id, btnEl){
+    var rec = state.recordings.find(function(r){ return r.id === id; });
+    if(!rec) return;
+    if(btnEl){ btnEl.disabled = true; btnEl.classList.add("loading"); }
+    try{
+      var signed = await sb.storage.from("notes-audio").createSignedUrl(rec.storagePath, 3600);
+      if(signed.error) throw new Error(signed.error.message);
+      var audioResp = await fetch(signed.data.signedUrl);
+      if(!audioResp.ok) throw new Error("couldn't download the recording");
+      var blob = await audioResp.blob();
+      var wavBase64 = await blobToWavBase64(blob);
+      var text = await transcribeAudioViaGemini(wavBase64);
+      if(!text){ toast("Couldn't make out any speech in that recording."); return; }
+      var updateRes = await sb.from("recordings").update({ transcript: text }).eq("id", id);
+      if(updateRes.error) throw new Error(updateRes.error.message);
+      rec.transcript = text;
+      toast("Transcript saved.");
+    } catch(err){
+      toast(err.message === "no_api_key" ? 'No Gemini API key set yet — click "api key" in the agent tab to add one.' : ("Transcription failed: " + err.message));
+    } finally {
+      renderJournal();
+    }
+  }
   async function deleteRecording(id){
     var rec = state.recordings.find(function(r){ return r.id === id; });
     if(!rec) return;
