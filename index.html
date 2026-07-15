@@ -5234,28 +5234,28 @@
   // weaker than PPL_LINK_K since it applies densely across every pair in a group (a 30-person group
   // has 435 pairs) rather than just the handful of explicit edges a person actually lists.
   var PPL_GROUP_PULL_K = 0.002;
-  // Anyone with no social group set is folded into a shared "Orphan" group rather than left
-  // ungrouped — they still get a hull, a watermark label, are auto-linked to each other (see
-  // pplRebuildGraphCache), and take part in the between-group push/within-group pull, same as any
-  // real group name.
-  var PPL_ORPHAN_GROUP = "Orphan";
+  // A person with no social group set has no group at all (null) — they don't get a hull, aren't
+  // auto-linked to anyone via group membership, and take no part in the group push/pull; they just
+  // float freely, positioned only by the base repulsion, real relatedPeople connections, and the
+  // pull toward the sun. This is the person's MAIN (primary/first-listed) group — see pplNodeGroupList
+  // for the full multi-group list, which additionally feeds hull coverage for secondary groups.
   function pplNodeGroup(p){
-    if(!p.socialGroup) return PPL_ORPHAN_GROUP;
+    if(!p.socialGroup) return null;
     var first = p.socialGroup.split(",")[0].trim();
-    return first || PPL_ORPHAN_GROUP;
+    return first || null;
   }
-  // Every group a person belongs to (not just the first/primary one pplNodeGroup returns) — used
-  // wherever a person can legitimately be part of more than one cluster at once: auto-linking to
-  // group-mates (pplRebuildGraphCache) and hull membership (pplRenderClusters). A person in both
-  // "Discord" and "Syria" ends up inside both hulls, so their spot on the canvas is visibly covered
-  // by both groups' translucent colors (.wb-cluster-hull's fill-opacity:0.16 lets them blend rather
-  // than one hiding the other). The single-group PPL_GROUP_PUSH/PULL_K physics forces still use only
-  // the primary group (pplNodeGroup) — spreading spatial clustering across every membership at once
-  // would need a much bigger rework of that per-pair physics loop, and isn't what was asked for here.
+  // Every group a person belongs to (not just the first/MAIN one pplNodeGroup returns) — used only
+  // for hull membership (pplRenderClusters): a person in both "Discord" and "Syria" ends up inside
+  // both hulls, so their spot on the canvas is visibly covered by both groups' translucent colors
+  // (.wb-cluster-hull's fill-opacity:0.16 lets them blend rather than one hiding the other).
+  // Everything else — auto-linking to group-mates (pplRebuildGraphCache) and the single-group
+  // PPL_GROUP_PUSH/PULL_K physics — deliberately uses only the MAIN group (pplNodeGroup): a
+  // "secondary" group membership shows up in the hull hue but doesn't create a direct connection or
+  // pull someone toward that group's cluster. No social group at all means an empty list — same
+  // free-floating "no group" behavior as pplNodeGroup's null, just list-shaped for this use.
   function pplNodeGroupList(p){
-    if(!p.socialGroup) return [PPL_ORPHAN_GROUP];
-    var list = p.socialGroup.split(",").map(function(g){ return g.trim(); }).filter(Boolean);
-    return list.length ? list : [PPL_ORPHAN_GROUP];
+    if(!p.socialGroup) return [];
+    return p.socialGroup.split(",").map(function(g){ return g.trim(); }).filter(Boolean);
   }
   // Cached the same way wbRebuildGraphCache() caches the main Graph's edges — pure function of state,
   // recomputing it every physics tick (up to 60/sec while the sim is hot) would be wasted work.
@@ -5288,22 +5288,24 @@
     state.people.forEach(function(p){
       pplCachedContactPull[p.id] = p.contactScore != null ? p.contactScore / 2 : 1;
     });
-    // People are linked by default to every group they belong to (not just their primary one) — not
-    // an opt-in action — at the unknown/default weight, on top of the real relatedPeople-derived
-    // edges. A real edge always wins for a given pair (its explicit/custom weight is kept); same-
-    // group pairing only fills in where no real connection exists yet. Clicking one of these
-    // auto-linked lines still works via the normal edit flow (handlePplEdgeClick) and will persist it
-    // into relatedPeople as soon as a weight is set, "promoting" it from implicit to a real,
-    // editable connection.
+    // People sharing a MAIN social group (pplCachedNodeGroups — primary/first-listed only, not every
+    // group from pplCachedNodeGroupLists) are linked by default — not an opt-in action — at the
+    // unknown/default weight, on top of the real relatedPeople-derived edges. A secondary group
+    // membership still shows up in the hull hue (see pplRenderClusters) but doesn't create a direct
+    // connection on its own. A real edge always wins for a given pair (its explicit/custom weight is
+    // kept); same-group pairing only fills in where no real connection exists yet. Clicking one of
+    // these auto-linked lines still works via the normal edit flow (handlePplEdgeClick) and will
+    // persist it into relatedPeople as soon as a weight is set, "promoting" it from implicit to a
+    // real, editable connection.
     var edges = pplRelatedEdges();
     var seen = {};
     edges.forEach(function(e){ seen[[e.fromId, e.toId].sort().join(":")] = true; });
     var byGroup = {};
     state.people.forEach(function(p){
-      pplCachedNodeGroupLists[p.id].forEach(function(g){
-        if(!byGroup[g]) byGroup[g] = [];
-        byGroup[g].push(p.id);
-      });
+      var g = pplCachedNodeGroups[p.id];
+      if(!g) return;
+      if(!byGroup[g]) byGroup[g] = [];
+      byGroup[g].push(p.id);
     });
     Object.keys(byGroup).forEach(function(g){
       var ids = byGroup[g];
