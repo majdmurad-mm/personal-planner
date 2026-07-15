@@ -474,15 +474,21 @@
   /* Location page: Leaflet owns its own pan/zoom gestures (including pinch), so the wrap just needs
      to be a sized, positioned box for the map to fill — reuses .wb-canvas-wrap for the border/radius/
      full-viewport-flex-column sizing every other full-page canvas view already has. */
-  .loc-map{ position:absolute; inset:0; }
+  .loc-map{ position:absolute; inset:0; background:#0b0b0e; }
   .loc-geocode-row{ display:flex; gap:8px; }
   .loc-geocode-row input{ flex:1; }
   .loc-geocode-status{ font-family:var(--mono); font-size:10.5px; color:var(--text-dim); margin-top:4px; min-height:14px; }
   .loc-geocode-status .clear-link{ color:var(--accent); cursor:pointer; margin-left:8px; }
   #locLayerPeopleBtn.on, #locLayerLiveBtn.on, #locLayerHistoryBtn.on{ background:var(--accent); color:var(--bg); border-color:var(--accent); }
-  :root[data-theme="dark"] .leaflet-control-zoom a{ background:var(--bg-raised); color:var(--text); border-color:var(--border-bright); }
-  :root[data-theme="dark"] .leaflet-control-attribution{ background:rgba(var(--bg-raised-rgb),0.8); color:var(--text-dim); }
-  :root[data-theme="dark"] .leaflet-popup-content-wrapper, :root[data-theme="dark"] .leaflet-popup-tip{ background:var(--bg-raised); color:var(--text); }
+  /* Unconditional (not scoped to :root[data-theme="dark"]) — the basemap itself is always dark now
+     (see initLocation's tile layer), independent of the app's own light/dark toggle, so Leaflet's
+     stock light-mode chrome would look mismatched either way if left theme-conditional. */
+  .leaflet-control-zoom a{ background:#242428; color:#ddd; border-color:#3a3a40; }
+  .leaflet-control-attribution{ background:rgba(20,20,24,0.75); color:#aaa; }
+  .leaflet-control-attribution a{ color:#ccc; }
+  .leaflet-popup-content-wrapper, .leaflet-popup-tip{ background:#1c1c20; color:#e8e8e8; }
+  .loc-city-popup ul{ margin:6px 0 0; padding-left:16px; }
+  .loc-city-popup a.loc-person-link{ color:var(--accent); }
   .wb-toolbar-float{ position:absolute; top:12px; left:12px; z-index:100; background:var(--bg-raised); border:1px solid var(--border-bright); border-radius:var(--radius); padding:8px 10px; box-shadow:0 6px 20px rgba(0,0,0,0.35); pointer-events:auto; }
   .wb-hint-float{ position:absolute; z-index:100; margin:0; max-width:340px; pointer-events:none; }
   .wb-connect-hint{ top:12px; left:50%; transform:translateX(-50%); background:var(--accent-glow); border:1px solid var(--accent-dim); border-radius:var(--radius); padding:6px 12px; color:var(--accent); }
@@ -6103,10 +6109,27 @@
     return on;
   }
 
-  function locAddPersonMarker(p){
-    var marker = L.circleMarker([p.homeLat, p.homeLng], { radius:7, color:"#F15A22", fillColor:"#F15A22", fillOpacity:0.85, weight:2 });
-    marker.bindPopup(escapeHtml(p.name || "Unnamed"));
-    marker.on("click", function(){ editPerson(p.id); });
+  // Groups people into one point per city rather than one pin per person — rounding to ~1km grid
+  // cells treats near-identical geocode results (same city, slightly different query text) as the
+  // same point without needing exact float equality.
+  function locCityKey(lat, lng){ return lat.toFixed(2) + "," + lng.toFixed(2); }
+  function locAddCityMarker(group){
+    var n = group.people.length;
+    // Area (not radius) scales with count, so the visual size difference between e.g. 1 and 4
+    // people reads proportionally rather than looking almost identical.
+    var radius = 6 + Math.sqrt(n) * 4;
+    var marker = L.circleMarker([group.lat, group.lng], { radius:radius, color:"#F15A22", weight:1, opacity:0.75, fillColor:"#F15A22", fillOpacity:0.4 });
+    var cityLabel = (group.people[0].location || "").trim();
+    var html = '<div class="loc-city-popup">' + (cityLabel ? '<b>' + escapeHtml(cityLabel) + '</b> — ' : '') + n + (n === 1 ? ' person' : ' people') +
+      '<ul>' + group.people.map(function(p){ return '<li><a href="#" class="loc-person-link" data-id="' + p.id + '">' + escapeHtml(p.name || "Unnamed") + '</a></li>'; }).join('') + '</ul></div>';
+    marker.bindPopup(html);
+    marker.on("popupopen", function(e){
+      var el = e.popup.getElement();
+      if(!el) return;
+      el.querySelectorAll(".loc-person-link").forEach(function(a){
+        a.addEventListener("click", function(ev){ ev.preventDefault(); editPerson(a.dataset.id); });
+      });
+    });
     locPeopleLayer.addLayer(marker);
   }
   function locQueuePersonGeocode(p){
@@ -6131,7 +6154,7 @@
           if(rows && rows.length){
             p.homeLat = parseFloat(rows[0].lat);
             p.homeLng = parseFloat(rows[0].lon);
-            if(locPeopleLayer) locAddPersonMarker(p);
+            locRenderPeopleLayer();
             safeUpdate("people", p.id, { home_lat: p.homeLat, home_lng: p.homeLng }).then(function(r){ if(r.error) console.error(r.error); });
           } else {
             locGeocodeFailedIds[id] = true;
@@ -6149,13 +6172,17 @@
   function locRenderPeopleLayer(){
     if(!locPeopleLayer) return;
     locPeopleLayer.clearLayers();
+    var groups = {};
     state.people.forEach(function(p){
       if(p.homeLat != null && p.homeLng != null){
-        locAddPersonMarker(p);
+        var key = locCityKey(p.homeLat, p.homeLng);
+        if(!groups[key]) groups[key] = { lat:p.homeLat, lng:p.homeLng, people:[] };
+        groups[key].people.push(p);
       } else if(p.location && p.location.trim()){
         locQueuePersonGeocode(p);
       }
     });
+    Object.keys(groups).forEach(function(key){ locAddCityMarker(groups[key]); });
   }
 
   function locRenderHistoryLayer(){
@@ -6294,9 +6321,13 @@
     var mapEl = document.getElementById("locMap");
     if(!mapEl || typeof L === "undefined") return;
     locMap = L.map(mapEl, { zoomControl:true }).setView([20, 0], 2);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    // CARTO's free "Dark Matter" basemap (no API key, same OSM data underneath) — a permanently dark
+    // map regardless of the app's own light/dark toggle, since a light basemap read as jarring next
+    // to everything else here.
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
       maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      subdomains: "abcd",
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
     }).addTo(locMap);
     locPeopleLayer = L.layerGroup().addTo(locMap);
     locLiveLayer = L.layerGroup();
