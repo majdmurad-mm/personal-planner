@@ -479,7 +479,18 @@
   .loc-geocode-row input{ flex:1; }
   .loc-geocode-status{ font-family:var(--mono); font-size:10.5px; color:var(--text-dim); margin-top:4px; min-height:14px; }
   .loc-geocode-status .clear-link{ color:var(--accent); cursor:pointer; margin-left:8px; }
-  #locLayerPeopleBtn.on, #locLayerLiveBtn.on, #locLayerHistoryBtn.on{ background:var(--accent); color:var(--bg); border-color:var(--accent); }
+  /* Address autocomplete dropdown (wireAddressAutocomplete) — reused by Person/Action/Habit/POI
+     location fields, so the wrapper needs position:relative for the dropdown to anchor under it. */
+  .addr-autocomplete-wrap{ position:relative; }
+  .addr-suggest-dropdown{ position:absolute; top:100%; left:0; right:0; z-index:200; margin-top:2px; background:var(--bg-raised); border:1px solid var(--border-bright); border-radius:var(--radius); max-height:180px; overflow-y:auto; box-shadow:0 6px 20px rgba(0,0,0,0.35); }
+  .addr-suggest-item{ padding:6px 10px; font-family:var(--mono); font-size:11.5px; color:var(--text); cursor:pointer; border-bottom:1px solid var(--border); }
+  .addr-suggest-item:last-child{ border-bottom:none; }
+  .addr-suggest-item:hover{ background:var(--accent-glow); }
+  #locLayerPeopleBtn.on, #locLayerLiveBtn.on, #locLayerHistoryBtn.on, #locLayerActionsBtn.on, #locLayerPoiBtn.on{ background:var(--accent); color:var(--bg); border-color:var(--accent); }
+  #locAddPoiBtn.on{ background:#FFD54A; color:#1a1a1a; border-color:#FFD54A; }
+  .loc-people-mode-group{ display:flex; gap:4px; }
+  .loc-mode-btn{ font-size:10.5px; padding:5px 8px; }
+  .loc-mode-btn.on{ background:var(--accent-dim); color:var(--bg); border-color:var(--accent); }
   /* Unconditional (not scoped to :root[data-theme="dark"]) — the basemap itself is always dark now
      (see initLocation's tile layer), independent of the app's own light/dark toggle, so Leaflet's
      stock light-mode chrome would look mismatched either way if left theme-conditional. */
@@ -1787,13 +1798,20 @@
       <div class="wb-canvas-wrap loc-map-wrap" id="locMapWrap">
         <div class="wb-toolbar wb-toolbar-float" id="locToolbarFloat">
           <button class="btn on" id="locLayerPeopleBtn" type="button" title="Show people's home locations">☺ people</button>
+          <div class="loc-people-mode-group" id="locPeopleModeGroup">
+            <button class="btn loc-mode-btn on" data-mode="count" type="button" title="Size markers by how many people share a city">by count</button>
+            <button class="btn loc-mode-btn" data-mode="relationship" type="button" title="Color and split markers by relationship type">by relationship</button>
+          </div>
+          <button class="btn" id="locLayerActionsBtn" type="button" title="Show actions and habits that have a location set">▪ actions/habits</button>
+          <button class="btn" id="locLayerPoiBtn" type="button" title="Show points of interest you've added">★ points of interest</button>
+          <button class="btn" id="locAddPoiBtn" type="button" title="Click the map to drop a new point of interest">+ add poi</button>
           <button class="btn" id="locLayerLiveBtn" type="button" title="Track and show your live GPS position while this page is open">◉ live gps</button>
           <button class="btn" id="locLayerHistoryBtn" type="button" title="Show recorded/imported location history">↔ history</button>
           <button class="btn" id="locImportBtn" type="button" title="Import a Google Maps Timeline export (JSON)">⇩ import timeline</button>
           <input type="file" id="locImportFile" accept="application/json" hidden>
           <span class="wb-save-status" id="locStatus"></span>
         </div>
-        <p class="panel-hint wb-hint-float wb-pan-hint">Pan: drag. Zoom: scroll or pinch. Click a person pin to edit them.</p>
+        <p class="panel-hint wb-hint-float wb-pan-hint">Pan: drag. Zoom: scroll or pinch. Click a pin to open it.</p>
         <div class="loc-map" id="locMap"></div>
       </div>
     </section>
@@ -1945,6 +1963,14 @@
         <div class="field" id="habitScaleField" style="display:none;"><label for="habitScaleMaxInput">scale max</label><input type="number" id="habitScaleMaxInput" min="2" max="10" value="5"></div>
       </div>
       <p class="panel-hint">Each habit gets its own row in the Tracker tab — this is what marking it done actually writes to.</p>
+      <div class="field">
+        <label for="habitLocationInput">location — shown as a pin on the Location page (optional)</label>
+        <div class="loc-geocode-row addr-autocomplete-wrap">
+          <input type="text" id="habitLocationInput" placeholder="start typing an address or place…" autocomplete="off">
+          <div class="addr-suggest-dropdown" id="habitLocationSuggest" hidden></div>
+        </div>
+        <div class="loc-geocode-status" id="habitLocationStatus"></div>
+      </div>
       <div class="modal-actions"><button class="btn" id="cancelHabitModalBtn" type="button">cancel</button><button class="btn btn-accent" id="saveHabitBtn" type="button">save habit</button></div>
     </div>
   </div>
@@ -1981,6 +2007,14 @@
         </div>
         <div class="field"><label for="actionDurationInput">duration (min)</label><input type="number" min="0" step="5" id="actionDurationInput" placeholder="e.g. 30"></div>
       </div>
+      <div class="field">
+        <label for="actionLocationInput">location — shown as a pin on the Location page (optional)</label>
+        <div class="loc-geocode-row addr-autocomplete-wrap">
+          <input type="text" id="actionLocationInput" placeholder="start typing an address or place…" autocomplete="off">
+          <div class="addr-suggest-dropdown" id="actionLocationSuggest" hidden></div>
+        </div>
+        <div class="loc-geocode-status" id="actionLocationStatus"></div>
+      </div>
       <div class="modal-actions"><button class="btn" id="cancelActionModalBtn" type="button">cancel</button><button class="btn btn-accent" id="saveActionBtn" type="button">save action</button></div>
     </div>
   </div>
@@ -2002,9 +2036,9 @@
       </div>
       <div class="field">
         <label for="personHomeAddressInput">home location — shown as a pin on the Location page (optional)</label>
-        <div class="loc-geocode-row">
-          <input type="text" id="personHomeAddressInput" placeholder="search an address or place…">
-          <button class="btn" id="personGeocodeBtn" type="button">find</button>
+        <div class="loc-geocode-row addr-autocomplete-wrap">
+          <input type="text" id="personHomeAddressInput" placeholder="start typing an address or place…" autocomplete="off">
+          <div class="addr-suggest-dropdown" id="personHomeAddressSuggest" hidden></div>
         </div>
         <div class="loc-geocode-status" id="personGeocodeStatus"></div>
       </div>
@@ -2031,6 +2065,18 @@
       <label class="infinite-toggle"><input type="checkbox" id="personVerifiedCheckbox"><span>verified</span></label>
       <div class="field"><label for="personNotesInput">notes</label><textarea id="personNotesInput" rows="3" placeholder="Anything worth remembering…"></textarea></div>
       <div class="modal-actions"><button class="btn" id="cancelPersonModalBtn" type="button">cancel</button><button class="btn btn-accent" id="savePersonBtn" type="button">save person</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== POINT OF INTEREST MODAL ===== -->
+<div class="modal-overlay" id="poiModalOverlay" hidden>
+  <div class="modal">
+    <div class="modal-head"><span class="dot g"></span><h2>new_point_of_interest.json</h2></div>
+    <div class="modal-inner">
+      <div class="field"><label for="poiNameInput">name</label><input type="text" id="poiNameInput" placeholder="e.g. Favorite coffee shop"></div>
+      <div class="field"><label for="poiNotesInput">notes (optional)</label><textarea id="poiNotesInput" rows="3" placeholder="Anything worth remembering…"></textarea></div>
+      <div class="modal-actions"><button class="btn" id="cancelPoiModalBtn" type="button">cancel</button><button class="btn btn-accent" id="savePoiBtn" type="button">save point</button></div>
     </div>
   </div>
 </div>
@@ -2660,7 +2706,7 @@
     return setPreview;
   }
 
-  var state = { goals:[], projects:[], habits:[], actions:[], journal:[], people:[], trackerVars:[], trackerEntries:[], trackerDays:[], wbConnections:[], sleepScores:[], trash:[], socialGroupColors:[], gpsPings:[] };
+  var state = { goals:[], projects:[], habits:[], actions:[], journal:[], people:[], trackerVars:[], trackerEntries:[], trackerDays:[], wbConnections:[], sleepScores:[], trash:[], socialGroupColors:[], gpsPings:[], pois:[] };
   var currentUser = null;
 
   function goalById(id){ return state.goals.find(function(g){ return g.id === id; }); }
@@ -2777,7 +2823,8 @@
       sb.from("tracker_days").select("*"),
       sb.from("sleep_scores").select("*").order("date", { ascending:false }),
       sb.from("social_group_colors").select("*"),
-      sb.from("gps_pings").select("*").order("recorded_at")
+      sb.from("gps_pings").select("*").order("recorded_at"),
+      sb.from("points_of_interest").select("*").order("created_at")
     ]);
     results.forEach(function(r){ if(r.error) console.error(r.error); });
     // position defaults to 0 (via ||0) when the migration_positions.sql column doesn't exist yet —
@@ -2787,9 +2834,11 @@
     state.goals.sort(function(a,b){ return a.position - b.position; });
     state.projects = (results[1].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), categories:r.categories||[] }; });
     state.projects.sort(function(a,b){ return a.position - b.position; });
-    state.habits = (results[2].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || null, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [], extraDates:r.extra_dates || [], customIntervalDays:r.custom_interval_days||null, icon:r.icon||null }; });
+    state.habits = (results[2].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || null, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [], extraDates:r.extra_dates || [], customIntervalDays:r.custom_interval_days||null, icon:r.icon||null,
+      locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null) }; });
     state.habits.sort(function(a,b){ return a.position - b.position; });
-    state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null }; });
+    state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null,
+      locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null) }; });
     state.actions.sort(function(a,b){ return a.position - b.position; });
     state.journal = (results[4].data || []).map(function(r){ return { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null }; });
     state.people = (results[5].data || []).map(function(r){
@@ -2813,6 +2862,8 @@
     // Empty until migration_location.sql has been run, same graceful-degradation shape as above —
     // the Location page's history layer just has nothing to draw until then.
     state.gpsPings = (results[12].data || []).map(locMapGpsRow);
+    // Empty until migration_action_habit_poi_location.sql has been run.
+    state.pois = (results[13].data || []).map(function(r){ return { id:r.id, name:r.name, lat:r.lat, lng:r.lng, notes:r.notes||"" }; });
     await backfillLegacyHabitTrackers();
     await backfillHabitIcons();
   }
@@ -3424,7 +3475,8 @@
     });
   }
   function actionPayload(snapshot){
-    return { id:snapshot.id, parent_type:snapshot.parentType, parent_id:snapshot.parentId, title:snapshot.title, type:snapshot.type, priority:snapshot.priority, date:snapshot.date, done:snapshot.done, position:snapshot.position, time_of_day:snapshot.timeOfDay, duration_minutes:snapshot.durationMinutes, category:snapshot.category };
+    return { id:snapshot.id, parent_type:snapshot.parentType, parent_id:snapshot.parentId, title:snapshot.title, type:snapshot.type, priority:snapshot.priority, date:snapshot.date, done:snapshot.done, position:snapshot.position, time_of_day:snapshot.timeOfDay, duration_minutes:snapshot.durationMinutes, category:snapshot.category,
+      location_address:snapshot.locationAddress, location_lat:snapshot.locationLat, location_lng:snapshot.locationLng };
   }
   async function deleteAction(id){
     var a = state.actions.find(function(x){ return x.id === id; });
@@ -3443,7 +3495,8 @@
     });
   }
   function habitPayload(snapshot){
-    return { id:snapshot.id, goal_id:snapshot.goalId, secondary_goal_ids:snapshot.secondaryGoalIds, title:snapshot.title, priority:snapshot.priority, frequency:snapshot.frequency, weekdays:snapshot.weekdays, tracker_variable_id:snapshot.trackerVariableId, time_of_day:snapshot.timeOfDay, duration_minutes:snapshot.durationMinutes, days:snapshot.days, position:snapshot.position, skip_dates:snapshot.skipDates, extra_dates:snapshot.extraDates, created_at:snapshot.createdAt, custom_interval_days:snapshot.customIntervalDays, icon:snapshot.icon };
+    return { id:snapshot.id, goal_id:snapshot.goalId, secondary_goal_ids:snapshot.secondaryGoalIds, title:snapshot.title, priority:snapshot.priority, frequency:snapshot.frequency, weekdays:snapshot.weekdays, tracker_variable_id:snapshot.trackerVariableId, time_of_day:snapshot.timeOfDay, duration_minutes:snapshot.durationMinutes, days:snapshot.days, position:snapshot.position, skip_dates:snapshot.skipDates, extra_dates:snapshot.extraDates, created_at:snapshot.createdAt, custom_interval_days:snapshot.customIntervalDays, icon:snapshot.icon,
+      location_address:snapshot.locationAddress, location_lat:snapshot.locationLat, location_lng:snapshot.locationLng };
   }
   function trackerVarPayload(snapshot){
     return { id:snapshot.id, name:snapshot.name, type:snapshot.type, unit:snapshot.unit, scale_max:snapshot.scaleMax, categories:snapshot.categories, position:snapshot.position };
@@ -6091,10 +6144,68 @@
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
 
+  // Debounced Nominatim search-as-you-type — one small reusable widget backing every address field
+  // in the app (Person's home location, Action/Habit location, and the point-of-interest modal),
+  // instead of each needing its own single-shot "find" button. opts: { inputEl, dropdownEl, statusEl,
+  // getLat, getLng, onPick(lat,lng), onClear() }. Nominatim's usage policy caps free search at one
+  // request/second — a 400ms debounce plus "only search once you've stopped typing" comfortably
+  // stays under that for a single person typing into one field.
+  function wireAddressAutocomplete(opts){
+    var debounceTimer = null, results = [];
+    function close(){ opts.dropdownEl.hidden = true; opts.dropdownEl.innerHTML = ""; results = []; }
+    function renderStatus(){
+      var lat = opts.getLat(), lng = opts.getLng();
+      if(lat == null || lng == null){ opts.statusEl.innerHTML = ""; return; }
+      opts.statusEl.innerHTML = "✓ " + lat.toFixed(4) + ", " + lng.toFixed(4) + '<span class="clear-link" data-clear>clear</span>';
+    }
+    function pick(r){
+      opts.inputEl.value = r.display_name;
+      close();
+      opts.onPick(parseFloat(r.lat), parseFloat(r.lon));
+      renderStatus();
+    }
+    async function search(q){
+      var rows;
+      try{
+        var res = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=5&q=" + encodeURIComponent(q), { headers: { "Accept": "application/json" } });
+        rows = await res.json();
+      } catch(err){ rows = []; }
+      results = rows || [];
+      if(!results.length){ close(); return; }
+      opts.dropdownEl.innerHTML = results.map(function(r, i){ return '<div class="addr-suggest-item" data-i="' + i + '">' + escapeHtml(r.display_name) + '</div>'; }).join("");
+      opts.dropdownEl.hidden = false;
+    }
+    opts.inputEl.addEventListener("input", function(){
+      clearTimeout(debounceTimer);
+      var q = opts.inputEl.value.trim();
+      if(q.length < 3){ close(); return; }
+      debounceTimer = setTimeout(function(){ search(q); }, 400);
+    });
+    opts.inputEl.addEventListener("keydown", function(e){
+      if(e.key === "Enter"){ e.preventDefault(); if(results.length) pick(results[0]); }
+      else if(e.key === "Escape"){ close(); }
+    });
+    // mousedown (not click) — fires before the input's blur handler below, so picking a suggestion
+    // isn't lost to the dropdown closing itself first.
+    opts.dropdownEl.addEventListener("mousedown", function(e){
+      var item = e.target.closest(".addr-suggest-item");
+      if(!item) return;
+      pick(results[Number(item.dataset.i)]);
+    });
+    opts.inputEl.addEventListener("blur", function(){ setTimeout(close, 150); });
+    opts.statusEl.addEventListener("click", function(e){
+      if(e.target.closest("[data-clear]")){ opts.onClear(); renderStatus(); }
+    });
+    return { renderStatus: renderStatus, close: close };
+  }
+
   var locMap = null, locPeopleLayer = null, locLiveLayer = null, locHistoryLayer = null;
+  var locActionsLayer = null, locPoiLayer = null;
   var locLiveMarker = null, locLiveTrailLine = null, locLiveTrailLatLngs = [];
   var locLiveWatchId = null, locLastPingAt = 0, locLastPingLatLng = null;
   var LOC_MIN_PING_INTERVAL_MS = 60000, LOC_MIN_PING_DIST_M = 50;
+  var locPeopleColorMode = "count";
+  var locAddPoiMode = false;
   // Auto-geocoding queue for people who have a free-text "location" (e.g. "Berlin Germany") but no
   // pinned home_lat/home_lng yet — resolves it through Nominatim and writes the coordinates back to
   // the person so it's only ever geocoded once. Sequential with a >1s gap between requests: Nominatim's
@@ -6113,14 +6224,30 @@
   // cells treats near-identical geocode results (same city, slightly different query text) as the
   // same point without needing exact float equality.
   function locCityKey(lat, lng){ return lat.toFixed(2) + "," + lng.toFixed(2); }
+  // "By relationship" mode colors, per the app's relationship vocabulary (see RELATIONSHIPS) — Mentor
+  // and Other aren't specified by name but still need a color, picked to stay visually distinct from
+  // the four named ones.
+  var LOC_RELATIONSHIP_COLORS = { Family:"#22C55E", Friend:"#22D3EE", Colleague:"#FB923C", Partner:"#F472B6", Mentor:"#A78BFA", Other:"#9CA3AF" };
+  // When "by relationship" splits one city into several same-location markers (one per relationship
+  // present there), stacking them exactly on top of each other would hide all but the last drawn —
+  // this spreads them evenly in a small ring around the true point instead.
+  function locRingOffset(i, n){
+    if(n <= 1) return { dLat:0, dLng:0 };
+    var angle = (2 * Math.PI * i) / n, r = 0.0015;
+    return { dLat: Math.sin(angle) * r, dLng: Math.cos(angle) * r };
+  }
   function locAddCityMarker(group){
     var n = group.people.length;
     // Area (not radius) scales with count, so the visual size difference between e.g. 1 and 4
     // people reads proportionally rather than looking almost identical.
     var radius = 6 + Math.sqrt(n) * 4;
-    var marker = L.circleMarker([group.lat, group.lng], { radius:radius, color:"#F15A22", weight:1, opacity:0.75, fillColor:"#F15A22", fillOpacity:0.4 });
+    var color = group.color || "#F15A22";
+    var marker = L.circleMarker([group.lat, group.lng], { radius:radius, color:color, weight:1, opacity:0.75, fillColor:color, fillOpacity:0.4 });
     var cityLabel = (group.people[0].location || "").trim();
-    var html = '<div class="loc-city-popup">' + (cityLabel ? '<b>' + escapeHtml(cityLabel) + '</b> — ' : '') + n + (n === 1 ? ' person' : ' people') +
+    var titleBits = [];
+    if(group.label) titleBits.push(escapeHtml(group.label));
+    if(cityLabel) titleBits.push(escapeHtml(cityLabel));
+    var html = '<div class="loc-city-popup">' + (titleBits.length ? '<b>' + titleBits.join(" · ") + '</b> — ' : '') + n + (n === 1 ? ' person' : ' people') +
       '<ul>' + group.people.map(function(p){ return '<li><a href="#" class="loc-person-link" data-id="' + p.id + '">' + escapeHtml(p.name || "Unnamed") + '</a></li>'; }).join('') + '</ul></div>';
     marker.bindPopup(html);
     marker.on("popupopen", function(e){
@@ -6172,17 +6299,40 @@
   function locRenderPeopleLayer(){
     if(!locPeopleLayer) return;
     locPeopleLayer.clearLayers();
-    var groups = {};
-    state.people.forEach(function(p){
-      if(p.homeLat != null && p.homeLng != null){
-        var key = locCityKey(p.homeLat, p.homeLng);
-        if(!groups[key]) groups[key] = { lat:p.homeLat, lng:p.homeLng, people:[] };
-        groups[key].people.push(p);
-      } else if(p.location && p.location.trim()){
-        locQueuePersonGeocode(p);
-      }
-    });
-    Object.keys(groups).forEach(function(key){ locAddCityMarker(groups[key]); });
+    if(locPeopleColorMode === "relationship"){
+      var byCity = {};
+      state.people.forEach(function(p){
+        if(p.homeLat != null && p.homeLng != null){
+          var cKey = locCityKey(p.homeLat, p.homeLng);
+          if(!byCity[cKey]) byCity[cKey] = { lat:p.homeLat, lng:p.homeLng, byRel:{} };
+          var rel = p.relationship || "Other";
+          if(!byCity[cKey].byRel[rel]) byCity[cKey].byRel[rel] = [];
+          byCity[cKey].byRel[rel].push(p);
+        } else if(p.location && p.location.trim()){
+          locQueuePersonGeocode(p);
+        }
+      });
+      Object.keys(byCity).forEach(function(cKey){
+        var city = byCity[cKey];
+        var rels = Object.keys(city.byRel);
+        rels.forEach(function(rel, i){
+          var off = locRingOffset(i, rels.length);
+          locAddCityMarker({ lat: city.lat + off.dLat, lng: city.lng + off.dLng, people: city.byRel[rel], color: LOC_RELATIONSHIP_COLORS[rel] || LOC_RELATIONSHIP_COLORS.Other, label: rel });
+        });
+      });
+    } else {
+      var groups = {};
+      state.people.forEach(function(p){
+        if(p.homeLat != null && p.homeLng != null){
+          var key = locCityKey(p.homeLat, p.homeLng);
+          if(!groups[key]) groups[key] = { lat:p.homeLat, lng:p.homeLng, people:[] };
+          groups[key].people.push(p);
+        } else if(p.location && p.location.trim()){
+          locQueuePersonGeocode(p);
+        }
+      });
+      Object.keys(groups).forEach(function(key){ locAddCityMarker(groups[key]); });
+    }
   }
 
   function locRenderHistoryLayer(){
@@ -6193,6 +6343,74 @@
     var latlngs = pts.map(function(p){ return [p.lat, p.lng]; });
     L.polyline(latlngs, { color:"#8a5cf6", weight:2, opacity:0.6 }).addTo(locHistoryLayer);
   }
+
+  // One marker per located action/habit (not city-grouped like people — each is its own specific
+  // place/routine, not a population count) — actions in teal, habits in indigo so the two are
+  // distinguishable at a glance without needing separate toggles.
+  function locRenderActionsLayer(){
+    if(!locActionsLayer) return;
+    locActionsLayer.clearLayers();
+    state.actions.forEach(function(a){
+      if(a.locationLat == null || a.locationLng == null) return;
+      var marker = L.circleMarker([a.locationLat, a.locationLng], { radius:6, color:"#2DD4BF", weight:1.5, opacity:0.85, fillColor:"#2DD4BF", fillOpacity:0.5 });
+      marker.bindPopup('<div class="loc-city-popup"><b>' + escapeHtml(a.title || "Untitled") + '</b><br>' + escapeHtml(a.type || "action") + (a.date ? " · " + escapeHtml(a.date) : "") + '</div>');
+      marker.on("click", function(){ editAction(a.id); });
+      locActionsLayer.addLayer(marker);
+    });
+    state.habits.forEach(function(h){
+      if(h.locationLat == null || h.locationLng == null) return;
+      var marker = L.circleMarker([h.locationLat, h.locationLng], { radius:6, color:"#818CF8", weight:1.5, opacity:0.85, fillColor:"#818CF8", fillOpacity:0.5 });
+      marker.bindPopup('<div class="loc-city-popup"><b>' + escapeHtml(h.title || "Untitled") + '</b><br>habit · ' + escapeHtml(h.frequency || "") + '</div>');
+      marker.on("click", function(){ editHabit(h.id); });
+      locActionsLayer.addLayer(marker);
+    });
+  }
+
+  function locRenderPoiLayer(){
+    if(!locPoiLayer) return;
+    locPoiLayer.clearLayers();
+    state.pois.forEach(function(poi){
+      var marker = L.circleMarker([poi.lat, poi.lng], { radius:7, color:"#FFD54A", weight:1.5, opacity:0.9, fillColor:"#FFD54A", fillOpacity:0.55 });
+      var html = '<div class="loc-city-popup"><b>' + escapeHtml(poi.name) + '</b>' + (poi.notes ? '<br>' + escapeHtml(poi.notes) : '') +
+        '<br><a href="#" class="loc-poi-delete" data-id="' + poi.id + '">delete</a></div>';
+      marker.bindPopup(html);
+      marker.on("popupopen", function(e){
+        var el = e.popup.getElement();
+        if(!el) return;
+        var delLink = el.querySelector(".loc-poi-delete");
+        if(delLink) delLink.addEventListener("click", function(ev){ ev.preventDefault(); deletePoi(poi.id); });
+      });
+      locPoiLayer.addLayer(marker);
+    });
+  }
+  async function deletePoi(id){
+    state.pois = state.pois.filter(function(p){ return p.id !== id; });
+    locRenderPoiLayer();
+    var r = await sb.from("points_of_interest").delete().eq("id", id);
+    if(r.error) console.error(r.error);
+  }
+  var poiPendingLat = null, poiPendingLng = null;
+  function openPoiModal(lat, lng){
+    poiPendingLat = lat; poiPendingLng = lng;
+    document.getElementById("poiNameInput").value = "";
+    document.getElementById("poiNotesInput").value = "";
+    openModal("poiModalOverlay");
+    document.getElementById("poiNameInput").focus();
+  }
+  document.getElementById("cancelPoiModalBtn").addEventListener("click", function(){ closeModal("poiModalOverlay"); });
+  document.getElementById("savePoiBtn").addEventListener("click", async function(){
+    var name = document.getElementById("poiNameInput").value.trim();
+    if(!name) return;
+    var payload = { name: name, lat: poiPendingLat, lng: poiPendingLng, notes: document.getElementById("poiNotesInput").value.trim() || null };
+    this.disabled = true;
+    var res = await sb.from("points_of_interest").insert(payload).select().single();
+    this.disabled = false;
+    if(res.error){ alert(res.error.message); return; }
+    var r = res.data;
+    state.pois.push({ id:r.id, name:r.name, lat:r.lat, lng:r.lng, notes:r.notes||"" });
+    locRenderPoiLayer();
+    closeModal("poiModalOverlay");
+  });
 
   function locStartLiveTracking(){
     if(!("geolocation" in navigator)){ toast("Geolocation isn't available in this browser."); return; }
@@ -6332,8 +6550,38 @@
     locPeopleLayer = L.layerGroup().addTo(locMap);
     locLiveLayer = L.layerGroup();
     locHistoryLayer = L.layerGroup();
+    locActionsLayer = L.layerGroup();
+    locPoiLayer = L.layerGroup();
 
     document.getElementById("locLayerPeopleBtn").addEventListener("click", function(){ locToggleLayer(locPeopleLayer, this); });
+    document.getElementById("locPeopleModeGroup").addEventListener("click", function(e){
+      var btn = e.target.closest(".loc-mode-btn");
+      if(!btn) return;
+      locPeopleColorMode = btn.dataset.mode;
+      this.querySelectorAll(".loc-mode-btn").forEach(function(b){ b.classList.toggle("on", b === btn); });
+      locRenderPeopleLayer();
+    });
+    document.getElementById("locLayerActionsBtn").addEventListener("click", function(){
+      var on = locToggleLayer(locActionsLayer, this);
+      if(on) locRenderActionsLayer();
+    });
+    document.getElementById("locLayerPoiBtn").addEventListener("click", function(){
+      var on = locToggleLayer(locPoiLayer, this);
+      if(on) locRenderPoiLayer();
+    });
+    // "Add POI" is a one-shot mode: toggle it on, click the map once to drop a pin (opens the naming
+    // modal at that spot), then it turns itself back off — staying on would make every subsequent
+    // map click (including ones meant to just pan or open a popup) accidentally start a new POI.
+    document.getElementById("locAddPoiBtn").addEventListener("click", function(){
+      locAddPoiMode = !locAddPoiMode;
+      this.classList.toggle("on", locAddPoiMode);
+    });
+    locMap.on("click", function(e){
+      if(!locAddPoiMode) return;
+      locAddPoiMode = false;
+      document.getElementById("locAddPoiBtn").classList.remove("on");
+      openPoiModal(e.latlng.lat, e.latlng.lng);
+    });
     document.getElementById("locLayerLiveBtn").addEventListener("click", function(){
       var on = locToggleLayer(locLiveLayer, this);
       if(on) locStartLiveTracking(); else locStopLiveTracking();
@@ -6358,6 +6606,8 @@
     if(!locMap) return;
     setTimeout(function(){ locMap.invalidateSize(); }, 0);
     locRenderPeopleLayer();
+    if(document.getElementById("locLayerActionsBtn").classList.contains("on")) locRenderActionsLayer();
+    if(document.getElementById("locLayerPoiBtn").classList.contains("on")) locRenderPoiLayer();
   }
   initLocation();
 
@@ -9247,8 +9497,21 @@
   }
   wireTimePicker("habitTimeInput", "habitTimePickBtn", "habitTimePickPanel");
   wireTimePicker("actionTimeInput", "actionTimePickBtn", "actionTimePickPanel");
+  var editingHabitLat = null, editingHabitLng = null;
+  var habitLocationAC = wireAddressAutocomplete({
+    inputEl: document.getElementById("habitLocationInput"),
+    dropdownEl: document.getElementById("habitLocationSuggest"),
+    statusEl: document.getElementById("habitLocationStatus"),
+    getLat: function(){ return editingHabitLat; }, getLng: function(){ return editingHabitLng; },
+    onPick: function(lat, lng){ editingHabitLat = lat; editingHabitLng = lng; },
+    onClear: function(){ editingHabitLat = null; editingHabitLng = null; }
+  });
   function openHabitModal(presetGoalId, editHabitObj){
     editingHabitId = editHabitObj ? editHabitObj.id : null;
+    editingHabitLat = (editHabitObj && editHabitObj.locationLat != null) ? editHabitObj.locationLat : null;
+    editingHabitLng = (editHabitObj && editHabitObj.locationLng != null) ? editHabitObj.locationLng : null;
+    document.getElementById("habitLocationInput").value = (editHabitObj && editHabitObj.locationAddress) || "";
+    habitLocationAC.renderStatus();
     document.getElementById("habitModalTitle").textContent = editHabitObj ? "edit_habit.json" : "new_habit.json";
     document.getElementById("habitTitleInput").value = editHabitObj ? editHabitObj.title : "";
     var goalToSelect = editHabitObj ? (editHabitObj.goalId || "") : (presetGoalId || "");
@@ -9328,7 +9591,9 @@
       custom_interval_days: freq === "custom" ? Math.max(1, Math.round(Number(document.getElementById("habitCustomIntervalInput").value)) || 1) : null,
       // Whatever's drafted in the icon gallery wins; falls back to the title-based auto-pick only if
       // the user never typed a title long enough to trigger a live suggestion (see habitTitleInput).
-      icon: habitIconDraft || pickHabitIconKey(title, state.habits.filter(function(x){ return x.id !== editingHabitId; }).map(function(x){ return x.icon; }).filter(Boolean))
+      icon: habitIconDraft || pickHabitIconKey(title, state.habits.filter(function(x){ return x.id !== editingHabitId; }).map(function(x){ return x.icon; }).filter(Boolean)),
+      location_address: document.getElementById("habitLocationInput").value.trim() || null,
+      location_lat: editingHabitLat, location_lng: editingHabitLng
     };
     var res;
     if(isEdit){
@@ -9340,14 +9605,15 @@
     this.disabled = false;
     if(res.error){ alert(res.error.message); return; }
     var r = res.data;
-    var mapped = { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || mappedVar.id, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [], extraDates:r.extra_dates || [], customIntervalDays:r.custom_interval_days||null, icon:r.icon||payload.icon||null };
+    var mapped = { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || mappedVar.id, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [], extraDates:r.extra_dates || [], customIntervalDays:r.custom_interval_days||null, icon:r.icon||payload.icon||null,
+      locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null) };
     if(isEdit){
       var idx = state.habits.findIndex(function(x){ return x.id === editingHabitId; });
       if(idx !== -1) state.habits[idx] = mapped;
     } else {
       state.habits.push(mapped);
     }
-    renderAll(); closeModal("habitModalOverlay");
+    renderAll(); closeModal("habitModalOverlay"); locRenderActionsLayer();
     warnDroppedFields(res.droppedFields);
   });
 
@@ -9383,8 +9649,21 @@
   document.getElementById("actionAreaSelect").addEventListener("click", function(){ fillActionParentSelect(); });
 
   var editingActionId = null;
+  var editingActionLat = null, editingActionLng = null;
+  var actionLocationAC = wireAddressAutocomplete({
+    inputEl: document.getElementById("actionLocationInput"),
+    dropdownEl: document.getElementById("actionLocationSuggest"),
+    statusEl: document.getElementById("actionLocationStatus"),
+    getLat: function(){ return editingActionLat; }, getLng: function(){ return editingActionLng; },
+    onPick: function(lat, lng){ editingActionLat = lat; editingActionLng = lng; },
+    onClear: function(){ editingActionLat = null; editingActionLng = null; }
+  });
   function openActionModal(presetGoalId, editActionObj){
     editingActionId = editActionObj ? editActionObj.id : null;
+    editingActionLat = (editActionObj && editActionObj.locationLat != null) ? editActionObj.locationLat : null;
+    editingActionLng = (editActionObj && editActionObj.locationLng != null) ? editActionObj.locationLng : null;
+    document.getElementById("actionLocationInput").value = (editActionObj && editActionObj.locationAddress) || "";
+    actionLocationAC.renderStatus();
     document.getElementById("actionModalTitle").textContent = editActionObj ? "edit_action.json" : "new_action.json";
     document.getElementById("actionTitleInput").value = editActionObj ? editActionObj.title : "";
     document.getElementById("actionDateInput").value = editActionObj ? (editActionObj.date || "") : todayStr();
@@ -9428,7 +9707,9 @@
       date: document.getElementById("actionDateInput").value || null,
       time_of_day: document.getElementById("actionTimeInput").value || null,
       duration_minutes: document.getElementById("actionDurationInput").value ? Math.max(0, Math.round(Number(document.getElementById("actionDurationInput").value))) : null,
-      category: chipValue(document.getElementById("actionAreaSelect"), "ar") || null
+      category: chipValue(document.getElementById("actionAreaSelect"), "ar") || null,
+      location_address: document.getElementById("actionLocationInput").value.trim() || null,
+      location_lat: editingActionLat, location_lng: editingActionLng
     };
     this.disabled = true;
     var isEdit = !!editingActionId;
@@ -9442,14 +9723,15 @@
     this.disabled = false;
     if(res.error){ alert(res.error.message); return; }
     var r = res.data;
-    var mapped = { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null };
+    var mapped = { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null,
+      locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null) };
     if(isEdit){
       var idx = state.actions.findIndex(function(x){ return x.id === editingActionId; });
       if(idx !== -1) state.actions[idx] = mapped;
     } else {
       state.actions.push(mapped);
     }
-    renderAll(); closeModal("actionModalOverlay");
+    renderAll(); closeModal("actionModalOverlay"); locRenderActionsLayer();
     warnDroppedFields(res.droppedFields);
   });
 
@@ -9567,23 +9849,21 @@
   }
   var editingPersonId = null;
   var editingPersonHomeLat = null, editingPersonHomeLng = null;
-  function personGeocodeStatusHtml(){
-    if(editingPersonHomeLat == null || editingPersonHomeLng == null) return "";
-    return "✓ " + editingPersonHomeLat.toFixed(4) + ", " + editingPersonHomeLng.toFixed(4) + "<span class=\"clear-link\" id=\"personGeocodeClearBtn\">clear</span>";
-  }
-  function renderPersonGeocodeStatus(){
-    var el = document.getElementById("personGeocodeStatus");
-    el.innerHTML = personGeocodeStatusHtml();
-    var clearBtn = document.getElementById("personGeocodeClearBtn");
-    if(clearBtn) clearBtn.addEventListener("click", function(){ editingPersonHomeLat = null; editingPersonHomeLng = null; renderPersonGeocodeStatus(); });
-  }
+  var personHomeAddressAC = wireAddressAutocomplete({
+    inputEl: document.getElementById("personHomeAddressInput"),
+    dropdownEl: document.getElementById("personHomeAddressSuggest"),
+    statusEl: document.getElementById("personGeocodeStatus"),
+    getLat: function(){ return editingPersonHomeLat; }, getLng: function(){ return editingPersonHomeLng; },
+    onPick: function(lat, lng){ editingPersonHomeLat = lat; editingPersonHomeLng = lng; },
+    onClear: function(){ editingPersonHomeLat = null; editingPersonHomeLng = null; }
+  });
   function openPersonEditModal(p){
     pplRefreshSocialGroupDatalist();
     editingPersonId = p ? p.id : null;
     editingPersonHomeLat = (p && p.homeLat != null) ? p.homeLat : null;
     editingPersonHomeLng = (p && p.homeLng != null) ? p.homeLng : null;
     document.getElementById("personHomeAddressInput").value = "";
-    renderPersonGeocodeStatus();
+    personHomeAddressAC.renderStatus();
     document.getElementById("personModalTitle").textContent = p ? "edit_person.json" : "new_person.json";
     document.getElementById("savePersonBtn").textContent = p ? "save changes" : "save person";
     document.getElementById("personNameInput").value = (p && p.name) || "";
@@ -9612,32 +9892,6 @@
   }
   document.getElementById("openPersonModalBtn").addEventListener("click", function(){ openPersonEditModal(null); });
   document.getElementById("cancelPersonModalBtn").addEventListener("click", function(){ closeModal("personModalOverlay"); });
-  // Geocodes through Nominatim (OpenStreetMap's free geocoder — no API key, pairs naturally with the
-  // Leaflet+OSM map on the Location page) and stores the resulting lat/lng directly on the person, so
-  // the map never needs to re-geocode on every load. A dedicated User-Agent header identifies the app
-  // per Nominatim's usage policy (nominatim.org/release-docs/latest/api/Search — no automated bulk
-  // querying, one request at a time, which this single button click satisfies).
-  document.getElementById("personGeocodeBtn").addEventListener("click", async function(){
-    var q = document.getElementById("personHomeAddressInput").value.trim();
-    if(!q) return;
-    var statusEl = document.getElementById("personGeocodeStatus");
-    this.disabled = true;
-    statusEl.textContent = "searching…";
-    try{
-      var res = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + encodeURIComponent(q), {
-        headers: { "Accept": "application/json" }
-      });
-      var rows = await res.json();
-      if(!rows || !rows.length){ statusEl.textContent = "no match found for that address"; return; }
-      editingPersonHomeLat = parseFloat(rows[0].lat);
-      editingPersonHomeLng = parseFloat(rows[0].lon);
-      renderPersonGeocodeStatus();
-    } catch(err){
-      statusEl.textContent = "geocoding failed — try again";
-    } finally {
-      this.disabled = false;
-    }
-  });
   document.getElementById("savePersonBtn").addEventListener("click", async function(){
     var name = document.getElementById("personNameInput").value.trim();
     if(!name) return;
