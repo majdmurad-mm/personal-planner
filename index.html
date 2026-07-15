@@ -1212,6 +1212,37 @@
     #whiteboardSection, #locationSection{ margin:-44px -24px -20px; padding:10px 24px 10px; }
     #peopleSection.ppl-fullscreen-graph{ margin:-44px -24px -20px; padding:10px 24px 10px; }
   }
+
+  /* ===== Home (landing) ===== */
+  /* The hero hosts the (later) Three.js canvas as an absolutely-positioned backdrop; the dashboard
+     core is a DOM overlay on top of it — sharp text, zero-cost accessibility, and it IS the page
+     when WebGL is unavailable. Tiles are real buttons: the 3D layer only ever mirrors them. */
+  .home-hero{ position:relative; border:1px solid var(--line); border-radius:12px; background:var(--bg-raised); overflow:hidden; min-height:180px; display:flex; align-items:center; justify-content:center; margin-bottom:18px; }
+  #homeCanvas{ position:absolute; inset:0; width:100%; height:100%; display:block; }
+  .home-hero-core{ position:relative; text-align:center; padding:28px 16px; pointer-events:none; }
+  .home-clock-time{ font-family:var(--mono); font-size:52px; font-weight:700; letter-spacing:2px; line-height:1; }
+  .home-clock-date{ font-family:var(--mono); font-size:13px; color:var(--text-dim); margin-top:8px; }
+  .home-weather{ font-family:var(--mono); font-size:13px; color:var(--text-dim); margin-top:10px; display:flex; align-items:center; justify-content:center; gap:7px; min-height:22px; }
+  .home-weather .tl-weather-tick-icon{ width:20px; height:20px; }
+  .home-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:12px; }
+  .home-tile{ position:relative; display:flex; flex-direction:column; align-items:flex-start; gap:6px; text-align:left; padding:18px 16px 14px; border:1px solid var(--line); border-radius:12px; background:var(--bg-raised); color:var(--text); cursor:pointer; font-family:var(--mono); transition:transform .18s ease, border-color .18s ease, box-shadow .18s ease; }
+  .home-tile:hover, .home-tile:focus-visible{ transform:translateY(-3px); border-color:var(--accent); box-shadow:0 10px 24px rgba(0,0,0,0.25); outline:none; }
+  .home-tile-glyph{ font-size:26px; line-height:1; color:var(--accent); }
+  .home-tile-name{ font-size:15px; font-weight:700; letter-spacing:1px; }
+  .home-tile-cap{ font-size:11.5px; line-height:1.45; color:var(--text-dim); }
+  /* The grouped Agent+Notes tile isn't itself clickable — its two facets are. */
+  .home-tile-group{ cursor:default; }
+  .home-tile-group:hover{ transform:none; box-shadow:none; }
+  .home-tile-facets{ display:flex; gap:8px; width:100%; }
+  .home-tile-facet{ flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; padding:10px 6px; border:1px solid var(--line); border-radius:9px; background:transparent; color:var(--text); cursor:pointer; font-family:var(--mono); transition:transform .18s ease, border-color .18s ease; }
+  .home-tile-facet:hover, .home-tile-facet:focus-visible{ transform:translateY(-2px); border-color:var(--accent); outline:none; }
+  .home-tile-facet-name{ font-size:12px; font-weight:600; letter-spacing:0.5px; }
+  @media (max-width:700px){
+    .home-clock-time{ font-size:38px; }
+    .home-grid{ grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); }
+  }
+  /* Seven tabs now — let them wrap instead of overflowing on narrow screens. */
+  #plannerTabs{ flex-wrap:wrap; }
 </style>
 </head>
 <body>
@@ -1245,14 +1276,12 @@
       <div class="brand-sub" id="todayLabel">// loading…</div>
 
       <nav class="side-nav" id="sideNav">
-        <button class="side-link active" data-section="agent" type="button"><span class="sl-glyph">◈</span>Agent</button>
-        <button class="side-link" data-section="areas" type="button"><span class="sl-glyph">◆</span>Areas</button>
+        <button class="side-link active" data-section="home" type="button"><span class="sl-glyph">⌂</span>Home</button>
         <button class="side-link" data-section="today" type="button"><span class="sl-glyph">◷</span>Today</button>
         <button class="side-link" data-section="planner" type="button"><span class="sl-glyph">▤</span>Planner</button>
         <button class="side-link" data-section="tracker" type="button"><span class="sl-glyph">▥</span>Tracker</button>
-        <button class="side-link" data-section="whiteboard" type="button"><span class="sl-glyph">▧</span>Graph</button>
-        <button class="side-link" data-section="calendar" type="button"><span class="sl-glyph">▦</span>Calendar</button>
         <button class="side-link" data-section="timeline" type="button"><span class="sl-glyph">↔</span>Timeline</button>
+        <button class="side-link" data-section="agent" type="button"><span class="sl-glyph">◈</span>Agent</button>
         <button class="side-link" data-section="journal" type="button"><span class="sl-glyph">✎</span>Notes</button>
         <button class="side-link" data-section="people" type="button"><span class="sl-glyph">☺</span>People</button>
         <button class="side-link" data-section="location" type="button"><span class="sl-glyph">⚲</span>Location</button>
@@ -1278,6 +1307,61 @@
   </aside>
 
   <main class="main">
+    <!-- ===== HOME SECTION ===== -->
+    <!-- The app's landing page: a dashboard core (live clock + current weather) surrounded by a
+         tile per destination. Graph and Calendar are deliberately absent — they live inside the
+         Planner as views now — and Agent + Notes share one grouped "capture" tile. The tile grid is
+         real, keyboard-focusable buttons; the (later) Three.js layer renders BEHIND this grid and
+         mirrors it visually, so with WebGL unavailable or reduced motion the grid alone is the page. -->
+    <section id="homeSection">
+      <div class="home-hero">
+        <canvas id="homeCanvas" aria-hidden="true"></canvas>
+        <div class="home-hero-core">
+          <div class="home-clock-time" id="homeClockTime">--:--</div>
+          <div class="home-clock-date" id="homeClockDate"></div>
+          <div class="home-weather" id="homeWeatherNow"></div>
+        </div>
+      </div>
+      <div class="home-grid" id="homeGrid">
+        <button class="home-tile" data-go="today" type="button">
+          <span class="home-tile-glyph">◷</span><span class="home-tile-name">today</span>
+          <span class="home-tile-cap">The day's timeline, actions and notes.</span>
+        </button>
+        <button class="home-tile" data-go="planner" type="button">
+          <span class="home-tile-glyph">▤</span><span class="home-tile-name">planner</span>
+          <span class="home-tile-cap">Areas, goals, projects, habits, actions — plus graph &amp; calendar views.</span>
+        </button>
+        <div class="home-tile home-tile-group">
+          <span class="home-tile-name">capture</span>
+          <div class="home-tile-facets">
+            <button class="home-tile-facet" data-go="agent" type="button">
+              <span class="home-tile-glyph">◈</span><span class="home-tile-facet-name">agent</span>
+            </button>
+            <button class="home-tile-facet" data-go="journal" type="button">
+              <span class="home-tile-glyph">✎</span><span class="home-tile-facet-name">notes</span>
+            </button>
+          </div>
+          <span class="home-tile-cap">Talk or write — both feed the same system.</span>
+        </div>
+        <button class="home-tile" data-go="tracker" type="button">
+          <span class="home-tile-glyph">▥</span><span class="home-tile-name">tracker</span>
+          <span class="home-tile-cap">Daily variables, spreadsheet-style.</span>
+        </button>
+        <button class="home-tile" data-go="timeline" type="button">
+          <span class="home-tile-glyph">↔</span><span class="home-tile-name">timeline</span>
+          <span class="home-tile-cap">Everything scheduled, on one zoomable clock.</span>
+        </button>
+        <button class="home-tile" data-go="people" type="button">
+          <span class="home-tile-glyph">☺</span><span class="home-tile-name">people</span>
+          <span class="home-tile-cap">Relationships, groups and the social graph.</span>
+        </button>
+        <button class="home-tile" data-go="location" type="button">
+          <span class="home-tile-glyph">⚲</span><span class="home-tile-name">location</span>
+          <span class="home-tile-cap">Places — people, plans and history on a map.</span>
+        </button>
+      </div>
+    </section>
+
     <!-- ===== TODAY SECTION ===== -->
     <section id="todaySection" style="display:none;">
       <div class="main-header">
@@ -1377,21 +1461,29 @@
     <section id="plannerSection" style="display:none;">
       <div class="main-header">
         <div>
-          <h1 id="plannerH1">planner<span class="path-sep">/</span>goals</h1>
-          <p class="subhead" id="plannerSubhead">Everything you're building — set a goal, break it into projects, habits and actions.</p>
+          <h1 id="plannerH1">planner<span class="path-sep">/</span>areas</h1>
+          <p class="subhead" id="plannerSubhead">Every goal, project, habit, and action — grouped by the life area it belongs to.</p>
         </div>
-        <button class="btn btn-accent" id="panelAddBtn">+ new goal</button>
+        <button class="btn btn-accent" id="panelAddBtn" style="display:none;">+ new goal</button>
       </div>
 
       <div class="view-toggle" id="plannerTabs">
-        <button class="view-tab active" data-tab="goals" type="button">Goals</button>
+        <button class="view-tab active" data-tab="areas" type="button">Areas</button>
+        <button class="view-tab" data-tab="goals" type="button">Goals</button>
         <button class="view-tab" data-tab="projects" type="button">Projects</button>
         <button class="view-tab" data-tab="habits" type="button">Habits</button>
         <button class="view-tab" data-tab="actions" type="button">Actions</button>
+        <button class="view-tab" data-tab="graph" type="button">Graph</button>
+        <button class="view-tab" data-tab="calendar" type="button">Calendar</button>
+      </div>
+
+      <!-- AREAS (moved from its own top-level section — same #areaList target, renderAreas() unchanged) -->
+      <div id="areasPanel">
+        <div id="areaList"></div>
       </div>
 
       <!-- GOALS -->
-      <div id="goalsPanel">
+      <div id="goalsPanel" style="display:none;">
         <div class="sub-view-toggle" id="goalsSubToggle">
           <button class="sub-view-tab active" data-sub="list" type="button">list</button>
           <button class="sub-view-tab" data-sub="matrix" type="button">matrix</button>
@@ -1472,17 +1564,63 @@
           <div class="glyph">▸</div><h3>no actions yet</h3><p>Quick, single-shot tasks attached to a goal or a project.</p>
         </div>
       </div>
-    </section>
 
-    <!-- ===== AREAS SECTION ===== -->
-    <section id="areasSection" style="display:none;">
-      <div class="main-header">
-        <div>
-          <h1>areas</h1>
-          <p class="subhead">Every goal, project, habit, and action — grouped by the life area (category) it belongs to.</p>
+      <!-- GRAPH (moved from its own top-level section — every id inside is unchanged, so all the
+           whiteboard physics/pan/zoom/connect wiring keeps working; only the entry point moved) -->
+      <div id="graphPanel" style="display:none;">
+        <div class="wb-canvas-wrap" id="wbCanvasWrap">
+          <div class="wb-toolbar wb-toolbar-float" id="wbToolbarFloat">
+            <button class="btn" id="wbConnectBtn" type="button" title="Click two nodes in a row to link them">🔗 connect</button>
+            <button class="btn" id="wbActionsBtn" type="button" title="Show actions as their own node layer">▪ actions</button>
+            <div class="wb-zoom-group">
+              <button class="cal-nav-btn" id="wbZoomOutBtn" type="button" aria-label="Zoom out">−</button>
+              <span class="wb-zoom-label" id="wbZoomLabel">100%</span>
+              <button class="cal-nav-btn" id="wbZoomInBtn" type="button" aria-label="Zoom in">+</button>
+              <button class="btn" id="wbZoomResetBtn" type="button">reset view</button>
+            </div>
+            <div class="wb-force-group" title="How strongly area nodes pull toward the center">
+              <span class="wb-force-label">center pull</span>
+              <input type="range" class="wb-force-slider" id="wbCenterForceSlider" min="0" max="0.08" step="0.001" value="0.005">
+            </div>
+            <button class="btn" id="wbFullscreenBtn" type="button">⤢ fullscreen</button>
+            <span class="wb-save-status" id="wbSaveStatus"></span>
+          </div>
+          <p class="panel-hint wb-hint-float wb-connect-hint" id="wbConnectHint" style="display:none;">Connect mode on — click a node, then click another to link them. Click the same node again to cancel. Right-click a line to remove it.</p>
+          <p class="panel-hint wb-hint-float wb-pan-hint">Pan: drag empty space, or drag with the middle mouse button. Zoom: scroll, or the +/− buttons.</p>
+          <div class="wb-world" id="wbWorld">
+            <svg class="wb-conn-svg" id="wbConnSvg">
+              <defs>
+                <filter id="wbClusterBlur" x="-50%" y="-50%" width="200%" height="200%">
+                  <feGaussianBlur stdDeviation="14"></feGaussianBlur>
+                </filter>
+              </defs>
+              <g id="wbClusterLayer"></g>
+              <g id="wbHierLayer"></g>
+              <g id="wbConnLayer"></g>
+            </svg>
+            <div class="wb-overlay" id="wbOverlay"></div>
+          </div>
         </div>
       </div>
-      <div id="areaList"></div>
+
+      <!-- CALENDAR (moved from its own top-level section — same ids, same render/wiring) -->
+      <div id="calendarPanel" style="display:none;">
+        <div class="cal-toolbar">
+          <div class="cal-nav-group">
+            <button class="cal-nav-btn" id="calPrevBtn" type="button" aria-label="Previous month">‹</button>
+            <span class="cal-month-label" id="calMonthLabel"></span>
+            <button class="cal-nav-btn" id="calNextBtn" type="button" aria-label="Next month">›</button>
+          </div>
+          <button class="btn" id="calTodayBtn" type="button">today</button>
+          <div id="calConnectArea"></div>
+        </div>
+        <div class="cal-legend">
+          <span class="cal-legend-item"><span class="cal-legend-dot" style="background:var(--accent)"></span>Google Calendar</span>
+          <span class="cal-legend-item"><span class="cal-legend-dot" style="background:var(--violet)"></span>Project due</span>
+          <span class="cal-legend-item"><span class="cal-legend-dot" style="background:var(--p1)"></span>Action date</span>
+        </div>
+        <div class="cal-grid" id="calGrid"></div>
+      </div>
     </section>
 
     <!-- ===== AREA DETAIL SECTION ===== -->
@@ -1539,7 +1677,7 @@
     </section>
 
     <!-- ===== AGENT SECTION ===== -->
-    <section id="agentSection">
+    <section id="agentSection" style="display:none;">
       <div class="main-header">
         <div>
           <h1>agent</h1>
@@ -1556,34 +1694,6 @@
         <button class="btn" id="agentMicBtn" type="button" title="Record a voice message — click again to stop and transcribe">🎤</button>
         <button class="btn btn-accent" id="agentSendBtn" type="button">send</button>
       </div>
-    </section>
-
-    <!-- ===== CALENDAR SECTION ===== -->
-    <section id="calendarSection" style="display:none;">
-      <div class="main-header">
-        <div>
-          <h1>calendar</h1>
-          <p class="subhead">Project due dates and action dates, alongside your connected Google Calendar.</p>
-        </div>
-        <div id="calConnectArea"></div>
-      </div>
-
-      <div class="cal-toolbar">
-        <div class="cal-nav-group">
-          <button class="cal-nav-btn" id="calPrevBtn" type="button" aria-label="Previous month">‹</button>
-          <span class="cal-month-label" id="calMonthLabel"></span>
-          <button class="cal-nav-btn" id="calNextBtn" type="button" aria-label="Next month">›</button>
-        </div>
-        <button class="btn" id="calTodayBtn" type="button">today</button>
-      </div>
-
-      <div class="cal-legend">
-        <span class="cal-legend-item"><span class="cal-legend-dot" style="background:var(--accent)"></span>Google Calendar</span>
-        <span class="cal-legend-item"><span class="cal-legend-dot" style="background:var(--violet)"></span>Project due</span>
-        <span class="cal-legend-item"><span class="cal-legend-dot" style="background:var(--p1)"></span>Action date</span>
-      </div>
-
-      <div class="cal-grid" id="calGrid"></div>
     </section>
 
     <!-- ===== TIMELINE SECTION ===== -->
@@ -1670,47 +1780,6 @@
 
 
     <!-- ===== WHITEBOARD SECTION ===== -->
-    <section id="whiteboardSection" style="display:none;">
-      <div class="main-header wb-compact-header">
-        <div>
-          <h1>graph</h1>
-        </div>
-      </div>
-      <div class="wb-canvas-wrap" id="wbCanvasWrap">
-        <div class="wb-toolbar wb-toolbar-float" id="wbToolbarFloat">
-          <button class="btn" id="wbConnectBtn" type="button" title="Click two nodes in a row to link them">🔗 connect</button>
-          <button class="btn" id="wbActionsBtn" type="button" title="Show actions as their own node layer">▪ actions</button>
-          <div class="wb-zoom-group">
-            <button class="cal-nav-btn" id="wbZoomOutBtn" type="button" aria-label="Zoom out">−</button>
-            <span class="wb-zoom-label" id="wbZoomLabel">100%</span>
-            <button class="cal-nav-btn" id="wbZoomInBtn" type="button" aria-label="Zoom in">+</button>
-            <button class="btn" id="wbZoomResetBtn" type="button">reset view</button>
-          </div>
-          <div class="wb-force-group" title="How strongly area nodes pull toward the center">
-            <span class="wb-force-label">center pull</span>
-            <input type="range" class="wb-force-slider" id="wbCenterForceSlider" min="0" max="0.08" step="0.001" value="0.005">
-          </div>
-          <button class="btn" id="wbFullscreenBtn" type="button">⤢ fullscreen</button>
-          <span class="wb-save-status" id="wbSaveStatus"></span>
-        </div>
-        <p class="panel-hint wb-hint-float wb-connect-hint" id="wbConnectHint" style="display:none;">Connect mode on — click a node, then click another to link them. Click the same node again to cancel. Right-click a line to remove it.</p>
-        <p class="panel-hint wb-hint-float wb-pan-hint">Pan: drag empty space, or drag with the middle mouse button. Zoom: scroll, or the +/− buttons.</p>
-        <div class="wb-world" id="wbWorld">
-          <svg class="wb-conn-svg" id="wbConnSvg">
-            <defs>
-              <filter id="wbClusterBlur" x="-50%" y="-50%" width="200%" height="200%">
-                <feGaussianBlur stdDeviation="14"></feGaussianBlur>
-              </filter>
-            </defs>
-            <g id="wbClusterLayer"></g>
-            <g id="wbHierLayer"></g>
-            <g id="wbConnLayer"></g>
-          </svg>
-          <div class="wb-overlay" id="wbOverlay"></div>
-        </div>
-      </div>
-    </section>
-
     <!-- ===== JOURNAL SECTION ===== -->
     <section id="journalSection" style="display:none;">
       <div class="main-header">
@@ -3021,8 +3090,8 @@
   }
 
   /* ---------------- Top-level + planner tabs ---------------- */
-  var activeSection = "agent";
-  var activePlannerTab = "goals";
+  var activeSection = "home";
+  var activePlannerTab = "areas";
   var filters = { goals:"all", projects:"all", habits:"all", actions:"all", people:"all" };
   var views = { goals:"list", projects:"matrix", habits:"matrix", actions:"matrix", sleep:"daily", people:"cards", journal:"notes" };
 
@@ -3037,17 +3106,19 @@
     });
   }
 
-  var ALL_SECTION_IDS = ["todaySection","plannerSection","areasSection","trackerSection","whiteboardSection","agentSection","calendarSection","timelineSection","journalSection","peopleSection","locationSection","goalDetailSection","areaDetailSection"];
+  var ALL_SECTION_IDS = ["homeSection","todaySection","plannerSection","trackerSection","agentSection","timelineSection","journalSection","peopleSection","locationSection","goalDetailSection","areaDetailSection"];
   function showSection(name){
     activeSection = name;
     document.querySelectorAll(".side-link").forEach(function(l){ l.classList.toggle("active", l.dataset.section === name); });
     ALL_SECTION_IDS.forEach(function(id){
       document.getElementById(id).style.display = (id === name + "Section") ? "" : "none";
     });
-    if(name === "whiteboard") activateWhiteboard();
-    else if(name === "today"){ renderToday(); todayApplyZoomWidth(); }
+    if(name === "today"){ renderToday(); todayApplyZoomWidth(); }
     else if(name === "timeline") activateTimeline();
     else if(name === "location") activateLocation();
+    // The graph lives inside the Planner now — entering the planner with its Graph tab still active
+    // needs the same physics/reheat activation the old top-level Graph section got on entry.
+    else if(name === "planner" && activePlannerTab === "graph") activateWhiteboard();
     else renderActiveSectionContent();
   }
   document.getElementById("sideNav").addEventListener("click", function(e){
@@ -3059,27 +3130,79 @@
     document.documentElement.removeAttribute("data-mobile-menu-open");
   });
 
+  /* ---------------- Home (landing) dashboard ---------------- */
+  // Tiles route to sections; the grouped "capture" tile's two facets route independently.
+  document.getElementById("homeGrid").addEventListener("click", function(e){
+    var tile = e.target.closest("[data-go]");
+    if(tile) showSection(tile.dataset.go);
+  });
+  // Same Berlin-timezone trick berlinTodayParts() uses, extended with the hour — the weather data
+  // (berlinWeatherByDate, from the existing Open-Meteo fetch) is keyed by Berlin dates/hours, so
+  // "now" has to be Berlin-now too or the lookup drifts around midnight.
+  function berlinNowInfo(){
+    var parts = new Intl.DateTimeFormat("en-CA", { timeZone:"Europe/Berlin", year:"numeric", month:"2-digit", day:"2-digit", hour:"2-digit", hourCycle:"h23" }).formatToParts(new Date());
+    var out = {};
+    parts.forEach(function(p){ if(p.type !== "literal") out[p.type] = p.value; });
+    return { date: out.year + "-" + out.month + "-" + out.day, hour: Number(out.hour) };
+  }
+  function renderHomeDashboard(){
+    var now = new Date();
+    document.getElementById("homeClockTime").textContent = now.toLocaleTimeString(undefined, { hour:"2-digit", minute:"2-digit", second:"2-digit" });
+    document.getElementById("homeClockDate").textContent = now.toLocaleDateString(undefined, { weekday:"long", month:"long", day:"numeric", year:"numeric" });
+    var weatherEl = document.getElementById("homeWeatherNow");
+    var info = berlinNowInfo();
+    var hours = berlinWeatherByDate[info.date];
+    if(!hours){
+      weatherEl.innerHTML = "";
+      if(berlinWeatherFetchState === "idle") fetchBerlinWeather();
+      return;
+    }
+    // Exact current hour when present; otherwise the latest hour before now (e.g. right after a
+    // fetch whose horizon ends mid-day) — never a future hour masquerading as "now".
+    var h = null;
+    hours.forEach(function(x){ if(x.hour <= info.hour && (!h || x.hour > h.hour)) h = x; });
+    if(!h) h = hours[0];
+    weatherEl.innerHTML = '<span class="tl-weather-tick-icon">' + weatherCodeIcon(h.code) + '</span>' +
+      '<span>' + h.temp + '°C · berlin</span>';
+  }
+  // One always-on 1s tick; it early-returns unless the home section is what's on screen, so the
+  // cost while elsewhere is a single string compare — simpler than start/stop bookkeeping in
+  // every showSection transition.
+  setInterval(function(){ if(activeSection === "home") renderHomeDashboard(); }, 1000);
+
   var addBtn = document.getElementById("panelAddBtn");
   var plannerH1 = document.getElementById("plannerH1");
   var plannerSubhead = document.getElementById("plannerSubhead");
+  // Areas, Graph and Calendar are read-only composites (no single "+ new X" makes sense for them),
+  // so their add label is null and the button hides on those tabs.
   var TAB_META = {
+    areas: { h1:"planner/areas", sub:"Every goal, project, habit, and action — grouped by the life area it belongs to.", add:null },
     goals: { h1:"planner/goals", sub:"Everything you're building — set a goal, break it into projects, habits and actions.", add:"+ new goal" },
     projects: { h1:"planner/projects", sub:"Projects belong to a goal — multi-step work with a deadline and a budget of hours.", add:"+ new project" },
     habits: { h1:"planner/habits", sub:"Habits belong to a goal — recurring commitments you check off over time.", add:"+ new habit" },
-    actions: { h1:"planner/actions", sub:"Actions belong to a goal or a project — quick, single-shot tasks with a type.", add:"+ new action" }
+    actions: { h1:"planner/actions", sub:"Actions belong to a goal or a project — quick, single-shot tasks with a type.", add:"+ new action" },
+    graph: { h1:"planner/graph", sub:"Your whole system as a force-directed graph — drag, zoom, connect.", add:null },
+    calendar: { h1:"planner/calendar", sub:"Project due dates and action dates, alongside your connected Google Calendar.", add:null }
   };
+  var PLANNER_PANEL_IDS = ["areasPanel","goalsPanel","projectsPanel","habitsPanel","actionsPanel","graphPanel","calendarPanel"];
   document.getElementById("plannerTabs").addEventListener("click", function(e){
     var btn = e.target.closest(".view-tab");
     if(!btn) return;
     activePlannerTab = btn.dataset.tab;
     document.querySelectorAll("#plannerTabs .view-tab").forEach(function(t){ t.classList.toggle("active", t===btn); });
-    ["goalsPanel","projectsPanel","habitsPanel","actionsPanel"].forEach(function(id){
+    PLANNER_PANEL_IDS.forEach(function(id){
       document.getElementById(id).style.display = (id === activePlannerTab + "Panel") ? "" : "none";
     });
     var meta = TAB_META[activePlannerTab];
     plannerH1.innerHTML = meta.h1.replace("/", '<span class="path-sep">/</span>');
     plannerSubhead.textContent = meta.sub;
-    addBtn.textContent = meta.add;
+    addBtn.style.display = meta.add ? "" : "none";
+    if(meta.add) addBtn.textContent = meta.add;
+    // The graph's physics only runs while its panel is visible — same lazy activation the old
+    // top-level section got via showSection; areas/calendar just re-render their innerHTML.
+    if(activePlannerTab === "graph") activateWhiteboard();
+    else if(activePlannerTab === "areas") renderAreas();
+    else if(activePlannerTab === "calendar") renderCalendar();
   });
   addBtn.addEventListener("click", function(){
     if(activePlannerTab === "goals") openGoalModal();
@@ -4104,7 +4227,7 @@
 
   /* ---------------- Goal detail page ---------------- */
   var goalDetailId = null;
-  var goalDetailReturnSection = "areas";
+  var goalDetailReturnSection = "planner";
   function openGoalDetailPage(id){
     goalDetailId = id;
     goalDetailReturnSection = activeSection;
@@ -4152,7 +4275,7 @@
 
   /* ---------------- Area detail page (dashboard of all goals in one area) ---------------- */
   var areaDetailCat = null;
-  var areaDetailReturnSection = "areas";
+  var areaDetailReturnSection = "planner";
   function openAreaDetailPage(cat){
     areaDetailCat = cat;
     areaDetailReturnSection = activeSection;
@@ -10722,12 +10845,14 @@
   // (see the renderActiveSectionContent() call there). Whiteboard has no entry here — it has its own
   // separate render/physics loop, started by activateWhiteboard(), untouched by renderAll().
   var SECTION_RENDERERS = {
+    home: [renderHomeDashboard],
     agent: [renderChatMessages],
-    areas: [renderAreas],
     today: [renderToday],
-    planner: [renderGoals, renderProjects, renderHabits, renderActions],
+    // Areas and Calendar render alongside the four lists now that they're planner panels — cheap
+    // innerHTML builds, same as the lists. The Graph panel is deliberately absent: its physics
+    // activation is handled on tab entry / showSection, not by blanket re-renders.
+    planner: [renderAreas, renderGoals, renderProjects, renderHabits, renderActions, renderCalendar],
     tracker: [renderTracker],
-    calendar: [renderCalendar],
     timeline: [renderTimeline],
     journal: [renderJournal],
     people: [renderPeople],
