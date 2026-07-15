@@ -909,6 +909,9 @@
   /* Invisible fat hit-target layered under each visible (thin) connection line — see
      renderPeopleGraphConnections/handlePplEdgeClick — a 1-2px stroke is too thin to click reliably. */
   .ppl-conn-hit{ stroke:transparent; stroke-width:14; pointer-events:stroke; cursor:pointer; }
+  /* Feedback while a 0.5s press-and-hold is building up to edit a connection's weight (see
+     PPL_EDGE_HOLD_MS) — !important since it has to win over the line's own inline stroke/width. */
+  .wb-conn-line.ppl-conn-holding{ stroke:var(--accent) !important; stroke-width:3px !important; opacity:1 !important; }
   /* Watermark-style social-group name drawn over its own cluster hull (see pplRenderClusters) —
      large and faint so it reads as a backdrop label, not competing with node labels on top of it. */
   .ppl-cluster-label{ font-family:var(--mono); font-size:34px; font-weight:800; fill:var(--text); opacity:0.14; text-anchor:middle; dominant-baseline:middle; text-transform:uppercase; letter-spacing:0.04em; pointer-events:none; }
@@ -5089,6 +5092,13 @@
   var pplWorldEl, pplWrapEl;
   var pplSimNodes = []; // { id, x, y, vx, vy, fixed }
   var PPL_NODE_R = 8.4; // matches the main Graph's goal-node weight (WB_SIZE_UNIT * 0.7)
+  // Minimum distance a person node is ever allowed to sit from the sun (#pplSunNode, 52px wide —
+  // 26px radius, see .ppl-sun-node) — a hard floor, not a competing force, so a high contact score's
+  // pull (pplTickPhysics) can bring someone close but never actually overlap the sun itself.
+  var PPL_SUN_BUFFER = 26 + PPL_NODE_R + 14;
+  // Press-and-hold duration to edit a connection's weight (see initPeopleGraph's pointerdown wiring
+  // on #pplConnLayer) — a plain click does nothing, only a deliberate hold opens the prompt.
+  var PPL_EDGE_HOLD_MS = 500;
   var PPL_REPEL = 9000, PPL_LINK_DIST = 130, PPL_LINK_K = 0.02, PPL_DAMPING = 0.82, PPL_ALPHA_DECAY = 0.985;
   // Pull toward the sun (#pplSunNode) — no globally-adjustable knob anymore (the old
   // #pplCenterForceSlider/PPL_CENTER_K was removed), just this fixed base rate scaled per-person by
@@ -5374,6 +5384,16 @@
       n.vy += (PPL_CENTER_Y - n.y) * PPL_CONTACT_PULL_K * pullMult * pplAlpha;
       n.vx *= PPL_DAMPING; n.vy *= PPL_DAMPING;
       n.x += n.vx; n.y += n.vy;
+      // Hard buffer around the sun: whatever the pull just did, never let it actually end up closer
+      // than PPL_SUN_BUFFER — snap straight back out to that distance along the same line rather than
+      // fighting it with yet another force (avoids oscillation, and guarantees the buffer exactly).
+      var dxSun = n.x - PPL_CENTER_X, dySun = n.y - PPL_CENTER_Y;
+      var distSun = Math.sqrt(dxSun*dxSun + dySun*dySun) || 0.01;
+      if(distSun < PPL_SUN_BUFFER){
+        var sunScale = PPL_SUN_BUFFER / distSun;
+        n.x = PPL_CENTER_X + dxSun * sunScale;
+        n.y = PPL_CENTER_Y + dySun * sunScale;
+      }
     });
   }
   function pplApplyPositionsToDom(){
@@ -5467,10 +5487,11 @@
   // Each edge draws two overlapping lines: a thin visible one whose stroke-width scales with the
   // connection's weight MAGNITUDE (a strong push and a strong pull are both "strong", just opposite
   // directions — see pplEdgeColor for how the direction itself is shown), and a fat invisible one
-  // (.ppl-conn-hit) that's the actual click target for handlePplEdgeClick — a 1-2px line is too thin
-  // to reliably click otherwise.
+  // (.ppl-conn-hit) that's the actual click target for handlePplEdgeClick — a sub-1px line is too
+  // thin to reliably click otherwise. Deliberately thin (0.5-2.5px) so manually-added connections
+  // read as fine detail lines rather than dominating the graph visually.
   function pplEdgeStrokeWidth(weight){
-    return Math.max(1, Math.min(5, 1.5 + (Math.abs(weight || 1) - 1) * 0.7));
+    return Math.max(0.5, Math.min(2.5, 0.75 + (Math.abs(weight || 1) - 1) * 0.35));
   }
   // Negative weight (push) renders in red instead of the default line color, so a repelling
   // connection reads as visually distinct from an attracting one at a glance, not just by thickness.
@@ -5741,11 +5762,37 @@
       pplWrapEl.classList.toggle("ppl-connect-mode", pplConnectMode);
       pplSetConnectFrom(null);
     });
-    document.getElementById("pplConnLayer").addEventListener("click", function(e){
+    // Editing a connection's weight needs a deliberate 0.5s press-and-hold, not a plain click — a
+    // quick click/tap on a line does nothing, so brushing across one while panning near it can't
+    // accidentally pop the weight prompt open. .ppl-conn-holding (brightened/thickened, !important
+    // since it has to beat the line's own inline style) gives feedback while the hold is building up.
+    var pplEdgeHoldTimer = null, pplEdgeHoldHit = null;
+    function cancelPplEdgeHold(){
+      if(pplEdgeHoldTimer){ clearTimeout(pplEdgeHoldTimer); pplEdgeHoldTimer = null; }
+      if(pplEdgeHoldHit && pplEdgeHoldHit.nextElementSibling) pplEdgeHoldHit.nextElementSibling.classList.remove("ppl-conn-holding");
+      pplEdgeHoldHit = null;
+    }
+    var pplConnLayerEl = document.getElementById("pplConnLayer");
+    pplConnLayerEl.addEventListener("pointerdown", function(e){
       var hit = e.target.closest(".ppl-conn-hit");
       if(!hit) return;
-      handlePplEdgeClick(hit.dataset.from, hit.dataset.to, Number(hit.dataset.weight));
+      cancelPplEdgeHold();
+      pplEdgeHoldHit = hit;
+      if(hit.nextElementSibling) hit.nextElementSibling.classList.add("ppl-conn-holding");
+      pplEdgeHoldTimer = setTimeout(function(){
+        pplEdgeHoldTimer = null;
+        var from = hit.dataset.from, to = hit.dataset.to, weight = Number(hit.dataset.weight);
+        cancelPplEdgeHold();
+        handlePplEdgeClick(from, to, weight);
+      }, PPL_EDGE_HOLD_MS);
     });
+    pplConnLayerEl.addEventListener("pointermove", function(e){
+      if(!pplEdgeHoldTimer) return;
+      if(e.target.closest(".ppl-conn-hit") !== pplEdgeHoldHit) cancelPplEdgeHold();
+    });
+    pplConnLayerEl.addEventListener("pointerup", cancelPplEdgeHold);
+    pplConnLayerEl.addEventListener("pointercancel", cancelPplEdgeHold);
+    pplConnLayerEl.addEventListener("pointerleave", cancelPplEdgeHold);
     wirePeopleGraphDrag();
   }
   initPeopleGraph();
