@@ -5158,10 +5158,15 @@
   // weaker than PPL_LINK_K since it applies densely across every pair in a group (a 30-person group
   // has 435 pairs) rather than just the handful of explicit edges a person actually lists.
   var PPL_GROUP_PULL_K = 0.002;
+  // Anyone with no social group set is folded into a shared "Orphan" group rather than left
+  // ungrouped — they still get a hull, a watermark label, are auto-linked to each other (see
+  // pplRebuildGraphCache), and take part in the between-group push/within-group pull, same as any
+  // real group name.
+  var PPL_ORPHAN_GROUP = "Orphan";
   function pplNodeGroup(p){
-    if(!p.socialGroup) return null;
+    if(!p.socialGroup) return PPL_ORPHAN_GROUP;
     var first = p.socialGroup.split(",")[0].trim();
-    return first || null;
+    return first || PPL_ORPHAN_GROUP;
   }
   // Cached the same way wbRebuildGraphCache() caches the main Graph's edges — pure function of state,
   // recomputing it every physics tick (up to 60/sec while the sim is hot) would be wasted work.
@@ -5212,7 +5217,7 @@
           var key = [ids[i], ids[j]].sort().join(":");
           if(seen[key]) continue;
           seen[key] = true;
-          edges.push({ fromId: ids[i], toId: ids[j], weight: 1 });
+          edges.push({ fromId: ids[i], toId: ids[j], weight: 1, implicit: true });
         }
       }
     });
@@ -5392,7 +5397,12 @@
       var coords = ' x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '"';
       var dataAttrs = ' data-from="' + edge.fromId + '" data-to="' + edge.toId + '" data-weight="' + w + '"';
       var color = pplEdgeColor(w);
-      var lineStyle = 'stroke-width:' + pplEdgeStrokeWidth(w) + ';' + (color ? (' stroke:' + color + ';') : '');
+      // Implicit (auto same-group) edges are deliberately understated — thin and faint — so they
+      // read as a soft ambient hint rather than competing visually with a real, explicit connection.
+      // Clicking one still works (the hit target below is unchanged) and "promotes" it to a real one.
+      var strokeWidth = edge.implicit ? 0.75 : pplEdgeStrokeWidth(w);
+      var opacity = edge.implicit ? 0.35 : 1;
+      var lineStyle = 'stroke-width:' + strokeWidth + '; opacity:' + opacity + ';' + (color ? (' stroke:' + color + ';') : '');
       return '<line class="ppl-conn-hit"' + dataAttrs + coords + '></line>' +
         '<line class="wb-conn-line" style="' + lineStyle + '"' + coords + '></line>';
     }).join("");
