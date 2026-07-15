@@ -1566,6 +1566,10 @@
               <button class="cal-nav-btn" id="pplZoomInBtn" type="button" aria-label="Zoom in">+</button>
               <button class="btn" id="pplZoomResetBtn" type="button">reset view</button>
             </div>
+            <div class="wb-force-group" title="How strongly people pull toward the center">
+              <span class="wb-force-label">center pull</span>
+              <input type="range" class="wb-force-slider" id="pplCenterForceSlider" min="0" max="0.08" step="0.001" value="0.02">
+            </div>
             <button class="btn" id="pplFullscreenBtn" type="button">⤢ fullscreen</button>
           </div>
           <p class="panel-hint wb-hint-float wb-pan-hint">Pan: drag empty space, or drag with the middle mouse button. Zoom: scroll, or the +/− buttons. Click a person to edit them.</p>
@@ -1798,7 +1802,7 @@
       </div>
       <div class="field-row">
         <div class="field"><label for="personGroupInput">social group</label><input type="text" id="personGroupInput" placeholder="e.g. Discord, Syria"></div>
-        <div class="field"><label for="personPlanetsInput">planets / group pages</label><input type="text" id="personPlanetsInput" placeholder="e.g. Family, Friends"></div>
+        <div class="field"><label for="personPlanetsInput">people group</label><input type="text" id="personPlanetsInput" placeholder="e.g. Family, Friends"></div>
       </div>
       <div class="field"><label for="personRelatedInput">related people</label><input type="text" id="personRelatedInput" placeholder="e.g. Jad Murad"></div>
       <label class="infinite-toggle"><input type="checkbox" id="personVerifiedCheckbox"><span>verified</span></label>
@@ -2313,7 +2317,7 @@
     secondary_goal_ids: "secondary goals", secondary_categories: "secondary areas",
     verified: "verified status", like_score: "like score", contact_score: "contact score", year_met: "year met",
     relationship_status: "relationship status", social_group: "social group", personality_type: "personality type",
-    location: "location", related_people: "related people", planets: "planets"
+    location: "location", related_people: "related people", planets: "people group"
   };
   function warnDroppedFields(dropped){
     if(!dropped || !dropped.length) return;
@@ -5010,14 +5014,23 @@
     return edges;
   }
   // Area-style grouping for the cluster hulls (see pplRenderClusters) and the extra between-group
-  // repulsion below — mirrors the main Graph's area clustering (wbRenderClusters/WB_AREA_PUSH), but
-  // "planets" is open-ended/data-driven text (the CSV's own Notion group tags), not a fixed CATEGORIES
-  // enum, and a person can list several ("Family, Friends") — the FIRST one listed is treated as their
-  // primary group for clustering purposes, same "first wins" rule pplNodeGroup's caller relies on.
-  // Colors are assigned dynamically (cycling a fixed palette in alphabetical group order) since there's
-  // no pre-themed --cat-* variable for an arbitrary group name the way there is for the fixed areas.
+  // repulsion below — mirrors the main Graph's area clustering (wbRenderClusters/WB_AREA_PUSH). The
+  // underlying field is still called "planets" (the DB column/CSV source), but it's labeled "people
+  // group" everywhere user-facing — open-ended/data-driven text (the CSV's own Notion group tags), not
+  // a fixed CATEGORIES enum, and a person can list several ("Family, Friends") — the FIRST one listed
+  // is treated as their primary group for clustering purposes, same "first wins" rule pplNodeGroup's
+  // caller relies on. Colors are assigned dynamically (cycling a fixed palette in alphabetical group
+  // order) since there's no pre-themed --cat-* variable for an arbitrary group name the way there is
+  // for the fixed areas.
   var PPL_GROUP_PALETTE = ["#4ADE80", "#5FA8FF", "#F15A22", "#A78BFA", "#FDE047", "#FB7185", "#2DD4BF", "#FB923C"];
   var PPL_GROUP_PUSH = 3000; // mirrors WB_AREA_PUSH
+  // Extra attraction between every pair of same-group nodes (not just ones with an explicit
+  // related-people edge) — same "virtual spring" formula as pplApplySpring (force ∝ dist - restLength,
+  // so it pulls together when far apart and naturally backs off near restLength, working with the
+  // base repulsion above rather than fighting it into an unstable overlap). Kept an order of magnitude
+  // weaker than PPL_LINK_K since it applies densely across every pair in a group (a 30-person group
+  // has 435 pairs) rather than just the handful of explicit edges a person actually lists.
+  var PPL_GROUP_PULL_K = 0.002;
   function pplNodeGroup(p){
     if(!p.planets) return null;
     var first = p.planets.split(",")[0].trim();
@@ -5051,7 +5064,7 @@
   }
   function pplTickPhysics(){
     var nodes = pplSimNodes;
-    // Each node's primary planet group, from the cache (not recomputed per tick) — used below to add
+    // Each node's primary people group, from the cache (not recomputed per tick) — used below to add
     // a small extra push between nodes from *different* groups, on top of the base repulsion every
     // pair already gets, reinforcing the grouping the cluster hulls also show (mirrors the main
     // Graph's area-vs-area push, see WB_AREA_PUSH).
@@ -5066,6 +5079,15 @@
         var fx = (dx/dist) * force, fy = (dy/dist) * force;
         nodes[i].vx -= fx; nodes[i].vy -= fy;
         nodes[j].vx += fx; nodes[j].vy += fy;
+        // Same-group pair: an extra pull toward each other, independent of the repulsion above (see
+        // PPL_GROUP_PULL_K) — the two forces work against each other at close range (keeping them
+        // from fully overlapping) but the pull wins at longer range, drawing the group inward.
+        if(groups[i] && groups[i] === groups[j]){
+          var pull = (dist - PPL_LINK_DIST) * PPL_GROUP_PULL_K * pplAlpha;
+          var pfx = (dx/dist) * pull, pfy = (dy/dist) * pull;
+          nodes[i].vx += pfx; nodes[i].vy += pfy;
+          nodes[j].vx -= pfx; nodes[j].vy -= pfy;
+        }
       }
     }
     pplCachedEdges.forEach(pplApplySpring);
@@ -5133,11 +5155,11 @@
     if(!n) return null;
     return { x: n.x + PPL_NODE_R, y: n.y + PPL_NODE_R };
   }
-  // Groups every node by its primary planet and draws a soft blurred hull behind that group — the
-  // exact same shape logic the main Graph's wbRenderClusters uses (wbConvexHull/wbPadHull/
+  // Groups every node by its primary people group and draws a soft blurred hull behind that group —
+  // the exact same shape logic the main Graph's wbRenderClusters uses (wbConvexHull/wbPadHull/
   // wbCapsuleFromTwoPoints/WB_CLUSTER_PAD are all generic geometry, not area-specific, so reused
   // directly here rather than duplicated). Single-node "clusters" get no shape (a hull around one
-  // point is meaningless); people with no planet at all are simply absent from every hull.
+  // point is meaningless); people with no group at all are simply absent from every hull.
   function pplRenderClusters(){
     var layer = document.getElementById("pplClusterLayer");
     if(!layer) return;
@@ -5305,6 +5327,11 @@
         pplFullscreenBtn.textContent = isFs ? "⤡ exit fullscreen" : "⤢ fullscreen";
       });
     }
+
+    document.getElementById("pplCenterForceSlider").addEventListener("input", function(){
+      PPL_CENTER_K = Number(this.value);
+      pplReheat(1);
+    });
 
     wirePeopleGraphDrag();
   }
