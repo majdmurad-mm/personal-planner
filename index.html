@@ -838,6 +838,22 @@
   .journal-entry-top{ display:flex; justify-content:space-between; align-items:center; margin-bottom:7px; }
   .journal-entry-date{ font-family:var(--mono); font-size:10.5px; color:var(--accent); }
   .journal-entry-text{ font-size:13.5px; line-height:1.55; color:var(--text); white-space:pre-wrap; }
+  /* @[Name]/#[Title] tags inside journal note text (see renderNoteTextWithTags) — clickable, opens
+     the tagged person/goal/project/habit/action via the same EDIT_HANDLERS map the right-click menu
+     uses. Person tags reuse the violet accent .person-relation already uses elsewhere; planner-object
+     tags use the app's own accent color to read as a distinct "thing", not a person. */
+  .note-tag{ font-weight:700; cursor:pointer; padding:1px 5px; border-radius:3px; white-space:nowrap; }
+  .note-tag-person{ background:var(--violet-glow); color:var(--violet); }
+  .note-tag-object{ background:var(--accent-glow); color:var(--accent); }
+  .note-tag:hover{ filter:brightness(1.15); }
+  /* Floating @/# tag suggestion dropdown shared by every journal text input (see
+     wireNoteTagAutocomplete) — positioned in JS (position:fixed, under whichever input is focused)
+     rather than living inside any one field, since it's reused across journalTextInput and
+     journalEditTextInput. */
+  .note-tag-suggest{ position:fixed; z-index:200; background:var(--bg-raised); border:1px solid var(--border-bright); border-radius:var(--radius); box-shadow:0 8px 20px rgba(0,0,0,0.35); max-height:180px; overflow-y:auto; font-family:var(--mono); font-size:11.5px; }
+  .note-tag-suggest[hidden]{ display:none; }
+  .note-tag-suggest-item{ padding:7px 10px; cursor:pointer; color:var(--text-dim); }
+  .note-tag-suggest-item:hover{ background:var(--bg-inset); color:var(--text); }
   .journal-entry.Health{ border-left-color:var(--cat-health); background:var(--cat-health-bg); }
   .journal-entry.Finance{ border-left-color:var(--cat-finance); background:var(--cat-finance-bg); }
   .journal-entry.Career{ border-left-color:var(--cat-career); background:var(--cat-career-bg); }
@@ -2029,6 +2045,7 @@
 </div>
 
 <div class="global-toast" id="globalToast" style="display:none;"></div>
+<div class="note-tag-suggest" id="noteTagSuggest" hidden></div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -5798,6 +5815,148 @@
   initPeopleGraph();
 
   /* ---------------- Journal ---------------- */
+  // Tagging people and planner objects in journal notes — @[Name] tags a person, #[Title] tags a
+  // goal/project/habit/action. The bracketed form is what actually gets stored/parsed (unambiguous
+  // even for multi-word names, unlike a bare @Name regex that couldn't tell where the name ends);
+  // typing it by hand works, but wireNoteTagAutocomplete (below) is what actually inserts it in
+  // practice, so most users never notice the brackets are there at all.
+  function findTaggedPerson(name){
+    var lower = name.trim().toLowerCase();
+    return state.people.find(function(p){ return p.name.trim().toLowerCase() === lower; }) || null;
+  }
+  function findTaggedPlannerObject(title){
+    var lower = title.trim().toLowerCase();
+    var g = state.goals.find(function(x){ return x.title.trim().toLowerCase() === lower; });
+    if(g) return { kind:"goal", obj:g };
+    var pr = state.projects.find(function(x){ return x.title.trim().toLowerCase() === lower; });
+    if(pr) return { kind:"project", obj:pr };
+    var h = state.habits.find(function(x){ return x.title.trim().toLowerCase() === lower; });
+    if(h) return { kind:"habit", obj:h };
+    var a = state.actions.find(function(x){ return x.title.trim().toLowerCase() === lower; });
+    if(a) return { kind:"action", obj:a };
+    return null;
+  }
+  // A tag whose target no longer exists (renamed/deleted since the note was written) just falls
+  // back to its literal bracketed text rather than silently vanishing or throwing.
+  function renderNoteTextWithTags(text){
+    if(!text) return "";
+    var re = /([@#])\[([^\]]+)\]/g;
+    var out = "", lastIndex = 0, m;
+    while((m = re.exec(text))){
+      out += escapeHtml(text.slice(lastIndex, m.index));
+      if(m[1] === "@"){
+        var person = findTaggedPerson(m[2]);
+        out += person
+          ? '<span class="note-tag note-tag-person" data-kind="person" data-id="' + person.id + '" role="button" tabindex="0">@' + escapeHtml(person.name) + '</span>'
+          : escapeHtml(m[0]);
+      } else {
+        var found = findTaggedPlannerObject(m[2]);
+        out += found
+          ? '<span class="note-tag note-tag-object" data-kind="' + found.kind + '" data-id="' + found.obj.id + '" role="button" tabindex="0">#' + escapeHtml(found.obj.title) + '</span>'
+          : escapeHtml(m[0]);
+      }
+      lastIndex = re.lastIndex;
+    }
+    out += escapeHtml(text.slice(lastIndex));
+    return out;
+  }
+  // Opens whichever entity a clicked tag points to — reuses the exact same EDIT_HANDLERS map the
+  // generic right-click context menu already uses (goal/project/habit/action/person all take an id).
+  function openNoteTag(kind, id){
+    var handler = EDIT_HANDLERS[kind];
+    if(handler) handler(id);
+  }
+  // @/# tag autocomplete, shared by every journal text input (journalTextInput on the main Journal
+  // page, journalEditTextInput in the create/edit modal used there and by Today's notes section) via
+  // one floating panel (#noteTagSuggest) rather than one per field. State lives here, not per-input,
+  // since only one input can be focused/suggesting at a time anyway.
+  var noteTagPanel = document.getElementById("noteTagSuggest");
+  var noteTagActiveInput = null, noteTagTriggerStart = -1, noteTagItems = [];
+  function closeNoteTagSuggest(){
+    noteTagPanel.hidden = true;
+    noteTagActiveInput = null; noteTagTriggerStart = -1; noteTagItems = [];
+  }
+  // Scans backward from the cursor for the nearest unclosed @ or # — "unclosed" meaning nothing
+  // between it and the cursor already looks like a finished/other tag ([ or ]) or crosses a newline,
+  // so a query naturally spans multiple words (matches multi-word names) but not multiple lines.
+  function noteTagQueryAtCursor(inputEl){
+    var pos = inputEl.selectionStart, text = inputEl.value;
+    var idx = pos - 1;
+    while(idx >= 0){
+      var ch = text[idx];
+      if(ch === "\n") return null;
+      if(ch === "@" || ch === "#"){
+        var between = text.slice(idx + 1, pos);
+        if(between.indexOf("[") !== -1 || between.indexOf("]") !== -1) return null;
+        return { marker: ch, start: idx, query: between };
+      }
+      idx--;
+    }
+    return null;
+  }
+  function updateNoteTagSuggest(inputEl){
+    var ctx = noteTagQueryAtCursor(inputEl);
+    if(!ctx){ closeNoteTagSuggest(); return; }
+    var q = ctx.query.trim().toLowerCase();
+    var items;
+    if(ctx.marker === "@"){
+      items = state.people
+        .filter(function(p){ return p.name.toLowerCase().indexOf(q) !== -1; })
+        .slice(0, 8)
+        .map(function(p){ return { label: p.name, insert: "@[" + p.name + "] " }; });
+    } else {
+      var objs = [];
+      state.goals.forEach(function(g){ objs.push({ title: g.title, kind: "goal" }); });
+      state.projects.forEach(function(g){ objs.push({ title: g.title, kind: "project" }); });
+      state.habits.forEach(function(g){ objs.push({ title: g.title, kind: "habit" }); });
+      state.actions.forEach(function(g){ objs.push({ title: g.title, kind: "action" }); });
+      items = objs
+        .filter(function(o){ return o.title.toLowerCase().indexOf(q) !== -1; })
+        .slice(0, 8)
+        .map(function(o){ return { label: o.title + " (" + o.kind + ")", insert: "#[" + o.title + "] " }; });
+    }
+    if(!items.length){ closeNoteTagSuggest(); return; }
+    noteTagActiveInput = inputEl;
+    noteTagTriggerStart = ctx.start;
+    noteTagItems = items;
+    noteTagPanel.innerHTML = items.map(function(it, i){
+      return '<div class="note-tag-suggest-item" data-i="' + i + '">' + escapeHtml(it.label) + '</div>';
+    }).join("");
+    var rect = inputEl.getBoundingClientRect();
+    noteTagPanel.style.left = rect.left + "px";
+    noteTagPanel.style.top = (rect.bottom + 4) + "px";
+    noteTagPanel.style.width = Math.max(160, Math.min(rect.width, 280)) + "px";
+    noteTagPanel.hidden = false;
+  }
+  function pickNoteTagItem(i){
+    if(!noteTagActiveInput || !noteTagItems[i]) return;
+    var inputEl = noteTagActiveInput, it = noteTagItems[i];
+    var text = inputEl.value, pos = inputEl.selectionStart;
+    inputEl.value = text.slice(0, noteTagTriggerStart) + it.insert + text.slice(pos);
+    var newPos = noteTagTriggerStart + it.insert.length;
+    closeNoteTagSuggest();
+    inputEl.focus();
+    inputEl.setSelectionRange(newPos, newPos);
+  }
+  noteTagPanel.addEventListener("mousedown", function(e){
+    // mousedown, not click — fires before the input's own blur handler would otherwise close the
+    // panel first and lose the pick.
+    var item = e.target.closest(".note-tag-suggest-item");
+    if(!item) return;
+    e.preventDefault();
+    pickNoteTagItem(Number(item.dataset.i));
+  });
+  function wireNoteTagAutocomplete(inputEl){
+    inputEl.addEventListener("input", function(){ updateNoteTagSuggest(inputEl); });
+    inputEl.addEventListener("blur", function(){ setTimeout(closeNoteTagSuggest, 150); });
+    inputEl.addEventListener("keydown", function(e){
+      if(noteTagPanel.hidden) return;
+      if(e.key === "Escape"){ closeNoteTagSuggest(); return; }
+      if(e.key === "Enter" && noteTagItems.length){ e.preventDefault(); pickNoteTagItem(0); }
+    });
+  }
+  wireNoteTagAutocomplete(document.getElementById("journalTextInput"));
+  wireNoteTagAutocomplete(document.getElementById("journalEditTextInput"));
   document.getElementById("journalDateInput").value = todayStr();
   wireTimePicker("journalTimeInput", "journalTimePickBtn", "journalTimePickPanel");
   document.getElementById("saveJournalBtn").addEventListener("click", async function(){
@@ -5835,13 +5994,15 @@
           '<button class="icon-btn edit" data-action="edit-journal" data-id="' + entry.id + '" aria-label="Edit entry">✎</button>' +
           '<button class="icon-btn" data-action="del-journal" data-id="' + entry.id + '" aria-label="Delete entry">&times;</button>' +
         '</div></div>' +
-        '<div class="journal-entry-text">' + escapeHtml(entry.text) + '</div>' +
+        '<div class="journal-entry-text">' + renderNoteTextWithTags(entry.text) + '</div>' +
       '</div>';
     }).join("");
     document.getElementById("journalEntries").innerHTML = html;
     document.getElementById("journalEmptyState").style.display = sorted.length ? "none" : "";
   }
   document.getElementById("journalEntries").addEventListener("click", async function(e){
+    var tag = e.target.closest(".note-tag");
+    if(tag){ openNoteTag(tag.dataset.kind, tag.dataset.id); return; }
     var editBtn = e.target.closest('[data-action="edit-journal"]');
     if(editBtn){ editJournalEntry(editBtn.dataset.id); return; }
     var del = e.target.closest('[data-action="del-journal"]');
