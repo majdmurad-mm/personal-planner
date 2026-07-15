@@ -862,17 +862,18 @@
      flex:1 inside #whiteboardSection's own flex column (height:100vh) — embedded in the People page's
      ordinary scrolling layout instead, it needs an explicit height of its own. */
   .ppl-canvas-wrap{ height:600px; margin-top:16px; }
-  /* Colored by the person's own people group (see pplNodeGroup/pplCachedGroupColors) via inline
-     style, set to the exact same color its cluster hull uses — the same unified "node color = hull
-     color = one dimension" model the main Graph uses for area (a Health-area goal is always the same
-     green as the Health hull it sits in). This used to be colored by relationship type instead, a
-     second, independent color dimension from the hull's grouping — which looked inconsistent/"off"
-     next to the main Graph's single-dimension model, since a node's own color often didn't match the
-     hull it was sitting inside. Ungrouped people (no people-group set) fall back to this neutral
-     default, same as the main Graph's own ungrouped/no-icon fallback. */
-  .ppl-node{ position:absolute; border-radius:50%; width:15px; height:15px; pointer-events:auto; cursor:grab; background:var(--text-faint); box-shadow:0 0 0 2px var(--bg-inset), 0 2px 8px rgba(0,0,0,0.35); user-select:none; touch-action:none; }
+  .ppl-node{ position:absolute; border-radius:50%; width:15px; height:15px; pointer-events:auto; cursor:grab; box-shadow:0 0 0 2px var(--bg-inset), 0 2px 8px rgba(0,0,0,0.35); user-select:none; touch-action:none; }
   .ppl-node:hover{ box-shadow:0 0 0 2px var(--bg-inset), 0 0 0 5px var(--accent-glow), 0 2px 8px rgba(0,0,0,0.35); }
   .ppl-node.dragging{ cursor:grabbing; z-index:50; box-shadow:0 0 0 2px var(--bg-inset), 0 4px 16px rgba(0,0,0,0.5); }
+  /* Colored by relationship type instead of area — reuses the existing category palette (no new CSS
+     variables needed) since these two concepts are never shown on the same graph. Partner reuses
+     --violet, matching .person-relation's own existing violet badge on the cards view. */
+  .ppl-node.Family{ background:var(--cat-health); }
+  .ppl-node.Friend{ background:var(--cat-relationships); }
+  .ppl-node.Colleague{ background:var(--cat-career); }
+  .ppl-node.Mentor{ background:var(--cat-growth); }
+  .ppl-node.Partner{ background:var(--violet); }
+  .ppl-node.Other{ background:var(--cat-sol); }
   .ppl-node-label{ position:absolute; left:21px; top:50%; transform:translateY(-50%); font-family:var(--mono); font-size:11px; font-weight:600; color:var(--text); white-space:nowrap; pointer-events:none; }
 
   /* ===== DRAG-TO-REORDER (list views) ===== */
@@ -5127,13 +5128,7 @@
   function pplNodeHtml(p){
     var sim = pplFindSimNode(p.id);
     var x = sim ? sim.x : PPL_CENTER_X, y = sim ? sim.y : PPL_CENTER_Y;
-    // Same color as the hull this node belongs to (see pplCachedGroupColors/pplRenderClusters) —
-    // ungrouped people (no group color cached) fall back to .ppl-node's own default background
-    // instead of forcing an inline color, so they read as neutral rather than an arbitrary hue.
-    var group = pplCachedNodeGroups[p.id];
-    var color = group ? pplCachedGroupColors[group] : null;
-    var colorStyle = color ? "background:" + color + ";" : "";
-    return '<div class="ppl-node" data-id="' + p.id + '" style="left:' + x + 'px; top:' + y + 'px;' + colorStyle + '" title="' + escapeHtml(p.name) + '">' +
+    return '<div class="ppl-node ' + p.relationship + '" data-id="' + p.id + '" style="left:' + x + 'px; top:' + y + 'px;" title="' + escapeHtml(p.name) + '">' +
       '<span class="ppl-node-label">' + escapeHtml(p.name) + '</span>' +
     '</div>';
   }
