@@ -17,6 +17,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 <script>
   // Applied synchronously, before first paint, so a saved dark-mode preference doesn't flash light
   // first — the rest of the theme-toggle logic (button wiring, label text, color-scheme meta) lives
@@ -450,7 +451,7 @@
      the canvas is the page here. Re-adds a slim padding of its own around just the compact header;
      the canvas-wrap (flex:1) takes all the remaining height. Values must mirror .main's padding
      exactly (including its own @media override) since they're what's being cancelled out. */
-  #whiteboardSection{ margin:-32px -40px -70px; padding:14px 40px 14px; height:100vh; box-sizing:border-box; display:flex; flex-direction:column; }
+  #whiteboardSection, #locationSection{ margin:-32px -40px -70px; padding:14px 40px 14px; height:100vh; box-sizing:border-box; display:flex; flex-direction:column; }
   .wb-compact-header{ margin-bottom:10px; flex-shrink:0; }
   .wb-compact-header h1{ font-size:17px; }
   .wb-toolbar{ display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
@@ -470,6 +471,18 @@
   .wb-canvas-wrap{ position:relative; flex:1; min-height:0; border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; touch-action:none; background:var(--bg-raised); cursor:grab; }
   .wb-canvas-wrap.panning{ cursor:grabbing; }
   .wb-canvas-wrap:fullscreen{ height:100vh; border-radius:0; border:none; }
+  /* Location page: Leaflet owns its own pan/zoom gestures (including pinch), so the wrap just needs
+     to be a sized, positioned box for the map to fill — reuses .wb-canvas-wrap for the border/radius/
+     full-viewport-flex-column sizing every other full-page canvas view already has. */
+  .loc-map{ position:absolute; inset:0; }
+  .loc-geocode-row{ display:flex; gap:8px; }
+  .loc-geocode-row input{ flex:1; }
+  .loc-geocode-status{ font-family:var(--mono); font-size:10.5px; color:var(--text-dim); margin-top:4px; min-height:14px; }
+  .loc-geocode-status .clear-link{ color:var(--accent); cursor:pointer; margin-left:8px; }
+  #locLayerPeopleBtn.on, #locLayerLiveBtn.on, #locLayerHistoryBtn.on{ background:var(--accent); color:var(--bg); border-color:var(--accent); }
+  :root[data-theme="dark"] .leaflet-control-zoom a{ background:var(--bg-raised); color:var(--text); border-color:var(--border-bright); }
+  :root[data-theme="dark"] .leaflet-control-attribution{ background:rgba(var(--bg-raised-rgb),0.8); color:var(--text-dim); }
+  :root[data-theme="dark"] .leaflet-popup-content-wrapper, :root[data-theme="dark"] .leaflet-popup-tip{ background:var(--bg-raised); color:var(--text); }
   .wb-toolbar-float{ position:absolute; top:12px; left:12px; z-index:100; background:var(--bg-raised); border:1px solid var(--border-bright); border-radius:var(--radius); padding:8px 10px; box-shadow:0 6px 20px rgba(0,0,0,0.35); pointer-events:auto; }
   .wb-hint-float{ position:absolute; z-index:100; margin:0; max-width:340px; pointer-events:none; }
   .wb-connect-hint{ top:12px; left:50%; transform:translateX(-50%); background:var(--accent-glow); border:1px solid var(--accent-dim); border-radius:var(--radius); padding:6px 12px; color:var(--accent); }
@@ -1111,7 +1124,7 @@
        not the sidebar. */
     .main{ padding:56px 18px 60px; }
     h1{ font-size:19px; }
-    #whiteboardSection{ margin:-56px -18px -60px; padding:12px 18px 12px; }
+    #whiteboardSection, #locationSection{ margin:-56px -18px -60px; padding:12px 18px 12px; }
     #peopleSection.ppl-fullscreen-graph{ margin:-56px -18px -60px; padding:12px 18px 12px; }
     .today-two-col{ grid-template-columns:1fr; }
     /* Mobile sidebar is an off-canvas drawer, not the desktop's inline column — hidden by default
@@ -1166,6 +1179,7 @@
         <button class="side-link" data-section="timeline" type="button"><span class="sl-glyph">↔</span>Timeline</button>
         <button class="side-link" data-section="journal" type="button"><span class="sl-glyph">✎</span>Journal</button>
         <button class="side-link" data-section="people" type="button"><span class="sl-glyph">☺</span>People</button>
+        <button class="side-link" data-section="location" type="button"><span class="sl-glyph">⚲</span>Location</button>
       </nav>
 
       <div class="term-stats">
@@ -1738,6 +1752,27 @@
         </div>
       </div>
     </section>
+
+    <!-- ===== LOCATION SECTION ===== -->
+    <section id="locationSection" style="display:none;">
+      <div class="main-header wb-compact-header">
+        <div>
+          <h1>location</h1>
+        </div>
+      </div>
+      <div class="wb-canvas-wrap loc-map-wrap" id="locMapWrap">
+        <div class="wb-toolbar wb-toolbar-float" id="locToolbarFloat">
+          <button class="btn on" id="locLayerPeopleBtn" type="button" title="Show people's home locations">☺ people</button>
+          <button class="btn" id="locLayerLiveBtn" type="button" title="Track and show your live GPS position while this page is open">◉ live gps</button>
+          <button class="btn" id="locLayerHistoryBtn" type="button" title="Show recorded/imported location history">↔ history</button>
+          <button class="btn" id="locImportBtn" type="button" title="Import a Google Maps Timeline export (JSON)">⇩ import timeline</button>
+          <input type="file" id="locImportFile" accept="application/json" hidden>
+          <span class="wb-save-status" id="locStatus"></span>
+        </div>
+        <p class="panel-hint wb-hint-float wb-pan-hint">Pan: drag. Zoom: scroll or pinch. Click a person pin to edit them.</p>
+        <div class="loc-map" id="locMap"></div>
+      </div>
+    </section>
   </main>
 </div>
 
@@ -1941,6 +1976,14 @@
         <div class="field"><label for="personContactInput">contact (optional)</label><input type="text" id="personContactInput" placeholder="email, phone, or handle"></div>
         <div class="field"><label for="personLocationInput">location (optional)</label><input type="text" id="personLocationInput" placeholder="e.g. Berlin Germany"></div>
       </div>
+      <div class="field">
+        <label for="personHomeAddressInput">home location — shown as a pin on the Location page (optional)</label>
+        <div class="loc-geocode-row">
+          <input type="text" id="personHomeAddressInput" placeholder="search an address or place…">
+          <button class="btn" id="personGeocodeBtn" type="button">find</button>
+        </div>
+        <div class="loc-geocode-status" id="personGeocodeStatus"></div>
+      </div>
       <div class="field-row">
         <div class="field"><label for="personYearMetInput">year met</label><input type="number" step="1" id="personYearMetInput" placeholder="e.g. 2018"></div>
         <div class="field"><label for="personContactScoreInput">contact score</label><input type="number" step="1" id="personContactScoreInput" placeholder="0-4, negative pushes away in the graph"></div>
@@ -2083,6 +2126,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script>
 (function(){
   "use strict";
@@ -2494,7 +2538,8 @@
     secondary_goal_ids: "secondary goals", secondary_categories: "secondary areas",
     verified: "verified status", like_score: "like score", contact_score: "contact score", year_met: "year met",
     relationship_status: "relationship status", social_group: "social group", personality_type: "personality type",
-    location: "location", related_people: "related people", planets: "people group"
+    location: "location", related_people: "related people", planets: "people group",
+    home_lat: "home location", home_lng: "home location"
   };
   function warnDroppedFields(dropped){
     if(!dropped || !dropped.length) return;
@@ -2591,7 +2636,7 @@
     return setPreview;
   }
 
-  var state = { goals:[], projects:[], habits:[], actions:[], journal:[], people:[], trackerVars:[], trackerEntries:[], trackerDays:[], wbConnections:[], sleepScores:[], trash:[], socialGroupColors:[] };
+  var state = { goals:[], projects:[], habits:[], actions:[], journal:[], people:[], trackerVars:[], trackerEntries:[], trackerDays:[], wbConnections:[], sleepScores:[], trash:[], socialGroupColors:[], gpsPings:[] };
   var currentUser = null;
 
   function goalById(id){ return state.goals.find(function(g){ return g.id === id; }); }
@@ -2707,7 +2752,8 @@
       sb.from("tracker_entries").select("*"),
       sb.from("tracker_days").select("*"),
       sb.from("sleep_scores").select("*").order("date", { ascending:false }),
-      sb.from("social_group_colors").select("*")
+      sb.from("social_group_colors").select("*"),
+      sb.from("gps_pings").select("*").order("recorded_at")
     ]);
     results.forEach(function(r){ if(r.error) console.error(r.error); });
     // position defaults to 0 (via ||0) when the migration_positions.sql column doesn't exist yet —
@@ -2726,7 +2772,8 @@
       return { id:r.id, name:r.name, relationship:r.relationship, contact:r.contact, notes:r.notes, position:r.position||0,
         verified:!!r.verified, likeScore:(r.like_score!=null?r.like_score:null), contactScore:(r.contact_score!=null?r.contact_score:null),
         yearMet:(r.year_met!=null?r.year_met:null), relationshipStatus:r.relationship_status||"", socialGroup:r.social_group||"",
-        personalityType:r.personality_type||"", location:r.location||"", relatedPeople:r.related_people||"", planets:r.planets||"" };
+        personalityType:r.personality_type||"", location:r.location||"", relatedPeople:r.related_people||"", planets:r.planets||"",
+        homeLat:(r.home_lat!=null?r.home_lat:null), homeLng:(r.home_lng!=null?r.home_lng:null) };
     });
     state.people.sort(function(a,b){ return a.position - b.position; });
     chatMessages = (results[6].data || []).map(function(r){ return { role:r.role, content:r.content }; });
@@ -2739,6 +2786,9 @@
     // here means the People graph just falls back to its auto-cycled palette for every group, same
     // graceful-degradation shape as every other not-yet-migrated field in this app.
     state.socialGroupColors = (results[11].data || []).map(function(r){ return { id:r.id, groupName:r.group_name, color:r.color }; });
+    // Empty until migration_location.sql has been run, same graceful-degradation shape as above —
+    // the Location page's history layer just has nothing to draw until then.
+    state.gpsPings = (results[12].data || []).map(locMapGpsRow);
     await backfillLegacyHabitTrackers();
     await backfillHabitIcons();
   }
@@ -2816,7 +2866,7 @@
     });
   }
 
-  var ALL_SECTION_IDS = ["todaySection","plannerSection","areasSection","trackerSection","whiteboardSection","agentSection","calendarSection","timelineSection","journalSection","peopleSection","goalDetailSection","areaDetailSection"];
+  var ALL_SECTION_IDS = ["todaySection","plannerSection","areasSection","trackerSection","whiteboardSection","agentSection","calendarSection","timelineSection","journalSection","peopleSection","locationSection","goalDetailSection","areaDetailSection"];
   function showSection(name){
     activeSection = name;
     document.querySelectorAll(".side-link").forEach(function(l){ l.classList.toggle("active", l.dataset.section === name); });
@@ -2826,6 +2876,7 @@
     if(name === "whiteboard") activateWhiteboard();
     else if(name === "today"){ renderToday(); todayApplyZoomWidth(); }
     else if(name === "timeline") activateTimeline();
+    else if(name === "location") activateLocation();
     else renderActiveSectionContent();
   }
   document.getElementById("sideNav").addEventListener("click", function(e){
@@ -3597,7 +3648,8 @@
     return { id:snapshot.id, name:snapshot.name, relationship:snapshot.relationship, contact:snapshot.contact, notes:snapshot.notes, position:snapshot.position,
       verified:snapshot.verified, like_score:snapshot.likeScore, contact_score:snapshot.contactScore, year_met:snapshot.yearMet,
       relationship_status:snapshot.relationshipStatus, social_group:snapshot.socialGroup, personality_type:snapshot.personalityType,
-      location:snapshot.location, related_people:snapshot.relatedPeople, planets:snapshot.planets };
+      location:snapshot.location, related_people:snapshot.relatedPeople, planets:snapshot.planets,
+      home_lat:snapshot.homeLat, home_lng:snapshot.homeLng };
   }
   async function deletePerson(id){
     var pe = state.people.find(function(x){ return x.id === id; });
@@ -5980,6 +6032,213 @@
     wirePeopleGraphDrag();
   }
   initPeopleGraph();
+
+  /* ---------------- Location page: Leaflet base map + people/live-gps/history layers ---------------- */
+  function locMapGpsRow(r){ return { id:r.id, lat:r.lat, lng:r.lng, recordedAt:r.recorded_at, source:r.source||"gps" }; }
+  function locHaversineMeters(lat1, lng1, lat2, lng2){
+    var R = 6371000;
+    function toRad(d){ return d * Math.PI / 180; }
+    var dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
+    var a = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLng/2)*Math.sin(dLng/2);
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  var locMap = null, locPeopleLayer = null, locLiveLayer = null, locHistoryLayer = null;
+  var locLiveMarker = null, locLiveTrailLine = null, locLiveTrailLatLngs = [];
+  var locLiveWatchId = null, locLastPingAt = 0, locLastPingLatLng = null;
+  var LOC_MIN_PING_INTERVAL_MS = 60000, LOC_MIN_PING_DIST_M = 50;
+
+  function locToggleLayer(layer, btn){
+    var on = !btn.classList.contains("on");
+    btn.classList.toggle("on", on);
+    if(!locMap) return on;
+    if(on) locMap.addLayer(layer); else locMap.removeLayer(layer);
+    return on;
+  }
+
+  function locRenderPeopleLayer(){
+    if(!locPeopleLayer) return;
+    locPeopleLayer.clearLayers();
+    state.people.forEach(function(p){
+      if(p.homeLat == null || p.homeLng == null) return;
+      var marker = L.circleMarker([p.homeLat, p.homeLng], { radius:7, color:"#F15A22", fillColor:"#F15A22", fillOpacity:0.85, weight:2 });
+      marker.bindPopup(escapeHtml(p.name || "Unnamed"));
+      marker.on("click", function(){ editPerson(p.id); });
+      locPeopleLayer.addLayer(marker);
+    });
+  }
+
+  function locRenderHistoryLayer(){
+    if(!locHistoryLayer) return;
+    locHistoryLayer.clearLayers();
+    var pts = state.gpsPings.slice().sort(function(a,b){ return new Date(a.recordedAt) - new Date(b.recordedAt); });
+    if(!pts.length) return;
+    var latlngs = pts.map(function(p){ return [p.lat, p.lng]; });
+    L.polyline(latlngs, { color:"#8a5cf6", weight:2, opacity:0.6 }).addTo(locHistoryLayer);
+  }
+
+  function locStartLiveTracking(){
+    if(!("geolocation" in navigator)){ toast("Geolocation isn't available in this browser."); return; }
+    if(locLiveWatchId != null) return;
+    locLiveWatchId = navigator.geolocation.watchPosition(locOnLivePosition, function(err){
+      console.error(err);
+      toast("Location error: " + err.message);
+    }, { enableHighAccuracy:true, maximumAge:10000, timeout:20000 });
+  }
+  function locStopLiveTracking(){
+    if(locLiveWatchId != null){ navigator.geolocation.clearWatch(locLiveWatchId); locLiveWatchId = null; }
+  }
+  // Draws every position update immediately (marker + this-session trail), but only persists a ping
+  // to gps_pings when enough time or distance has passed since the last write — a phone with
+  // enableHighAccuracy can fire updates every second or two, and writing every one of those to
+  // Supabase would be both wasteful and pointless (they're meters apart at walking pace).
+  function locOnLivePosition(pos){
+    if(!locMap) return;
+    var lat = pos.coords.latitude, lng = pos.coords.longitude;
+    if(!locLiveMarker){
+      locLiveMarker = L.circleMarker([lat,lng], { radius:8, color:"#2b6cff", fillColor:"#2b6cff", fillOpacity:0.9, weight:2 }).bindPopup("you are here");
+      locLiveLayer.addLayer(locLiveMarker);
+      locMap.setView([lat,lng], 14);
+    } else {
+      locLiveMarker.setLatLng([lat,lng]);
+    }
+    locLiveTrailLatLngs.push([lat,lng]);
+    if(!locLiveTrailLine){
+      locLiveTrailLine = L.polyline(locLiveTrailLatLngs, { color:"#2b6cff", weight:3, opacity:0.7 });
+      locLiveLayer.addLayer(locLiveTrailLine);
+    } else {
+      locLiveTrailLine.setLatLngs(locLiveTrailLatLngs);
+    }
+    var now = Date.now();
+    var moved = locLastPingLatLng ? locHaversineMeters(locLastPingLatLng[0], locLastPingLatLng[1], lat, lng) : Infinity;
+    if(now - locLastPingAt >= LOC_MIN_PING_INTERVAL_MS || moved >= LOC_MIN_PING_DIST_M){
+      locLastPingAt = now; locLastPingLatLng = [lat, lng];
+      var pingRow = { lat:lat, lng:lng, recordedAt:new Date().toISOString(), source:"gps" };
+      state.gpsPings.push(pingRow);
+      sb.from("gps_pings").insert({ lat:pingRow.lat, lng:pingRow.lng, recorded_at:pingRow.recordedAt, source:"gps", accuracy:pos.coords.accuracy||null })
+        .then(function(r){ if(r.error) console.error(r.error); });
+      if(document.getElementById("locLayerHistoryBtn").classList.contains("on")) locRenderHistoryLayer();
+    }
+  }
+
+  // Google's Timeline export format has changed more than once (old Takeout "Semantic Location
+  // History" used latitudeE7/longitudeE7 integer pairs; the current on-device export uses
+  // "lat°, lng°" strings nested under timelinePath/visit/activity). Rather than hard-coding one
+  // exact schema, this walks the whole parsed JSON tree and pulls out anything that looks like a
+  // coordinate, so it keeps working across Google's format changes instead of breaking silently.
+  function locExtractTimelinePoints(json){
+    var out = [];
+    var COORD_RE = /(-?\d{1,3}(?:\.\d+)?)\s*°?\s*,\s*(-?\d{1,3}(?:\.\d+)?)\s*°?/;
+    function pushPoint(lat, lng, time){
+      if(isNaN(lat) || isNaN(lng)) return;
+      if(lat < -90 || lat > 90 || lng < -180 || lng > 180) return;
+      out.push({ lat:lat, lng:lng, time:time || null });
+    }
+    function coordFromString(s){
+      if(typeof s !== "string") return null;
+      if(s.indexOf("geo:") === 0) s = s.slice(4);
+      var m = COORD_RE.exec(s);
+      if(!m) return null;
+      return { lat:parseFloat(m[1]), lng:parseFloat(m[2]) };
+    }
+    function walk(node, ctxTime){
+      if(!node || typeof node !== "object") return;
+      if(Array.isArray(node)){ node.forEach(function(item){ walk(item, ctxTime); }); return; }
+      var localTime = node.time || node.timestamp || node.startTime || ctxTime;
+      if(typeof node.latitudeE7 === "number" && typeof node.longitudeE7 === "number"){
+        pushPoint(node.latitudeE7 / 1e7, node.longitudeE7 / 1e7, localTime);
+      }
+      ["point","latLng","location"].forEach(function(key){
+        if(typeof node[key] === "string"){
+          var c = coordFromString(node[key]);
+          if(c) pushPoint(c.lat, c.lng, localTime);
+        }
+      });
+      for(var k in node){
+        if(node[k] && typeof node[k] === "object") walk(node[k], localTime);
+      }
+    }
+    walk(json, null);
+    return out;
+  }
+  // Caps the imported trail's density — a year of Timeline data can be tens of thousands of raw
+  // points, which is both slow to render as a polyline and far more granular than useful at map
+  // zoom levels. Keeps a point only once enough time or distance has passed since the last kept one.
+  function locDecimatePoints(points, minMs, minMeters){
+    points = points.filter(function(p){ return p.time; }).sort(function(a,b){ return new Date(a.time) - new Date(b.time); });
+    var kept = [], last = null;
+    points.forEach(function(p){
+      if(!last){ kept.push(p); last = p; return; }
+      var dt = new Date(p.time) - new Date(last.time);
+      var dist = locHaversineMeters(last.lat, last.lng, p.lat, p.lng);
+      if(dt >= minMs || dist >= minMeters){ kept.push(p); last = p; }
+    });
+    return kept;
+  }
+  async function locImportGoogleTimelineFile(file){
+    var statusEl = document.getElementById("locStatus");
+    statusEl.textContent = "reading file…";
+    var text;
+    try{ text = await file.text(); } catch(e){ statusEl.textContent = "could not read that file"; return; }
+    var json;
+    try{ json = JSON.parse(text); } catch(e){ statusEl.textContent = "not valid JSON"; return; }
+    var points = locExtractTimelinePoints(json);
+    if(!points.length){ statusEl.textContent = "no location points found in that file"; return; }
+    points = locDecimatePoints(points, 5 * 60 * 1000, 100);
+    var rows = points.map(function(p){ return { lat:p.lat, lng:p.lng, recorded_at:new Date(p.time).toISOString(), source:"import" }; });
+    var CHUNK = 500, inserted = 0;
+    for(var i = 0; i < rows.length; i += CHUNK){
+      var chunk = rows.slice(i, i + CHUNK);
+      var r = await sb.from("gps_pings").insert(chunk);
+      if(r.error){ statusEl.textContent = "import failed: " + r.error.message; return; }
+      inserted += chunk.length;
+      statusEl.textContent = "imported " + inserted + "/" + rows.length + "…";
+    }
+    var reload = await sb.from("gps_pings").select("*").order("recorded_at");
+    if(!reload.error) state.gpsPings = (reload.data || []).map(locMapGpsRow);
+    statusEl.textContent = "imported " + inserted + " points";
+    locRenderHistoryLayer();
+  }
+
+  function initLocation(){
+    var mapEl = document.getElementById("locMap");
+    if(!mapEl || typeof L === "undefined") return;
+    locMap = L.map(mapEl, { zoomControl:true }).setView([20, 0], 2);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(locMap);
+    locPeopleLayer = L.layerGroup().addTo(locMap);
+    locLiveLayer = L.layerGroup();
+    locHistoryLayer = L.layerGroup();
+
+    document.getElementById("locLayerPeopleBtn").addEventListener("click", function(){ locToggleLayer(locPeopleLayer, this); });
+    document.getElementById("locLayerLiveBtn").addEventListener("click", function(){
+      var on = locToggleLayer(locLiveLayer, this);
+      if(on) locStartLiveTracking(); else locStopLiveTracking();
+    });
+    document.getElementById("locLayerHistoryBtn").addEventListener("click", function(){
+      var on = locToggleLayer(locHistoryLayer, this);
+      if(on) locRenderHistoryLayer();
+    });
+    document.getElementById("locImportBtn").addEventListener("click", function(){
+      document.getElementById("locImportFile").click();
+    });
+    document.getElementById("locImportFile").addEventListener("change", async function(e){
+      var file = e.target.files && e.target.files[0];
+      e.target.value = "";
+      if(!file) return;
+      await locImportGoogleTimelineFile(file);
+    });
+
+    locRenderPeopleLayer();
+  }
+  function activateLocation(){
+    if(!locMap) return;
+    setTimeout(function(){ locMap.invalidateSize(); }, 0);
+    locRenderPeopleLayer();
+  }
+  initLocation();
 
   /* ---------------- Journal ---------------- */
   // Tagging people and planner objects in journal notes — @[Name] tags a person, #[Title] tags a
@@ -9186,9 +9445,24 @@
     });
   }
   var editingPersonId = null;
+  var editingPersonHomeLat = null, editingPersonHomeLng = null;
+  function personGeocodeStatusHtml(){
+    if(editingPersonHomeLat == null || editingPersonHomeLng == null) return "";
+    return "✓ " + editingPersonHomeLat.toFixed(4) + ", " + editingPersonHomeLng.toFixed(4) + "<span class=\"clear-link\" id=\"personGeocodeClearBtn\">clear</span>";
+  }
+  function renderPersonGeocodeStatus(){
+    var el = document.getElementById("personGeocodeStatus");
+    el.innerHTML = personGeocodeStatusHtml();
+    var clearBtn = document.getElementById("personGeocodeClearBtn");
+    if(clearBtn) clearBtn.addEventListener("click", function(){ editingPersonHomeLat = null; editingPersonHomeLng = null; renderPersonGeocodeStatus(); });
+  }
   function openPersonEditModal(p){
     pplRefreshSocialGroupDatalist();
     editingPersonId = p ? p.id : null;
+    editingPersonHomeLat = (p && p.homeLat != null) ? p.homeLat : null;
+    editingPersonHomeLng = (p && p.homeLng != null) ? p.homeLng : null;
+    document.getElementById("personHomeAddressInput").value = "";
+    renderPersonGeocodeStatus();
     document.getElementById("personModalTitle").textContent = p ? "edit_person.json" : "new_person.json";
     document.getElementById("savePersonBtn").textContent = p ? "save changes" : "save person";
     document.getElementById("personNameInput").value = (p && p.name) || "";
@@ -9217,6 +9491,32 @@
   }
   document.getElementById("openPersonModalBtn").addEventListener("click", function(){ openPersonEditModal(null); });
   document.getElementById("cancelPersonModalBtn").addEventListener("click", function(){ closeModal("personModalOverlay"); });
+  // Geocodes through Nominatim (OpenStreetMap's free geocoder — no API key, pairs naturally with the
+  // Leaflet+OSM map on the Location page) and stores the resulting lat/lng directly on the person, so
+  // the map never needs to re-geocode on every load. A dedicated User-Agent header identifies the app
+  // per Nominatim's usage policy (nominatim.org/release-docs/latest/api/Search — no automated bulk
+  // querying, one request at a time, which this single button click satisfies).
+  document.getElementById("personGeocodeBtn").addEventListener("click", async function(){
+    var q = document.getElementById("personHomeAddressInput").value.trim();
+    if(!q) return;
+    var statusEl = document.getElementById("personGeocodeStatus");
+    this.disabled = true;
+    statusEl.textContent = "searching…";
+    try{
+      var res = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + encodeURIComponent(q), {
+        headers: { "Accept": "application/json" }
+      });
+      var rows = await res.json();
+      if(!rows || !rows.length){ statusEl.textContent = "no match found for that address"; return; }
+      editingPersonHomeLat = parseFloat(rows[0].lat);
+      editingPersonHomeLng = parseFloat(rows[0].lon);
+      renderPersonGeocodeStatus();
+    } catch(err){
+      statusEl.textContent = "geocoding failed — try again";
+    } finally {
+      this.disabled = false;
+    }
+  });
   document.getElementById("savePersonBtn").addEventListener("click", async function(){
     var name = document.getElementById("personNameInput").value.trim();
     if(!name) return;
@@ -9235,7 +9535,8 @@
       planets: document.getElementById("personPlanetsInput").value.trim(),
       related_people: document.getElementById("personRelatedInput").value.trim(),
       verified: document.getElementById("personVerifiedCheckbox").checked,
-      notes: document.getElementById("personNotesInput").value.trim()
+      notes: document.getElementById("personNotesInput").value.trim(),
+      home_lat: editingPersonHomeLat, home_lng: editingPersonHomeLng
     };
     this.disabled = true;
     if(editingPersonId){
@@ -9248,9 +9549,10 @@
         state.people[idx] = { id:ru.id, name:ru.name, relationship:ru.relationship, contact:ru.contact, notes:ru.notes, position:ru.position||0,
           verified:!!ru.verified, likeScore:(ru.like_score!=null?ru.like_score:null), contactScore:(ru.contact_score!=null?ru.contact_score:null),
           yearMet:(ru.year_met!=null?ru.year_met:null), relationshipStatus:ru.relationship_status||"", socialGroup:ru.social_group||"",
-          personalityType:ru.personality_type||"", location:ru.location||"", relatedPeople:ru.related_people||"", planets:ru.planets||"" };
+          personalityType:ru.personality_type||"", location:ru.location||"", relatedPeople:ru.related_people||"", planets:ru.planets||"",
+          homeLat:(ru.home_lat!=null?ru.home_lat:null), homeLng:(ru.home_lng!=null?ru.home_lng:null) };
       }
-      renderAll(); closeModal("personModalOverlay");
+      renderAll(); closeModal("personModalOverlay"); locRenderPeopleLayer();
       warnDroppedFields(resU.droppedFields);
       return;
     }
@@ -9261,8 +9563,9 @@
     state.people.push({ id:r.id, name:r.name, relationship:r.relationship, contact:r.contact, notes:r.notes, position:r.position||0,
       verified:!!r.verified, likeScore:(r.like_score!=null?r.like_score:null), contactScore:(r.contact_score!=null?r.contact_score:null),
       yearMet:(r.year_met!=null?r.year_met:null), relationshipStatus:r.relationship_status||"", socialGroup:r.social_group||"",
-      personalityType:r.personality_type||"", location:r.location||"", relatedPeople:r.related_people||"", planets:r.planets||"" });
-    renderAll(); closeModal("personModalOverlay");
+      personalityType:r.personality_type||"", location:r.location||"", relatedPeople:r.related_people||"", planets:r.planets||"",
+      homeLat:(r.home_lat!=null?r.home_lat:null), homeLng:(r.home_lng!=null?r.home_lng:null) });
+    renderAll(); closeModal("personModalOverlay"); locRenderPeopleLayer();
     warnDroppedFields(res.droppedFields);
   });
 
