@@ -491,6 +491,16 @@
   .loc-people-mode-group{ display:flex; gap:4px; }
   .loc-mode-btn{ font-size:10.5px; padding:5px 8px; }
   .loc-mode-btn.on{ background:var(--accent-dim); color:var(--bg); border-color:var(--accent); }
+  /* #locToolbarFloat has grown to 11 controls (people + its mode toggle, actions/habits, poi + add-poi,
+     live gps, history, import) — .wb-toolbar-float alone (shared with Whiteboard/People graph, which
+     have far fewer buttons) isn't enough here: it has no width cap, so on a narrow map it could try to
+     lay out past the container edge and get silently clipped by .wb-canvas-wrap's overflow:hidden, and
+     its z-index:100 sits well under Leaflet's own control layer (.leaflet-top/.leaflet-bottom are
+     z-index:1000 — see initLocation's comment on the zoom control move), so any actual overlap would
+     have let Leaflet's UI win clicks over ours. Scoped to #locToolbarFloat only, not the shared class,
+     so Whiteboard/People graph (not reported as buggy) are untouched. */
+  #locToolbarFloat{ z-index:1000; max-width:calc(100% - 24px); box-sizing:border-box; gap:8px; padding:6px 8px; }
+  #locToolbarFloat .btn{ padding:5px 8px; font-size:11px; }
   /* Unconditional (not scoped to :root[data-theme="dark"]) — the basemap itself is always dark now
      (see initLocation's tile layer), independent of the app's own light/dark toggle, so Leaflet's
      stock light-mode chrome would look mismatched either way if left theme-conditional. */
@@ -6538,7 +6548,12 @@
   function initLocation(){
     var mapEl = document.getElementById("locMap");
     if(!mapEl || typeof L === "undefined") return;
-    locMap = L.map(mapEl, { zoomControl:true }).setView([20, 0], 2);
+    // zoomControl:false + added manually at topright — Leaflet's default topleft zoom control sits
+    // directly under #locToolbarFloat (also topleft), and Leaflet's own control layer is z-index:1000
+    // (see .leaflet-top/.leaflet-bottom in leaflet.css) versus our old z-index:100, so it was rendering
+    // on top of and eating clicks meant for our toolbar buttons wherever the two overlapped.
+    locMap = L.map(mapEl, { zoomControl:false }).setView([20, 0], 2);
+    L.control.zoom({ position: "topright" }).addTo(locMap);
     // CARTO's free "Dark Matter" basemap (no API key, same OSM data underneath) — a permanently dark
     // map regardless of the app's own light/dark toggle, since a light basemap read as jarring next
     // to everything else here.
