@@ -875,6 +875,14 @@
   .ppl-node.Partner{ background:var(--violet); }
   .ppl-node.Other{ background:var(--cat-sol); }
   .ppl-node-label{ position:absolute; left:21px; top:50%; transform:translateY(-50%); font-family:var(--mono); font-size:11px; font-weight:600; color:var(--text); white-space:nowrap; pointer-events:none; }
+  /* Connect mode: toggled via #pplConnectModeBtn (see initPeopleGraph/handlePplConnectNodeClick).
+     While active, clicking a node selects it as the pending "from" end instead of dragging it. */
+  #pplConnectModeBtn.ppl-connect-active{ background:var(--accent); color:var(--bg); border-color:var(--accent); }
+  .ppl-connect-mode .ppl-node{ cursor:crosshair; }
+  .ppl-node.connecting{ box-shadow:0 0 0 2px var(--bg-inset), 0 0 0 5px var(--accent), 0 2px 8px rgba(0,0,0,0.35); }
+  /* Invisible fat hit-target layered under each visible (thin) connection line — see
+     renderPeopleGraphConnections/handlePplEdgeClick — a 1-2px stroke is too thin to click reliably. */
+  .ppl-conn-hit{ stroke:transparent; stroke-width:14; pointer-events:stroke; cursor:pointer; }
 
   /* People table — same wrap/cell chrome as .tracker-grid-wrap/.tracker-cell-input (see TRACKER
      section), just with its own column set. Every column but "verified"/"delete" is a plain text
@@ -1587,9 +1595,10 @@
               <span class="wb-force-label">center pull</span>
               <input type="range" class="wb-force-slider" id="pplCenterForceSlider" min="0" max="0.3" step="0.001" value="0.02">
             </div>
+            <button class="btn" id="pplConnectModeBtn" type="button" title="Toggle connect mode: click one person then another to link them">🔗 connect</button>
             <button class="btn" id="pplFullscreenBtn" type="button">⤢ fullscreen</button>
           </div>
-          <p class="panel-hint wb-hint-float wb-pan-hint">Pan: drag empty space, or drag with the middle mouse button. Zoom: scroll, or the +/− buttons. Click a person to edit them.</p>
+          <p class="panel-hint wb-hint-float wb-pan-hint">Pan: drag empty space, or drag with the middle mouse button. Zoom: scroll, or the +/− buttons. Click a person to edit them. Toggle "connect" then click two people to link them (and set a weight) — click an existing connection line to edit or remove it.</p>
           <div class="wb-world" id="pplWorld">
             <svg class="wb-conn-svg" id="pplConnSvg">
               <defs>
@@ -5014,6 +5023,9 @@
   var PPL_NODE_R = 8.4; // matches the main Graph's goal-node weight (WB_SIZE_UNIT * 0.7)
   var PPL_REPEL = 9000, PPL_LINK_DIST = 130, PPL_LINK_K = 0.02, PPL_CENTER_K = 0.02, PPL_DAMPING = 0.82, PPL_ALPHA_DECAY = 0.985;
   var pplAlpha = 0, pplSimRunning = false;
+  // Connect mode: toggled by #pplConnectModeBtn (see initPeopleGraph). While on, a node click is
+  // handled by handlePplConnectNodeClick instead of starting a drag — see wirePeopleGraphDrag.
+  var pplConnectMode = false, pplConnectFromId = null;
   function pplFindSimNode(id){
     for(var i=0;i<pplSimNodes.length;i++){ if(pplSimNodes[i].id === id) return pplSimNodes[i]; }
     return null;
@@ -5028,8 +5040,38 @@
       pplSimNodes.push({ id:p.id, x: PPL_CENTER_X + Math.cos(angle)*radius, y: PPL_CENTER_Y + Math.sin(angle)*radius, vx:0, vy:0, fixed:false });
     });
   }
+  // Each "related people" entry is a plain name ("Jad Murad") or a name with a connection weight
+  // suffix ("Jad Murad:3") — the weight drives both the spring physics (pplApplySpring) and the
+  // line thickness in renderPeopleGraphConnections. Missing/invalid weight defaults to 1 so existing
+  // plain-name CSV-imported data keeps working unchanged.
+  function pplParseRelatedEntry(rawEntry){
+    var raw = (rawEntry || "").trim();
+    if(!raw) return null;
+    var m = raw.match(/^(.*):([0-9]+(?:\.[0-9]+)?)$/);
+    if(!m) return { name: raw, weight: 1 };
+    var name = m[1].trim();
+    if(!name) return null;
+    var weight = Math.max(0.1, Math.min(10, Number(m[2]) || 1));
+    return { name: name, weight: weight };
+  }
+  // Replaces (or removes, when weight is null) a single person's entry for `name` within a
+  // "related people" text blob, leaving every other entry untouched — used by pplSetConnection so
+  // creating/editing/removing a graph connection round-trips through the same free-text field the
+  // person modal and CSV import already read/write, rather than a separate edges table.
+  function pplUpsertRelatedEntry(existingText, name, weight){
+    var entries = (existingText || "").split(",").map(function(e){ return e.trim(); }).filter(Boolean);
+    var nameLower = name.trim().toLowerCase();
+    entries = entries.filter(function(e){
+      var parsed = pplParseRelatedEntry(e);
+      return !parsed || parsed.name.toLowerCase() !== nameLower;
+    });
+    if(weight != null) entries.push(weight === 1 ? name : (name + ":" + weight));
+    return entries.join(", ");
+  }
   // Deduped so a mutual reference (A lists B, B also lists A) only produces one spring, not two
-  // competing ones.
+  // competing ones. When both sides list each other with different weights, whichever person is
+  // iterated first (state.people order) wins — no meaningful way to reconcile two different weights
+  // for the same pair, and pplSetConnection always keeps both sides in sync anyway.
   function pplRelatedEdges(){
     var byNameLower = {};
     state.people.forEach(function(p){ byNameLower[p.name.trim().toLowerCase()] = p.id; });
@@ -5037,15 +5079,15 @@
     var edges = [];
     state.people.forEach(function(p){
       if(!p.relatedPeople) return;
-      p.relatedPeople.split(",").forEach(function(rawName){
-        var name = rawName.trim().toLowerCase();
-        if(!name) return;
-        var otherId = byNameLower[name];
+      p.relatedPeople.split(",").forEach(function(rawEntry){
+        var parsed = pplParseRelatedEntry(rawEntry);
+        if(!parsed) return;
+        var otherId = byNameLower[parsed.name.toLowerCase()];
         if(!otherId || otherId === p.id) return;
         var key = [p.id, otherId].sort().join(":");
         if(seen[key]) return;
         seen[key] = true;
-        edges.push({ fromId:p.id, toId:otherId });
+        edges.push({ fromId:p.id, toId:otherId, weight:parsed.weight });
       });
     });
     return edges;
@@ -5093,7 +5135,7 @@
     if(!a || !b) return;
     var dx = b.x - a.x, dy = b.y - a.y;
     var dist = Math.sqrt(dx*dx + dy*dy) || 0.01;
-    var force = (dist - PPL_LINK_DIST) * PPL_LINK_K * pplAlpha;
+    var force = (dist - PPL_LINK_DIST) * PPL_LINK_K * (edge.weight || 1) * pplAlpha;
     var fx = (dx/dist) * force, fy = (dy/dist) * force;
     a.vx += fx; a.vy += fy;
     b.vx -= fx; b.vy -= fy;
@@ -5215,13 +5257,23 @@
       return '<polygon class="wb-cluster-hull" points="' + pointsAttr + '" style="fill:' + color + '; stroke:' + color + '; filter:url(#pplClusterBlur);"></polygon>';
     }).join("");
   }
+  // Each edge draws two overlapping lines: a thin visible one whose stroke-width scales with the
+  // connection's weight, and a fat invisible one (.ppl-conn-hit) that's the actual click target for
+  // handlePplEdgeClick — a 1-2px line is too thin to reliably click otherwise.
+  function pplEdgeStrokeWidth(weight){
+    return Math.max(1, Math.min(5, 1.5 + ((weight || 1) - 1) * 0.7));
+  }
   function renderPeopleGraphConnections(){
     var layer = document.getElementById("pplConnLayer");
     if(!layer) return;
     layer.innerHTML = pplCachedEdges.map(function(edge){
       var a = pplNodeCenter(edge.fromId), b = pplNodeCenter(edge.toId);
       if(!a || !b) return "";
-      return '<line class="wb-conn-line" x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '"></line>';
+      var w = edge.weight || 1;
+      var coords = ' x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '"';
+      var dataAttrs = ' data-from="' + edge.fromId + '" data-to="' + edge.toId + '" data-weight="' + w + '"';
+      return '<line class="ppl-conn-hit"' + dataAttrs + coords + '></line>' +
+        '<line class="wb-conn-line" style="stroke-width:' + pplEdgeStrokeWidth(w) + ';"' + coords + '></line>';
     }).join("");
     pplRenderClusters();
   }
@@ -5245,14 +5297,77 @@
     renderPeopleGraphNodes();
     pplReheat(1);
   }
+  // Marks (or clears, when id is null) the pending "from" node of a connect-mode selection —
+  // toggles the highlight directly on the cached element rather than a full re-render.
+  function pplSetConnectFrom(id){
+    if(pplConnectFromId && pplNodeElCache[pplConnectFromId]) pplNodeElCache[pplConnectFromId].classList.remove("connecting");
+    pplConnectFromId = id;
+    if(id && pplNodeElCache[id]) pplNodeElCache[id].classList.add("connecting");
+  }
+  // Creates/edits (weight given) or removes (weight null) the connection between two people,
+  // writing the change into BOTH people's "related people" text field via pplUpsertRelatedEntry so
+  // it's mutual and visible/editable from the person modal and table view too, not just the graph.
+  // Reuses savePersonField (see the People table view) for the actual save/rollback plumbing.
+  async function pplSetConnection(fromId, toId, weight){
+    if(fromId === toId) return;
+    var a = state.people.find(function(x){ return x.id === fromId; });
+    var b = state.people.find(function(x){ return x.id === toId; });
+    if(!a || !b) return;
+    var newARelated = pplUpsertRelatedEntry(a.relatedPeople, b.name, weight);
+    var newBRelated = pplUpsertRelatedEntry(b.relatedPeople, a.name, weight);
+    await savePersonField(a.id, "relatedPeople", newARelated);
+    await savePersonField(b.id, "relatedPeople", newBRelated);
+    pplRebuildGraphCache();
+    renderPeopleGraphConnections();
+  }
+  function pplPromptWeight(label, current){
+    var input = prompt(label, current == null ? "1" : String(current));
+    if(input === null) return undefined; // cancelled
+    input = input.trim();
+    if(input === "" || Number(input) <= 0) return null; // remove
+    var w = Number(input);
+    if(!isFinite(w) || w <= 0) w = 1;
+    return Math.max(0.1, Math.min(10, w));
+  }
+  // First click in connect mode picks the "from" person; the second (different) person completes
+  // the connection and prompts for a weight. Clicking the same person again cancels the selection.
+  async function handlePplConnectNodeClick(id){
+    if(!pplConnectFromId){ pplSetConnectFrom(id); return; }
+    if(pplConnectFromId === id){ pplSetConnectFrom(null); return; }
+    var fromId = pplConnectFromId;
+    pplSetConnectFrom(null);
+    var a = state.people.find(function(x){ return x.id === fromId; });
+    var b = state.people.find(function(x){ return x.id === id; });
+    if(!a || !b) return;
+    var weight = pplPromptWeight("Connection weight between " + a.name + " and " + b.name + " (1-10):", 1);
+    if(weight === undefined) return;
+    await pplSetConnection(fromId, id, weight == null ? 1 : weight);
+  }
+  // Click on an existing connection line (its fat invisible .ppl-conn-hit sibling) — always active,
+  // independent of connect mode, since editing/removing an existing link is a distinct action from
+  // creating a new one.
+  async function handlePplEdgeClick(fromId, toId, currentWeight){
+    var a = state.people.find(function(x){ return x.id === fromId; });
+    var b = state.people.find(function(x){ return x.id === toId; });
+    if(!a || !b) return;
+    var weight = pplPromptWeight("Connection weight between " + a.name + " and " + b.name + " (1-10, 0 to remove):", currentWeight);
+    if(weight === undefined) return;
+    await pplSetConnection(fromId, toId, weight);
+  }
   // Same drag mechanics as the main Graph's wireWhiteboardDrag — a short click (no meaningful
-  // movement) opens the person for editing instead of registering as a drag.
+  // movement) opens the person for editing instead of registering as a drag. In connect mode, a
+  // click is routed to handlePplConnectNodeClick instead and no drag is started at all.
   function wirePeopleGraphDrag(){
     var overlay = document.getElementById("pplOverlay");
     var dragEl = null, dragSim = null, dragPointerId = null, startClientX, startClientY, startX, startY, moved;
     overlay.addEventListener("pointerdown", function(e){
       var node = e.target.closest(".ppl-node");
       if(!node) return;
+      if(pplConnectMode){
+        e.preventDefault();
+        handlePplConnectNodeClick(node.dataset.id);
+        return;
+      }
       var sim = pplFindSimNode(node.dataset.id);
       if(!sim) return;
       dragEl = node; dragSim = sim;
@@ -5367,6 +5482,20 @@
     document.getElementById("pplCenterForceSlider").addEventListener("input", function(){
       PPL_CENTER_K = Number(this.value);
       pplReheat(1);
+    });
+
+    var pplConnectBtn = document.getElementById("pplConnectModeBtn");
+    pplConnectBtn.addEventListener("click", function(){
+      pplConnectMode = !pplConnectMode;
+      pplConnectBtn.classList.toggle("ppl-connect-active", pplConnectMode);
+      pplConnectBtn.textContent = pplConnectMode ? "🔗 connecting…" : "🔗 connect";
+      pplWrapEl.classList.toggle("ppl-connect-mode", pplConnectMode);
+      pplSetConnectFrom(null);
+    });
+    document.getElementById("pplConnLayer").addEventListener("click", function(e){
+      var hit = e.target.closest(".ppl-conn-hit");
+      if(!hit) return;
+      handlePplEdgeClick(hit.dataset.from, hit.dataset.to, Number(hit.dataset.weight));
     });
 
     wirePeopleGraphDrag();
