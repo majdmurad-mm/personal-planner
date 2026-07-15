@@ -896,12 +896,28 @@
   .agent-input-row textarea{ flex:1; min-height:52px; }
   .agent-empty{ color:var(--text-faint); font-size:12.5px; text-align:center; padding:30px 0; }
   #agentVoiceToggleBtn.on{ background:var(--accent); color:var(--bg); border-color:var(--accent); }
-  /* Shared record-button states (wireVoiceRecordButton) — both #agentMicBtn and #journalRecordBtn
-     use these classes, so a mic button reads the same "live/busy" way everywhere it appears. Red +
-     a subtle pulse while actively recording, so it's obvious the mic is live. */
-  #agentMicBtn.on, #journalRecordBtn.on{ background:#DC2626; color:#fff; border-color:#DC2626; animation:agentMicPulse 1.2s ease-in-out infinite; }
+  /* Agent's mic (wireVoiceRecordButton) is a plain toggle button, so it pulses red while "on"
+     (actively recording). The Notes record button hands off to the full rec-panel below the moment
+     recording starts (hidden while that panel is open), so it only ever shows the dimmed
+     "transcribing" state, never the pulse. */
+  #agentMicBtn.on{ background:#DC2626; color:#fff; border-color:#DC2626; animation:agentMicPulse 1.2s ease-in-out infinite; }
   #agentMicBtn.transcribing, #journalRecordBtn.transcribing{ opacity:0.6; cursor:wait; }
   @keyframes agentMicPulse{ 0%, 100%{ box-shadow:0 0 0 0 rgba(220,38,38,0.5); } 50%{ box-shadow:0 0 0 6px rgba(220,38,38,0); } }
+  /* Live recording panel (Notes composer) — decibel meter, timer, pause/stop/discard. */
+  .rec-panel{ margin-top:8px; padding:10px 12px; border:1px solid var(--border-bright); border-radius:var(--radius); background:var(--bg-raised); }
+  .rec-panel-row{ display:flex; align-items:center; gap:10px; }
+  .rec-meter-wrap{ flex:1; height:10px; background:var(--bg-inset); border-radius:5px; overflow:hidden; }
+  .rec-meter-bar{ height:100%; width:0%; background:#DC2626; border-radius:5px; transition:width 0.08s linear; }
+  .rec-timer{ font-family:var(--mono); font-size:12px; color:var(--text-dim); min-width:38px; text-align:right; }
+  .rec-panel-actions{ display:flex; gap:8px; margin-top:8px; }
+  /* SoundCloud-style waveform bar on a note card — bar heights come from the recording's stored
+     peak-amplitude array, the whole strip is a single click-to-play control. */
+  .rec-waveform{ display:flex; align-items:center; gap:8px; margin-top:8px; cursor:pointer; }
+  .rec-waveform-bars{ display:flex; align-items:flex-end; gap:1.5px; height:28px; flex:1; }
+  .rec-waveform-bars span{ display:block; width:2px; background:var(--accent); border-radius:1px; opacity:0.7; }
+  .rec-waveform:hover .rec-waveform-bars span{ opacity:1; }
+  .rec-waveform.loading{ opacity:0.5; pointer-events:none; }
+  .rec-waveform-time{ font-family:var(--mono); font-size:10px; color:var(--text-faint); white-space:nowrap; }
   .agent-msg-replay{ background:none; border:none; color:var(--text-faint); cursor:pointer; font-size:11px; padding:0; margin-left:8px; vertical-align:middle; }
   .agent-msg-replay:hover{ color:var(--accent); }
 
@@ -1714,6 +1730,17 @@
           <button class="btn btn-accent" id="saveJournalBtn" type="button">+ add entry</button>
         </div>
         <div class="time-pick-panel" id="journalTimePickPanel" hidden></div>
+        <div class="rec-panel" id="journalRecPanel" hidden>
+          <div class="rec-panel-row">
+            <div class="rec-meter-wrap"><div class="rec-meter-bar" id="journalRecMeterBar"></div></div>
+            <span class="rec-timer" id="journalRecTimer">0:00</span>
+          </div>
+          <div class="rec-panel-actions">
+            <button class="btn" id="journalRecPauseBtn" type="button">⏸ pause</button>
+            <button class="btn btn-accent" id="journalRecStopBtn" type="button">⏹ stop</button>
+            <button class="btn" id="journalRecCancelBtn" type="button">✕ discard</button>
+          </div>
+        </div>
         <div class="loc-geocode-status" id="journalRecordStatus"></div>
         <textarea id="journalTextInput" class="journal-textarea" placeholder="Write today's entry…" rows="3"></textarea>
       </div>
@@ -2729,7 +2756,7 @@
     return setPreview;
   }
 
-  var state = { goals:[], projects:[], habits:[], actions:[], journal:[], people:[], trackerVars:[], trackerEntries:[], trackerDays:[], wbConnections:[], sleepScores:[], trash:[], socialGroupColors:[], gpsPings:[], pois:[] };
+  var state = { goals:[], projects:[], habits:[], actions:[], journal:[], people:[], trackerVars:[], trackerEntries:[], trackerDays:[], wbConnections:[], sleepScores:[], trash:[], socialGroupColors:[], gpsPings:[], pois:[], recordings:[] };
   var currentUser = null;
 
   function goalById(id){ return state.goals.find(function(g){ return g.id === id; }); }
@@ -2847,7 +2874,8 @@
       sb.from("sleep_scores").select("*").order("date", { ascending:false }),
       sb.from("social_group_colors").select("*"),
       sb.from("gps_pings").select("*").order("recorded_at"),
-      sb.from("points_of_interest").select("*").order("created_at")
+      sb.from("points_of_interest").select("*").order("created_at"),
+      sb.from("recordings").select("*").order("created_at")
     ]);
     results.forEach(function(r){ if(r.error) console.error(r.error); });
     // position defaults to 0 (via ||0) when the migration_positions.sql column doesn't exist yet —
@@ -2863,7 +2891,7 @@
     state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null,
       locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null) }; });
     state.actions.sort(function(a,b){ return a.position - b.position; });
-    state.journal = (results[4].data || []).map(function(r){ return { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null, audioPath:r.audio_path||null }; });
+    state.journal = (results[4].data || []).map(function(r){ return { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null, recordingId:r.recording_id||null }; });
     state.people = (results[5].data || []).map(function(r){
       return { id:r.id, name:r.name, relationship:r.relationship, contact:r.contact, notes:r.notes, position:r.position||0,
         verified:!!r.verified, likeScore:(r.like_score!=null?r.like_score:null), contactScore:(r.contact_score!=null?r.contact_score:null),
@@ -2887,6 +2915,7 @@
     state.gpsPings = (results[12].data || []).map(locMapGpsRow);
     // Empty until migration_action_habit_poi_location.sql has been run.
     state.pois = (results[13].data || []).map(function(r){ return { id:r.id, name:r.name, lat:r.lat, lng:r.lng, notes:r.notes||"" }; });
+    state.recordings = (results[14].data || []).map(function(r){ return { id:r.id, storagePath:r.storage_path, durationSeconds:r.duration_seconds, waveform:r.waveform||[] }; });
     await backfillLegacyHabitTrackers();
     await backfillHabitIcons();
   }
@@ -3726,7 +3755,7 @@
     });
   }
   function journalPayload(snapshot){
-    return { id:snapshot.id, date:snapshot.date, text:snapshot.text, time_of_day:snapshot.timeOfDay, category:snapshot.category, audio_path:snapshot.audioPath };
+    return { id:snapshot.id, date:snapshot.date, text:snapshot.text, time_of_day:snapshot.timeOfDay, category:snapshot.category, recording_id:snapshot.recordingId };
   }
   async function deleteJournalEntry(id){
     var n = state.journal.find(function(x){ return x.id === id; });
@@ -6785,41 +6814,199 @@
   document.getElementById("journalDateInput").value = todayStr();
   wireTimePicker("journalTimeInput", "journalTimePickBtn", "journalTimePickPanel");
 
-  // Voice notes: record -> upload the raw audio to Storage first (so it's saved even if
-  // transcription then fails) -> transcribe via Gemini into the composer textarea. The uploaded
-  // path is held here until the entry is actually saved (see saveJournalBtn below), same "pending"
-  // pattern the Location page's POI-create flow uses for a click-then-confirm value.
-  var journalPendingAudioPath = null;
-  wireVoiceRecordButton(document.getElementById("journalRecordBtn"), async function(blob, mimeType){
+  // Voice notes: a full recording interface, not a one-click toggle. Record -> a live panel opens
+  // with a decibel meter (Web Audio AnalyserNode reading the live mic stream), a running timer, and
+  // separate pause/stop/discard controls (MediaRecorder natively supports pause()/resume(), so
+  // pausing doesn't lose anything already captured). Stopping uploads the raw audio to Storage FIRST
+  // (so it's saved even if transcription then fails), inserts a `recordings` row (clip length + a
+  // downsampled waveform for the SoundCloud-style bar on the card), and only then transcribes via
+  // Gemini into the composer textarea. The created recording is held here (pendingRecording) until
+  // the entry is actually saved (see saveJournalBtn below) — same "pending" pattern the Location
+  // page's POI-create flow uses for a click-then-confirm value.
+  function formatClipTime(sec){
+    sec = Math.max(0, Math.round(sec || 0));
+    var m = Math.floor(sec / 60), s = sec % 60;
+    return m + ":" + String(s).padStart(2, "0");
+  }
+  // Peak (not average) amplitude per bucket — averaging washes out the transient spikes that are
+  // what actually makes a waveform bar read as "amplitude" rather than a flat gray strip.
+  function computeWaveformPeaks(audioBuffer, bucketCount){
+    var data = audioBuffer.getChannelData(0);
+    var samplesPerBucket = Math.max(1, Math.floor(data.length / bucketCount));
+    var peaks = [];
+    for(var i = 0; i < bucketCount; i++){
+      var start = i * samplesPerBucket, end = Math.min(data.length, start + samplesPerBucket), max = 0;
+      for(var j = start; j < end; j++){ var v = Math.abs(data[j]); if(v > max) max = v; }
+      peaks.push(Math.round(max * 100) / 100);
+    }
+    return peaks;
+  }
+  function wireNotesRecorder(){
+    var recordBtn = document.getElementById("journalRecordBtn");
+    if(!agentRecorderSupported()){ recordBtn.style.display = "none"; return; }
+    var panel = document.getElementById("journalRecPanel");
+    var meterBar = document.getElementById("journalRecMeterBar");
+    var timerEl = document.getElementById("journalRecTimer");
+    var pauseBtn = document.getElementById("journalRecPauseBtn");
+    var stopBtn = document.getElementById("journalRecStopBtn");
+    var cancelBtn = document.getElementById("journalRecCancelBtn");
     var statusEl = document.getElementById("journalRecordStatus");
-    if(statusEl) statusEl.textContent = "saving recording…";
-    try{
-      var ext = mimeType.indexOf("ogg") !== -1 ? "ogg" : "webm";
-      var path = (currentUser ? currentUser.id : "anon") + "/" + Date.now() + "." + ext;
-      var upload = await sb.storage.from("notes-audio").upload(path, blob, { contentType: mimeType });
-      if(upload.error) throw new Error(upload.error.message);
-      journalPendingAudioPath = path;
-      if(statusEl) statusEl.textContent = "recording saved — transcribing…";
-    } catch(err){
-      if(statusEl) statusEl.textContent = "";
-      toast("Couldn't save that recording: " + err.message);
-      return;
+
+    var mediaRecorder = null, recordedChunks = [], recordingStream = null;
+    var meterCtx = null, analyser = null, meterData = null, meterRAF = null;
+    var recordStartMs = 0, pausedElapsedMs = 0, timerInterval = null, cancelled = false;
+
+    function updateTimer(){
+      var live = mediaRecorder && mediaRecorder.state === "recording" ? (Date.now() - recordStartMs) : 0;
+      timerEl.textContent = formatClipTime((pausedElapsedMs + live) / 1000);
     }
-    try{
-      var wavBase64 = await blobToWavBase64(blob);
-      var text = await transcribeAudioViaGemini(wavBase64);
-      var input = document.getElementById("journalTextInput");
-      if(text){
-        input.value = (input.value.trim() ? input.value.trim() + " " : "") + text;
-      } else {
-        toast("Recording saved, but couldn't make out any speech to transcribe — you can still type it in.");
+    function meterLoop(){
+      analyser.getByteTimeDomainData(meterData);
+      var sumSquares = 0;
+      for(var i = 0; i < meterData.length; i++){ var v = (meterData[i] - 128) / 128; sumSquares += v * v; }
+      var rms = Math.sqrt(sumSquares / meterData.length);
+      // Speech rarely drives RMS near full-scale, so this is scaled up for a visually responsive bar.
+      meterBar.style.width = Math.min(100, Math.round(rms * 220)) + "%";
+      meterRAF = requestAnimationFrame(meterLoop);
+    }
+    function stopMeter(){
+      if(meterRAF) cancelAnimationFrame(meterRAF);
+      meterRAF = null;
+      if(meterCtx){ meterCtx.close(); meterCtx = null; }
+      meterBar.style.width = "0%";
+    }
+    function resetPanel(){
+      panel.hidden = true;
+      recordBtn.style.display = "";
+      pauseBtn.textContent = "⏸ pause";
+      timerEl.textContent = "0:00";
+      if(timerInterval){ clearInterval(timerInterval); timerInterval = null; }
+      stopMeter();
+    }
+
+    recordBtn.addEventListener("click", async function(){
+      try{
+        recordingStream = await navigator.mediaDevices.getUserMedia({ audio:true });
+      } catch(err){
+        toast("Microphone access was denied or unavailable.");
+        return;
       }
-    } catch(err){
-      toast(err.message === "no_api_key" ? "Recording saved, but no Gemini API key is set for transcription — add one from the agent tab." : ("Recording saved, but transcription failed: " + err.message));
-    } finally {
-      if(statusEl) statusEl.textContent = "";
+      cancelled = false;
+      recordedChunks = [];
+      var candidateType = ["audio/webm;codecs=opus","audio/webm","audio/ogg;codecs=opus"].find(function(t){
+        return window.MediaRecorder.isTypeSupported && window.MediaRecorder.isTypeSupported(t);
+      });
+      mediaRecorder = candidateType ? new MediaRecorder(recordingStream, { mimeType: candidateType }) : new MediaRecorder(recordingStream);
+      mediaRecorder.addEventListener("dataavailable", function(e){ if(e.data && e.data.size) recordedChunks.push(e.data); });
+      mediaRecorder.addEventListener("stop", async function(){
+        recordingStream.getTracks().forEach(function(t){ t.stop(); });
+        resetPanel();
+        if(cancelled) return;
+        var blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+        if(!blob.size) return;
+        await handleRecordingComplete(blob, mediaRecorder.mimeType || "audio/webm");
+      });
+
+      try{
+        var AudioCtxCtor = window.AudioContext || window.webkitAudioContext;
+        meterCtx = new AudioCtxCtor();
+        analyser = meterCtx.createAnalyser();
+        analyser.fftSize = 512;
+        meterData = new Uint8Array(analyser.fftSize);
+        meterCtx.createMediaStreamSource(recordingStream).connect(analyser);
+      } catch(err){
+        meterCtx = null; // live meter is a nice-to-have — recording still works fine without it
+      }
+
+      mediaRecorder.start();
+      recordStartMs = Date.now();
+      pausedElapsedMs = 0;
+      panel.hidden = false;
+      recordBtn.style.display = "none";
+      timerInterval = setInterval(updateTimer, 250);
+      if(meterCtx) meterLoop();
+    });
+
+    pauseBtn.addEventListener("click", function(){
+      if(!mediaRecorder) return;
+      if(mediaRecorder.state === "recording"){
+        mediaRecorder.pause();
+        pausedElapsedMs += Date.now() - recordStartMs;
+        pauseBtn.textContent = "▶ resume";
+        if(meterRAF){ cancelAnimationFrame(meterRAF); meterRAF = null; }
+        meterBar.style.width = "0%";
+      } else if(mediaRecorder.state === "paused"){
+        mediaRecorder.resume();
+        recordStartMs = Date.now();
+        pauseBtn.textContent = "⏸ pause";
+        if(meterCtx) meterLoop();
+      }
+    });
+    stopBtn.addEventListener("click", function(){
+      if(mediaRecorder && mediaRecorder.state !== "inactive") mediaRecorder.stop();
+    });
+    cancelBtn.addEventListener("click", function(){
+      if(mediaRecorder && mediaRecorder.state !== "inactive"){ cancelled = true; mediaRecorder.stop(); }
+    });
+
+    async function handleRecordingComplete(blob, mimeType){
+      if(statusEl) statusEl.textContent = "saving recording…";
+      recordBtn.disabled = true;
+      recordBtn.classList.add("transcribing");
+      var audioBuffer, wavBase64;
+      try{
+        var arrayBuffer = await blob.arrayBuffer();
+        var AudioCtxCtor2 = window.AudioContext || window.webkitAudioContext;
+        var decodeCtx = new AudioCtxCtor2();
+        try{ audioBuffer = await decodeCtx.decodeAudioData(arrayBuffer); }
+        finally{ decodeCtx.close(); }
+        wavBase64 = await blobToBase64(audioBufferToWavBlob(audioBuffer));
+      } catch(err){
+        if(statusEl) statusEl.textContent = "";
+        recordBtn.disabled = false;
+        recordBtn.classList.remove("transcribing");
+        toast("Couldn't process that recording: " + err.message);
+        return;
+      }
+      var durationSeconds = audioBuffer.duration;
+      var waveform = computeWaveformPeaks(audioBuffer, 80);
+      try{
+        var ext = mimeType.indexOf("ogg") !== -1 ? "ogg" : "webm";
+        var path = (currentUser ? currentUser.id : "anon") + "/" + Date.now() + "." + ext;
+        var upload = await sb.storage.from("notes-audio").upload(path, blob, { contentType: mimeType });
+        if(upload.error) throw new Error(upload.error.message);
+        var recRes = await sb.from("recordings").insert({ storage_path: path, duration_seconds: durationSeconds, waveform: waveform }).select().single();
+        if(recRes.error) throw new Error(recRes.error.message);
+        var rec = recRes.data;
+        journalPendingRecording = { id: rec.id, storagePath: rec.storage_path, durationSeconds: rec.duration_seconds, waveform: rec.waveform };
+        state.recordings.push(journalPendingRecording);
+        if(statusEl) statusEl.textContent = "recording saved — transcribing…";
+      } catch(err){
+        if(statusEl) statusEl.textContent = "";
+        recordBtn.disabled = false;
+        recordBtn.classList.remove("transcribing");
+        toast("Couldn't save that recording: " + err.message);
+        return;
+      }
+      try{
+        var text = await transcribeAudioViaGemini(wavBase64);
+        var input = document.getElementById("journalTextInput");
+        if(text){
+          input.value = (input.value.trim() ? input.value.trim() + " " : "") + text;
+        } else {
+          toast("Recording saved, but couldn't make out any speech to transcribe — you can still type it in.");
+        }
+      } catch(err){
+        toast(err.message === "no_api_key" ? "Recording saved, but no Gemini API key is set for transcription — add one from the agent tab." : ("Recording saved, but transcription failed: " + err.message));
+      } finally {
+        if(statusEl) statusEl.textContent = "";
+        recordBtn.disabled = false;
+        recordBtn.classList.remove("transcribing");
+      }
     }
-  });
+  }
+  var journalPendingRecording = null;
+  wireNotesRecorder();
   document.getElementById("saveJournalBtn").addEventListener("click", async function(){
     var date = document.getElementById("journalDateInput").value || todayStr();
     var text = document.getElementById("journalTextInput").value.trim();
@@ -6828,17 +7015,17 @@
       date: date, text: text,
       time_of_day: document.getElementById("journalTimeInput").value || null,
       category: chipValue(document.getElementById("journalAreaSelect"), "ar") || null,
-      audio_path: journalPendingAudioPath
+      recording_id: journalPendingRecording ? journalPendingRecording.id : null
     };
     this.disabled = true;
     var res = await safeWrite(function(p){ return sb.from("journal").insert(p).select().single(); }, payload);
     this.disabled = false;
     if(res.error){ alert(res.error.message); return; }
     var r = res.data;
-    state.journal.push({ id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null, audioPath:r.audio_path||null });
+    state.journal.push({ id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null, recordingId:r.recording_id||null });
     document.getElementById("journalTextInput").value = "";
     document.getElementById("journalTimeInput").value = "";
-    journalPendingAudioPath = null;
+    journalPendingRecording = null;
     renderAll();
     warnDroppedFields(res.droppedFields);
   });
@@ -6854,11 +7041,11 @@
       return head + '<div class="journal-entry' + catClass + '" data-kind="journal" data-id="' + entry.id + '">' +
         '<div class="journal-entry-top"><span class="journal-entry-date">' + d.toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" }) + (entry.timeOfDay ? " · " + fmtTimeOfDay(entry.timeOfDay) : "") + '</span>' +
         '<div class="entity-actions">' +
-          (entry.audioPath ? '<button class="icon-btn" data-action="play-journal-audio" data-id="' + entry.id + '" aria-label="Play recording" title="Play the original recording">🔊</button>' : '') +
           '<button class="icon-btn edit" data-action="edit-journal" data-id="' + entry.id + '" aria-label="Edit entry">✎</button>' +
           '<button class="icon-btn" data-action="del-journal" data-id="' + entry.id + '" aria-label="Delete entry">&times;</button>' +
         '</div></div>' +
         '<div class="journal-entry-text">' + renderNoteTextWithTags(entry.text) + '</div>' +
+        renderJournalWaveformHtml(entry) +
       '</div>';
     }).join("");
     document.getElementById("journalEntries").innerHTML = html;
@@ -6874,18 +7061,33 @@
     var del = e.target.closest('[data-action="del-journal"]');
     if(del) await deleteJournalEntry(del.dataset.id);
   });
+  // SoundCloud-style amplitude bar — bar heights come straight from the recording's stored peak
+  // array (computeWaveformPeaks, captured once when the recording finished), so this is just markup,
+  // no audio decoding happens at render time.
+  function renderJournalWaveformHtml(entry){
+    if(!entry.recordingId) return "";
+    var rec = state.recordings.find(function(r){ return r.id === entry.recordingId; });
+    if(!rec) return "";
+    var peaks = (rec.waveform && rec.waveform.length) ? rec.waveform : [0.3];
+    var bars = peaks.map(function(p){ return '<span style="height:' + Math.max(10, Math.round(p * 100)) + '%"></span>'; }).join("");
+    return '<div class="rec-waveform" data-action="play-journal-audio" data-id="' + entry.id + '" title="Play recording">' +
+      '<div class="rec-waveform-bars">' + bars + '</div>' +
+      '<span class="rec-waveform-time">' + formatClipTime(rec.durationSeconds || 0) + '</span>' +
+    '</div>';
+  }
   // Bucket is private, so playback needs a fresh signed URL each time rather than a stored public
   // one — fetched lazily on click (not for every entry on every render) since most notes with a
   // recording will never actually be replayed.
   var journalAudioEl = null;
   async function playJournalAudio(id, btnEl){
     var entry = state.journal.find(function(x){ return x.id === id; });
-    if(!entry || !entry.audioPath) return;
+    if(!entry || !entry.recordingId) return;
+    var rec = state.recordings.find(function(r){ return r.id === entry.recordingId; });
+    if(!rec) return;
     if(!journalAudioEl) journalAudioEl = new Audio();
-    var originalLabel = btnEl ? btnEl.textContent : "";
-    if(btnEl){ btnEl.textContent = "…"; btnEl.disabled = true; }
-    var signed = await sb.storage.from("notes-audio").createSignedUrl(entry.audioPath, 3600);
-    if(btnEl){ btnEl.textContent = originalLabel; btnEl.disabled = false; }
+    if(btnEl) btnEl.classList.add("loading");
+    var signed = await sb.storage.from("notes-audio").createSignedUrl(rec.storagePath, 3600);
+    if(btnEl) btnEl.classList.remove("loading");
     if(signed.error){ toast("Couldn't load that recording: " + signed.error.message); return; }
     journalAudioEl.src = signed.data.signedUrl;
     journalAudioEl.play();
@@ -6932,7 +7134,7 @@
       if(res.error){ alert(res.error.message); return; }
       var r = res.data;
       var idx = state.journal.findIndex(function(x){ return x.id === editingJournalId; });
-      if(idx !== -1) state.journal[idx] = { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null, audioPath:r.audio_path||null };
+      if(idx !== -1) state.journal[idx] = { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null, recordingId:r.recording_id||null };
       renderAll(); closeModal("journalModalOverlay");
       warnDroppedFields(res.droppedFields);
     } else {
@@ -6940,7 +7142,7 @@
       this.disabled = false;
       if(res2.error){ alert(res2.error.message); return; }
       var r2 = res2.data;
-      state.journal.push({ id:r2.id, date:r2.date, text:r2.text, timeOfDay:r2.time_of_day ? r2.time_of_day.slice(0,5) : null, category:r2.category||null, audioPath:r2.audio_path||null });
+      state.journal.push({ id:r2.id, date:r2.date, text:r2.text, timeOfDay:r2.time_of_day ? r2.time_of_day.slice(0,5) : null, category:r2.category||null, recordingId:r2.recording_id||null });
       renderAll(); closeModal("journalModalOverlay");
       warnDroppedFields(res2.droppedFields);
     }
