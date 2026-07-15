@@ -1040,6 +1040,10 @@
   .person-group-color-swatch{ width:14px; height:14px; padding:0; border:1px solid var(--border); border-radius:3px; cursor:pointer; background:none; }
   .person-group-color-swatch::-webkit-color-swatch-wrapper{ padding:0; }
   .person-group-color-swatch::-webkit-color-swatch{ border:none; border-radius:2px; }
+  /* Which of a person's several groups is MAIN (drives auto-linking — see pplNodeGroup/pplRebuildGraphCache)
+     vs merely secondary (hull coverage only) — a native radio button gives mutual exclusivity for
+     free via its shared name attribute, no custom JS needed for "only one main at a time". */
+  .person-group-main-radio{ width:13px; height:13px; margin:0; accent-color:var(--accent); cursor:pointer; }
   /* "Add a new group" row appended after the chip options inside #personGroupSelect (see
      renderPersonGroupChips) — social groups are open-ended user text, not a fixed enum like
      categories, so the multi-select chip list alone can't introduce a brand-new one. */
@@ -8613,16 +8617,59 @@
   // theirs isn't used by anyone else), and an "add a new group" row is appended into the same panel
   // for introducing a name that doesn't exist yet anywhere.
   var updatePersonGroupBtn = wireDropdownMulti("personGroupBtn", "personGroupSelect", "personGroupDropdown", "g");
+  // Which selected group is currently MAIN, straight from the DOM (the checked radio) rather than a
+  // separate JS variable to keep track of — the radio's own native mutual-exclusivity is the only
+  // state that needs to exist.
+  function currentMainGroup(container){
+    var checked = container.querySelector(".person-group-main-radio:checked");
+    return checked ? checked.dataset.groupMain : null;
+  }
+  // If the group that was main just got deselected (chip toggled off), fall back to whichever
+  // selected group comes first in the list; if nothing is selected at all, there's no main either.
+  function ensureMainRadioValid(container){
+    var checked = container.querySelector(".person-group-main-radio:checked");
+    if(checked && checked.closest(".chip-opt").classList.contains("sel")) return;
+    var fallback = container.querySelector(".chip-opt.sel .person-group-main-radio");
+    if(fallback) fallback.checked = true;
+    else if(checked) checked.checked = false;
+  }
+  // The saved social_group text's FIRST entry is what pplNodeGroup treats as MAIN — this puts the
+  // radio-picked main group there regardless of the chips' own (alphabetical) DOM order, followed by
+  // every other selected group in their existing order.
+  function buildPersonSocialGroupValue(){
+    var container = document.getElementById("personGroupSelect");
+    var selected = multiChipValues(container, "g");
+    var main = currentMainGroup(container);
+    if(main && selected.indexOf(main) !== -1){
+      selected = [main].concat(selected.filter(function(g){ return g !== main; }));
+    }
+    return selected.join(", ");
+  }
   // Delegated once on the panel (which persists across renderPersonGroupChips' innerHTML rebuilds,
   // unlike its children) rather than re-attached per chip — picking a color saves immediately, it's
   // not staged behind the main "save person" button, since it's really an attribute of the GROUP,
-  // not of whichever person happens to be open in the modal right now.
-  document.getElementById("personGroupSelect").addEventListener("change", function(e){
+  // not of whichever person happens to be open in the modal right now. Picking a main group, by
+  // contrast, IS staged — it only takes effect on the person being edited when "save" is pressed
+  // (see the social_group payload in the savePersonBtn handler).
+  var personGroupPanelEl = document.getElementById("personGroupSelect");
+  personGroupPanelEl.addEventListener("change", function(e){
     var swatch = e.target.closest(".person-group-color-swatch");
-    if(!swatch) return;
-    saveSocialGroupColor(swatch.dataset.groupColor, swatch.value);
+    if(swatch){ saveSocialGroupColor(swatch.dataset.groupColor, swatch.value); return; }
+    var radio = e.target.closest(".person-group-main-radio");
+    if(radio) radio.closest(".chip-opt").classList.add("sel"); // marking a group main implies including it
   });
-  function renderPersonGroupChips(selectedGroups){
+  // Runs after wireMultiChipSelect's own toggle listener (registered earlier, when
+  // wireDropdownMulti was called above) — by the time this fires, .sel has already been updated for
+  // whichever chip was just clicked/keyed, so it's safe to check here.
+  personGroupPanelEl.addEventListener("click", function(e){
+    if(e.target.tagName === "INPUT") return;
+    if(e.target.closest(".chip-opt")) ensureMainRadioValid(personGroupPanelEl);
+  });
+  personGroupPanelEl.addEventListener("keydown", function(e){
+    if(!isChipActivateKey(e) || e.target.tagName === "INPUT") return;
+    if(e.target.closest(".chip-opt")) ensureMainRadioValid(personGroupPanelEl);
+  });
+  function renderPersonGroupChips(selectedGroups, mainGroup){
     var container = document.getElementById("personGroupSelect");
     var known = {};
     state.people.forEach(function(p){
@@ -8635,6 +8682,7 @@
     container.innerHTML = sorted.map(function(g){
       var color = colors[g] || PPL_GROUP_PALETTE[0];
       return '<div class="chip-opt" role="button" tabindex="0" data-g="' + escapeHtml(g) + '">' +
+        '<input type="radio" name="personGroupMainRadio" class="person-group-main-radio" data-group-main="' + escapeHtml(g) + '"' + (g === mainGroup ? ' checked' : '') + ' title="Set ' + escapeHtml(g) + ' as the main group">' +
         '<input type="color" class="person-group-color-swatch" data-group-color="' + escapeHtml(g) + '" value="' + color + '" title="Set color for ' + escapeHtml(g) + '">' +
         '<span>' + escapeHtml(g) + '</span>' +
       '</div>';
@@ -8648,7 +8696,7 @@
       if(!name) return;
       var current = multiChipValues(container, "g");
       if(current.indexOf(name) === -1) current.push(name);
-      renderPersonGroupChips(current);
+      renderPersonGroupChips(current, currentMainGroup(container) || name);
     }
     document.getElementById("personGroupAddBtn").addEventListener("click", addNewPersonGroup);
     document.getElementById("personGroupNewInput").addEventListener("keydown", function(e){
@@ -8669,7 +8717,8 @@
     document.getElementById("personLikeScoreInput").value = (p && p.likeScore != null) ? p.likeScore : "";
     document.getElementById("personStatusInput").value = (p && p.relationshipStatus) || "";
     document.getElementById("personPersonalityInput").value = (p && p.personalityType) || "";
-    renderPersonGroupChips(p && p.socialGroup ? p.socialGroup.split(",").map(function(g){ return g.trim(); }).filter(Boolean) : []);
+    var personGroupsForEdit = p && p.socialGroup ? p.socialGroup.split(",").map(function(g){ return g.trim(); }).filter(Boolean) : [];
+    renderPersonGroupChips(personGroupsForEdit, personGroupsForEdit[0] || null);
     document.getElementById("personGroupSelect").hidden = true;
     document.getElementById("personPlanetsInput").value = (p && p.planets) || "";
     document.getElementById("personRelatedInput").value = (p && p.relatedPeople) || "";
@@ -8700,7 +8749,7 @@
       like_score: numOrNull("personLikeScoreInput"),
       relationship_status: document.getElementById("personStatusInput").value.trim(),
       personality_type: document.getElementById("personPersonalityInput").value.trim(),
-      social_group: multiChipValues(document.getElementById("personGroupSelect"), "g").join(", "),
+      social_group: buildPersonSocialGroupValue(),
       planets: document.getElementById("personPlanetsInput").value.trim(),
       related_people: document.getElementById("personRelatedInput").value.trim(),
       verified: document.getElementById("personVerifiedCheckbox").checked,
