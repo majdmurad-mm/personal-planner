@@ -876,6 +876,22 @@
   .ppl-node.Other{ background:var(--cat-sol); }
   .ppl-node-label{ position:absolute; left:21px; top:50%; transform:translateY(-50%); font-family:var(--mono); font-size:11px; font-weight:600; color:var(--text); white-space:nowrap; pointer-events:none; }
 
+  /* People table — same wrap/cell chrome as .tracker-grid-wrap/.tracker-cell-input (see TRACKER
+     section), just with its own column set. Every column but "verified"/"delete" is a plain text
+     or number input so paste-in-bulk editing works the same as the Tracker grid. */
+  .people-table-wrap{ overflow-x:auto; margin-top:16px; border:1px solid var(--border); border-radius:var(--radius); }
+  .people-table{ width:100%; border-collapse:collapse; }
+  .people-table th, .people-table td{ border:1px solid var(--border); padding:0; }
+  .people-table thead th{ background:var(--bg-inset); text-align:left; padding:8px 10px; font-family:var(--mono); font-size:10px; color:var(--text-faint); white-space:nowrap; }
+  .people-table td{ background:var(--bg-raised); vertical-align:middle; }
+  .people-table td:hover{ background:var(--bg-inset); }
+  .people-table .people-cell-input{ width:100%; min-width:110px; background:transparent; border:none; color:var(--text); font-family:var(--mono); font-size:11.5px; padding:9px 10px; }
+  .people-table select.people-cell-input{ min-width:96px; }
+  .people-table input[type="number"].people-cell-input{ min-width:64px; }
+  .people-table .people-cell-input:focus{ background:var(--bg-inset); outline:1.5px solid var(--accent-dim); outline-offset:-1.5px; }
+  .people-table .people-cell-check{ display:flex; align-items:center; justify-content:center; padding:9px 10px; }
+  .people-table .people-cell-del{ text-align:center; padding:0 6px; }
+
   /* ===== DRAG-TO-REORDER (list views) ===== */
   [draggable="true"]{ cursor:grab; }
   [draggable="true"].dragging{ opacity:0.4; cursor:grabbing; }
@@ -1538,6 +1554,7 @@
       <div class="sub-view-toggle" id="peopleSubToggle">
         <button class="sub-view-tab active" data-sub="cards" type="button">cards</button>
         <button class="sub-view-tab" data-sub="graph" type="button">graph</button>
+        <button class="sub-view-tab" data-sub="table" type="button">table</button>
       </div>
       <div class="filter-row" id="peopleFilterRow">
         <button class="filter-chip active" data-filter="all" type="button">all</button>
@@ -1585,6 +1602,26 @@
             </svg>
             <div class="wb-overlay" id="pplOverlay"></div>
           </div>
+        </div>
+      </div>
+      <!-- People table: same editable-cell pattern as the Tracker table (see .tracker-cell-input /
+           handleTrackerCellChange) -- one row per person, every attribute editable inline, saved
+           on change via savePersonField(), which reuses the existing personPayload()/safeUpdate() path. -->
+      <div id="peopleTablePanel" style="display:none;">
+        <div class="people-table-wrap">
+          <table class="people-table" id="peopleTable">
+            <thead>
+              <tr>
+                <th>name</th><th>relationship</th><th>verified</th><th>contact</th><th>location</th>
+                <th>year met</th><th>contact score</th><th>like score</th><th>status</th><th>personality</th>
+                <th>social group</th><th>people group</th><th>related people</th><th>notes</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="peopleTableBody"></tbody>
+          </table>
+        </div>
+        <div class="empty-state" id="peopleTableEmptyState" style="display:none;">
+          <div class="glyph">☺</div><h3>no people yet</h3><p>Add the people who matter to your goals and habits.</p>
         </div>
       </div>
     </section>
@@ -5447,11 +5484,13 @@
   function renderPeople(){
     var f = filters.people;
     var list = state.people.filter(function(p){ return f === "all" || p.relationship === f; });
-    var isGraph = views.people === "graph";
-    document.getElementById("peopleCardsPanel").style.display = isGraph ? "none" : "";
-    document.getElementById("peopleGraphPanel").style.display = isGraph ? "" : "none";
-    document.getElementById("peopleFilterRow").style.display = isGraph ? "none" : "";
-    if(isGraph){ activatePeopleGraph(); return; }
+    var view = views.people;
+    document.getElementById("peopleCardsPanel").style.display = view === "cards" ? "" : "none";
+    document.getElementById("peopleGraphPanel").style.display = view === "graph" ? "" : "none";
+    document.getElementById("peopleTablePanel").style.display = view === "table" ? "" : "none";
+    document.getElementById("peopleFilterRow").style.display = view === "graph" ? "none" : "";
+    if(view === "graph"){ activatePeopleGraph(); return; }
+    if(view === "table"){ renderPeopleTable(list); return; }
     renderPeopleCards(list);
   }
   function renderPeopleCards(list){
@@ -5485,6 +5524,67 @@
     var edit = e.target.closest('[data-action="edit-person"]');
     if(edit){ editPerson(edit.dataset.id); return; }
     var del = e.target.closest('[data-action="del-person"]');
+    if(!del) return;
+    await deletePerson(del.dataset.id);
+  });
+  var PEOPLE_RELATIONSHIP_OPTS = ["Family","Friend","Colleague","Mentor","Partner","Other"];
+  function renderPeopleTable(list){
+    function textCell(field, val){
+      return '<td><input type="text" class="people-cell-input" data-action="person-text-input" data-id="{id}" data-field="' + field + '" value="' + escapeHtml(val || "") + '"></td>';
+    }
+    function numCell(field, val){
+      return '<td><input type="number" step="1" class="people-cell-input" data-action="person-num-input" data-id="{id}" data-field="' + field + '" value="' + (val != null ? val : "") + '"></td>';
+    }
+    document.getElementById("peopleTableBody").innerHTML = list.map(function(p){
+      var relOptions = PEOPLE_RELATIONSHIP_OPTS.map(function(r){
+        return '<option value="' + r + '"' + (p.relationship === r ? ' selected' : '') + '>' + r + '</option>';
+      }).join("");
+      var row =
+        textCell("name", p.name) +
+        '<td><select class="people-cell-input" data-action="person-select-input" data-id="{id}" data-field="relationship">' + relOptions + '</select></td>' +
+        '<td class="people-cell-check"><input type="checkbox" data-action="person-check-input" data-id="{id}" data-field="verified"' + (p.verified ? ' checked' : '') + '></td>' +
+        textCell("contact", p.contact) +
+        textCell("location", p.location) +
+        numCell("yearMet", p.yearMet) +
+        numCell("contactScore", p.contactScore) +
+        numCell("likeScore", p.likeScore) +
+        textCell("relationshipStatus", p.relationshipStatus) +
+        textCell("personalityType", p.personalityType) +
+        textCell("socialGroup", p.socialGroup) +
+        textCell("planets", p.planets) +
+        textCell("relatedPeople", p.relatedPeople) +
+        textCell("notes", p.notes) +
+        '<td class="people-cell-del"><button class="icon-btn" data-action="del-person-row" data-id="{id}" aria-label="Delete person">&times;</button></td>';
+      return '<tr data-id="' + p.id + '">' + row.split("{id}").join(p.id) + '</tr>';
+    }).join("");
+    document.getElementById("peopleTableEmptyState").style.display = list.length ? "none" : "";
+  }
+  async function savePersonField(id, field, value){
+    var p = state.people.find(function(x){ return x.id === id; });
+    if(!p) return;
+    var prevValue = p[field];
+    p[field] = value;
+    var res = await safeUpdate("people", id, personPayload(p));
+    if(res.error){
+      console.error(res.error);
+      p[field] = prevValue;
+      toast("Could not save: " + res.error.message);
+      renderPeopleTable(state.people.filter(function(x){ return filters.people === "all" || x.relationship === filters.people; }));
+      return;
+    }
+    warnDroppedFields(res.droppedFields);
+  }
+  document.getElementById("peopleTableBody").addEventListener("change", function(e){
+    var t = e.target;
+    if(!t.dataset || !t.dataset.action) return;
+    var id = t.dataset.id, field = t.dataset.field;
+    if(t.dataset.action === "person-text-input"){ savePersonField(id, field, t.value.trim()); }
+    else if(t.dataset.action === "person-num-input"){ savePersonField(id, field, t.value === "" ? null : Number(t.value)); }
+    else if(t.dataset.action === "person-select-input"){ savePersonField(id, field, t.value); }
+    else if(t.dataset.action === "person-check-input"){ savePersonField(id, field, t.checked); }
+  });
+  document.getElementById("peopleTableBody").addEventListener("click", async function(e){
+    var del = e.target.closest('[data-action="del-person-row"]');
     if(!del) return;
     await deletePerson(del.dataset.id);
   });
