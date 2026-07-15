@@ -6850,8 +6850,9 @@
   // separate pause/stop/discard controls (MediaRecorder natively supports pause()/resume(), so
   // pausing doesn't lose anything already captured). Stopping uploads the raw audio to Storage FIRST
   // (so it's saved even if transcription then fails), inserts a `recordings` row (clip length + a
-  // downsampled waveform for the SoundCloud-style bar on the card), and only then transcribes via
-  // Gemini into the composer textarea. The created recording is held here (pendingRecording) until
+  // downsampled waveform for the SoundCloud-style bar on the card), and only then transcribes
+  // locally (Whisper, in-browser) into the composer textarea. The created recording is held here
+  // (pendingRecording) until
   // the entry is actually saved (see saveJournalBtn below) — same "pending" pattern the Location
   // page's POI-create flow uses for a click-then-confirm value.
   function formatClipTime(sec){
@@ -6984,14 +6985,9 @@
       if(statusEl) statusEl.textContent = "saving recording…";
       recordBtn.disabled = true;
       recordBtn.classList.add("transcribing");
-      var audioBuffer, wavBase64;
+      var audioBuffer;
       try{
-        var arrayBuffer = await blob.arrayBuffer();
-        var AudioCtxCtor2 = window.AudioContext || window.webkitAudioContext;
-        var decodeCtx = new AudioCtxCtor2();
-        try{ audioBuffer = await decodeCtx.decodeAudioData(arrayBuffer); }
-        finally{ decodeCtx.close(); }
-        wavBase64 = await blobToBase64(audioBufferToWavBlob(audioBuffer));
+        audioBuffer = await decodeBlobToAudioBuffer(blob);
       } catch(err){
         if(statusEl) statusEl.textContent = "";
         recordBtn.disabled = false;
@@ -7021,7 +7017,7 @@
         return;
       }
       try{
-        var text = await transcribeAudioViaGemini(wavBase64);
+        var text = await transcribeAudioBufferLocally(audioBuffer);
         var input = document.getElementById("journalTextInput");
         if(text){
           input.value = (input.value.trim() ? input.value.trim() + " " : "") + text;
@@ -7037,7 +7033,7 @@
           toast("Recording saved, but couldn't make out any speech to transcribe — you can still type it in.");
         }
       } catch(err){
-        toast(err.message === "no_api_key" ? "Recording saved, but no Gemini API key is set for transcription — add one from the agent tab." : ("Recording saved, but transcription failed: " + err.message));
+        toast("Recording saved, but transcription failed: " + err.message);
       } finally {
         if(statusEl) statusEl.textContent = "";
         recordBtn.disabled = false;
@@ -7125,13 +7121,12 @@
     if(delBtn) await deleteRecording(delBtn.dataset.id);
   });
   // Manual (re-)transcription, on demand — covers recordings that predate the auto-transcribe-on-
-  // stop flow, ones where that first attempt failed (no API key set yet, a network blip) or found
+  // stop flow, ones where that first attempt failed (network blip, model still downloading) or found
   // no speech, or just a recording the user wants transcribed again. Re-downloads the audio from its
   // signed URL (the original in-memory Blob is long gone by the time this button exists) and runs it
-  // through the exact same WAV re-encode + Gemini path recording finish already uses. Deliberately
-  // only ever updates the recording's own transcript column, never a linked note's text — the note
-  // may have been hand-edited since, and silently overwriting that would be more surprising than
-  // helpful.
+  // through the same local Whisper path recording finish already uses. Deliberately only ever updates
+  // the recording's own transcript column, never a linked note's text — the note may have been
+  // hand-edited since, and silently overwriting that would be more surprising than helpful.
   async function transcribeRecordingById(id, btnEl){
     var rec = state.recordings.find(function(r){ return r.id === id; });
     if(!rec) return;
@@ -7142,8 +7137,7 @@
       var audioResp = await fetch(signed.data.signedUrl);
       if(!audioResp.ok) throw new Error("couldn't download the recording");
       var blob = await audioResp.blob();
-      var wavBase64 = await blobToWavBase64(blob);
-      var text = await transcribeAudioViaGemini(wavBase64);
+      var text = await transcribeAudioLocally(blob);
       if(!text){ toast("Couldn't make out any speech in that recording."); return; }
       var updateRes = await safeWrite(function(p){ return sb.from("recordings").update(p).eq("id", id).select().single(); }, { transcript: text });
       if(updateRes.error) throw new Error(updateRes.error.message);
@@ -7151,7 +7145,7 @@
       if(updateRes.droppedFields && updateRes.droppedFields.length) warnDroppedFields(updateRes.droppedFields);
       else toast("Transcript saved.");
     } catch(err){
-      toast(err.message === "no_api_key" ? 'No Gemini API key set yet — click "api key" in the agent tab to add one.' : ("Transcription failed: " + err.message));
+      toast("Transcription failed: " + err.message);
     } finally {
       renderJournal();
     }
@@ -9656,85 +9650,62 @@
   });
 
   // ---------------- Agent voice input — a real recorder (MediaRecorder), not live dictation.
-  // Records to whatever the browser natively produces (Chrome/Edge: audio/webm; Firefox: audio/ogg),
-  // then re-encodes to WAV via the Web Audio API before sending it anywhere — Gemini's audio
-  // understanding only documents wav/mp3/aiff/aac/ogg/flac as supported input, and webm isn't one of
-  // them, so recording format and upload format are deliberately kept separate. Transcription reuses
-  // the same Gemini API key already stored for chat (no new key needed). ----------------
-  function blobToBase64(blob){
-    return new Promise(function(resolve, reject){
-      var reader = new FileReader();
-      reader.onloadend = function(){ resolve(reader.result.split(",")[1]); };
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-  }
-  function audioBufferToWavBlob(audioBuffer){
-    var numChannels = audioBuffer.numberOfChannels;
-    var sampleRate = audioBuffer.sampleRate;
-    var numFrames = audioBuffer.length;
-    var blockAlign = numChannels * 2; // 16-bit PCM
-    var dataSize = numFrames * blockAlign;
-    var buffer = new ArrayBuffer(44 + dataSize);
-    var view = new DataView(buffer);
-    function writeString(offset, str){ for(var i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i)); }
-    writeString(0, "RIFF"); view.setUint32(4, 36 + dataSize, true); writeString(8, "WAVE");
-    writeString(12, "fmt "); view.setUint32(16, 16, true); view.setUint16(20, 1, true);
-    view.setUint16(22, numChannels, true); view.setUint32(24, sampleRate, true);
-    view.setUint32(28, sampleRate * blockAlign, true); view.setUint16(32, blockAlign, true); view.setUint16(34, 16, true);
-    writeString(36, "data"); view.setUint32(40, dataSize, true);
-    var channels = [];
-    for(var c = 0; c < numChannels; c++) channels.push(audioBuffer.getChannelData(c));
-    var offset = 44;
-    for(var i = 0; i < numFrames; i++){
-      for(var c2 = 0; c2 < numChannels; c2++){
-        var sample = Math.max(-1, Math.min(1, channels[c2][i]));
-        view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
-        offset += 2;
-      }
+  // Records to whatever the browser natively produces (Chrome/Edge: audio/webm; Firefox: audio/ogg).
+  // Transcription runs entirely in-browser via a local Whisper model (transformers.js/ONNX) — no API
+  // key, no per-use cost, audio never leaves the device. The model (~75MB, quantized whisper-base) is
+  // downloaded once on first use and cached by the browser's Cache API for every transcription after
+  // that, including across page reloads. ----------------
+  var whisperPipelinePromise = null;
+  function getWhisperPipeline(){
+    if(!whisperPipelinePromise){
+      var announcedDownload = false;
+      whisperPipelinePromise = (async function(){
+        var mod = await import("https://cdn.jsdelivr.net/npm/@huggingface/transformers@3/+esm");
+        return mod.pipeline("automatic-speech-recognition", "Xenova/whisper-base", {
+          dtype: "q8",
+          progress_callback: function(p){
+            if(!announcedDownload && p && p.status === "progress"){
+              announcedDownload = true;
+              toast("Downloading the speech-to-text model — one-time, about 75MB…");
+            }
+          }
+        });
+      })();
     }
-    return new Blob([buffer], { type: "audio/wav" });
+    return whisperPipelinePromise;
   }
-  async function blobToWavBase64(blob){
+  async function decodeBlobToAudioBuffer(blob){
     var arrayBuffer = await blob.arrayBuffer();
     var AudioCtxCtor = window.AudioContext || window.webkitAudioContext;
-    var audioCtx = new AudioCtxCtor();
-    var audioBuffer;
-    try{ audioBuffer = await audioCtx.decodeAudioData(arrayBuffer); }
-    finally{ audioCtx.close(); }
-    return blobToBase64(audioBufferToWavBlob(audioBuffer));
+    var ctx = new AudioCtxCtor();
+    try{ return await ctx.decodeAudioData(arrayBuffer); }
+    finally{ ctx.close(); }
   }
-  // A separate, minimal Gemini call from callGemini() above — no tools, no planner-state system
-  // prompt, just "here's audio, give me the transcript" — so it can't accidentally trigger a
-  // create/edit tool call off of what someone said out loud.
-  async function transcribeAudioViaGemini(wavBase64){
-    var apiKey = safeGet(window.localStorage, "geminiApiKey");
-    if(!apiKey) throw new Error("no_api_key");
-    var model = "gemini-3.5-flash";
-    var url = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + encodeURIComponent(apiKey);
-    var body = JSON.stringify({
-      contents: [{ role:"user", parts: [
-        { text: "Transcribe this audio recording exactly as spoken. Reply with only the transcript text — no commentary, no quotation marks." },
-        { inlineData: { mimeType: "audio/wav", data: wavBase64 } }
-      ] }]
-    });
-    // Gemini returns 503 "UNAVAILABLE" fairly often under load and it's almost always
-    // transient — retry a couple of times with backoff before surfacing an error to the user.
-    var maxAttempts = 3, resp, errBody;
-    for(var attempt = 1; attempt <= maxAttempts; attempt++){
-      resp = await fetch(url, { method:"POST", headers:{ "Content-Type":"application/json" }, body: body });
-      if(resp.ok) break;
-      if((resp.status === 503 || resp.status === 429) && attempt < maxAttempts){
-        await new Promise(function(resolve){ setTimeout(resolve, attempt * 1500); });
-        continue;
-      }
-      errBody = await resp.text();
-      throw new Error("Gemini API error " + resp.status + ": " + errBody.slice(0,300));
-    }
-    var data = await resp.json();
-    var candidate = (data.candidates && data.candidates[0]) || {};
-    var parts = (candidate.content && candidate.content.parts) || [];
-    return parts.filter(function(p){ return typeof p.text === "string"; }).map(function(p){ return p.text; }).join("\n").trim();
+  // Whisper expects mono audio at exactly 16kHz — recordings come in at whatever rate the mic/browser
+  // used (commonly 44.1/48kHz stereo), so this resamples via an OfflineAudioContext rather than just
+  // decimating samples, which would alias/distort the audio.
+  async function resampleTo16kMono(audioBuffer){
+    if(audioBuffer.sampleRate === 16000 && audioBuffer.numberOfChannels === 1) return audioBuffer.getChannelData(0).slice();
+    var targetLength = Math.max(1, Math.round(audioBuffer.duration * 16000));
+    var OfflineCtxCtor = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    var offlineCtx = new OfflineCtxCtor(1, targetLength, 16000);
+    var source = offlineCtx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(offlineCtx.destination);
+    source.start(0);
+    var rendered = await offlineCtx.startRendering();
+    return rendered.getChannelData(0);
+  }
+  async function transcribeAudioBufferLocally(audioBuffer){
+    var transcriber = await getWhisperPipeline();
+    var audioData = await resampleTo16kMono(audioBuffer);
+    // chunk_length_s/stride_length_s let long recordings run past Whisper's native 30s window.
+    var result = await transcriber(audioData, { chunk_length_s: 30, stride_length_s: 5 });
+    var text = Array.isArray(result) ? (result[0] && result[0].text) : result.text;
+    return (text || "").trim();
+  }
+  async function transcribeAudioLocally(blob){
+    return transcribeAudioBufferLocally(await decodeBlobToAudioBuffer(blob));
   }
 
   // Generic recorder wiring — shared by the Agent's mic button and the Notes composer's record
@@ -9742,8 +9713,7 @@
   // while onStop's async work is in flight, and hides the button entirely when the underlying APIs
   // aren't available, rather than offering a control that would silently fail. `onStop(blob,
   // mimeType)` gets the raw recorded Blob (native browser format — webm on Chrome/Edge, ogg on
-  // Firefox — NOT re-encoded; callers that need WAV for Gemini call blobToWavBase64 themselves) and
-  // is awaited with the button held in a disabled "transcribing" state until it resolves.
+  // Firefox) and is awaited with the button held in a disabled "transcribing" state until it resolves.
   function agentRecorderSupported(){ return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder); }
   function wireVoiceRecordButton(btnEl, onStop){
     if(!btnEl) return;
@@ -9790,8 +9760,7 @@
 
   wireVoiceRecordButton(document.getElementById("agentMicBtn"), async function(blob){
     try{
-      var wavBase64 = await blobToWavBase64(blob);
-      var text = await transcribeAudioViaGemini(wavBase64);
+      var text = await transcribeAudioLocally(blob);
       if(text){
         var input = document.getElementById("agentInput");
         input.value = (input.value.trim() ? input.value.trim() + " " : "") + text;
@@ -9799,7 +9768,7 @@
         toast("Couldn't make out any speech in that recording.");
       }
     } catch(err){
-      toast(err.message === "no_api_key" ? 'No Gemini API key set yet — click "api key" above to add one.' : ("Transcription failed: " + err.message));
+      toast("Transcription failed: " + err.message);
     }
   });
 
