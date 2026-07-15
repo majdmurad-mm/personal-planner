@@ -5168,11 +5168,25 @@
     var first = p.socialGroup.split(",")[0].trim();
     return first || PPL_ORPHAN_GROUP;
   }
+  // Every group a person belongs to (not just the first/primary one pplNodeGroup returns) — used
+  // wherever a person can legitimately be part of more than one cluster at once: auto-linking to
+  // group-mates (pplRebuildGraphCache) and hull membership (pplRenderClusters). A person in both
+  // "Discord" and "Syria" ends up inside both hulls, so their spot on the canvas is visibly covered
+  // by both groups' translucent colors (.wb-cluster-hull's fill-opacity:0.16 lets them blend rather
+  // than one hiding the other). The single-group PPL_GROUP_PUSH/PULL_K physics forces still use only
+  // the primary group (pplNodeGroup) — spreading spatial clustering across every membership at once
+  // would need a much bigger rework of that per-pair physics loop, and isn't what was asked for here.
+  function pplNodeGroupList(p){
+    if(!p.socialGroup) return [PPL_ORPHAN_GROUP];
+    var list = p.socialGroup.split(",").map(function(g){ return g.trim(); }).filter(Boolean);
+    return list.length ? list : [PPL_ORPHAN_GROUP];
+  }
   // Cached the same way wbRebuildGraphCache() caches the main Graph's edges — pure function of state,
   // recomputing it every physics tick (up to 60/sec while the sim is hot) would be wasted work.
   // Rebuilt only when the graph tab is (re)activated, same checkpoint node membership itself uses.
   var pplCachedEdges = [];
   var pplCachedNodeGroups = {};
+  var pplCachedNodeGroupLists = {};
   var pplCachedGroupColors = {};
   // Per-person multiplier on the center-pull force (see pplTickPhysics), derived from contact score
   // (typically 0-4, same as the person modal's "contact score" field, but unclamped) rather than one
@@ -5184,9 +5198,16 @@
   var pplCachedContactPull = {};
   function pplRebuildGraphCache(){
     pplCachedNodeGroups = {};
-    state.people.forEach(function(p){ pplCachedNodeGroups[p.id] = pplNodeGroup(p); });
+    pplCachedNodeGroupLists = {};
+    state.people.forEach(function(p){
+      pplCachedNodeGroups[p.id] = pplNodeGroup(p);
+      pplCachedNodeGroupLists[p.id] = pplNodeGroupList(p);
+    });
+    // Colors need to cover every group a person can appear under, including secondary/extra
+    // memberships (pplCachedNodeGroupLists) — not just each person's primary group — since a
+    // multi-group person's hulls all need a real color to blend together (see pplRenderClusters).
     var groups = {};
-    state.people.forEach(function(p){ var g = pplCachedNodeGroups[p.id]; if(g) groups[g] = true; });
+    state.people.forEach(function(p){ pplCachedNodeGroupLists[p.id].forEach(function(g){ groups[g] = true; }); });
     var sortedGroups = Object.keys(groups).sort();
     pplCachedGroupColors = {};
     sortedGroups.forEach(function(g, i){ pplCachedGroupColors[g] = PPL_GROUP_PALETTE[i % PPL_GROUP_PALETTE.length]; });
@@ -5194,21 +5215,22 @@
     state.people.forEach(function(p){
       pplCachedContactPull[p.id] = p.contactScore != null ? p.contactScore / 2 : 1;
     });
-    // People who share a primary social group are linked by default — not an opt-in action — at
-    // the unknown/default weight, on top of the real relatedPeople-derived edges. A real edge always
-    // wins for a given pair (its explicit/custom weight is kept); same-group pairing only fills in
-    // where no real connection exists yet. Clicking one of these auto-linked lines still works via
-    // the normal edit flow (handlePplEdgeClick) and will persist it into relatedPeople as soon as a
-    // weight is set, "promoting" it from implicit to a real, editable connection.
+    // People are linked by default to every group they belong to (not just their primary one) — not
+    // an opt-in action — at the unknown/default weight, on top of the real relatedPeople-derived
+    // edges. A real edge always wins for a given pair (its explicit/custom weight is kept); same-
+    // group pairing only fills in where no real connection exists yet. Clicking one of these
+    // auto-linked lines still works via the normal edit flow (handlePplEdgeClick) and will persist it
+    // into relatedPeople as soon as a weight is set, "promoting" it from implicit to a real,
+    // editable connection.
     var edges = pplRelatedEdges();
     var seen = {};
     edges.forEach(function(e){ seen[[e.fromId, e.toId].sort().join(":")] = true; });
     var byGroup = {};
     state.people.forEach(function(p){
-      var g = pplCachedNodeGroups[p.id];
-      if(!g) return;
-      if(!byGroup[g]) byGroup[g] = [];
-      byGroup[g].push(p.id);
+      pplCachedNodeGroupLists[p.id].forEach(function(g){
+        if(!byGroup[g]) byGroup[g] = [];
+        byGroup[g].push(p.id);
+      });
     });
     Object.keys(byGroup).forEach(function(g){
       var ids = byGroup[g];
@@ -5336,12 +5358,17 @@
   function pplRenderClusters(){
     var layer = document.getElementById("pplClusterLayer");
     if(!layer) return;
+    // A node with multiple social groups contributes its point to EVERY one of its groups' hulls
+    // (pplCachedNodeGroupLists), not just its primary one — so its spot on the canvas ends up
+    // physically inside more than one hull shape, and since hulls are translucent (fill-opacity:0.16
+    // on .wb-cluster-hull) the overlap reads as that spot being covered by both groups' hue at once.
     var byGroup = {};
     pplSimNodes.forEach(function(n){
-      var g = pplCachedNodeGroups[n.id];
-      if(!g) return;
-      if(!byGroup[g]) byGroup[g] = [];
-      byGroup[g].push({ x: n.x + PPL_NODE_R, y: n.y + PPL_NODE_R });
+      var groupsForNode = pplCachedNodeGroupLists[n.id] || [];
+      groupsForNode.forEach(function(g){
+        if(!byGroup[g]) byGroup[g] = [];
+        byGroup[g].push({ x: n.x + PPL_NODE_R, y: n.y + PPL_NODE_R });
+      });
     });
     layer.innerHTML = Object.keys(byGroup).map(function(g){
       var pts = byGroup[g];
