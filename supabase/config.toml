@@ -1,0 +1,9 @@
+# Supabase project config — only the pieces the planner MCP connector needs.
+# `supabase link --project-ref <your-ref>` overwrites project_id on first link.
+project_id = "personal-planner"
+
+# The planner-mcp Edge Function does its OWN auth (a bearer token checked against
+# the MCP_TOKEN secret), so Supabase's platform-level JWT gate is turned off for
+# it — otherwise Cowork's requests would be rejected before our handler ever runs.
+[functions.planner-mcp]
+verify_jwt = false
