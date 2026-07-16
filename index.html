@@ -1322,19 +1322,12 @@
   .home-tile[data-go="timeline"]{ --tile-accent:var(--cat-finance); --tile-accent-bg:var(--cat-finance-bg); }
   .home-tile[data-go="people"]{ --tile-accent:var(--cat-relationships); --tile-accent-bg:var(--cat-relationships-bg); }
   .home-tile[data-go="location"]{ --tile-accent:var(--cat-sol); --tile-accent-bg:var(--cat-sol-bg); }
-  .home-tile-group{ --tile-accent:var(--violet); --tile-accent-bg:var(--violet-glow); }
+  .home-tile[data-go="agent"]{ --tile-accent:var(--violet); --tile-accent-bg:var(--violet-glow); }
+  .home-tile[data-go="journal"]{ --tile-accent:var(--cat-health); --tile-accent-bg:var(--cat-health-bg); }
   .home-tile:hover, .home-tile:focus-visible{ transform:translateY(-3px); border-color:var(--tile-accent); box-shadow:var(--elev-2); outline:none; }
   .home-tile-glyph{ font-size:22px; line-height:1; color:var(--tile-accent); background:var(--tile-accent-bg); width:44px; height:44px; display:grid; place-items:center; border-radius:var(--radius); }
   .home-tile-name{ font-size:15px; font-weight:700; letter-spacing:1px; }
   .home-tile-cap{ font-size:11.5px; line-height:1.45; color:var(--text-dim); }
-  /* The grouped Agent+Notes tile isn't itself clickable — its two facets are. */
-  .home-tile-group{ cursor:default; }
-  .home-tile-group:hover{ transform:none; box-shadow:none; }
-  .home-tile-facets{ display:flex; gap:8px; width:100%; }
-  .home-tile-facet{ flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; padding:10px 6px; border:1px solid var(--border); border-radius:9px; background:transparent; color:var(--text); cursor:pointer; font-family:var(--mono); transition:transform var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out); }
-  .home-tile-facet:hover, .home-tile-facet:focus-visible{ transform:translateY(-2px); border-color:var(--violet); background:var(--violet-glow); outline:none; }
-  .home-tile-facet .home-tile-glyph{ width:auto; height:auto; background:none; font-size:20px; color:var(--violet); }
-  .home-tile-facet-name{ font-size:12px; font-weight:600; letter-spacing:0.5px; }
   @media (max-width:700px){
     .home-clock-time{ font-size:38px; }
     .home-grid{ grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); }
@@ -1408,9 +1401,10 @@
     <!-- ===== HOME SECTION ===== -->
     <!-- The app's landing page: a dashboard core (live clock + current weather) surrounded by a
          tile per destination. Graph and Calendar are deliberately absent — they live inside the
-         Planner as views now — and Agent + Notes share one grouped "capture" tile. The tile grid is
-         real, keyboard-focusable buttons; the (later) Three.js layer renders BEHIND this grid and
-         mirrors it visually, so with WebGL unavailable or reduced motion the grid alone is the page. -->
+         Planner as views now. Agent and Notes are separate tiles (each its own destination), same
+         as everything else. The tile grid is real, keyboard-focusable buttons; the Three.js layer
+         renders BEHIND this grid and mirrors it visually, so with WebGL unavailable or reduced
+         motion the grid alone is the page. -->
     <section id="homeSection">
       <div class="home-hero">
         <canvas id="homeCanvas" aria-hidden="true"></canvas>
@@ -1429,18 +1423,14 @@
           <span class="home-tile-glyph">▤</span><span class="home-tile-name">planner</span>
           <span class="home-tile-cap">Areas, goals, projects, habits, actions — plus graph &amp; calendar views.</span>
         </button>
-        <div class="home-tile home-tile-group">
-          <span class="home-tile-name">capture</span>
-          <div class="home-tile-facets">
-            <button class="home-tile-facet" data-go="agent" type="button">
-              <span class="home-tile-glyph">◈</span><span class="home-tile-facet-name">agent</span>
-            </button>
-            <button class="home-tile-facet" data-go="journal" type="button">
-              <span class="home-tile-glyph">✎</span><span class="home-tile-facet-name">notes</span>
-            </button>
-          </div>
-          <span class="home-tile-cap">Talk or write — both feed the same system.</span>
-        </div>
+        <button class="home-tile" data-go="agent" type="button">
+          <span class="home-tile-glyph">◈</span><span class="home-tile-name">agent</span>
+          <span class="home-tile-cap">Tell it what happened — it captures the rest for you.</span>
+        </button>
+        <button class="home-tile" data-go="journal" type="button">
+          <span class="home-tile-glyph">✎</span><span class="home-tile-name">notes</span>
+          <span class="home-tile-cap">Write or record — voice notes transcribe automatically.</span>
+        </button>
         <button class="home-tile" data-go="tracker" type="button">
           <span class="home-tile-glyph">▥</span><span class="home-tile-name">tracker</span>
           <span class="home-tile-cap">Daily variables, spreadsheet-style.</span>
@@ -3234,7 +3224,7 @@
   });
 
   /* ---------------- Home (landing) dashboard ---------------- */
-  // Tiles route to sections; the grouped "capture" tile's two facets route independently.
+  // Every tile is an independent link — click routes straight to its section.
   document.getElementById("homeGrid").addEventListener("click", function(e){
     var tile = e.target.closest("[data-go]");
     if(tile) showSection(tile.dataset.go);
@@ -3292,13 +3282,13 @@
     if(!threeModulePromise) threeModulePromise = import("https://cdn.jsdelivr.net/npm/three@0.170.0/+esm");
     return threeModulePromise;
   }
-  // One panel per DOM tile below (data-go matches); capture is the grouped Agent+Notes panel and
-  // shows both glyphs. Colors come from the app's CSS custom properties at init time so the scene
-  // always matches the current theme + area palette.
+  // One panel per DOM tile below (data-go matches). Colors come from the app's CSS custom
+  // properties at init time so the scene always matches the current theme + area palette.
   var HOME_PANEL_DEFS = [
     { go:"today", glyphs:"◷", label:"today", colorVar:"--accent" },
     { go:"planner", glyphs:"▤", label:"planner", colorVar:"--cat-career" },
-    { go:"agent", glyphs:"◈ ✎", label:"capture", colorVar:"--violet" },
+    { go:"agent", glyphs:"◈", label:"agent", colorVar:"--violet" },
+    { go:"journal", glyphs:"✎", label:"notes", colorVar:"--cat-health" },
     { go:"tracker", glyphs:"▥", label:"tracker", colorVar:"--cat-growth" },
     { go:"timeline", glyphs:"↔", label:"timeline", colorVar:"--cat-finance" },
     { go:"people", glyphs:"☺", label:"people", colorVar:"--cat-relationships" },
@@ -3433,7 +3423,7 @@
     // Hovering a DOM tile below pulses its 3D counterpart — ties the two layers together.
     function onTileOver(e){
       var tile = e.target.closest("[data-go]");
-      panels.forEach(function(p){ p.domHot = !!(tile && (tile.dataset.go === p.def.go || (p.def.go === "agent" && tile.dataset.go === "journal"))); });
+      panels.forEach(function(p){ p.domHot = !!(tile && tile.dataset.go === p.def.go); });
     }
     var homeGrid = document.getElementById("homeGrid");
     homeGrid.addEventListener("mouseover", onTileOver);
