@@ -1503,6 +1503,10 @@
   .home-notes-resize::before{ content:""; position:absolute; right:4px; bottom:4px; width:7px; height:7px; border-right:2px solid var(--border-bright); border-bottom:2px solid var(--border-bright); opacity:0.7; }
   .home-notes-resize:hover::before{ opacity:1; border-color:var(--accent-dim); }
   .home-notes-widget:not(.expanded) .home-notes-resize{ display:none; }
+  /* Mobile-only toggle for the timeline drawer (see @media max-width:820px) — hidden entirely on
+     desktop, where the timeline is always docked. z-index above the drawer itself so it stays
+     clickable (to close again) even once the drawer is open and covering that corner. */
+  .home-mobile-tl-toggle{ display:none; }
   /* Today's timeline dock — full width along the bottom: an hour ruler, three interactive lanes
      (habits/actions/notes) against the shared hour-grid background, a now marker, and a day/night
      band pinned at the very bottom. Height is the resizable split (--home-dock-h). */
@@ -1542,15 +1546,24 @@
      graph at a fixed height. Margin values mirror the mobile .main padding, same as the other
      fullscreen sections' media overrides below. */
   @media (max-width:820px){
-    #homeSection.home-cockpit{ height:auto; min-height:100dvh; overflow:visible; }
-    .home-graph-wrap{ flex:none; height:52vh; }
+    /* Mobile-only cockpit treatment: the 3D graph becomes a full-screen, view-only BACKGROUND (no
+       pan/orbit/zoom/click — see #homeCanvas below) with the floating widgets on top of it, and the
+       timeline — previously a fixed docked strip eating ~150px of an already-short 52vh graph — is
+       now an on-demand drawer that slides up from the bottom, opened via the small toggle button in
+       the corner (see wireHomeMobileTimelineToggle) instead of always taking up screen space. Back to
+       a fixed, non-scrolling viewport (height:100dvh/overflow:hidden, same as desktop) now that
+       there's no in-flow content below the graph needing scroll room — the drawer is an overlay, not
+       part of the document flow. */
+    #homeSection.home-cockpit{ height:100vh; height:100dvh; overflow:hidden; position:relative; }
+    .home-graph-wrap{ flex:1; height:auto; }
+    #homeCanvas{ pointer-events:none; }  /* viewable but not interactable */
     .home-photos{ display:none; }
     .home-clock-time{ font-size:26px; }
     .home-areas-rail{ right:8px; padding:8px 9px; }
     /* The to-do matrix and notes bar are still fully movable/resizable on mobile, but their desktop
-       defaults (290px / 250px wide, in a wrap that's now only ~52vh tall) would eat most of the
-       graph on a phone before the user ever touches them — start smaller instead. Touch targets
-       (icon buttons, resize grips) are bumped up since a finger is far less precise than a cursor. */
+       defaults (290px / 250px wide, over a now-full-screen graph) would still eat a lot of a phone
+       screen before the user ever touches them — start smaller instead. Touch targets (icon buttons,
+       resize grips) are bumped up since a finger is far less precise than a cursor. */
     .home-todo-matrix{ width:190px; height:150px; min-width:150px; }
     .home-todo-tab{ font-size:8px; padding:3px 5px; }
     .home-notes-widget{ width:180px; }
@@ -1558,6 +1571,16 @@
     .home-notes-icon-btn{ width:30px; height:30px; font-size:14px; }
     .home-todo-resize, .home-notes-resize{ width:24px; height:24px; }
     .home-todo-resize::before, .home-notes-resize::before{ right:6px; bottom:6px; }
+    /* The desktop drag handle doesn't apply once the timeline is an overlay drawer, not a resizable
+       in-flow dock. */
+    .home-split-handle{ display:none; }
+    /* Overlay drawer, off-screen (below the viewport) until #homeSection gets .mobile-tl-open. Height
+       is fixed rather than the desktop --home-dock-h split value — there's no split handle to set it
+       on mobile. */
+    .home-timeline-dock{ position:absolute; left:0; right:0; bottom:0; height:42vh; z-index:8; box-shadow:0 -8px 24px rgba(0,0,0,0.4); transform:translateY(100%); transition:transform var(--dur-med, 0.25s) var(--ease-out, ease); }
+    #homeSection.mobile-tl-open .home-timeline-dock{ transform:translateY(0); }
+    .home-mobile-tl-toggle{ display:flex; align-items:center; justify-content:center; position:absolute; right:14px; bottom:14px; z-index:9; width:40px; height:40px; border-radius:50%; border:1px solid var(--border-bright); background:rgba(var(--bg-raised-rgb), 0.7); backdrop-filter:blur(8px); color:var(--text); font-size:17px; cursor:pointer; box-shadow:var(--elev-2); }
+    .home-mobile-tl-toggle:active{ transform:scale(0.94); }
   }
   /* Seven tabs now — let them wrap instead of overflowing on narrow screens. */
   #plannerTabs{ flex-wrap:wrap; }
@@ -1705,6 +1728,10 @@
           <div class="home-notes-detail" id="homeNotesDetail" hidden></div>
           <div class="home-notes-resize" id="homeNotesResize" title="Drag to resize"></div>
         </div>
+        <!-- Mobile only (see @media max-width:820px): on a phone the graph fills the whole screen as
+             a view-only background and the timeline becomes an on-demand drawer instead of a fixed
+             dock, since there isn't room for both at once. Hidden entirely on desktop. -->
+        <button class="home-mobile-tl-toggle" id="homeMobileTlToggle" type="button" title="Show today's timeline">⏱</button>
       </div>
       <div class="home-split-handle" id="homeSplitHandle" title="Drag to resize the graph and timeline"></div>
       <div class="home-timeline-dock" id="homeTimelineDock">
@@ -3640,6 +3667,22 @@
     }
     handle.addEventListener("pointerup", end);
     handle.addEventListener("pointercancel", end);
+  })();
+
+  // Mobile-only timeline drawer toggle (see @media max-width:820px) — the button itself is
+  // display:none outside that breakpoint, so this listener is simply unreachable on desktop rather
+  // than needing its own screen-width branch. Not persisted — always starts closed on a fresh load,
+  // same as the mobile sidebar drawer.
+  (function wireHomeMobileTimelineToggle(){
+    var btn = document.getElementById("homeMobileTlToggle");
+    var section = document.getElementById("homeSection");
+    if(!btn || !section) return;
+    btn.addEventListener("click", function(){
+      var open = section.classList.toggle("mobile-tl-open");
+      btn.textContent = open ? "✕" : "⏱";
+      btn.title = open ? "Hide today's timeline" : "Show today's timeline";
+      if(open) renderHomeTimelineDock();  // make sure it's current the instant it's revealed
+    });
   })();
 
   // Floating clock/weather widget — draggable within the graph area, position persisted. Grabs on
