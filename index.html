@@ -858,12 +858,15 @@
   .daynight-badge.night{ background:var(--daynight-night); box-shadow:0 0 6px var(--daynight-night-glow); }
   .daynight-times{ font-family:var(--mono); font-size:9.5px; color:var(--text-faint); }
   .timeline-block{ position:absolute; top:2px; bottom:2px; min-width:10px; border-radius:4px; border-left:3px solid var(--border-bright); background:var(--bg-raised); border-top:1px solid var(--border-bright); border-right:1px solid var(--border-bright); border-bottom:1px solid var(--border-bright); cursor:grab; overflow:hidden; padding:0 5px; display:flex; align-items:center; user-select:none; touch-action:none; }
-  .timeline-block:hover{ border-color:var(--accent-dim); z-index:2; }
-  .timeline-block.dragging{ cursor:grabbing; z-index:3; box-shadow:0 4px 14px rgba(0,0,0,0.4); }
-  .timeline-block.resizing{ z-index:3; box-shadow:0 4px 14px rgba(0,0,0,0.4); }
+  /* Every block also gets an inline z-index from tlZIndexForDuration (shorter on top when two
+     overlap) — these interactive states need !important to still win over that inline value, and a
+     number above 1440 (tlZIndexForDuration's max) so they're never accidentally outranked. */
+  .timeline-block:hover{ border-color:var(--accent-dim); z-index:2000 !important; }
+  .timeline-block.dragging{ cursor:grabbing; z-index:2000 !important; box-shadow:0 4px 14px rgba(0,0,0,0.4); }
+  .timeline-block.resizing{ z-index:2000 !important; box-shadow:0 4px 14px rgba(0,0,0,0.4); }
   /* Press-and-hold-to-drag: a thin bar fills over the same 1s the JS timer waits before arming the
      drag (see TL_DRAG_HOLD_MS) — a release before it fills is a click (toggles done), not a drag. */
-  .timeline-block.tl-holding{ z-index:3; }
+  .timeline-block.tl-holding{ z-index:2000 !important; }
   .timeline-block.tl-holding::after{ content:""; position:absolute; left:0; bottom:0; height:3px; width:0%; background:var(--accent); animation:tlHoldFill 1s linear forwards; }
   @keyframes tlHoldFill{ from{ width:0%; } to{ width:100%; } }
   .timeline-block[data-overnight]{ cursor:default; border-left-style:dashed; }
@@ -1369,6 +1372,7 @@
   #homeCanvas{ position:absolute; inset:0; width:100%; height:100%; display:block; cursor:grab; touch-action:none; }
   #homeCanvas.dragging{ cursor:grabbing; }
   #homeCanvas.panning{ cursor:move; }
+  #homeCanvas.node-dragging{ cursor:grabbing; }
   /* [hidden] must be repeated here: author rules always beat the UA [hidden]{display:none} rule
      regardless of specificity, so an unconditional display:flex leaves this visible even with the
      hidden attribute set — this panel showed permanently until this override was added. */
@@ -1423,18 +1427,27 @@
   .home-timeline-dock{ position:relative; flex-shrink:0; height:var(--home-dock-h, 150px); min-height:70px; background:var(--bg-raised); }
   .home-tl-hours{ position:absolute; top:4px; left:0; right:0; height:12px; }
   .home-tl-hours span{ position:absolute; transform:translateX(-50%); font-family:var(--mono); font-size:9px; color:var(--text-faint); }
-  .home-tl-lanes{ position:absolute; top:20px; bottom:16px; left:0; right:0; background:var(--tl-hour-grid); touch-action:none; }
+  .home-tl-lanes{ position:absolute; top:20px; bottom:16px; left:0; right:0; background:var(--tl-hour-grid); touch-action:none; z-index:1; }
   .home-tl-lane{ position:relative; height:33.333%; border-top:1px dashed var(--border); }
   .home-tl-lane:first-child{ border-top:none; }
   .home-tl-lane-label{ position:absolute; left:6px; top:50%; transform:translateY(-50%); font-family:var(--mono); font-size:9px; letter-spacing:0.08em; text-transform:uppercase; color:var(--text-faint); pointer-events:none; z-index:1; }
-  .home-tl-block{ position:absolute; top:3px; bottom:3px; z-index:2; border-radius:3px; border:1px solid var(--border-bright); background:var(--bg-inset); color:var(--text); font-family:var(--mono); font-size:9.5px; line-height:1.15; padding:2px 5px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; cursor:pointer; touch-action:none; }
+  /* Each block gets an inline z-index from tlZIndexForDuration (shorter on top when two overlap);
+     .home-tl-lanes itself sits above the full-bleed day/night background via its own z-index:1. */
+  .home-tl-block{ position:absolute; top:3px; bottom:3px; border-radius:3px; border:1px solid var(--border-bright); background:var(--bg-inset); color:var(--text); font-family:var(--mono); font-size:9.5px; line-height:1.15; padding:2px 5px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; cursor:pointer; touch-action:none; }
   .home-tl-block.done{ opacity:0.45; }
   /* Press-and-hold to arm a move (see wireHomeTimelineDock) — the fill sweep signals the wait, then
-     the block lifts into drag; matches the Today timeline's gesture. */
-  .home-tl-block.tl-holding{ box-shadow:0 0 0 1px var(--accent); }
-  .home-tl-block.dragging{ box-shadow:0 2px 10px rgba(0,0,0,0.4); z-index:4; opacity:0.9; }
-  /* Day/night band across the very bottom — sunrise→sunset gradient for today (tlDayNightGradientCss). */
-  .home-tl-daynight{ position:absolute; left:0; right:0; bottom:0; height:12px; border-top:1px solid var(--border); }
+     the block lifts into drag; matches the Today timeline's gesture. !important since a block's own
+     inline z-index (up to 1440) would otherwise be able to outrank this. */
+  .home-tl-block.tl-holding{ box-shadow:0 0 0 1px var(--accent); z-index:2000 !important; }
+  .home-tl-block.dragging{ box-shadow:0 2px 10px rgba(0,0,0,0.4); z-index:2000 !important; opacity:0.9; }
+  /* Full-bleed background wash, not just a bottom strip (see homeTlDayNightBg) — sits behind the
+     lanes (which sit at z-index:1) via z-index:0, so the hour-grid + blocks paint on top of it. A
+     single theme-matched hue fades in/out across the day rather than the two-tone day+night band
+     used elsewhere: dark mode washes in yellow through daylight hours (fading to transparent —
+     letting the dark page background itself read as night), light mode washes in blue through
+     nighttime hours (fading to transparent for day) — the page's own background already carries the
+     other half of the cycle, so doubling it with a same-toned overlay would be redundant. */
+  .home-tl-daynight{ position:absolute; inset:0; z-index:0; pointer-events:none; }
   .home-tl-block.Health{ background:var(--cat-health-bg); border-color:var(--cat-health); }
   .home-tl-block.Finance{ background:var(--cat-finance-bg); border-color:var(--cat-finance); }
   .home-tl-block.Career{ background:var(--cat-career-bg); border-color:var(--cat-career); }
@@ -3730,8 +3743,9 @@
   }
   function homeTlLaneHtml(label, list){
     return '<span class="home-tl-lane-label">' + label + '</span>' + list.map(function(b){
+      var z = tlZIndexForDuration(b.width * 1440);
       return '<div class="home-tl-block' + (b.area ? " " + b.area : "") + (b.done ? " done" : "") + '" data-kind="' + b.kind + '" data-id="' + b.id + '" data-date="' + b.date + '"' + (b.overnight ? ' data-overnight="1"' : '') +
-        ' style="left:' + (b.start * 100) + '%; width:' + Math.max(b.width * 100, 0.7) + '%;" title="' + escapeHtml(b.title) + '">' + escapeHtml(b.title) + '</div>';
+        ' style="left:' + (b.start * 100) + '%; width:' + Math.max(b.width * 100, 0.7) + '%; z-index:' + z + ';" title="' + escapeHtml(b.title) + '">' + escapeHtml(b.title) + '</div>';
     }).join("");
   }
   function renderHomeTimelineDock(){
@@ -3756,13 +3770,15 @@
     }
     var now = new Date();
     document.getElementById("homeTlNow").style.left = ((now.getHours() * 60 + now.getMinutes()) / 1440 * 100) + "%";
-    // Day/night band across the very bottom — today's sunrise→sunset gradient (same computation the
-    // Timeline page's band uses). Only rebuilt when the calendar day changes.
+    // Full-bleed background wash (homeTlDayNightBg) — theme-matched single-hue fade, not the
+    // two-tone band the Timeline page uses. Rebuilt when the calendar day changes OR the theme
+    // toggles (a stale cache key here would leave yesterday's colors showing after a theme flip).
     var dn = document.getElementById("homeTlDayNight");
-    var todayKey = todayStr();
-    if(dn && dn.dataset.day !== todayKey){
+    var todayKey = todayStr(), themeKey = currentTheme();
+    if(dn && (dn.dataset.day !== todayKey || dn.dataset.theme !== themeKey)){
       dn.dataset.day = todayKey;
-      dn.style.background = tlDayNightGradientCss(now.getFullYear(), now.getMonth() + 1, now.getDate());
+      dn.dataset.theme = themeKey;
+      dn.style.background = homeTlDayNightBg(now.getFullYear(), now.getMonth() + 1, now.getDate(), themeKey === "dark");
     }
   }
 
@@ -4137,6 +4153,11 @@
         b.vx -= fx; b.vy -= fy; b.vz -= fz;
       });
       nodes.forEach(function(n){
+        // A node being mouse-dragged is pinned — same as the 2D whiteboard's wireWhiteboardDrag —
+        // so repulsion/springs/center-pull don't fight the cursor; its position is set directly in
+        // onMove instead. Everything else still feels its repulsion normally (that loop runs above,
+        // before this one), it just doesn't move on its own while held.
+        if(n.fixed){ n.vx = 0; n.vy = 0; n.vz = 0; return; }
         // Same center-pull rule as the 2D planner graph (wbTickPhysics): only area hubs get pulled
         // to the middle, and strongly; a true orphan (no resolvable area at all) gets the same pull
         // at half strength since it has no area hub to spring-link to either. Everything else — a
@@ -4182,10 +4203,12 @@
     }
 
     // ---- full 3D navigation: orbit (left-drag / one finger), zoom (wheel / pinch), pan (right-drag,
-    // shift+drag, or two-finger drag — moves the look-at target across the view plane), plus hover +
-    // clickable nodes. Hand-rolled (~90 lines) rather than pulling OrbitControls from a second CDN
+    // shift+drag, or two-finger drag — moves the look-at target across the view plane), a direct
+    // node drag (left-press on a node, moves it through 3D space along the camera's view plane),
+    // plus hover + clickable nodes. Hand-rolled rather than pulling OrbitControls from a second CDN
     // module. Idle auto-rotate resumes a few seconds after the last interaction. A clean left-click
-    // routes exactly like the 2D graph's node click: area page / goal detail / project / habit. ----
+    // (no meaningful movement) routes exactly like the 2D graph's node click: area page / goal
+    // detail / project / habit — same as the 2D whiteboard's wireWhiteboardDrag pattern. ----
     var orbit = { theta: 0.6, phi: 1.15, dist: 46, autoUntil: 0 };
     var target = new THREE.Vector3(0, 0, 0);
     var dragging = false, panning = false, downPanning = false;
@@ -4194,6 +4217,12 @@
     var raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2(), hoveredIdx = null;
     var tipEl = document.getElementById("homeNodeTip");
     var _right = new THREE.Vector3(), _up = new THREE.Vector3(), _dir = new THREE.Vector3(), _wUp = new THREE.Vector3(0, 1, 0);
+    // Node drag: pins the node (tickGraph's n.fixed check leaves it alone) and moves it by
+    // intersecting the pointer ray with a plane through the node, facing the camera — so it tracks
+    // the cursor through 3D space instead of just along one screen axis. Nothing is persisted; like
+    // the 2D whiteboard, position is always whatever the simulation says.
+    var draggingNodeIdx = null;
+    var dragPlane = new THREE.Plane(), dragPoint = new THREE.Vector3(), _camDir = new THREE.Vector3();
     // Translate the look-at target within the current view plane (screen dx/dy → world), so pan
     // slides the whole graph without rotating it. Scaled by distance so it feels 1:1 at any zoom.
     function panBy(dx, dy){
@@ -4223,6 +4252,12 @@
       var hit = graph ? raycaster.intersectObjects(graph.meshes, false)[0] : null;
       return hit ? hit.object.userData.nodeIndex : null;
     }
+    function endNodeDrag(){
+      if(draggingNodeIdx == null) return;
+      if(graph && graph.nodes[draggingNodeIdx]) graph.nodes[draggingNodeIdx].fixed = false;
+      draggingNodeIdx = null;
+      canvas.classList.remove("node-dragging");
+    }
     function onDown(e){
       canvas.setPointerCapture(e.pointerId);
       activePointers[e.pointerId] = { x: e.clientX, y: e.clientY };
@@ -4232,13 +4267,26 @@
         pinchDist = Math.hypot(p0.x - p1.x, p0.y - p1.y);
         pinchMidX = (p0.x + p1.x) / 2; pinchMidY = (p0.y + p1.y) / 2;
         dragging = false;
+        endNodeDrag(); // a second finger means camera zoom/pan now, not moving a node
       } else {
-        dragging = true;
-        // Right button or Shift = pan; plain left drag = orbit.
+        // Right button or Shift = pan; a plain left-press on a node moves it, otherwise orbit.
         downPanning = panning = (e.button === 2 || e.shiftKey);
-        lastX = downX = e.clientX; lastY = downY = e.clientY;
-        canvas.classList.toggle("panning", panning);
-        canvas.classList.toggle("dragging", !panning);
+        downX = e.clientX; downY = e.clientY;
+        var hitIdx = (!panning && graph) ? pickNode(e) : null;
+        if(hitIdx != null){
+          draggingNodeIdx = hitIdx;
+          dragging = false;
+          var n = graph.nodes[hitIdx];
+          n.fixed = true; n.vx = 0; n.vy = 0; n.vz = 0;
+          camera.getWorldDirection(_camDir);
+          dragPlane.setFromNormalAndCoplanarPoint(_camDir, n);
+          canvas.classList.add("node-dragging");
+        } else {
+          dragging = true;
+          lastX = e.clientX; lastY = e.clientY;
+          canvas.classList.toggle("panning", panning);
+          canvas.classList.toggle("dragging", !panning);
+        }
       }
       orbit.autoUntil = Infinity;
     }
@@ -4253,6 +4301,18 @@
         var mx = (p0.x + p1.x) / 2, my = (p0.y + p1.y) / 2;
         panBy(mx - pinchMidX, my - pinchMidY);
         pinchMidX = mx; pinchMidY = my;
+        return;
+      }
+      if(draggingNodeIdx != null){
+        if(!graph){ endNodeDrag(); return; }
+        var rect2 = canvas.getBoundingClientRect();
+        ndc.x = ((e.clientX - rect2.left) / rect2.width) * 2 - 1;
+        ndc.y = -((e.clientY - rect2.top) / rect2.height) * 2 + 1;
+        raycaster.setFromCamera(ndc, camera);
+        if(raycaster.ray.intersectPlane(dragPlane, dragPoint)){
+          var dn = graph.nodes[draggingNodeIdx];
+          dn.x = dragPoint.x; dn.y = dragPoint.y; dn.z = dragPoint.z;
+        }
         return;
       }
       if(dragging){
@@ -4280,6 +4340,23 @@
       }
     }
     function onUp(e){
+      if(draggingNodeIdx != null){
+        var draggedIdx = draggingNodeIdx, n2 = graph && graph.nodes[draggedIdx];
+        endNodeDrag();
+        delete activePointers[e.pointerId];
+        if(!Object.keys(activePointers).length) orbit.autoUntil = performance.now() + 6000;
+        if(!n2) return;
+        var movedPx = Math.abs(e.clientX - downX) + Math.abs(e.clientY - downY);
+        if(movedPx <= 6){
+          if(n2.type === "area") openAreaDetailPage(n2.id);
+          else if(n2.type === "goal") openGoalDetailPage(n2.id);
+          else if(n2.type === "project") editProject(n2.id);
+          else editHabit(n2.id);
+        } else {
+          graph.alpha = Math.max(graph.alpha, 1); // reheat so the rest of the graph settles around the new spot
+        }
+        return;
+      }
       delete activePointers[e.pointerId];
       if(Object.keys(activePointers).length < 2) pinchDist = null;
       var wasDragging = dragging, wasPanning = downPanning;
@@ -4304,6 +4381,7 @@
     function onCancel(e){
       delete activePointers[e.pointerId];
       pinchDist = null;
+      endNodeDrag();
       dragging = false; panning = false;
       canvas.classList.remove("dragging", "panning");
       orbit.autoUntil = performance.now() + 6000;
@@ -10463,6 +10541,16 @@
     var endMin = timeToFraction(hhmm) * 1440 + (durationMinutes || 15);
     return endMin > 1440 ? Math.min(1440, endMin - 1440) : 0;
   }
+  // Shorter timeline blocks sit on top of longer ones wherever two overlap in time — a quick 15-min
+  // action would otherwise get buried under an 8-hour sleep habit just because it renders later in
+  // the DOM. Shared by every timeline block renderer: Today's per-area rows, the home cockpit dock,
+  // and the Timeline page's long history tracks. Returns a value in [1, 1440] (minutes-from-a-day,
+  // inverted) — interactive states (hover/drag/resize/hold) are given z-index 2000+ !important in
+  // CSS specifically so they still win over this inline value regardless of a block's own duration.
+  function tlZIndexForDuration(durationMinutes){
+    var d = Math.max(1, Math.min(1440, Math.round(durationMinutes || 15)));
+    return 1441 - d;
+  }
   // One row per life area (plus a catch-all "other" row for anything with no derivable area) —
   // habits, actions, and notes are all mixed into whichever row matches their own area, since the
   // row itself now carries the area color instead of each individual block.
@@ -10481,7 +10569,11 @@
     var handles = "";
     if(resizable === true) handles = '<span class="timeline-block-resize timeline-block-resize-left" data-resize-handle="left"></span>';
     if(resizable) handles += '<span class="timeline-block-resize timeline-block-resize-right" data-resize-handle="right"></span>';
-    return '<div class="timeline-block' + cls + '" data-kind="' + kind + '" data-id="' + id + '" data-date="' + date + '"' + (overnight ? ' data-overnight="1"' : '') + ' style="left:' + left + '%; width:' + width + '%;" title="' + escapeHtml(title) + '">' +
+    // width is already percent-of-day (see call sites), so it converts straight to minutes for the
+    // shorter-on-top stacking rule — including the overnight tail, whose width is just its spillover
+    // portion, which is exactly the on-screen extent that should win the stacking comparison.
+    var z = tlZIndexForDuration(width / 100 * 1440);
+    return '<div class="timeline-block' + cls + '" data-kind="' + kind + '" data-id="' + id + '" data-date="' + date + '"' + (overnight ? ' data-overnight="1"' : '') + ' style="left:' + left + '%; width:' + width + '%; z-index:' + z + ';" title="' + escapeHtml(title) + '">' +
       handles + (iconHtml || "") + '<span class="timeline-block-title">' + label + '</span></div>';
   }
   function renderTodayTimelineAreaRow(area){
@@ -10665,6 +10757,9 @@
       var durationMin = Math.max(TIMELINE_RESIZE_MIN_MIN, Math.round(((widthPx / rect.width) * 1440) / 5) * 5);
       resizeEl.style.left = (leftPx / rect.width * 100) + "%";
       resizeEl.style.width = Math.max(1.2, (widthPx / rect.width) * 100) + "%";
+      // Kept live so the block's z-index is already correct the instant .resizing's !important
+      // override drops off (pointerup), not just after the next full re-render lands.
+      resizeEl.style.zIndex = tlZIndexForDuration(durationMin);
       resizeEl.dataset.pendingDuration = durationMin;
       if(resizeEdge === "left") resizeEl.dataset.pendingTime = minutesToTime(startMin);
     });
@@ -10826,6 +10921,29 @@
                   day+" "+Math.max(0,sunsetFrac-tw)+"%", night+" "+Math.min(100,sunsetFrac+tw)+"%", night+" 100%" ];
     return "linear-gradient(90deg, " + stops.join(", ") + ")";
   }
+  // Home cockpit timeline background — deliberately NOT the two-tone day+night band above. The
+  // theme itself already reads as "day" (light page) or "night" (dark page), so overlaying a
+  // same-toned wash on top would be redundant; instead a single hue fades in only across the half
+  // of the cycle the theme DOESN'T already convey, and fades to fully transparent (letting the
+  // page's own background carry the other half): dark mode washes in yellow through daylight hours,
+  // light mode washes in blue through nighttime hours. Same sunrise/sunset basis as the function
+  // above, just a different color story.
+  function homeTlDayNightBg(y, m, d, isDark){
+    var rgb = isDark ? "253,224,71" : "95,168,255"; // yellow / blue — same triples as tlDayNightGradientCss
+    var peak = 0.22;
+    var sunrise = sunTimeUTC(y, m, d, BERLIN_LAT, BERLIN_LON, true);
+    var sunset = sunTimeUTC(y, m, d, BERLIN_LAT, BERLIN_LON, false);
+    if(sunrise == null || sunset == null) return "transparent";
+    var sunriseFrac = berlinHourFraction(sunrise, y, m, d) * 100;
+    var sunsetFrac = berlinHourFraction(sunset, y, m, d) * 100;
+    var tw = 6;
+    var c = function(a){ return "rgba(" + rgb + "," + a + ")"; };
+    var onStops = [ c(0)+" 0%", c(0)+" "+Math.max(0,sunriseFrac-tw)+"%", c(peak)+" "+Math.min(100,sunriseFrac+tw)+"%",
+                    c(peak)+" "+Math.max(0,sunsetFrac-tw)+"%", c(0)+" "+Math.min(100,sunsetFrac+tw)+"%", c(0)+" 100%" ];
+    var offStops = [ c(peak)+" 0%", c(peak)+" "+Math.max(0,sunriseFrac-tw)+"%", c(0)+" "+Math.min(100,sunriseFrac+tw)+"%",
+                      c(0)+" "+Math.max(0,sunsetFrac-tw)+"%", c(peak)+" "+Math.min(100,sunsetFrac+tw)+"%", c(peak)+" 100%" ];
+    return "linear-gradient(90deg, " + (isDark ? onStops : offStops).join(", ") + ")";
+  }
   function renderTlDayLabels(range){
     var track = document.getElementById("tlDayLabelsRow");
     if(!track) return;
@@ -10869,7 +10987,8 @@
         var leftPx = i*tlPxPerDay + timeToFraction(fields.timeOfDay)*tlPxPerDay;
         var widthPx = Math.max(10, ((fields.durationMinutes || 15) / 1440) * tlPxPerDay);
         var catClass = habitCategory(h) ? " " + habitCategory(h) : "";
-        html += '<div class="timeline-block' + catClass + '" data-kind="habit-instance" data-id="' + h.id + '" data-day-index="' + i + '" data-date="' + dateStr + '" style="left:' + leftPx + 'px; width:' + widthPx + 'px;" title="' + escapeHtml(h.title) + ' — ' + fmtTimeOfDay(fields.timeOfDay) + '">' +
+        var z = tlZIndexForDuration(fields.durationMinutes || 15);
+        html += '<div class="timeline-block' + catClass + '" data-kind="habit-instance" data-id="' + h.id + '" data-day-index="' + i + '" data-date="' + dateStr + '" style="left:' + leftPx + 'px; width:' + widthPx + 'px; z-index:' + z + ';" title="' + escapeHtml(h.title) + ' — ' + fmtTimeOfDay(fields.timeOfDay) + '">' +
           '<span class="timeline-block-title">' + escapeHtml(h.title) + '</span></div>';
       });
     }
@@ -10891,7 +11010,8 @@
         var widthPx = Math.max(10, ((a.durationMinutes || 15) / 1440) * tlPxPerDay);
         var cat = actionCategory(a);
         var catClass = cat ? " " + cat : "";
-        html += '<div class="timeline-block' + catClass + (a.done?' done':'') + '" data-kind="action" data-id="' + a.id + '" data-day-index="' + i + '" style="left:' + leftPx + 'px; width:' + widthPx + 'px;" title="' + escapeHtml(a.title) + ' — ' + fmtTimeOfDay(a.timeOfDay) + '">' +
+        var z = tlZIndexForDuration(a.durationMinutes || 15);
+        html += '<div class="timeline-block' + catClass + (a.done?' done':'') + '" data-kind="action" data-id="' + a.id + '" data-day-index="' + i + '" style="left:' + leftPx + 'px; width:' + widthPx + 'px; z-index:' + z + ';" title="' + escapeHtml(a.title) + ' — ' + fmtTimeOfDay(a.timeOfDay) + '">' +
           '<span class="timeline-block-title">' + escapeHtml(a.title) + '</span></div>';
       });
     }
@@ -10912,7 +11032,10 @@
         var widthPx = Math.max(10, tlPxPerDay * 0.02);
         var catClass = noteCategory(n) ? " " + noteCategory(n) : "";
         var preview = n.text.length > 60 ? n.text.slice(0, 60) + "…" : n.text;
-        html += '<div class="timeline-block' + catClass + '" data-kind="journal" data-id="' + n.id + '" data-day-index="' + i + '" style="left:' + leftPx + 'px; width:' + widthPx + 'px;" title="' + escapeHtml(preview) + ' — ' + fmtTimeOfDay(n.timeOfDay) + '">' +
+        // Notes have no real duration field — treated as a near-instant point in time (a small
+        // virtual duration), so they naturally sit near the top of the stacking order.
+        var z = tlZIndexForDuration(5);
+        html += '<div class="timeline-block' + catClass + '" data-kind="journal" data-id="' + n.id + '" data-day-index="' + i + '" style="left:' + leftPx + 'px; width:' + widthPx + 'px; z-index:' + z + ';" title="' + escapeHtml(preview) + ' — ' + fmtTimeOfDay(n.timeOfDay) + '">' +
           '<span class="timeline-block-title">✎ ' + escapeHtml(preview) + '</span></div>';
       });
     }
