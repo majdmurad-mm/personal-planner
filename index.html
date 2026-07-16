@@ -6153,12 +6153,15 @@
     renderPeopleGraphConnections();
   }
   var PPL_GROUP_PUSH = 3000; // mirrors WB_AREA_PUSH
-  // Extra attraction between every pair of same-group nodes (not just ones with an explicit
-  // related-people edge) — same "virtual spring" formula as pplApplySpring (force ∝ dist - restLength,
+  // Extra attraction between every pair of nodes that share at least one social group in common —
+  // main or secondary on either side (pplGroupListsOverlap) — not just ones with an explicit
+  // related-people edge. Same "virtual spring" formula as pplApplySpring (force ∝ dist - restLength,
   // so it pulls together when far apart and naturally backs off near restLength, working with the
   // base repulsion above rather than fighting it into an unstable overlap). Kept an order of magnitude
-  // weaker than PPL_LINK_K since it applies densely across every pair in a group (a 30-person group
-  // has 435 pairs) rather than just the handful of explicit edges a person actually lists.
+  // weaker than PPL_LINK_K since it applies densely across every overlapping pair (a 30-person group
+  // has 435 pairs) rather than just the handful of explicit edges a person actually lists. A pair that
+  // ALSO shares a main group gets this pull on top of their auto-linked spring edge (pplApplySpring);
+  // a pair that only shares a secondary group gets this small pull alone, with no edge at all.
   var PPL_GROUP_PULL_K = 0.002;
   // A person with no social group set has no group at all (null) — they don't get a hull, aren't
   // auto-linked to anyone via group membership, and take no part in the group push/pull; they just
@@ -6189,18 +6192,26 @@
   function pplNodeGroup(p){
     return parseSocialGroupField(p.socialGroup).main;
   }
-  // Every group a person belongs to (not just MAIN, pplNodeGroup) — used only for hull membership
-  // (pplRenderClusters): a person in both "Discord" and "Syria" ends up inside both hulls, so their
-  // spot on the canvas is visibly covered by both groups' translucent colors (.wb-cluster-hull's
-  // fill-opacity:0.16 lets them blend rather than one hiding the other). Everything else — auto-
-  // linking to group-mates (pplRebuildGraphCache) and the single-group PPL_GROUP_PUSH/PULL_K physics
-  // — deliberately uses only MAIN (pplNodeGroup, which can be null even with groups present, see
-  // parseSocialGroupField): a "secondary" group membership shows up in the hull hue but doesn't
-  // create a direct connection or pull someone toward that group's cluster. No social group at all
-  // means an empty list — same free-floating "no group" behavior as pplNodeGroup's null, just
-  // list-shaped for this use.
+  // Every group a person belongs to (not just MAIN, pplNodeGroup) — feeds hull membership
+  // (pplRenderClusters: a person in both "Discord" and "Syria" ends up inside both hulls, so their
+  // spot on the canvas is visibly covered by both groups' translucent colors, since .wb-cluster-hull's
+  // fill-opacity:0.16 lets them blend rather than one hiding the other) AND the PPL_GROUP_PULL_K
+  // attraction in pplTickPhysics (any shared group, main or secondary, earns a small pull). Auto-
+  // linking to group-mates (pplRebuildGraphCache) and the PPL_GROUP_PUSH repulsion-boost still use
+  // only MAIN (pplNodeGroup, which can be null even with groups present — see parseSocialGroupField):
+  // a shared secondary group gets the ambient pull below but not a real spring-backed edge or an
+  // extra push against other groups. No social group at all means an empty list — same free-floating
+  // "no group" behavior as pplNodeGroup's null, just list-shaped for this use.
   function pplNodeGroupList(p){
     return parseSocialGroupField(p.socialGroup).groups;
+  }
+  // Whether two people share at least one group in common — main or secondary on either side. Lists
+  // are typically 1-3 entries, so the O(n*m) scan here is negligible next to the O(people^2) loop
+  // it's called from.
+  function pplGroupListsOverlap(a, b){
+    if(!a || !b || !a.length || !b.length) return false;
+    for(var i = 0; i < a.length; i++){ if(b.indexOf(a[i]) !== -1) return true; }
+    return false;
   }
   // Cached the same way wbRebuildGraphCache() caches the main Graph's edges — pure function of state,
   // recomputing it every physics tick (up to 60/sec while the sim is hot) would be wasted work.
@@ -6280,8 +6291,10 @@
     // Each node's primary social group, from the cache (not recomputed per tick) — used below to add
     // a small extra push between nodes from *different* groups, on top of the base repulsion every
     // pair already gets, reinforcing the grouping the cluster hulls also show (mirrors the main
-    // Graph's area-vs-area push, see WB_AREA_PUSH).
+    // Graph's area-vs-area push, see WB_AREA_PUSH). The push stays scoped to MAIN group only; the
+    // pull below additionally checks the full group list (any shared group, not just main).
     var groups = nodes.map(function(n){ return pplCachedNodeGroups[n.id]; });
+    var groupLists = nodes.map(function(n){ return pplCachedNodeGroupLists[n.id]; });
     for(var i=0;i<nodes.length;i++){
       for(var j=i+1;j<nodes.length;j++){
         var dx = nodes[j].x - nodes[i].x, dy = nodes[j].y - nodes[i].y;
@@ -6292,10 +6305,12 @@
         var fx = (dx/dist) * force, fy = (dy/dist) * force;
         nodes[i].vx -= fx; nodes[i].vy -= fy;
         nodes[j].vx += fx; nodes[j].vy += fy;
-        // Same-group pair: an extra pull toward each other, independent of the repulsion above (see
-        // PPL_GROUP_PULL_K) — the two forces work against each other at close range (keeping them
-        // from fully overlapping) but the pull wins at longer range, drawing the group inward.
-        if(groups[i] && groups[i] === groups[j]){
+        // Any shared group (main or secondary) earns a small extra pull toward each other, independent
+        // of the repulsion above (see PPL_GROUP_PULL_K) — the two forces work against each other at
+        // close range (keeping them from fully overlapping) but the pull wins at longer range, drawing
+        // the group inward. Pairs that share their MAIN group also have a real spring edge on top of
+        // this (see pplCachedEdges below); a shared secondary group alone gets just this ambient pull.
+        if(pplGroupListsOverlap(groupLists[i], groupLists[j])){
           var pull = (dist - PPL_LINK_DIST) * PPL_GROUP_PULL_K * pplAlpha;
           var pfx = (dx/dist) * pull, pfy = (dy/dist) * pull;
           nodes[i].vx += pfx; nodes[i].vy += pfy;
