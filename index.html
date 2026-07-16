@@ -1419,6 +1419,15 @@
   .home-rail-row[data-cat="Growth"] .home-rail-icon{ color:var(--cat-growth); background:var(--cat-growth-bg); }
   .home-rail-row[data-cat="Relationships"] .home-rail-icon{ color:var(--cat-relationships); background:var(--cat-relationships-bg); }
   .home-rail-row[data-cat="Sol"] .home-rail-icon{ color:var(--cat-sol); background:var(--cat-sol-bg); }
+  /* Below the areas: two rows that toggle whole node TYPES (actions/notes) on the 3D graph — visually
+     separated from the area filters above by a thin divider, since they're a different kind of
+     control (a graph layer, not an area). Off by default, like the areas rail's off state, but
+     inverted semantically: an "on" layer row means the icon is filled instead of hollow. */
+  .home-rail-divider{ height:1px; background:var(--border); margin:6px 2px; }
+  .home-rail-layer .home-rail-icon{ background:none; box-shadow:inset 0 0 0 1px var(--border-bright); color:var(--text-faint); }
+  .home-rail-layer.on{ opacity:1; }
+  .home-rail-layer.on .home-rail-icon{ color:var(--accent); background:var(--accent-glow); box-shadow:none; }
+  .home-rail-layer:not(.on){ opacity:0.6; }
   /* Hover tooltip for 3D graph nodes (goal/project/habit titles live here, not as 3D text). */
   .home-node-tip{ position:absolute; z-index:6; pointer-events:none; font-family:var(--mono); font-size:11px; padding:4px 9px; border-radius:4px; background:var(--bg-raised); border:1px solid var(--border-bright); color:var(--text); box-shadow:var(--elev-2); white-space:nowrap; max-width:320px; overflow:hidden; text-overflow:ellipsis; }
   /* Today's to-dos: a 2x2 matrix, bottom-left by default — either the 4 priority tiers or a
@@ -3565,9 +3574,27 @@
   function persistHiddenAreas(){
     safeSet(window.localStorage, "pp_home_hidden_areas", JSON.stringify(Object.keys(homeHiddenAreas).filter(function(c){ return homeHiddenAreas[c]; })));
   }
-  // Areas legend rail — each row is an on/off filter now (not navigation): toggling an area hides
-  // its nodes in the graph and its blocks in the timeline, and dims the row.
+  // Whether actions/notes appear as their own nodes in the 3D graph — off by default, same reasoning
+  // as the 2D whiteboard's own (separate, independent) wbShowActions toggle: these are usually the
+  // most numerous item type, so opting in avoids cluttering the graph the first time anyone opens it
+  // after this shipped. Deliberately NOT tied to wbShowActions — this is the home graph's own toggle,
+  // scoped to the areas rail, and shouldn't silently flip the 2D Planner graph's layer too.
+  var homeShowActions = safeGet(window.localStorage, "pp_home_show_actions") === "1";
+  var homeShowNotes = safeGet(window.localStorage, "pp_home_show_notes") === "1";
+  // Areas legend rail — each area row is an on/off filter (not navigation): toggling an area hides
+  // its nodes in the graph and its blocks in the timeline, and dims the row. Below the areas, two
+  // more rows toggle whole node TYPES on/off (actions, notes) rather than filtering by area.
   document.getElementById("homeAreasRail").addEventListener("click", function(e){
+    var layerRow = e.target.closest("[data-layer]");
+    if(layerRow){
+      var layer = layerRow.dataset.layer;
+      if(layer === "actions"){ homeShowActions = !homeShowActions; safeSet(window.localStorage, "pp_home_show_actions", homeShowActions ? "1" : "0"); }
+      else if(layer === "notes"){ homeShowNotes = !homeShowNotes; safeSet(window.localStorage, "pp_home_show_notes", homeShowNotes ? "1" : "0"); }
+      renderHomeAreasRail();
+      // homeSyncGraphData()'s signature includes these toggles, so the next 1s tick rebuilds the
+      // scene with the new node set — same latency every other graph-affecting change already has.
+      return;
+    }
     var row = e.target.closest("[data-cat]");
     if(!row) return;
     var cat = row.dataset.cat;
@@ -3818,7 +3845,11 @@
     var el = document.getElementById("homeAreasRail");
     if(!el) return;
     var pulse = computeHomeAreaPulse();
-    var sig = pulse.map(function(a){ return a.cat + ":" + a.count + ":" + (homeHiddenAreas[a.cat] ? 1 : 0); }).join("|");
+    var today = todayStr();
+    var actionsToday = state.actions.filter(function(a){ return a.date === today; }).length;
+    var notesToday = state.journal.filter(function(n){ return n.date === today; }).length;
+    var sig = pulse.map(function(a){ return a.cat + ":" + a.count + ":" + (homeHiddenAreas[a.cat] ? 1 : 0); }).join("|") +
+      "||actions:" + actionsToday + ":" + (homeShowActions ? 1 : 0) + "|notes:" + notesToday + ":" + (homeShowNotes ? 1 : 0);
     if(el.dataset.sig === sig) return;
     el.dataset.sig = sig;
     el.innerHTML = '<div class="home-rail-title">areas</div>' + pulse.map(function(a){
@@ -3828,7 +3859,22 @@
         '<span>' + a.cat + '</span>' +
         (a.count ? '<span class="home-rail-count">' + a.count + '</span>' : '') +
       '</button>';
-    }).join("");
+    }).join("") +
+    '<div class="home-rail-divider"></div>' +
+    '<div class="home-rail-title">graph nodes</div>' +
+    homeRailLayerRowHtml("actions", "⚡", "actions", homeShowActions, actionsToday) +
+    homeRailLayerRowHtml("notes", "✎", "notes", homeShowNotes, notesToday);
+  }
+  // Below the areas: two rows that toggle a whole item TYPE on/off as graph nodes (not an area
+  // filter) — actions and notes stay off the 3D graph by default (see homeShowActions/homeShowNotes),
+  // same "off by default" reasoning as the 2D whiteboard's own actions-layer toggle.
+  function homeRailLayerRowHtml(layer, icon, label, on, countToday){
+    return '<button class="home-rail-row home-rail-layer' + (on ? " on" : "") + '" data-layer="' + layer + '" type="button" title="' +
+      (on ? "showing " + label + " as graph nodes (click to hide)" : "click to show " + label + " as graph nodes" + (countToday ? " — " + countToday + " today" : "")) + '">' +
+      '<span class="home-rail-icon">' + icon + '</span>' +
+      '<span>' + label + '</span>' +
+      (countToday ? '<span class="home-rail-count">' + countToday + '</span>' : '') +
+    '</button>';
   }
 
   // ---- Today's to-dos widget: a 2x2 matrix combining today's actions and today's habit
@@ -4432,31 +4478,52 @@
   }
   // Shared graph-structure builder: one node per area/goal/project/habit plus every edge the 2D
   // planner graph derives (parent/child hierarchy, secondary links, leaf-to-area anchors, manual
-  // wbConnections). Edges referencing a node that isn't in this set (e.g. action edges while the
-  // planner's actions layer is toggled on) are dropped rather than dangling.
+  // wbConnections). Actions and notes are opt-in extra node types (homeShowActions/homeShowNotes,
+  // toggled from the areas rail) — independent of the 2D whiteboard's own actions-layer toggle, so
+  // wbHierarchyEdges/wbAreaLeafEdges are called with an explicit includeActions arg here rather than
+  // falling back to wbShowActions. Notes have no parent-hierarchy edge (they're not goal/project-
+  // linked), just a direct edge to every area they're tagged with — a note can belong to several.
+  // Edges referencing a node that isn't in this set (e.g. action edges while actions are toggled off)
+  // are dropped rather than dangling.
   function buildSystemGraph(){
     var nodes = [];
     CATEGORIES.forEach(function(cat){ nodes.push({ type:"area", id:cat, label:cat, area:cat, r:1.35 }); });
     state.goals.forEach(function(g){ nodes.push({ type:"goal", id:g.id, label:g.title, area:g.category, r:1.0 }); });
     state.projects.forEach(function(p){ nodes.push({ type:"project", id:p.id, label:p.title, area:projectCategory(p), r:0.75 }); });
     state.habits.forEach(function(h){ nodes.push({ type:"habit", id:h.id, label:h.title, area:habitCategory(h), r:0.65 }); });
+    if(homeShowActions) state.actions.forEach(function(a){ nodes.push({ type:"action", id:a.id, label:a.title, area:actionCategory(a), r:0.5 }); });
+    if(homeShowNotes) state.journal.forEach(function(n){ nodes.push({ type:"journal", id:n.id, label:(n.title || n.text || "").slice(0,40) || "note", area:noteCategory(n), r:0.45 }); });
     var index = {};
     nodes.forEach(function(n, i){ index[n.type + ":" + n.id] = i; });
     var edges = [];
-    wbHierarchyEdges().concat(wbAreaLeafEdges(), state.wbConnections || []).forEach(function(c){
+    wbHierarchyEdges(homeShowActions).concat(wbAreaLeafEdges(homeShowActions), state.wbConnections || []).forEach(function(c){
       var a = index[c.fromType + ":" + c.fromId], b = index[c.toType + ":" + c.toId];
       if(a != null && b != null) edges.push({ a:a, b:b, secondary: !!c.secondary });
     });
+    if(homeShowNotes){
+      state.journal.forEach(function(n){
+        var b = index["journal:" + n.id];
+        if(b == null) return;
+        noteCategories(n).forEach(function(cat){
+          var a = index["area:" + cat];
+          if(a != null) edges.push({ a:a, b:b, secondary:false });
+        });
+      });
+    }
     return { nodes:nodes, edges:edges };
   }
   // Cheap change detector for the 1s home tick — ids + areas + titles catch adds, deletes and the
-  // renames/moves that matter visually, without deep-hashing every field every second.
+  // renames/moves that matter visually, without deep-hashing every field every second. Actions/notes
+  // only contribute their id lists when their toggle is on, so flipping homeShowActions/homeShowNotes
+  // itself changes the signature (between "0" and the real list) and triggers a rebuild on its own.
   function systemGraphSignature(){
     return [
       state.goals.map(function(g){ return g.id + (g.category || "") + g.title; }).join(","),
       state.projects.map(function(p){ return p.id + (projectCategory(p) || "") + p.title; }).join(","),
       state.habits.map(function(h){ return h.id + (habitCategory(h) || "") + h.title; }).join(","),
-      (state.wbConnections || []).length
+      (state.wbConnections || []).length,
+      homeShowActions ? state.actions.map(function(a){ return a.id + (actionCategory(a) || "") + a.title; }).join(",") : "0",
+      homeShowNotes ? state.journal.map(function(n){ return n.id + (noteCategory(n) || ""); }).join(",") : "0"
     ].join("|");
   }
   var homeGraphSig = null;
@@ -4700,6 +4767,16 @@
       var hit = graph ? raycaster.intersectObjects(graph.meshes, false)[0] : null;
       return hit ? hit.object.userData.nodeIndex : null;
     }
+    // A clean click on any node type opens its editor — shared by the plain click path and the
+    // node-drag release path (a drag that didn't actually move counts as a click too).
+    function homeOpenGraphNode(n){
+      if(n.type === "area") openAreaDetailPage(n.id);
+      else if(n.type === "goal") openGoalDetailPage(n.id);
+      else if(n.type === "project") editProject(n.id);
+      else if(n.type === "habit") editHabit(n.id);
+      else if(n.type === "action") editAction(n.id);
+      else if(n.type === "journal") editJournalEntry(n.id);
+    }
     function endNodeDrag(){
       if(draggingNodeIdx == null) return;
       if(graph && graph.nodes[draggingNodeIdx]) graph.nodes[draggingNodeIdx].fixed = false;
@@ -4796,10 +4873,7 @@
         if(!n2) return;
         var movedPx = Math.abs(e.clientX - downX) + Math.abs(e.clientY - downY);
         if(movedPx <= 6){
-          if(n2.type === "area") openAreaDetailPage(n2.id);
-          else if(n2.type === "goal") openGoalDetailPage(n2.id);
-          else if(n2.type === "project") editProject(n2.id);
-          else editHabit(n2.id);
+          homeOpenGraphNode(n2);
         } else {
           graph.alpha = Math.max(graph.alpha, 1); // reheat so the rest of the graph settles around the new spot
         }
@@ -4821,10 +4895,7 @@
       var idx = pickNode(e);
       if(idx == null) return;
       var n = graph.nodes[idx];
-      if(n.type === "area") openAreaDetailPage(n.id);
-      else if(n.type === "goal") openGoalDetailPage(n.id);
-      else if(n.type === "project") editProject(n.id);
-      else editHabit(n.id);
+      homeOpenGraphNode(n);
     }
     function onCancel(e){
       delete activePointers[e.pointerId];
@@ -6859,7 +6930,11 @@
   // project/habit's own goal_id, not a stored relation, so there's nothing to sync/persist here:
   // it's just read fresh off state every time. Each area hub connects *only* to goals in that area
   // (never straight to a project or habit — those already connect to their goal, one level down).
-  function wbHierarchyEdges(){
+  // includeActions defaults to wbShowActions (the 2D whiteboard's own toggle) so existing whiteboard
+  // call sites are unaffected — the home 3D graph passes its own, independent homeShowActions instead,
+  // so toggling one view's actions layer never silently flips the other's.
+  function wbHierarchyEdges(includeActions){
+    if(includeActions == null) includeActions = wbShowActions;
     var edges = [];
     state.goals.forEach(function(g){
       if(g.category) edges.push({ fromType:"area", fromId:g.category, toType:"goal", toId:g.id });
@@ -6876,10 +6951,10 @@
       if(h.goalId) edges.push({ fromType:"goal", fromId:h.goalId, toType:"habit", toId:h.id });
       (h.secondaryGoalIds || []).forEach(function(gid){ edges.push({ fromType:"goal", fromId:gid, toType:"habit", toId:h.id, secondary:true }); });
     });
-    // Actions only ever join the graph when the "actions" layer toggle is on — no sim node exists
+    // Actions only ever join the graph when the actions-layer toggle is on — no sim node exists
     // for them otherwise, so wbApplySpring would just no-op on these anyway, but skip generating
     // them at all while off rather than computing edges nobody uses.
-    if(wbShowActions){
+    if(includeActions){
       state.actions.forEach(function(a){
         if(a.parentType === "goal" && a.parentId) edges.push({ fromType:"goal", fromId:a.parentId, toType:"action", toId:a.id });
         else if(a.parentType === "project" && a.parentId) edges.push({ fromType:"project", fromId:a.parentId, toType:"action", toId:a.id });
@@ -6892,13 +6967,14 @@
   // actionCategory) is well-defined even when it has no parent at all — this connects every one of
   // them straight to its area hub too, on top of any parent-mediated pull it already has, so a
   // standalone habit/action still has something pulling it toward its area instead of drifting.
-  function wbAreaLeafEdges(){
+  function wbAreaLeafEdges(includeActions){
+    if(includeActions == null) includeActions = wbShowActions;
     var edges = [];
     state.habits.forEach(function(h){
       var cat = habitCategory(h);
       if(cat) edges.push({ fromType:"area", fromId:cat, toType:"habit", toId:h.id });
     });
-    if(wbShowActions){
+    if(includeActions){
       state.actions.forEach(function(a){
         var cat = actionCategory(a);
         if(cat) edges.push({ fromType:"area", fromId:cat, toType:"action", toId:a.id });
