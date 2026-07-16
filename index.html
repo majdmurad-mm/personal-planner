@@ -90,6 +90,33 @@
     --mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
     --sans: "Archivo", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     --display: "Space Grotesk", var(--sans);
+
+    /* ===== Design tokens (redesign pass) =====
+       Codified scales so components stop inventing their own values. The pre-existing --radius (4px)
+       stays the workhorse card/button radius; sm/lg bracket it for chips and hero surfaces. */
+    --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+    --space-5: 20px; --space-6: 24px; --space-7: 32px; --space-8: 40px;
+    --radius-sm: 3px; --radius-lg: 10px;
+    /* Type scale — roles, not sizes-by-feel: xs=chrome/captions, sm=data rows, md=body, lg=section
+       heads, xl=page titles, 2xl=hero numerals. */
+    --fs-xs: 11px; --fs-sm: 12.5px; --fs-md: 14px; --fs-lg: 17px; --fs-xl: 24px; --fs-2xl: 34px;
+    /* Elevation — borders-first in light mode (paper doesn't cast much shadow), soft shadows take
+       over in the dark block below. */
+    --elev-1: 0 1px 2px rgba(20,16,8,0.06);
+    --elev-2: 0 4px 14px rgba(20,16,8,0.10);
+    --elev-3: 0 12px 40px rgba(20,16,8,0.16);
+    /* Semantic state colors — feedback states get their own names instead of borrowing priority
+       colors ad hoc (a P1 deadline and a "heads up" toast are different ideas that happened to
+       share a hue). Values still deliberately rhyme with the priority palette. */
+    --ok: #177F3D; --ok-bg: rgba(74,222,128,0.12);
+    --warn: #AB5300; --warn-bg: rgba(255,159,69,0.12);
+    --danger: #D90606; --danger-bg: rgba(251,102,102,0.12);
+    --info: #0068E4; --info-bg: rgba(95,168,255,0.12);
+    /* Motion — one small vocabulary for every hover/press/entry in the app. */
+    --dur-fast: 0.12s; --dur-med: 0.22s; --dur-slow: 0.4s;
+    --ease-out: cubic-bezier(0.2, 0.8, 0.3, 1);
+    --ease-spring: cubic-bezier(0.34, 1.4, 0.5, 1);
+    --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
   }
   /* Dark mode — same brand (orange accent, same 3 fonts), dark background/surface/text values
      reused from this app's original dark palette (already well-tuned for exactly this contrast
@@ -126,6 +153,15 @@
     --cat-goal-sol: #22D3EE; --cat-goal-sol-bg: rgba(34,211,238,0.12); /* goals-only accent, see the :root block above */
     --daynight-day: #FDE047; --daynight-day-glow: rgba(253,224,71,0.6);
     --daynight-night: #5FA8FF; --daynight-night-glow: rgba(95,168,255,0.6);
+    /* Token overrides — deeper shadows carry elevation on dark surfaces, and the state colors flip
+       to their bright variants (same relationship the priority palette has between the two themes). */
+    --elev-1: 0 1px 3px rgba(0,0,0,0.35);
+    --elev-2: 0 6px 18px rgba(0,0,0,0.45);
+    --elev-3: 0 16px 50px rgba(0,0,0,0.6);
+    --ok: #4ADE80; --ok-bg: rgba(74,222,128,0.12);
+    --warn: #FF9F45; --warn-bg: rgba(255,159,69,0.12);
+    --danger: #FB6666; --danger-bg: rgba(251,102,102,0.12);
+    --info: #5FA8FF; --info-bg: rgba(95,168,255,0.12);
     /* Hour gridlines flip back to light-on-dark. */
     --tl-hour-grid: repeating-linear-gradient(90deg,
       rgba(255,255,255,0.22) 0, rgba(255,255,255,0.22) 2px, transparent 2px,
@@ -149,6 +185,18 @@
   }
   *{ font-variant-numeric: tabular-nums; }
   ::selection{ background:var(--accent-glow); color:var(--accent); }
+  /* Slim, theme-following scrollbars — the fat default bars read as OS chrome cutting through the
+     instrument-panel look, especially on the many internal horizontal scrollers (timelines, tracker). */
+  *{ scrollbar-width: thin; scrollbar-color: var(--border-bright) transparent; }
+  ::-webkit-scrollbar{ width:9px; height:9px; }
+  ::-webkit-scrollbar-thumb{ background:var(--border-bright); border-radius:5px; border:2px solid transparent; background-clip:padding-box; }
+  ::-webkit-scrollbar-thumb:hover{ background:var(--text-faint); background-clip:padding-box; }
+  ::-webkit-scrollbar-track{ background:transparent; }
+  /* High-contrast preference: the hairline borders that carry most of the light theme's structure
+     get promoted to full-contrast strokes. */
+  @media (prefers-contrast: more){
+    :root{ --border: var(--text-dim); --border-bright: var(--text); }
+  }
 
   .app{ display:grid; grid-template-columns:270px 1fr; min-height:100vh; }
   /* Sidebar hide/show — toggled by #sidebarToggleBtn (see wireSidebarToggle), persisted in
@@ -203,13 +251,18 @@
 
   .side-nav{ display:flex; flex-direction:column; gap:2px; margin-bottom:auto; }
   .side-link{
-    display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:4px;
-    font-family:var(--mono); font-size:12.5px; color:var(--text-dim); cursor:pointer; border:1px solid transparent;
+    position:relative; display:flex; align-items:center; gap:10px; padding:8px 10px 8px 14px; border-radius:var(--radius);
+    font-family:var(--mono); font-size:var(--fs-sm); color:var(--text-dim); cursor:pointer; border:1px solid transparent;
     background:transparent;
+    transition:color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
   }
-  .side-link .sl-glyph{ color:var(--text-faint); width:14px; text-align:center; }
-  .side-link:hover{ color:var(--text); }
-  .side-link.active{ background:var(--bg-raised); border-color:var(--border-bright); color:var(--accent); }
+  /* The accent rail: collapsed to nothing on idle links, grows in on the active one — a stronger
+     "you are here" than background alone, and it echoes the left-border accent every card uses. */
+  .side-link::before{ content:""; position:absolute; left:0; top:50%; transform:translateY(-50%); width:3px; height:0; border-radius:2px; background:var(--accent); transition:height var(--dur-med) var(--ease-out); }
+  .side-link .sl-glyph{ color:var(--text-faint); width:14px; text-align:center; transition:color var(--dur-fast) var(--ease-out); }
+  .side-link:hover{ color:var(--text); background:rgba(var(--bg-raised-rgb),0.55); }
+  .side-link.active{ background:var(--bg-raised); border-color:var(--border-bright); color:var(--accent); box-shadow:var(--elev-1); }
+  .side-link.active::before{ height:60%; }
   .side-link.active .sl-glyph{ color:var(--accent); }
 
   .term-stats{ border-top:1px solid var(--border); margin-top:20px; padding-top:16px; display:flex; flex-direction:column; gap:9px; }
@@ -230,29 +283,40 @@
 
   /* ===== MAIN ===== */
   .main{ padding:32px 40px 70px; max-width:none; width:100%; min-width:0; }
-  .main-header{ display:flex; justify-content:space-between; align-items:flex-end; gap:20px; flex-wrap:wrap; margin-bottom:4px; }
-  h1{ font-family:var(--display); font-size:23px; font-weight:700; margin:0; letter-spacing:-0.01em; }
-  h1 .path-sep{ color:var(--text-faint); font-weight:400; }
+  .main-header{ display:flex; justify-content:space-between; align-items:flex-end; gap:var(--space-5); flex-wrap:wrap; margin-bottom:var(--space-1); }
+  h1{ font-family:var(--display); font-size:var(--fs-xl); font-weight:700; margin:0; letter-spacing:-0.02em; }
+  h1 .path-sep{ color:var(--text-faint); font-weight:400; margin:0 2px; }
   .subhead{ color:var(--text-dim); font-size:13px; margin:7px 0 0; max-width:56ch; }
 
   .btn{
     font-family:var(--mono); font-size:12px; font-weight:600; padding:9px 15px; border-radius:var(--radius);
     cursor:pointer; border:1px solid var(--border-bright); background:var(--bg-raised); color:var(--text-dim);
-    transition:all .15s ease;
+    transition:border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out),
+      background var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out),
+      transform var(--dur-fast) var(--ease-out);
   }
-  .btn:hover{ border-color:var(--accent-dim); color:var(--text); }
+  .btn:hover{ border-color:var(--accent-dim); color:var(--text); box-shadow:var(--elev-1); }
+  /* Press feedback: a 1px sink + shadow collapse — reads as physical travel on every button in the
+     app for free, without any per-button work. */
+  .btn:active:not(:disabled){ transform:translateY(1px); box-shadow:none; }
   .btn:disabled{ opacity:0.5; cursor:default; }
   .btn-accent{ background:var(--accent); border-color:var(--accent); color:#04140F; }
-  .btn-accent:hover{ background:#F6906A; color:#04140F; }
-  .btn.danger:hover{ background:var(--p0-bg); border-color:var(--p0); color:var(--p0); }
+  .btn-accent:hover{ background:#F6906A; color:#04140F; box-shadow:var(--elev-2); }
+  .btn.danger:hover{ background:var(--danger-bg); border-color:var(--danger); color:var(--danger); }
   button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible{
     outline:2px solid var(--accent); outline-offset:2px;
   }
 
   .view-toggle{ display:flex; gap:2px; margin-top:22px; border:1px solid var(--border); border-radius:5px; padding:3px; width:fit-content; background:var(--bg-inset); }
-  .view-tab{ font-family:var(--mono); font-size:12px; font-weight:600; padding:7px 15px; border-radius:3px; border:none; background:transparent; color:var(--text-faint); cursor:pointer; transition:all .15s ease; }
+  .view-tab{ font-family:var(--mono); font-size:12px; font-weight:600; padding:7px 15px; border-radius:var(--radius-sm); border:none; background:transparent; color:var(--text-faint); cursor:pointer; transition:color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out); }
   .view-tab:hover{ color:var(--text-dim); }
-  .view-tab.active{ background:var(--bg-raised); color:var(--accent); box-shadow:0 0 0 1px var(--border-bright); }
+  .view-tab.active{ background:var(--bg-raised); color:var(--accent); box-shadow:0 0 0 1px var(--border-bright), var(--elev-1); }
+
+  /* Section switches get a short entry sweep instead of a hard cut — display:none → visible
+     restarts the animation, so this covers every showSection() transition with a single rule.
+     Killed globally by the prefers-reduced-motion rule above like all other motion. */
+  .main > section{ animation:sectionIn var(--dur-med) var(--ease-out); }
+  @keyframes sectionIn{ from{ opacity:0; transform:translateY(6px); } to{ opacity:1; transform:none; } }
 
   .sub-view-toggle{ display:flex; gap:2px; margin:16px 0 4px; }
   .sub-view-tab{ font-family:var(--mono); font-size:11px; font-weight:600; padding:6px 13px; border-radius:3px; border:1px solid var(--border); background:transparent; color:var(--text-faint); cursor:pointer; transition:all .15s ease; }
@@ -294,7 +358,8 @@
 
   /* ===== GOAL CARDS ===== */
   .goal-list, .entity-list{ display:flex; flex-direction:column; gap:12px; }
-  .goal-card{ background:var(--bg-raised); border:1px solid var(--border); border-left:3px solid var(--border-bright); border-radius:var(--radius); overflow:hidden; }
+  .goal-card{ background:var(--bg-raised); border:1px solid var(--border); border-left:3px solid var(--border-bright); border-radius:var(--radius); overflow:hidden; transition:box-shadow var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out); }
+  .goal-card:hover{ box-shadow:var(--elev-2); }
   .goal-card.Health{ border-left-color:var(--cat-health); border-color:rgba(74,222,128,0.25); background:linear-gradient(135deg, var(--cat-health-bg), var(--bg-raised) 55%); }
   .goal-card.Finance{ border-left-color:var(--cat-finance); border-color:rgba(253,224,71,0.3); background:linear-gradient(135deg, var(--cat-finance-bg), var(--bg-raised) 55%); }
   .goal-card.Career{ border-left-color:var(--cat-career); border-color:rgba(251,146,60,0.25); background:linear-gradient(135deg, var(--cat-career-bg), var(--bg-raised) 55%); }
@@ -802,7 +867,7 @@
      sharing). The title gets a matching margin-left so it starts after the icon instead of under it. */
   .timeline-block-icon{ position:absolute; left:8px; top:50%; transform:translateY(-50%); width:22px; height:22px; display:block; mask-size:contain; -webkit-mask-size:contain; mask-repeat:no-repeat; -webkit-mask-repeat:no-repeat; mask-position:center; -webkit-mask-position:center; z-index:2; filter:drop-shadow(0 1px 1.5px rgba(0,0,0,0.5)); }
   .timeline-block-icon + .timeline-block-title{ margin-left:32px; }
-  .timeline-block-title{ font-family:var(--mono); font-size:9.5px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; z-index:1; }
+  .timeline-block-title{ font-family:var(--mono); font-size:10px; font-weight:500; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; z-index:1; }
   .timeline-block.done{ opacity:0.5; }
   /* Filled area tint, not just a border accent — these blocks are often too narrow (short
      duration) for a thin left-border to read as "colored" at a glance. Brighter (higher alpha)
@@ -882,7 +947,8 @@
   .today-section-block-head h2{ font-family:var(--mono); font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-faint); margin:0; font-weight:700; }
   .today-section-block h2{ font-family:var(--mono); font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-faint); margin:0 0 10px; font-weight:700; }
   .today-row-list{ display:flex; flex-direction:column; gap:6px; }
-  .today-row{ display:flex; align-items:center; gap:10px; padding:8px 10px; border:1px solid var(--border); border-left:3px solid var(--border-bright); border-radius:6px; background:var(--bg-raised); }
+  .today-row{ display:flex; align-items:center; gap:10px; padding:8px 10px; border:1px solid var(--border); border-left:3px solid var(--border-bright); border-radius:6px; background:var(--bg-raised); transition:box-shadow var(--dur-fast) var(--ease-out); }
+  .today-row:hover{ box-shadow:var(--elev-1); }
   .today-row.Health{ border-left-color:var(--cat-health); }
   .today-row.Finance{ border-left-color:var(--cat-finance); }
   .today-row.Career{ border-left-color:var(--cat-career); }
@@ -951,7 +1017,8 @@
   .journal-textarea{ width:100%; font-size:14px; line-height:1.5; min-height:70px; }
   .journal-month-head{ font-family:var(--mono); font-size:10.5px; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-faint); margin:20px 0 10px; padding-bottom:7px; border-bottom:1px solid var(--border); }
   .journal-month-head:first-child{ margin-top:0; }
-  .journal-entry{ background:var(--bg-raised); border:1px solid var(--border); border-left:3px solid var(--accent-dim); border-radius:var(--radius); padding:13px 15px; margin-bottom:9px; }
+  .journal-entry{ background:var(--bg-raised); border:1px solid var(--border); border-left:3px solid var(--accent-dim); border-radius:var(--radius); padding:13px 15px; margin-bottom:9px; transition:box-shadow var(--dur-fast) var(--ease-out); }
+  .journal-entry:hover{ box-shadow:var(--elev-1); }
   .journal-entry-top{ display:flex; justify-content:space-between; align-items:center; margin-bottom:7px; }
   .journal-entry-date{ font-family:var(--mono); font-size:10.5px; color:var(--accent); }
   .journal-entry-text{ font-size:13.5px; line-height:1.55; color:var(--text); white-space:pre-wrap; }
@@ -1130,17 +1197,23 @@
   .postpone-date-row{ display:flex; gap:6px; padding:2px 4px 4px; }
   .postpone-date-row input[type="date"]{ flex:1; min-width:0; font-size:11px; padding:5px 6px; }
   .postpone-date-row .btn{ font-size:11px; padding:5px 10px; }
-  .global-toast{ position:fixed; left:50%; bottom:22px; transform:translateX(-50%); z-index:300; max-width:min(480px, 90vw); background:var(--bg-raised); border:1px solid var(--p1); color:var(--text); font-family:var(--mono); font-size:11.5px; line-height:1.5; padding:10px 14px; border-radius:6px; box-shadow:0 8px 30px rgba(0,0,0,0.45); }
+  .global-toast{ position:fixed; left:50%; bottom:22px; transform:translateX(-50%); z-index:300; max-width:min(480px, 90vw); background:var(--bg-raised); border:1px solid var(--warn); border-left-width:3px; color:var(--text); font-family:var(--mono); font-size:11.5px; line-height:1.5; padding:10px 14px; border-radius:6px; box-shadow:var(--elev-3); animation:toastIn var(--dur-med) var(--ease-spring); }
+  @keyframes toastIn{ from{ opacity:0; transform:translate(-50%, 10px); } to{ opacity:1; transform:translate(-50%, 0); } }
 
-  .empty-state{ text-align:center; padding:56px 20px; border:1px dashed var(--border); border-radius:var(--radius); color:var(--text-faint); margin-top:16px; }
-  .empty-state .glyph{ font-family:var(--mono); font-size:22px; color:var(--border-bright); margin-bottom:8px; }
+  .empty-state{ text-align:center; padding:var(--space-8) var(--space-5); border:1px dashed var(--border); border-radius:var(--radius); color:var(--text-faint); margin-top:16px; }
+  .empty-state .glyph{ font-family:var(--mono); font-size:28px; color:var(--border-bright); margin-bottom:10px; }
   .empty-state h3{ font-family:var(--mono); font-size:15px; color:var(--text); margin:0 0 6px; }
   .empty-state p{ font-size:13px; margin:0; }
 
   /* ===== MODAL ===== */
-  .modal-overlay{ position:fixed; inset:0; background:rgba(4,6,10,0.7); backdrop-filter:blur(2px); display:flex; align-items:center; justify-content:center; z-index:100; padding:20px; }
+  .modal-overlay{ position:fixed; inset:0; background:rgba(4,6,10,0.7); backdrop-filter:blur(3px); display:flex; align-items:center; justify-content:center; z-index:100; padding:20px; animation:overlayIn var(--dur-fast) var(--ease-out); }
+  @keyframes overlayIn{ from{ opacity:0; } to{ opacity:1; } }
+  /* Modal entry: a short rise + settle (the spring ease overshoots ~2%) — restarts every open since
+     the [hidden] toggle re-renders the element. */
+  .modal-overlay .modal{ animation:modalIn var(--dur-med) var(--ease-spring); }
+  @keyframes modalIn{ from{ opacity:0; transform:translateY(12px) scale(0.98); } to{ opacity:1; transform:none; } }
   .modal-overlay[hidden]{ display:none; }
-  .modal{ background:var(--bg-raised); border:1px solid var(--border-bright); border-radius:6px; width:100%; max-width:440px; max-height:88vh; overflow-y:auto; box-shadow:0 0 60px rgba(241,90,34,0.06); }
+  .modal{ background:var(--bg-raised); border:1px solid var(--border-bright); border-radius:6px; width:100%; max-width:440px; max-height:88vh; overflow-y:auto; box-shadow:var(--elev-3), 0 0 60px rgba(241,90,34,0.06); }
   .modal-head{ display:flex; align-items:center; gap:8px; padding:13px 18px; border-bottom:1px solid var(--border); background:var(--bg-inset); }
   .modal-head h2{ font-family:var(--mono); font-size:13px; margin:0; font-weight:600; }
   .modal-inner{ padding:20px; }
@@ -1231,7 +1304,7 @@
   /* The hero hosts the (later) Three.js canvas as an absolutely-positioned backdrop; the dashboard
      core is a DOM overlay on top of it — sharp text, zero-cost accessibility, and it IS the page
      when WebGL is unavailable. Tiles are real buttons: the 3D layer only ever mirrors them. */
-  .home-hero{ position:relative; border:1px solid var(--line); border-radius:12px; background:var(--bg-raised); overflow:hidden; min-height:300px; display:flex; align-items:center; justify-content:center; margin-bottom:18px; }
+  .home-hero{ position:relative; border:1px solid var(--border); border-radius:12px; background:var(--bg-raised); overflow:hidden; min-height:300px; display:flex; align-items:center; justify-content:center; margin-bottom:18px; }
   @media (max-width:700px){ .home-hero{ min-height:210px; } }
   #homeCanvas{ position:absolute; inset:0; width:100%; height:100%; display:block; }
   .home-hero-core{ position:relative; text-align:center; padding:28px 16px; pointer-events:none; }
@@ -1240,17 +1313,27 @@
   .home-weather{ font-family:var(--mono); font-size:13px; color:var(--text-dim); margin-top:10px; display:flex; align-items:center; justify-content:center; gap:7px; min-height:22px; }
   .home-weather .tl-weather-tick-icon{ width:20px; height:20px; }
   .home-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:12px; }
-  .home-tile{ position:relative; display:flex; flex-direction:column; align-items:flex-start; gap:6px; text-align:left; padding:18px 16px 14px; border:1px solid var(--line); border-radius:12px; background:var(--bg-raised); color:var(--text); cursor:pointer; font-family:var(--mono); transition:transform .18s ease, border-color .18s ease, box-shadow .18s ease; }
-  .home-tile:hover, .home-tile:focus-visible{ transform:translateY(-3px); border-color:var(--accent); box-shadow:0 10px 24px rgba(0,0,0,0.25); outline:none; }
-  .home-tile-glyph{ font-size:26px; line-height:1; color:var(--accent); }
+  /* Each tile carries its destination's accent (--tile-accent/-bg, matching the tint its 3D panel
+     uses in the constellation above) — the board reads as a map of YOUR areas, not a mono-accent
+     menu. Glyphs sit in a tinted square chip so color has a consistent shape to live in. */
+  .home-tile{ --tile-accent:var(--accent); --tile-accent-bg:var(--accent-glow); position:relative; display:flex; flex-direction:column; align-items:flex-start; gap:8px; text-align:left; padding:18px 16px 14px; border:1px solid var(--border); border-radius:var(--radius-lg); background:var(--bg-raised); color:var(--text); cursor:pointer; font-family:var(--mono); transition:transform var(--dur-med) var(--ease-out), border-color var(--dur-med) var(--ease-out), box-shadow var(--dur-med) var(--ease-out); }
+  .home-tile[data-go="planner"]{ --tile-accent:var(--cat-career); --tile-accent-bg:var(--cat-career-bg); }
+  .home-tile[data-go="tracker"]{ --tile-accent:var(--cat-growth); --tile-accent-bg:var(--cat-growth-bg); }
+  .home-tile[data-go="timeline"]{ --tile-accent:var(--cat-finance); --tile-accent-bg:var(--cat-finance-bg); }
+  .home-tile[data-go="people"]{ --tile-accent:var(--cat-relationships); --tile-accent-bg:var(--cat-relationships-bg); }
+  .home-tile[data-go="location"]{ --tile-accent:var(--cat-sol); --tile-accent-bg:var(--cat-sol-bg); }
+  .home-tile-group{ --tile-accent:var(--violet); --tile-accent-bg:var(--violet-glow); }
+  .home-tile:hover, .home-tile:focus-visible{ transform:translateY(-3px); border-color:var(--tile-accent); box-shadow:var(--elev-2); outline:none; }
+  .home-tile-glyph{ font-size:22px; line-height:1; color:var(--tile-accent); background:var(--tile-accent-bg); width:44px; height:44px; display:grid; place-items:center; border-radius:var(--radius); }
   .home-tile-name{ font-size:15px; font-weight:700; letter-spacing:1px; }
   .home-tile-cap{ font-size:11.5px; line-height:1.45; color:var(--text-dim); }
   /* The grouped Agent+Notes tile isn't itself clickable — its two facets are. */
   .home-tile-group{ cursor:default; }
   .home-tile-group:hover{ transform:none; box-shadow:none; }
   .home-tile-facets{ display:flex; gap:8px; width:100%; }
-  .home-tile-facet{ flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; padding:10px 6px; border:1px solid var(--line); border-radius:9px; background:transparent; color:var(--text); cursor:pointer; font-family:var(--mono); transition:transform .18s ease, border-color .18s ease; }
-  .home-tile-facet:hover, .home-tile-facet:focus-visible{ transform:translateY(-2px); border-color:var(--accent); outline:none; }
+  .home-tile-facet{ flex:1; display:flex; flex-direction:column; align-items:center; gap:4px; padding:10px 6px; border:1px solid var(--border); border-radius:9px; background:transparent; color:var(--text); cursor:pointer; font-family:var(--mono); transition:transform var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out); }
+  .home-tile-facet:hover, .home-tile-facet:focus-visible{ transform:translateY(-2px); border-color:var(--violet); background:var(--violet-glow); outline:none; }
+  .home-tile-facet .home-tile-glyph{ width:auto; height:auto; background:none; font-size:20px; color:var(--violet); }
   .home-tile-facet-name{ font-size:12px; font-weight:600; letter-spacing:0.5px; }
   @media (max-width:700px){
     .home-clock-time{ font-size:38px; }
