@@ -1553,12 +1553,13 @@
          floating HUD panels sit over the graph — a draggable clock/date/weather widget, a Google
          Photos slideshow, and the areas legend rail (which doubles as the graph's color key AND a set
          of on/off filters over both the graph and the timeline). Navigation lives in the sidebar. No
-         WebGL / reduced motion shows a plain graph-fallback message; every other zone is DOM. -->
+         WebGL shows a plain graph-fallback message (reduced motion just quiets the idle auto-rotate,
+         it doesn't disable the graph); every other zone is DOM. -->
     <section id="homeSection" class="home-cockpit">
       <div class="home-graph-wrap">
         <canvas id="homeCanvas" aria-hidden="true"></canvas>
         <div class="home-graph-fallback" id="homeGraphFallback" hidden>
-          <p class="panel-hint">The 3D graph needs WebGL (and motion enabled) — it's unavailable here.</p>
+          <p class="panel-hint">The 3D graph needs WebGL — it's unavailable here.</p>
         </div>
         <div class="home-hud-clock" id="homeHudClock">
           <div class="home-clock-time" id="homeClockTime">--:--</div>
@@ -3948,11 +3949,16 @@
     return threeModulePromise;
   }
   function homeWebGLUsable(){
-    if(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return false;
     try{
       var c = document.createElement("canvas");
       return !!(window.WebGLRenderingContext && (c.getContext("webgl2") || c.getContext("webgl")));
     } catch(err){ return false; }
+  }
+  // Reduced motion is an accessibility preference about gratuitous animation, not a capability
+  // check — it should quiet the idle auto-rotate, not take down the graph's actual interactivity
+  // (click/pan/zoom). Checked live (not cached) since it can flip mid-session via OS settings.
+  function prefersReducedMotion(){
+    return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   }
   function cssVarColor(name){
     var v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -4310,7 +4316,7 @@
     window.addEventListener("resize", onResize);
 
     function frame(){
-      if(performance.now() > orbit.autoUntil) orbit.theta += 0.0016;  // slow idle auto-rotate
+      if(!prefersReducedMotion() && performance.now() > orbit.autoUntil) orbit.theta += 0.0016;  // slow idle auto-rotate
       tickGraph();
       syncGraphToScene();
       if(graph) graph.meshes.forEach(function(m, i){
@@ -10212,8 +10218,8 @@
   // transparent (see the .gl-on CSS) and become interaction proxies; every frame this layer reads
   // their live getBoundingClientRect() and places a 3D bar exactly underneath, so dragging,
   // resizing, scrolling and zooming all mirror for free with zero changes to the handlers.
-  // Same guard set as the home scene: no WebGL / reduced motion / failed CDN import → the class
-  // never goes on and the timeline renders exactly as before.
+  // Same guard as the home scene: no WebGL / failed CDN import → the class never goes on and the
+  // timeline renders exactly as before. (Reduced motion doesn't gate this — see homeWebGLUsable.)
   var todayGl = null, todayGlIniting = false, todayGlFailed = false;
   var TODAY_GL_ROWS = ["Health","Maintenance","Career","Relationships","Growth","Sol","Finance","Other"];
   function ensureTodayGl(){
