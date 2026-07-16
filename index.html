@@ -1364,17 +1364,25 @@
      over the graph as HUD panels. Uses the same margin-cancel full-bleed trick as
      .ppl-fullscreen-graph / .planner-fullscreen-graph (values mirror .main's padding, including
      its media-query variants below). */
-  #homeSection.home-cockpit{ margin:-32px -40px -70px; height:100vh; height:100dvh; box-sizing:border-box; display:flex; flex-direction:column; overflow:hidden; }
+  #homeSection.home-cockpit{ --home-dock-h:150px; margin:-32px -40px -70px; height:100vh; height:100dvh; box-sizing:border-box; display:flex; flex-direction:column; overflow:hidden; }
   .home-graph-wrap{ position:relative; flex:1; min-height:0; overflow:hidden; background:var(--bg-inset); }
   #homeCanvas{ position:absolute; inset:0; width:100%; height:100%; display:block; cursor:grab; touch-action:none; }
   #homeCanvas.dragging{ cursor:grabbing; }
+  #homeCanvas.panning{ cursor:move; }
   .home-graph-fallback{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; text-align:center; padding:20px; }
-  /* HUD: clock + date + weather, top-left. pointer-events:none so graph drags starting here still
-     reach the canvas — there's nothing clickable in this panel. */
-  .home-hud-clock{ position:absolute; top:16px; left:20px; z-index:5; pointer-events:none; }
-  .home-clock-time{ font-family:var(--mono); font-size:38px; font-weight:700; letter-spacing:2px; line-height:1; font-variant-numeric:tabular-nums; }
-  .home-clock-date{ font-family:var(--mono); font-size:12.5px; color:var(--text-dim); margin-top:6px; }
-  .home-weather{ font-family:var(--mono); font-size:12.5px; color:var(--text-dim); margin-top:8px; display:flex; align-items:center; gap:7px; min-height:20px; }
+  /* Split handle: drag to trade height between the graph and the timeline dock (persisted in
+     --home-dock-h). A thin bar with a row-resize cursor and a centered grip. */
+  .home-split-handle{ position:relative; flex-shrink:0; height:9px; background:var(--bg-raised); border-top:1px solid var(--border); cursor:row-resize; display:flex; align-items:center; justify-content:center; touch-action:none; z-index:6; }
+  .home-split-handle::before{ content:""; width:44px; height:3px; border-radius:3px; background:var(--border-bright); }
+  .home-split-handle:hover::before, .home-split-handle.dragging::before{ background:var(--accent); }
+  /* HUD: clock + date + weather — a floating, draggable frosted widget (position persisted). Its own
+     pointer-events are on (so it can be grabbed); the graph canvas underneath still gets every event
+     that doesn't start on the widget. */
+  .home-hud-clock{ position:absolute; top:16px; left:18px; z-index:7; padding:10px 14px 11px; border-radius:10px; border:1px solid var(--border); background:rgba(var(--bg-raised-rgb), 0.55); backdrop-filter:blur(8px); cursor:grab; user-select:none; touch-action:none; }
+  .home-hud-clock.dragging{ cursor:grabbing; }
+  .home-clock-time{ font-family:var(--mono); font-size:36px; font-weight:700; letter-spacing:2px; line-height:1; font-variant-numeric:tabular-nums; }
+  .home-clock-date{ font-family:var(--mono); font-size:12px; color:var(--text-dim); margin-top:6px; }
+  .home-weather{ font-family:var(--mono); font-size:12px; color:var(--text-dim); margin-top:7px; display:flex; align-items:center; gap:7px; min-height:20px; }
   .home-weather .tl-weather-tick-icon{ width:18px; height:18px; }
   /* Google Photos slideshow, top-right — frosted panel; images crossfade via the .show class. */
   .home-photos{ position:absolute; top:14px; right:14px; z-index:5; width:230px; height:150px; border-radius:10px; overflow:hidden; border:1px solid var(--border); background:rgba(var(--bg-raised-rgb), 0.55); backdrop-filter:blur(8px); }
@@ -1389,6 +1397,11 @@
   .home-rail-title{ font-family:var(--mono); font-size:9.5px; letter-spacing:0.1em; text-transform:uppercase; color:var(--text-faint); margin-bottom:5px; }
   .home-rail-row{ display:flex; align-items:center; gap:8px; padding:3px 5px; border:none; border-radius:4px; background:none; font-family:var(--mono); font-size:11.5px; color:var(--text-dim); cursor:pointer; text-align:left; width:100%; }
   .home-rail-row:hover, .home-rail-row:focus-visible{ color:var(--text); background:var(--bg-inset); outline:none; }
+  /* Toggled-off area: dimmed with a hollow icon, so the rail reads as a set of on/off filters over
+     the graph + timeline (like toggling a series in a chart legend). */
+  .home-rail-row.off{ opacity:0.4; }
+  .home-rail-row.off .home-rail-icon{ background:none; box-shadow:inset 0 0 0 1px var(--border-bright); color:var(--text-faint); }
+  .home-rail-row.off span{ text-decoration:line-through; }
   .home-rail-icon{ width:18px; height:18px; display:grid; place-items:center; border-radius:4px; font-size:11px; flex-shrink:0; }
   .home-rail-count{ margin-left:auto; font-weight:700; font-size:10.5px; color:var(--text-faint); }
   .home-rail-row[data-cat="Health"] .home-rail-icon{ color:var(--cat-health); background:var(--cat-health-bg); }
@@ -1400,17 +1413,24 @@
   .home-rail-row[data-cat="Sol"] .home-rail-icon{ color:var(--cat-sol); background:var(--cat-sol-bg); }
   /* Hover tooltip for 3D graph nodes (goal/project/habit titles live here, not as 3D text). */
   .home-node-tip{ position:absolute; z-index:6; pointer-events:none; font-family:var(--mono); font-size:11px; padding:4px 9px; border-radius:4px; background:var(--bg-raised); border:1px solid var(--border-bright); color:var(--text); box-shadow:var(--elev-2); white-space:nowrap; max-width:320px; overflow:hidden; text-overflow:ellipsis; }
-  /* Today's timeline dock — full width along the bottom: an hour ruler, three thin lanes
-     (habits/actions/notes) against the shared hour-grid background, and a now marker. */
-  .home-timeline-dock{ position:relative; flex-shrink:0; height:138px; border-top:1px solid var(--border); background:var(--bg-raised); }
+  /* Today's timeline dock — full width along the bottom: an hour ruler, three interactive lanes
+     (habits/actions/notes) against the shared hour-grid background, a now marker, and a day/night
+     band pinned at the very bottom. Height is the resizable split (--home-dock-h). */
+  .home-timeline-dock{ position:relative; flex-shrink:0; height:var(--home-dock-h, 150px); min-height:70px; background:var(--bg-raised); }
   .home-tl-hours{ position:absolute; top:4px; left:0; right:0; height:12px; }
   .home-tl-hours span{ position:absolute; transform:translateX(-50%); font-family:var(--mono); font-size:9px; color:var(--text-faint); }
-  .home-tl-lanes{ position:absolute; top:20px; bottom:6px; left:0; right:0; background:var(--tl-hour-grid); }
+  .home-tl-lanes{ position:absolute; top:20px; bottom:16px; left:0; right:0; background:var(--tl-hour-grid); touch-action:none; }
   .home-tl-lane{ position:relative; height:33.333%; border-top:1px dashed var(--border); }
   .home-tl-lane:first-child{ border-top:none; }
-  .home-tl-lane-label{ position:absolute; left:6px; top:50%; transform:translateY(-50%); font-family:var(--mono); font-size:9px; letter-spacing:0.08em; text-transform:uppercase; color:var(--text-faint); pointer-events:none; }
-  .home-tl-block{ position:absolute; top:3px; bottom:3px; z-index:1; border-radius:3px; border:1px solid var(--border-bright); background:var(--bg-inset); color:var(--text); font-family:var(--mono); font-size:9.5px; line-height:1.15; padding:2px 5px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; cursor:pointer; }
+  .home-tl-lane-label{ position:absolute; left:6px; top:50%; transform:translateY(-50%); font-family:var(--mono); font-size:9px; letter-spacing:0.08em; text-transform:uppercase; color:var(--text-faint); pointer-events:none; z-index:1; }
+  .home-tl-block{ position:absolute; top:3px; bottom:3px; z-index:2; border-radius:3px; border:1px solid var(--border-bright); background:var(--bg-inset); color:var(--text); font-family:var(--mono); font-size:9.5px; line-height:1.15; padding:2px 5px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; cursor:pointer; touch-action:none; }
   .home-tl-block.done{ opacity:0.45; }
+  /* Press-and-hold to arm a move (see wireHomeTimelineDock) — the fill sweep signals the wait, then
+     the block lifts into drag; matches the Today timeline's gesture. */
+  .home-tl-block.tl-holding{ box-shadow:0 0 0 1px var(--accent); }
+  .home-tl-block.dragging{ box-shadow:0 2px 10px rgba(0,0,0,0.4); z-index:4; opacity:0.9; }
+  /* Day/night band across the very bottom — sunrise→sunset gradient for today (tlDayNightGradientCss). */
+  .home-tl-daynight{ position:absolute; left:0; right:0; bottom:0; height:12px; border-top:1px solid var(--border); }
   .home-tl-block.Health{ background:var(--cat-health-bg); border-color:var(--cat-health); }
   .home-tl-block.Finance{ background:var(--cat-finance-bg); border-color:var(--cat-finance); }
   .home-tl-block.Career{ background:var(--cat-career-bg); border-color:var(--cat-career); }
@@ -1418,7 +1438,7 @@
   .home-tl-block.Growth{ background:var(--cat-growth-bg); border-color:var(--cat-growth); }
   .home-tl-block.Relationships{ background:var(--cat-relationships-bg); border-color:var(--cat-relationships); }
   .home-tl-block.Sol{ background:var(--cat-sol-bg); border-color:var(--cat-sol); }
-  .home-tl-now{ position:absolute; top:16px; bottom:0; width:2px; margin-left:-1px; background:var(--accent); z-index:2; pointer-events:none; box-shadow:0 0 6px var(--accent-glow); }
+  .home-tl-now{ position:absolute; top:16px; bottom:0; width:2px; margin-left:-1px; background:var(--accent); z-index:3; pointer-events:none; box-shadow:0 0 6px var(--accent-glow); }
   /* Small screens: a true no-scroll cockpit can't fit — fall back to a scrollable stack with the
      graph at a fixed height. Margin values mirror the mobile .main padding, same as the other
      fullscreen sections' media overrides below. */
@@ -1527,21 +1547,20 @@
 
   <main class="main">
     <!-- ===== HOME SECTION ===== -->
-    <!-- Fullscreen, non-scrolling "cockpit" (see .home-cockpit): the 3D system graph (same data as
-         Planner ▸ Graph, rendered with Three.js) fills the middle; today's timeline docks along the
-         bottom edge at full width; and three HUD panels float over the graph — clock/date/weather
-         (top-left), a Google Photos slideshow (top-right), and the areas legend rail (right edge),
-         which doubles as the graph's color key. Navigation lives solely in the sidebar now. When
-         WebGL is unavailable (or reduced motion is on), the graph cell shows a plain fallback with a
-         jump to the 2D planner graph — every other zone is ordinary DOM and unaffected. -->
+    <!-- Fullscreen, non-scrolling "cockpit" (see .home-cockpit): the interactive 3D system graph (same
+         data as Planner ▸ Graph, rendered with Three.js — orbit, pan, zoom, clickable nodes) fills
+         the top; a drag handle splits it from today's timeline dock below (resize either bigger); and
+         floating HUD panels sit over the graph — a draggable clock/date/weather widget, a Google
+         Photos slideshow, and the areas legend rail (which doubles as the graph's color key AND a set
+         of on/off filters over both the graph and the timeline). Navigation lives in the sidebar. No
+         WebGL / reduced motion shows a plain graph-fallback message; every other zone is DOM. -->
     <section id="homeSection" class="home-cockpit">
       <div class="home-graph-wrap">
         <canvas id="homeCanvas" aria-hidden="true"></canvas>
         <div class="home-graph-fallback" id="homeGraphFallback" hidden>
           <p class="panel-hint">The 3D graph needs WebGL (and motion enabled) — it's unavailable here.</p>
-          <button class="btn" id="homeGraphFallbackBtn" type="button">open the planner graph instead</button>
         </div>
-        <div class="home-hud-clock">
+        <div class="home-hud-clock" id="homeHudClock">
           <div class="home-clock-time" id="homeClockTime">--:--</div>
           <div class="home-clock-date" id="homeClockDate"></div>
           <div class="home-weather" id="homeWeatherNow"></div>
@@ -1555,14 +1574,16 @@
         <div class="home-areas-rail" id="homeAreasRail"></div>
         <div class="home-node-tip" id="homeNodeTip" hidden></div>
       </div>
+      <div class="home-split-handle" id="homeSplitHandle" title="Drag to resize the graph and timeline"></div>
       <div class="home-timeline-dock" id="homeTimelineDock">
         <div class="home-tl-hours" id="homeTlHours"></div>
-        <div class="home-tl-lanes">
+        <div class="home-tl-lanes" id="homeTlLanes">
           <div class="home-tl-lane" id="homeTlLaneHabits"></div>
           <div class="home-tl-lane" id="homeTlLaneActions"></div>
           <div class="home-tl-lane" id="homeTlLaneNotes"></div>
         </div>
         <div class="home-tl-now" id="homeTlNow"></div>
+        <div class="home-tl-daynight" id="homeTlDayNight"></div>
       </div>
     </section>
 
@@ -3409,27 +3430,178 @@
   });
 
   /* ---------------- Home (cockpit) dashboard ---------------- */
-  // Areas legend rail — each row routes to that area's dashboard page.
+  // Which life areas are toggled OFF — a filter applied to BOTH the 3D graph (its nodes/edges) and
+  // the timeline dock (its blocks). A plain cat->true map, persisted so the view stays as you left
+  // it. Read directly by the graph frame loop and the dock renderer (both close over this var), so
+  // toggling just mutates it and lets the next frame/render pick it up.
+  var homeHiddenAreas = (function(){
+    try{ var a = JSON.parse(safeGet(window.localStorage, "pp_home_hidden_areas") || "[]"); var m = {}; (a||[]).forEach(function(c){ m[c] = true; }); return m; }
+    catch(e){ return {}; }
+  })();
+  function homeAreaVisible(cat){ return !(cat && homeHiddenAreas[cat]); }
+  function persistHiddenAreas(){
+    safeSet(window.localStorage, "pp_home_hidden_areas", JSON.stringify(Object.keys(homeHiddenAreas).filter(function(c){ return homeHiddenAreas[c]; })));
+  }
+  // Areas legend rail — each row is an on/off filter now (not navigation): toggling an area hides
+  // its nodes in the graph and its blocks in the timeline, and dims the row.
   document.getElementById("homeAreasRail").addEventListener("click", function(e){
     var row = e.target.closest("[data-cat]");
-    if(row) openAreaDetailPage(row.dataset.cat);
+    if(!row) return;
+    var cat = row.dataset.cat;
+    if(homeHiddenAreas[cat]) delete homeHiddenAreas[cat]; else homeHiddenAreas[cat] = true;
+    persistHiddenAreas();
+    renderHomeAreasRail();       // reflect the new off/on state immediately
+    renderHomeTimelineDock();    // drop/restore that area's dock blocks
+    // the graph reads homeHiddenAreas live in its frame loop — nothing to poke there
   });
-  // The graph is the only cockpit zone with no plain-DOM twin, so its no-WebGL fallback gets an
-  // explicit jump to the 2D planner graph. Simulating a click on the real tab button reuses the
-  // planner's own tab-switching handler (panel visibility, headers, fullscreen class, activation)
-  // instead of re-implementing it here.
-  document.getElementById("homeGraphFallbackBtn").addEventListener("click", function(){
-    showSection("planner");
-    var tab = document.querySelector('#plannerTabs .view-tab[data-tab="graph"]');
-    if(tab) tab.click();
-  });
-  // Timeline dock blocks are a read-only picture of today — clicking any of them goes to the Today
-  // page where the full editing surface (drag, resize, context menu) lives. Right-click still works
-  // here directly, since the blocks carry the same data-kind/data-id/data-date the global
-  // context-menu listener keys on.
-  document.getElementById("homeTimelineDock").addEventListener("click", function(e){
-    if(e.target.closest(".home-tl-block")) showSection("today");
-  });
+
+  // Split handle: drag up/down to trade height between the graph and the timeline dock. Writes
+  // --home-dock-h on the section (clamped to a sane band and never below/above what leaves both
+  // zones usable), persisted so the chosen split sticks across reloads.
+  (function wireHomeSplit(){
+    var handle = document.getElementById("homeSplitHandle");
+    var section = document.getElementById("homeSection");
+    var stored = parseInt(safeGet(window.localStorage, "pp_home_dock_h") || "", 10);
+    if(stored && stored > 0) section.style.setProperty("--home-dock-h", stored + "px");
+    var startY = 0, startH = 0, active = false;
+    function clampH(px){
+      var max = Math.max(120, section.clientHeight - 160);  // always leave the graph room
+      return Math.max(70, Math.min(max, px));
+    }
+    handle.addEventListener("pointerdown", function(e){
+      active = true;
+      startY = e.clientY;
+      startH = document.getElementById("homeTimelineDock").offsetHeight;
+      handle.setPointerCapture(e.pointerId);
+      handle.classList.add("dragging");
+    });
+    handle.addEventListener("pointermove", function(e){
+      if(!active) return;
+      section.style.setProperty("--home-dock-h", clampH(startH - (e.clientY - startY)) + "px");
+    });
+    function end(){
+      if(!active) return;
+      active = false;
+      handle.classList.remove("dragging");
+      var h = document.getElementById("homeTimelineDock").offsetHeight;
+      safeSet(window.localStorage, "pp_home_dock_h", String(h));
+      // The 3D canvas listens for window "resize"; a split drag changes its box without one, so nudge it.
+      window.dispatchEvent(new Event("resize"));
+    }
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
+  })();
+
+  // Floating clock/weather widget — draggable within the graph area, position persisted. Grabs on
+  // its own surface; the graph canvas underneath still gets any pointer event that doesn't start here.
+  (function wireHomeClockDrag(){
+    var el = document.getElementById("homeHudClock");
+    var wrap = document.querySelector(".home-graph-wrap");
+    var pos = null;
+    try{ pos = JSON.parse(safeGet(window.localStorage, "pp_home_clock_pos") || "null"); }catch(e){}
+    if(pos && typeof pos.left === "number"){ el.style.left = pos.left + "px"; el.style.top = pos.top + "px"; }
+    var dragging = false, offX = 0, offY = 0, moved = false;
+    el.addEventListener("pointerdown", function(e){
+      dragging = true; moved = false;
+      var r = el.getBoundingClientRect(), wr = wrap.getBoundingClientRect();
+      offX = e.clientX - r.left; offY = e.clientY - r.top;
+      el.setPointerCapture(e.pointerId);
+      el.classList.add("dragging");
+      e.preventDefault();
+    });
+    el.addEventListener("pointermove", function(e){
+      if(!dragging) return;
+      moved = true;
+      var wr = wrap.getBoundingClientRect();
+      var left = Math.max(0, Math.min(wr.width - el.offsetWidth, e.clientX - wr.left - offX));
+      var top = Math.max(0, Math.min(wr.height - el.offsetHeight, e.clientY - wr.top - offY));
+      el.style.left = left + "px"; el.style.top = top + "px";
+    });
+    function end(){
+      if(!dragging) return;
+      dragging = false;
+      el.classList.remove("dragging");
+      if(moved) safeSet(window.localStorage, "pp_home_clock_pos", JSON.stringify({ left: parseFloat(el.style.left) || 0, top: parseFloat(el.style.top) || 0 }));
+    }
+    el.addEventListener("pointerup", end);
+    el.addEventListener("pointercancel", end);
+  })();
+
+  // Timeline dock interactions — same gesture vocabulary as the Today timeline (see
+  // wireTimelineLayerDrag): a clean click completes a habit/action (opens the editor for a note),
+  // and a press-and-hold arms a drag that moves the item's time. Overnight-spillover tails aren't
+  // draggable (their left edge isn't a real start time), only click-through. All three lanes share
+  // one 24h horizontal scale, so the pointer x is measured against #homeTlLanes (full width = a day)
+  // regardless of which lane the block sits in.
+  (function wireHomeTimelineDock(){
+    var dock = document.getElementById("homeTimelineDock");
+    var lanes = document.getElementById("homeTlLanes");
+    var dragEl = null, dragId = null, dragKind = null, dragDate = null, dragOvernight = false;
+    var armed = false, armTimer = null, moved = false, movedBeforeArm = false, downX = 0, downY = 0;
+    function clearArmTimer(){ if(armTimer){ clearTimeout(armTimer); armTimer = null; } }
+    dock.addEventListener("pointerdown", function(e){
+      var block = e.target.closest(".home-tl-block");
+      if(!block) return;
+      dragEl = block; dragId = block.dataset.id; dragKind = block.dataset.kind; dragDate = block.dataset.date;
+      dragOvernight = !!block.dataset.overnight;
+      armed = false; moved = false; movedBeforeArm = false; downX = e.clientX; downY = e.clientY;
+      block.setPointerCapture(e.pointerId);
+      if(!dragOvernight){
+        block.classList.add("tl-holding");
+        armTimer = setTimeout(function(){ armed = true; block.classList.remove("tl-holding"); block.classList.add("dragging"); }, TL_DRAG_HOLD_MS);
+      }
+    });
+    dock.addEventListener("pointermove", function(e){
+      if(!dragEl) return;
+      if(!armed){
+        var dx = e.clientX - downX, dy = e.clientY - downY;
+        if(Math.sqrt(dx*dx + dy*dy) > TL_DRAG_ARM_MOVE_THRESHOLD) movedBeforeArm = true;
+        return;
+      }
+      moved = true;
+      var rect = lanes.getBoundingClientRect();
+      var x = Math.min(rect.width, Math.max(0, e.clientX - rect.left));
+      var totalMin = Math.round(((x / rect.width) * 1440) / 5) * 5;
+      dragEl.style.left = (totalMin / 1440 * 100) + "%";
+      dragEl.dataset.pendingTime = minutesToTime(totalMin);
+    });
+    dock.addEventListener("pointerup", async function(){
+      if(!dragEl) return;
+      clearArmTimer();
+      var el = dragEl, id = dragId, kind = dragKind, date = dragDate, newTime = el.dataset.pendingTime;
+      var wasArmed = armed, wasMoved = moved, wasMovedBeforeArm = movedBeforeArm;
+      dragEl = null; dragId = null; dragKind = null; dragDate = null; dragOvernight = false; armed = false;
+      el.classList.remove("dragging", "tl-holding");
+      if(!wasArmed){
+        if(wasMovedBeforeArm) return;
+        if(kind === "habit-instance") await handleHabitMarkClick(id, date);
+        else if(kind === "action") await toggleActionDone(id);
+        else if(kind === "journal") editJournalEntry(id);
+        return;
+      }
+      if(!wasMoved || !newTime) return;
+      if(kind === "habit-instance"){
+        await setHabitInstanceOverride(id, date, { timeOfDay: newTime });
+      } else if(kind === "journal"){
+        var n = state.journal.find(function(x){ return x.id === id; });
+        if(n) n.timeOfDay = newTime;
+        var r3 = await safeUpdate("journal", id, { time_of_day: newTime });
+        if(r3.error) console.error(r3.error); else warnDroppedFields(r3.droppedFields);
+        renderAll();
+      } else {
+        var a = state.actions.find(function(x){ return x.id === id; });
+        if(a) a.timeOfDay = newTime;
+        var r2 = await safeUpdate("actions", id, { time_of_day: newTime });
+        if(r2.error) console.error(r2.error); else warnDroppedFields(r2.droppedFields);
+        renderAll();
+      }
+    });
+    dock.addEventListener("pointercancel", function(){
+      clearArmTimer();
+      if(dragEl) dragEl.classList.remove("dragging", "tl-holding");
+      dragEl = null; dragId = null; dragKind = null; dragDate = null; dragOvernight = false; armed = false;
+    });
+  })();
   // Today's activity per life area — feeds the legend rail's live counts (an action due today, a
   // habit occurring today, or a note saved today), so the rail reads as "where my day is actually
   // happening", not just a static color key.
@@ -3443,18 +3615,20 @@
       return { cat:cat, count:count, on: count > 0 };
     });
   }
-  // The legend rail doubles as the 3D graph's color key: icon + name per area (same CATEGORY_ICONS
-  // + --cat-* colors the nodes use), plus today's activity count. Signature-guarded because the
-  // home tick calls this every second — the DOM only rebuilds when a count actually changes.
+  // The legend rail doubles as the 3D graph's color key AND its on/off filter: icon + name per area
+  // (same CATEGORY_ICONS + --cat-* colors the nodes use), today's activity count, and an off/dimmed
+  // state when the area is toggled out (homeHiddenAreas). Signature-guarded (counts + off-state)
+  // because the home tick calls this every second — the DOM only rebuilds when something changes.
   function renderHomeAreasRail(){
     var el = document.getElementById("homeAreasRail");
     if(!el) return;
     var pulse = computeHomeAreaPulse();
-    var sig = pulse.map(function(a){ return a.cat + ":" + a.count; }).join("|");
+    var sig = pulse.map(function(a){ return a.cat + ":" + a.count + ":" + (homeHiddenAreas[a.cat] ? 1 : 0); }).join("|");
     if(el.dataset.sig === sig) return;
     el.dataset.sig = sig;
     el.innerHTML = '<div class="home-rail-title">areas</div>' + pulse.map(function(a){
-      return '<button class="home-rail-row" data-cat="' + a.cat + '" type="button" title="' + a.cat + (a.count ? " — " + a.count + " today" : "") + '">' +
+      var off = !!homeHiddenAreas[a.cat];
+      return '<button class="home-rail-row' + (off ? " off" : "") + '" data-cat="' + a.cat + '" type="button" title="' + a.cat + (off ? " — hidden (click to show)" : (a.count ? " — " + a.count + " today (click to hide)" : " — click to hide")) + '">' +
         '<span class="home-rail-icon">' + CATEGORY_ICONS[a.cat] + '</span>' +
         '<span>' + a.cat + '</span>' +
         (a.count ? '<span class="home-rail-count">' + a.count + '</span>' : '') +
@@ -3528,27 +3702,30 @@
     state.habits.filter(function(h){ return habitOccursOnDate(h, today); }).forEach(function(h){
       var f = habitInstanceFields(h, today);
       if(!f.timeOfDay) return;
-      blocks.habit.push({ kind:"habit-instance", id:h.id, date:today, title:h.title, start:timeToFraction(f.timeOfDay), width:Math.max((f.durationMinutes || 15) / 1440, 0.006), area:habitCategory(h), done:habitDoneForDate(h, today) });
+      blocks.habit.push({ kind:"habit-instance", id:h.id, date:today, title:h.title, start:timeToFraction(f.timeOfDay), width:Math.max((f.durationMinutes || 15) / 1440, 0.006), area:habitCategory(h), done:habitDoneForDate(h, today), overnight:false });
     });
     state.habits.filter(function(h){ return habitOccursOnDate(h, yesterday); }).forEach(function(h){
       var f = habitInstanceFields(h, yesterday);
       if(!f.timeOfDay) return;
       var spill = overnightSpilloverMinutes(f.timeOfDay, f.durationMinutes);
       if(!spill) return;
-      blocks.habit.push({ kind:"habit-instance", id:h.id, date:yesterday, title:"‹ " + h.title, start:0, width:spill / 1440, area:habitCategory(h), done:habitDoneForDate(h, yesterday) });
+      blocks.habit.push({ kind:"habit-instance", id:h.id, date:yesterday, title:"‹ " + h.title, start:0, width:spill / 1440, area:habitCategory(h), done:habitDoneForDate(h, yesterday), overnight:true });
     });
     state.actions.filter(function(a){ return a.date === today && a.timeOfDay; }).forEach(function(a){
-      blocks.action.push({ kind:"action", id:a.id, date:today, title:a.title, start:timeToFraction(a.timeOfDay), width:Math.max((a.durationMinutes || 15) / 1440, 0.006), area:actionCategory(a), done:!!a.done });
+      blocks.action.push({ kind:"action", id:a.id, date:today, title:a.title, start:timeToFraction(a.timeOfDay), width:Math.max((a.durationMinutes || 15) / 1440, 0.006), area:actionCategory(a), done:!!a.done, overnight:false });
     });
     state.journal.filter(function(n){ return n.date === today && n.timeOfDay; }).forEach(function(n){
       var preview = (n.title || n.text || "").slice(0, 40);
-      blocks.note.push({ kind:"journal", id:n.id, date:today, title:"✎ " + preview, start:timeToFraction(n.timeOfDay), width:0.008, area:noteCategory(n), done:false });
+      blocks.note.push({ kind:"journal", id:n.id, date:today, title:"✎ " + preview, start:timeToFraction(n.timeOfDay), width:0.008, area:noteCategory(n), done:false, overnight:false });
     });
+    // Areas toggled off in the legend rail hide their blocks here too (a null-area item is never
+    // filtered — there's no area to hide it under).
+    ["habit","action","note"].forEach(function(k){ blocks[k] = blocks[k].filter(function(b){ return homeAreaVisible(b.area); }); });
     return blocks;
   }
   function homeTlLaneHtml(label, list){
     return '<span class="home-tl-lane-label">' + label + '</span>' + list.map(function(b){
-      return '<div class="home-tl-block' + (b.area ? " " + b.area : "") + (b.done ? " done" : "") + '" data-kind="' + b.kind + '" data-id="' + b.id + '" data-date="' + b.date + '"' +
+      return '<div class="home-tl-block' + (b.area ? " " + b.area : "") + (b.done ? " done" : "") + '" data-kind="' + b.kind + '" data-id="' + b.id + '" data-date="' + b.date + '"' + (b.overnight ? ' data-overnight="1"' : '') +
         ' style="left:' + (b.start * 100) + '%; width:' + Math.max(b.width * 100, 0.7) + '%;" title="' + escapeHtml(b.title) + '">' + escapeHtml(b.title) + '</div>';
     }).join("");
   }
@@ -3574,6 +3751,14 @@
     }
     var now = new Date();
     document.getElementById("homeTlNow").style.left = ((now.getHours() * 60 + now.getMinutes()) / 1440 * 100) + "%";
+    // Day/night band across the very bottom — today's sunrise→sunset gradient (same computation the
+    // Timeline page's band uses). Only rebuilt when the calendar day changes.
+    var dn = document.getElementById("homeTlDayNight");
+    var todayKey = todayStr();
+    if(dn && dn.dataset.day !== todayKey){
+      dn.dataset.day = todayKey;
+      dn.style.background = tlDayNightGradientCss(now.getFullYear(), now.getMonth() + 1, now.getDate());
+    }
   }
 
   // ---- Google Photos slideshow (top-right HUD). Google locked the broad library-read scope down
@@ -3953,36 +4138,62 @@
     function syncGraphToScene(){
       var g = graph;
       if(!g) return;
+      // Area toggles (homeHiddenAreas, driven by the legend rail) hide a node's mesh + label here;
+      // invisible meshes also drop out of raycasting, so hidden nodes can't be hovered or clicked.
       g.nodes.forEach(function(n, i){
+        var vis = homeAreaVisible(n.area);
+        n.hiddenNow = !vis;
+        g.meshes[i].visible = vis;
         g.meshes[i].position.set(n.x, n.y, n.z);
-        if(n.labelSprite) n.labelSprite.position.set(n.x, n.y + 2.1, n.z);
+        if(n.labelSprite){ n.labelSprite.visible = vis; n.labelSprite.position.set(n.x, n.y + 2.1, n.z); }
       });
       for(var e = 0; e < g.edges.length; e++){
         var a = g.nodes[g.edges[e].a], b = g.nodes[g.edges[e].b];
-        g.linePos[e*6] = a.x; g.linePos[e*6+1] = a.y; g.linePos[e*6+2] = a.z;
-        g.linePos[e*6+3] = b.x; g.linePos[e*6+4] = b.y; g.linePos[e*6+5] = b.z;
+        // An edge touching a hidden node collapses to a zero-length (invisible) segment rather than
+        // needing the whole line geometry rebuilt.
+        if(a.hiddenNow || b.hiddenNow){
+          g.linePos[e*6] = g.linePos[e*6+3] = a.x; g.linePos[e*6+1] = g.linePos[e*6+4] = a.y; g.linePos[e*6+2] = g.linePos[e*6+5] = a.z;
+        } else {
+          g.linePos[e*6] = a.x; g.linePos[e*6+1] = a.y; g.linePos[e*6+2] = a.z;
+          g.linePos[e*6+3] = b.x; g.linePos[e*6+4] = b.y; g.linePos[e*6+5] = b.z;
+        }
       }
       g.lines.geometry.attributes.position.needsUpdate = true;
     }
 
-    // ---- orbit / zoom / pinch / hover / click. Hand-rolled spherical orbit (~40 lines) rather
-    // than pulling OrbitControls from a second CDN module. Idle auto-rotate resumes a few seconds
-    // after the last interaction. A clean (non-drag) click routes exactly like the 2D graph's
-    // node click: area page / goal detail / project modal / habit modal. ----
+    // ---- full 3D navigation: orbit (left-drag / one finger), zoom (wheel / pinch), pan (right-drag,
+    // shift+drag, or two-finger drag — moves the look-at target across the view plane), plus hover +
+    // clickable nodes. Hand-rolled (~90 lines) rather than pulling OrbitControls from a second CDN
+    // module. Idle auto-rotate resumes a few seconds after the last interaction. A clean left-click
+    // routes exactly like the 2D graph's node click: area page / goal detail / project / habit. ----
     var orbit = { theta: 0.6, phi: 1.15, dist: 46, autoUntil: 0 };
-    var dragging = false, lastX = 0, lastY = 0, downX = 0, downY = 0, pinchDist = null;
+    var target = new THREE.Vector3(0, 0, 0);
+    var dragging = false, panning = false, downPanning = false;
+    var lastX = 0, lastY = 0, downX = 0, downY = 0, pinchDist = null, pinchMidX = 0, pinchMidY = 0;
     var activePointers = {};
     var raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2(), hoveredIdx = null;
     var tipEl = document.getElementById("homeNodeTip");
+    var _right = new THREE.Vector3(), _up = new THREE.Vector3(), _dir = new THREE.Vector3(), _wUp = new THREE.Vector3(0, 1, 0);
+    // Translate the look-at target within the current view plane (screen dx/dy → world), so pan
+    // slides the whole graph without rotating it. Scaled by distance so it feels 1:1 at any zoom.
+    function panBy(dx, dy){
+      _dir.copy(camera.position).sub(target).normalize();
+      _right.copy(_wUp).cross(_dir).normalize();
+      _up.copy(_dir).cross(_right);
+      var s = orbit.dist * 0.0016;
+      target.addScaledVector(_right, -dx * s).addScaledVector(_up, dy * s);
+      if(target.length() > 60) target.setLength(60);  // never let the graph get lost off-view
+      orbit.autoUntil = performance.now() + 6000;
+    }
     function applyCamera(){
       orbit.phi = Math.max(0.25, Math.min(Math.PI - 0.25, orbit.phi));
-      orbit.dist = Math.max(14, Math.min(120, orbit.dist));
+      orbit.dist = Math.max(10, Math.min(140, orbit.dist));
       camera.position.set(
-        orbit.dist * Math.sin(orbit.phi) * Math.cos(orbit.theta),
-        orbit.dist * Math.cos(orbit.phi),
-        orbit.dist * Math.sin(orbit.phi) * Math.sin(orbit.theta)
+        target.x + orbit.dist * Math.sin(orbit.phi) * Math.cos(orbit.theta),
+        target.y + orbit.dist * Math.cos(orbit.phi),
+        target.z + orbit.dist * Math.sin(orbit.phi) * Math.sin(orbit.theta)
       );
-      camera.lookAt(0, 0, 0);
+      camera.lookAt(target);
     }
     function pickNode(e){
       var rect = canvas.getBoundingClientRect();
@@ -3999,26 +4210,38 @@
       if(ids.length === 2){
         var p0 = activePointers[ids[0]], p1 = activePointers[ids[1]];
         pinchDist = Math.hypot(p0.x - p1.x, p0.y - p1.y);
+        pinchMidX = (p0.x + p1.x) / 2; pinchMidY = (p0.y + p1.y) / 2;
         dragging = false;
       } else {
         dragging = true;
+        // Right button or Shift = pan; plain left drag = orbit.
+        downPanning = panning = (e.button === 2 || e.shiftKey);
         lastX = downX = e.clientX; lastY = downY = e.clientY;
+        canvas.classList.toggle("panning", panning);
+        canvas.classList.toggle("dragging", !panning);
       }
-      canvas.classList.add("dragging");
       orbit.autoUntil = Infinity;
     }
     function onMove(e){
       if(activePointers[e.pointerId]) activePointers[e.pointerId] = { x: e.clientX, y: e.clientY };
       var ids = Object.keys(activePointers);
       if(pinchDist != null && ids.length === 2){
+        // Two fingers do both at once: distance change → zoom, midpoint movement → pan.
         var p0 = activePointers[ids[0]], p1 = activePointers[ids[1]];
         var nd = Math.hypot(p0.x - p1.x, p0.y - p1.y);
         if(nd > 0){ orbit.dist *= pinchDist / nd; pinchDist = nd; }
+        var mx = (p0.x + p1.x) / 2, my = (p0.y + p1.y) / 2;
+        panBy(mx - pinchMidX, my - pinchMidY);
+        pinchMidX = mx; pinchMidY = my;
         return;
       }
       if(dragging){
-        orbit.theta += (e.clientX - lastX) * 0.005;
-        orbit.phi -= (e.clientY - lastY) * 0.005;
+        if(panning){
+          panBy(e.clientX - lastX, e.clientY - lastY);
+        } else {
+          orbit.theta += (e.clientX - lastX) * 0.005;
+          orbit.phi -= (e.clientY - lastY) * 0.005;
+        }
         lastX = e.clientX; lastY = e.clientY;
         return;
       }
@@ -4039,15 +4262,15 @@
     function onUp(e){
       delete activePointers[e.pointerId];
       if(Object.keys(activePointers).length < 2) pinchDist = null;
-      var wasDragging = dragging;
+      var wasDragging = dragging, wasPanning = downPanning;
       // Only fully stand down once the last finger lifts — a pinch releases its two pointers one
       // at a time, and the first release must not leave the "dragging" cursor/auto-rotate stuck.
       if(!Object.keys(activePointers).length){
-        dragging = false;
-        canvas.classList.remove("dragging");
+        dragging = false; panning = false;
+        canvas.classList.remove("dragging", "panning");
         orbit.autoUntil = performance.now() + 6000;
       }
-      if(!wasDragging || !graph) return;
+      if(!wasDragging || wasPanning || !graph) return;  // a pan gesture never opens a node
       var moved = Math.abs(e.clientX - downX) + Math.abs(e.clientY - downY) > 6;
       if(moved) return;
       var idx = pickNode(e);
@@ -4061,8 +4284,8 @@
     function onCancel(e){
       delete activePointers[e.pointerId];
       pinchDist = null;
-      dragging = false;
-      canvas.classList.remove("dragging");
+      dragging = false; panning = false;
+      canvas.classList.remove("dragging", "panning");
       orbit.autoUntil = performance.now() + 6000;
     }
     function onWheel(e){
@@ -4070,11 +4293,13 @@
       orbit.dist *= (1 + Math.sign(e.deltaY) * 0.08);
       orbit.autoUntil = performance.now() + 6000;
     }
+    function onContextMenu(e){ e.preventDefault(); }  // let right-drag pan without the browser menu
     canvas.addEventListener("pointerdown", onDown);
     canvas.addEventListener("pointermove", onMove);
     canvas.addEventListener("pointerup", onUp);
     canvas.addEventListener("pointercancel", onCancel);
     canvas.addEventListener("wheel", onWheel, { passive: false });
+    canvas.addEventListener("contextmenu", onContextMenu);
 
     function onResize(){
       var nw = wrap.clientWidth || w, nh = wrap.clientHeight || h;
@@ -4107,6 +4332,7 @@
         canvas.removeEventListener("pointerup", onUp);
         canvas.removeEventListener("pointercancel", onCancel);
         canvas.removeEventListener("wheel", onWheel);
+        canvas.removeEventListener("contextmenu", onContextMenu);
         window.removeEventListener("resize", onResize);
         disposeGraph();
         scene.traverse(function(o){
