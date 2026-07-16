@@ -1679,8 +1679,8 @@
           <div class="home-todo-head" id="homeTodoHead" title="Drag to move">
             <span class="home-todo-title">today</span>
             <div class="home-todo-tabs">
-              <button class="home-todo-tab sel" data-mode="priority" type="button">priority</button>
               <button class="home-todo-tab" data-mode="worklife" type="button">personal/work</button>
+              <button class="home-todo-tab sel" data-mode="priority" type="button">priority</button>
             </div>
           </div>
           <div class="home-todo-grid" id="homeTodoGrid"></div>
@@ -9806,7 +9806,8 @@
   });
 
   /* ---------------- Tracker ---------------- */
-  var trackerRangeStart = (function(){ var d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() - 6); return d; })();
+  // 7-day window centered on today (3 days before, today, 3 days after) rather than a trailing week.
+  var trackerRangeStart = (function(){ var d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() - 3); return d; })();
   var trackerSelectedDate = todayStr();
   document.getElementById("trackerSummaryDateInput").value = trackerSelectedDate;
 
@@ -10261,7 +10262,7 @@
     renderTracker();
   });
   document.getElementById("trackerTodayBtn").addEventListener("click", function(){
-    var d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() - 6);
+    var d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() - 3);
     trackerRangeStart = d;
     renderTracker();
   });
