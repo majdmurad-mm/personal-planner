@@ -1334,6 +1334,27 @@
   }
   /* Seven tabs now — let them wrap instead of overflowing on narrow screens. */
   #plannerTabs{ flex-wrap:wrap; }
+
+  /* ===== Markdown note bodies ===== */
+  /* Scoped tightly to .journal-entry-md so markdown typography can't leak into other card text.
+     Sized down from document defaults — these live inside compact cards, not an article page. */
+  .journal-entry-md p{ margin:0 0 8px; }
+  .journal-entry-md p:last-child{ margin-bottom:0; }
+  .journal-entry-md h1, .journal-entry-md h2, .journal-entry-md h3,
+  .journal-entry-md h4, .journal-entry-md h5, .journal-entry-md h6{ font-family:var(--display); margin:10px 0 6px; line-height:1.3; }
+  .journal-entry-md h1{ font-size:17px; } .journal-entry-md h2{ font-size:15.5px; } .journal-entry-md h3{ font-size:14px; }
+  .journal-entry-md h4, .journal-entry-md h5, .journal-entry-md h6{ font-size:13px; }
+  .journal-entry-md ul, .journal-entry-md ol{ margin:0 0 8px; padding-left:22px; }
+  .journal-entry-md li{ margin:2px 0; }
+  .journal-entry-md code{ font-family:var(--mono); font-size:0.92em; background:var(--bg-inset); border:1px solid var(--border); border-radius:var(--radius-sm); padding:1px 5px; }
+  .journal-entry-md pre{ background:var(--bg-inset); border:1px solid var(--border); border-radius:var(--radius); padding:10px 12px; overflow-x:auto; margin:0 0 8px; }
+  .journal-entry-md pre code{ background:none; border:none; padding:0; }
+  .journal-entry-md blockquote{ margin:0 0 8px; padding:4px 12px; border-left:3px solid var(--border-bright); color:var(--text-dim); }
+  .journal-entry-md a{ color:var(--accent); text-decoration:underline; text-underline-offset:2px; }
+  .journal-entry-md hr{ border:none; border-top:1px solid var(--border); margin:10px 0; }
+  .journal-entry-md table{ border-collapse:collapse; margin:0 0 8px; font-size:12.5px; }
+  .journal-entry-md th, .journal-entry-md td{ border:1px solid var(--border); padding:4px 9px; }
+  .journal-entry-md img{ max-width:100%; border-radius:var(--radius); }
 </style>
 </head>
 <body>
@@ -1920,7 +1941,7 @@
           </div>
         </div>
         <div class="loc-geocode-status" id="journalRecordStatus"></div>
-        <textarea id="journalTextInput" class="journal-textarea" placeholder="Write today's entry…" rows="3"></textarea>
+        <textarea id="journalTextInput" class="journal-textarea" placeholder="Write today's entry… Markdown supported — @ tags people, # tags goals/projects/habits/actions" rows="3"></textarea>
       </div>
       <div id="journalEntries"></div>
       <div class="empty-state" id="journalEmptyState" style="display:none;">
@@ -2858,6 +2879,7 @@
     weekdays: "habit day selection", tracker_variable_id: "habit's tracker link", time_of_day: "scheduled time",
     duration_minutes: "duration", category: "area", skip_dates: "skipped habit days",
     categories: "area(s)", custom_interval_days: "custom repeat interval", month_day: "monthly repeat day", extra_dates: "manually scheduled habit days",
+    linked_objects: "note links", sentiment: "sentiment tags",
     secondary_goal_ids: "secondary goals", secondary_categories: "secondary areas",
     verified: "verified status", like_score: "like score", contact_score: "contact score", year_met: "year met",
     relationship_status: "relationship status", social_group: "social group", personality_type: "personality type",
@@ -3095,7 +3117,7 @@
     state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null,
       locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null) }; });
     state.actions.sort(function(a,b){ return a.position - b.position; });
-    state.journal = (results[4].data || []).map(function(r){ return { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null, recordingId:r.recording_id||null }; });
+    state.journal = (results[4].data || []).map(function(r){ return { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null, recordingId:r.recording_id||null, linkedObjects:r.linked_objects||[], sentiment:r.sentiment||[] }; });
     state.people = (results[5].data || []).map(function(r){
       return { id:r.id, name:r.name, relationship:r.relationship, contact:r.contact, notes:r.notes, position:r.position||0,
         verified:!!r.verified, likeScore:(r.like_score!=null?r.like_score:null), contactScore:(r.contact_score!=null?r.contact_score:null),
@@ -4249,7 +4271,7 @@
     });
   }
   function journalPayload(snapshot){
-    return { id:snapshot.id, date:snapshot.date, text:snapshot.text, time_of_day:snapshot.timeOfDay, category:snapshot.category, recording_id:snapshot.recordingId };
+    return { id:snapshot.id, date:snapshot.date, text:snapshot.text, time_of_day:snapshot.timeOfDay, category:snapshot.category, recording_id:snapshot.recordingId, linked_objects:snapshot.linkedObjects||[], sentiment:snapshot.sentiment||[] };
   }
   async function deleteJournalEntry(id){
     var n = state.journal.find(function(x){ return x.id === id; });
@@ -7214,6 +7236,65 @@
     var handler = EDIT_HANDLERS[kind];
     if(handler) handler(id);
   }
+  // Structured relations: the note's @/# tags resolved to STABLE ids at save time and stored in
+  // journal.linked_objects — the inline tags stay the authoring/display surface, but rename-proof
+  // linking and reverse lookups ("which notes mention this goal?") come from here, not from
+  // re-matching titles at read time.
+  function extractNoteLinks(text){
+    var links = [], seen = {};
+    if(!text) return links;
+    var re = /([@#])\[([^\]]+)\]/g, m;
+    while((m = re.exec(text))){
+      var entry = null;
+      if(m[1] === "@"){
+        var person = findTaggedPerson(m[2]);
+        if(person) entry = { kind:"person", id:person.id };
+      } else {
+        var found = findTaggedPlannerObject(m[2]);
+        if(found) entry = { kind:found.kind, id:found.obj.id };
+      }
+      if(entry && !seen[entry.kind + ":" + entry.id]){ seen[entry.kind + ":" + entry.id] = true; links.push(entry); }
+    }
+    return links;
+  }
+  // ---------------- Markdown note bodies ----------------
+  // Notes are Markdown. Rendering goes through marked (parse) + DOMPurify (sanitize) — both lazy
+  // CDN ESM imports like Three.js/transformers — because piping user-authored markup into innerHTML
+  // without sanitization is an XSS hole. Until the libs arrive (or if the CDN is unreachable) the
+  // plain-escaped tag renderer above is the fallback, so notes are never blank or unsafe.
+  var mdLibs = null, mdLibsPromise = null, mdLibsFailed = false;
+  function ensureMdLibs(){
+    if(mdLibs || mdLibsFailed || mdLibsPromise) return;
+    mdLibsPromise = Promise.all([
+      import("https://cdn.jsdelivr.net/npm/marked@15/+esm"),
+      import("https://cdn.jsdelivr.net/npm/dompurify@3/+esm")
+    ]).then(function(mods){
+      mdLibs = { marked: mods[0].marked || mods[0].default, DOMPurify: mods[1].default || mods[1] };
+      // Whatever note surfaces are on screen rendered with the fallback — repaint them as real MD.
+      renderActiveSectionContent();
+    }).catch(function(err){
+      mdLibsFailed = true;
+      console.warn("markdown libs unavailable, notes render as plain text:", err.message);
+    });
+  }
+  function renderNoteBodyHtml(text){
+    if(!text) return "";
+    if(!mdLibs){ ensureMdLibs(); return renderNoteTextWithTags(text); }
+    // @/# tags would be mangled by the markdown parser (brackets read as link syntax), so they're
+    // swapped for inert placeholder tokens first and re-expanded into their clickable spans AFTER
+    // sanitization — the spans are our own trusted markup, the user's text never bypasses DOMPurify.
+    var tags = [];
+    var masked = text.replace(/([@#])\[([^\]]+)\]/g, function(whole){
+      tags.push(whole);
+      return "NOTETAGTOKEN" + (tags.length - 1) + "NEKOT";
+    });
+    var html;
+    try{ html = mdLibs.DOMPurify.sanitize(mdLibs.marked.parse(masked, { breaks: true, async: false })); }
+    catch(err){ return renderNoteTextWithTags(text); }
+    return html.replace(/NOTETAGTOKEN(\d+)NEKOT/g, function(_, i){
+      return renderNoteTextWithTags(tags[Number(i)] || "");
+    });
+  }
   // @/# tag autocomplete, shared by every journal text input (journalTextInput on the main Journal
   // page, journalEditTextInput in the create/edit modal used there and by Today's notes section) via
   // one floating panel (#noteTagSuggest) rather than one per field. State lives here, not per-input,
@@ -7552,10 +7633,13 @@
   // Shared by the manual "save" button and the auto-save-on-transcribe path below — inserts the
   // note and mirrors it into local state the same way regardless of who triggered the save.
   async function saveJournalEntry(payload){
+    // Structured relations ride along on every save path automatically — resolved from whatever
+    // @/# tags the text contains at this moment (see extractNoteLinks).
+    if(payload.linked_objects === undefined) payload.linked_objects = extractNoteLinks(payload.text);
     var res = await safeWrite(function(p){ return sb.from("journal").insert(p).select().single(); }, payload);
     if(res.error) return res;
     var r = res.data;
-    state.journal.push({ id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null, recordingId:r.recording_id||null });
+    state.journal.push({ id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null, recordingId:r.recording_id||null, linkedObjects:r.linked_objects||payload.linked_objects||[], sentiment:r.sentiment||[] });
     warnDroppedFields(res.droppedFields);
     return res;
   }
@@ -7598,7 +7682,7 @@
           '<button class="icon-btn edit" data-action="edit-journal" data-id="' + entry.id + '" aria-label="Edit entry">✎</button>' +
           '<button class="icon-btn" data-action="del-journal" data-id="' + entry.id + '" aria-label="Delete entry">&times;</button>' +
         '</div></div>' +
-        '<div class="journal-entry-text">' + renderNoteTextWithTags(entry.text) + '</div>' +
+        '<div class="journal-entry-text journal-entry-md">' + renderNoteBodyHtml(entry.text) + '</div>' +
         renderJournalWaveformHtml(entry) +
       '</div>';
     }).join("");
@@ -7808,7 +7892,9 @@
       date: document.getElementById("journalEditDateInput").value || todayStr(),
       text: text,
       time_of_day: document.getElementById("journalEditTimeInput").value || null,
-      category: chipValue(document.getElementById("journalEditAreaSelect"), "ar") || null
+      category: chipValue(document.getElementById("journalEditAreaSelect"), "ar") || null,
+      // Re-resolved on every edit — tags added/removed in the text change the structured links too.
+      linked_objects: extractNoteLinks(text)
     };
     this.disabled = true;
     if(editingJournalId){
@@ -7817,7 +7903,7 @@
       if(res.error){ alert(res.error.message); return; }
       var r = res.data;
       var idx = state.journal.findIndex(function(x){ return x.id === editingJournalId; });
-      if(idx !== -1) state.journal[idx] = { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null, recordingId:r.recording_id||null };
+      if(idx !== -1) state.journal[idx] = { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null, recordingId:r.recording_id||null, linkedObjects:r.linked_objects||payload.linked_objects||[], sentiment:r.sentiment||[] };
       renderAll(); closeModal("journalModalOverlay");
       warnDroppedFields(res.droppedFields);
     } else {
@@ -7825,7 +7911,7 @@
       this.disabled = false;
       if(res2.error){ alert(res2.error.message); return; }
       var r2 = res2.data;
-      state.journal.push({ id:r2.id, date:r2.date, text:r2.text, timeOfDay:r2.time_of_day ? r2.time_of_day.slice(0,5) : null, category:r2.category||null, recordingId:r2.recording_id||null });
+      state.journal.push({ id:r2.id, date:r2.date, text:r2.text, timeOfDay:r2.time_of_day ? r2.time_of_day.slice(0,5) : null, category:r2.category||null, recordingId:r2.recording_id||null, linkedObjects:r2.linked_objects||payload.linked_objects||[], sentiment:r2.sentiment||[] });
       renderAll(); closeModal("journalModalOverlay");
       warnDroppedFields(res2.droppedFields);
     }
