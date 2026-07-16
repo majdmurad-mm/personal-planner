@@ -1461,6 +1461,39 @@
   .home-todo-resize{ position:absolute; right:0; bottom:0; width:16px; height:16px; cursor:nwse-resize; touch-action:none; }
   .home-todo-resize::before{ content:""; position:absolute; right:4px; bottom:4px; width:7px; height:7px; border-right:2px solid var(--border-bright); border-bottom:2px solid var(--border-bright); opacity:0.7; }
   .home-todo-resize:hover::before{ opacity:1; border-color:var(--accent-dim); }
+  /* Notes widget, bottom-right — a compact bar by default (record / quick-add / today's overall
+     sentiment / expand), same movable+resizable pattern as the to-do matrix (wireHomeNotesDrag /
+     wireHomeNotesResize). The resize grip only appears once expanded — resizing a one-row bar has
+     nothing to do — and collapsing clears the inline height so the CSS bar height takes back over. */
+  .home-notes-widget{ position:absolute; bottom:14px; right:14px; z-index:5; width:250px; height:42px; min-width:200px; min-height:42px; border-radius:10px; border:1px solid var(--border); background:rgba(var(--bg-raised-rgb), 0.55); backdrop-filter:blur(8px); display:flex; flex-direction:column; overflow:hidden; }
+  .home-notes-widget.expanded{ height:230px; }
+  .home-notes-bar{ display:flex; align-items:center; gap:6px; padding:0 8px; height:42px; flex-shrink:0; cursor:grab; touch-action:none; }
+  .home-notes-widget.dragging .home-notes-bar{ cursor:grabbing; }
+  .home-notes-icon-btn{ width:26px; height:26px; border-radius:6px; border:1px solid var(--border-bright); background:none; color:var(--text-dim); font-size:13px; line-height:1; display:grid; place-items:center; cursor:pointer; flex-shrink:0; padding:0; }
+  .home-notes-icon-btn:hover{ color:var(--text); background:var(--bg-inset); }
+  #homeNotesRecordBtn.on{ background:#DC2626; color:#fff; border-color:#DC2626; animation:agentMicPulse 1.2s ease-in-out infinite; }
+  #homeNotesRecordBtn.transcribing{ opacity:0.6; cursor:wait; }
+  /* Today's overall mood from the day's logs (see homeNotesSentimentSummary) — one dot, averaged hue,
+     same --sent-h mechanism as the Notes page's per-entry .sentiment-chip so the color language matches. */
+  .home-notes-sentiment-dot{ width:10px; height:10px; border-radius:50%; margin:0 2px; flex-shrink:0; background:hsl(var(--sent-h,65),70%,50%); box-shadow:0 0 5px hsla(var(--sent-h,65),70%,50%,0.55); }
+  .home-notes-sentiment-dot.empty{ background:none; box-shadow:inset 0 0 0 1px var(--border-bright); }
+  .home-notes-expand-btn{ margin-left:auto; }
+  .home-notes-detail{ flex:1; min-height:0; overflow-y:auto; border-top:1px solid var(--border); padding:6px 8px; }
+  .home-notes-detail-item{ display:flex; align-items:baseline; gap:6px; font-family:var(--mono); font-size:10px; color:var(--text); cursor:pointer; padding:3px 0; line-height:1.35; }
+  .home-notes-detail-item:hover{ filter:brightness(1.25); }
+  .home-notes-detail-item.Health{ color:var(--cat-health); }
+  .home-notes-detail-item.Finance{ color:var(--cat-finance); }
+  .home-notes-detail-item.Career{ color:var(--cat-career); }
+  .home-notes-detail-item.Maintenance{ color:var(--cat-maintenance); }
+  .home-notes-detail-item.Growth{ color:var(--cat-growth); }
+  .home-notes-detail-item.Relationships{ color:var(--cat-relationships); }
+  .home-notes-detail-item.Sol{ color:var(--cat-sol); }
+  .home-notes-detail-time{ color:var(--text-faint); flex-shrink:0; font-size:9px; }
+  .home-notes-detail-text{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .home-notes-resize{ position:absolute; right:0; bottom:0; width:16px; height:16px; cursor:nwse-resize; touch-action:none; }
+  .home-notes-resize::before{ content:""; position:absolute; right:4px; bottom:4px; width:7px; height:7px; border-right:2px solid var(--border-bright); border-bottom:2px solid var(--border-bright); opacity:0.7; }
+  .home-notes-resize:hover::before{ opacity:1; border-color:var(--accent-dim); }
+  .home-notes-widget:not(.expanded) .home-notes-resize{ display:none; }
   /* Today's timeline dock — full width along the bottom: an hour ruler, three interactive lanes
      (habits/actions/notes) against the shared hour-grid background, a now marker, and a day/night
      band pinned at the very bottom. Height is the resizable split (--home-dock-h). */
@@ -1505,6 +1538,17 @@
     .home-photos{ display:none; }
     .home-clock-time{ font-size:26px; }
     .home-areas-rail{ right:8px; padding:8px 9px; }
+    /* The to-do matrix and notes bar are still fully movable/resizable on mobile, but their desktop
+       defaults (290px / 250px wide, in a wrap that's now only ~52vh tall) would eat most of the
+       graph on a phone before the user ever touches them — start smaller instead. Touch targets
+       (icon buttons, resize grips) are bumped up since a finger is far less precise than a cursor. */
+    .home-todo-matrix{ width:190px; height:150px; min-width:150px; }
+    .home-todo-tab{ font-size:8px; padding:3px 5px; }
+    .home-notes-widget{ width:180px; }
+    .home-notes-widget.expanded{ height:150px; }
+    .home-notes-icon-btn{ width:30px; height:30px; font-size:14px; }
+    .home-todo-resize, .home-notes-resize{ width:24px; height:24px; }
+    .home-todo-resize::before, .home-notes-resize::before{ right:6px; bottom:6px; }
   }
   /* Seven tabs now — let them wrap instead of overflowing on narrow screens. */
   #plannerTabs{ flex-wrap:wrap; }
@@ -1641,6 +1685,16 @@
           </div>
           <div class="home-todo-grid" id="homeTodoGrid"></div>
           <div class="home-todo-resize" id="homeTodoResize" title="Drag to resize"></div>
+        </div>
+        <div class="home-notes-widget" id="homeNotesWidget">
+          <div class="home-notes-bar" id="homeNotesBar" title="Drag to move">
+            <button class="home-notes-icon-btn" id="homeNotesRecordBtn" type="button" title="Record a note — click again to stop and transcribe">🎙</button>
+            <button class="home-notes-icon-btn" id="homeNotesAddBtn" type="button" title="Add a note">✎</button>
+            <span class="home-notes-sentiment-dot empty" id="homeNotesSentimentDot" title="No sentiment-tagged logs yet today"></span>
+            <button class="home-notes-icon-btn home-notes-expand-btn" id="homeNotesExpandBtn" type="button" title="Show today's notes">▾</button>
+          </div>
+          <div class="home-notes-detail" id="homeNotesDetail" hidden></div>
+          <div class="home-notes-resize" id="homeNotesResize" title="Drag to resize"></div>
         </div>
       </div>
       <div class="home-split-handle" id="homeSplitHandle" title="Drag to resize the graph and timeline"></div>
@@ -3880,6 +3934,170 @@
     else await toggleActionDone(id);
   });
 
+  // ---- Notes widget: a compact bar (record / quick-add / today's sentiment / expand) that opens
+  // into a list of everything captured today. The sentiment dot only pools LOG-length entries (see
+  // noteLengthType) — logs are the quick, frequent, mood-bearing entries; notes/documents are longer
+  // structured writing that would dilute a same-day "how am I feeling" read. The expanded list below
+  // it, though, shows every note from today regardless of length — that's just "what did I capture".
+  function homeTodayNotesList(){
+    var today = todayStr();
+    return state.journal.filter(function(n){ return n.date === today; }).sort(function(a, b){
+      return (a.timeOfDay || "99:99").localeCompare(b.timeOfDay || "99:99");
+    });
+  }
+  function homeNotesSentimentSummary(){
+    var today = todayStr();
+    var hues = [];
+    state.journal.filter(function(n){ return n.date === today && noteLengthType(n) === "log"; }).forEach(function(n){
+      (n.sentiment || []).forEach(function(t){ var h = SENTIMENT_HUES[t]; if(h != null) hues.push(h); });
+    });
+    if(!hues.length) return null;
+    return { hue: Math.round(hues.reduce(function(a, b){ return a + b; }, 0) / hues.length), count: hues.length };
+  }
+  function homeNotesDetailItemHtml(n){
+    var preview = (n.text || "").trim();
+    if(preview.length > 70) preview = preview.slice(0, 70) + "…";
+    var cat = noteCategory(n);
+    return '<div class="home-notes-detail-item' + (cat ? " " + cat : "") + '" data-id="' + n.id + '" title="' + escapeHtml(preview || n.title || "(empty)") + '">' +
+      (n.timeOfDay ? '<span class="home-notes-detail-time">' + escapeHtml(fmtTimeOfDay(n.timeOfDay)) + '</span>' : '') +
+      '<span class="home-notes-detail-text">' + escapeHtml(preview || n.title || "(empty)") + '</span></div>';
+  }
+  function renderHomeNotesWidget(){
+    var dot = document.getElementById("homeNotesSentimentDot");
+    if(!dot) return;
+    var summary = homeNotesSentimentSummary();
+    var sig = summary ? summary.hue + ":" + summary.count : "empty";
+    if(dot.dataset.sig !== sig){
+      dot.dataset.sig = sig;
+      if(summary){
+        dot.classList.remove("empty");
+        dot.style.setProperty("--sent-h", summary.hue);
+        dot.title = "today's overall mood — " + summary.count + " sentiment tag" + (summary.count === 1 ? "" : "s") + " across today's logs";
+      } else {
+        dot.classList.add("empty");
+        dot.style.removeProperty("--sent-h");
+        dot.title = "no sentiment-tagged logs yet today";
+      }
+    }
+    var detail = document.getElementById("homeNotesDetail");
+    if(detail.hidden) return;  // skip the rebuild while collapsed — nothing to show
+    var notes = homeTodayNotesList();
+    var listSig = notes.map(function(n){ return n.id + ":" + (n.text || "").length + ":" + (n.sentiment || []).join(","); }).join("|");
+    if(detail.dataset.sig === listSig) return;
+    detail.dataset.sig = listSig;
+    detail.innerHTML = notes.length ? notes.map(homeNotesDetailItemHtml).join("") : '<div class="home-todo-empty">no notes yet today</div>';
+  }
+  document.getElementById("homeNotesWidget").addEventListener("click", function(e){
+    if(e.target.closest("#homeNotesAddBtn")){ openJournalEditModal(null); return; }
+    if(e.target.closest("#homeNotesExpandBtn")){
+      var el = document.getElementById("homeNotesWidget");
+      var detail = document.getElementById("homeNotesDetail");
+      var expanding = detail.hidden;
+      detail.hidden = !expanding;
+      el.classList.toggle("expanded", expanding);
+      if(expanding){
+        var savedSize = null;
+        try{ savedSize = JSON.parse(safeGet(window.localStorage, "pp_home_notes_size") || "null"); }catch(err){}
+        if(savedSize && savedSize.h) el.style.height = savedSize.h + "px";
+        renderHomeNotesWidget();
+      } else {
+        el.style.height = "";  // let the collapsed CSS bar height take back over
+      }
+      safeSet(window.localStorage, "pp_home_notes_expanded", expanding ? "1" : "0");
+      return;
+    }
+    var item = e.target.closest(".home-notes-detail-item");
+    if(item) editJournalEntry(item.dataset.id);
+  });
+  // Reuses the same recorder the Agent's mic button uses (record → local transcription) rather than
+  // the Notes composer's full upload/waveform/storage pipeline — this is meant to be a quick capture,
+  // not a produced recording. Opens the new-note modal pre-filled with the transcript so the user can
+  // glance it over (and pick an area/priority) before it actually saves.
+  wireVoiceRecordButton(document.getElementById("homeNotesRecordBtn"), async function(blob){
+    try{
+      var text = await transcribeAudioLocally(blob);
+      if(!text){ toast("Couldn't make out any speech in that recording."); return; }
+      openJournalEditModal(null);
+      document.getElementById("journalEditTextInput").value = text;
+    } catch(err){
+      toast("Transcription failed: " + err.message);
+    }
+  });
+  // Draggable by the bar (icon buttons excluded, so their clicks still register) and resizable by the
+  // corner grip once expanded — same pattern as wireHomeTodoDrag/wireHomeTodoResize above.
+  (function wireHomeNotesDrag(){
+    var el = document.getElementById("homeNotesWidget");
+    var bar = document.getElementById("homeNotesBar");
+    var wrap = document.querySelector(".home-graph-wrap");
+    var pos = null;
+    try{ pos = JSON.parse(safeGet(window.localStorage, "pp_home_notes_pos") || "null"); }catch(e){}
+    if(pos && typeof pos.left === "number"){ el.style.left = pos.left + "px"; el.style.top = pos.top + "px"; el.style.bottom = "auto"; el.style.right = "auto"; }
+    var size = null;
+    try{ size = JSON.parse(safeGet(window.localStorage, "pp_home_notes_size") || "null"); }catch(e){}
+    if(size && size.w) el.style.width = size.w + "px";
+    if(safeGet(window.localStorage, "pp_home_notes_expanded") === "1"){
+      document.getElementById("homeNotesDetail").hidden = false;
+      el.classList.add("expanded");
+      if(size && size.h) el.style.height = size.h + "px";
+    }
+    var dragging = false, offX = 0, offY = 0, moved = false;
+    bar.addEventListener("pointerdown", function(e){
+      if(e.target.closest(".home-notes-icon-btn")) return;
+      dragging = true; moved = false;
+      var r = el.getBoundingClientRect();
+      offX = e.clientX - r.left; offY = e.clientY - r.top;
+      bar.setPointerCapture(e.pointerId);
+      el.classList.add("dragging");
+      e.preventDefault();
+    });
+    bar.addEventListener("pointermove", function(e){
+      if(!dragging) return;
+      moved = true;
+      var wr = wrap.getBoundingClientRect();
+      var left = Math.max(0, Math.min(wr.width - el.offsetWidth, e.clientX - wr.left - offX));
+      var top = Math.max(0, Math.min(wr.height - el.offsetHeight, e.clientY - wr.top - offY));
+      el.style.left = left + "px"; el.style.top = top + "px"; el.style.bottom = "auto"; el.style.right = "auto";
+    });
+    function end(){
+      if(!dragging) return;
+      dragging = false;
+      el.classList.remove("dragging");
+      if(moved) safeSet(window.localStorage, "pp_home_notes_pos", JSON.stringify({ left: parseFloat(el.style.left) || 0, top: parseFloat(el.style.top) || 0 }));
+    }
+    bar.addEventListener("pointerup", end);
+    bar.addEventListener("pointercancel", end);
+  })();
+  (function wireHomeNotesResize(){
+    var el = document.getElementById("homeNotesWidget");
+    var handle = document.getElementById("homeNotesResize");
+    var wrap = document.querySelector(".home-graph-wrap");
+    var MIN_W = 200, MIN_H = 120;
+    var active = false, startX = 0, startY = 0, startW = 0, startH = 0, maxW = 9999, maxH = 9999;
+    handle.addEventListener("pointerdown", function(e){
+      active = true;
+      startX = e.clientX; startY = e.clientY;
+      startW = el.offsetWidth; startH = el.offsetHeight;
+      var r = el.getBoundingClientRect(), wr = wrap.getBoundingClientRect();
+      maxW = wr.right - r.left - 6; maxH = wr.bottom - r.top - 6;
+      handle.setPointerCapture(e.pointerId);
+      e.stopPropagation();
+      e.preventDefault();
+    });
+    handle.addEventListener("pointermove", function(e){
+      if(!active) return;
+      var w = Math.max(MIN_W, Math.min(maxW, startW + (e.clientX - startX)));
+      var h = Math.max(MIN_H, Math.min(maxH, startH + (e.clientY - startY)));
+      el.style.width = w + "px"; el.style.height = h + "px";
+    });
+    function end(){
+      if(!active) return;
+      active = false;
+      safeSet(window.localStorage, "pp_home_notes_size", JSON.stringify({ w: el.offsetWidth, h: el.offsetHeight }));
+    }
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
+  })();
+
   // ---- Weather for *your* location (HUD widget). Coordinates come from the browser's geolocation
   // prompt once, get cached in localStorage (with a reverse-geocoded place name via Nominatim, which
   // the app already uses for address autocomplete), and every later load reuses the cache. Denied/
@@ -4169,6 +4387,7 @@
     renderHomeAreasRail();
     renderHomeTimelineDock();
     renderHomeTodoMatrix();
+    renderHomeNotesWidget();
     homeSyncGraphData();  // cheap signature compare; rebuilds the 3D node/edge set only on change
     homePhotosTick(now);  // advances the slideshow every ~8s
   }
