@@ -1227,6 +1227,11 @@
   .postpone-date-row{ display:flex; gap:6px; padding:2px 4px 4px; }
   .postpone-date-row input[type="date"]{ flex:1; min-width:0; font-size:11px; padding:5px 6px; }
   .postpone-date-row .btn{ font-size:11px; padding:5px 10px; }
+  #habitInstancePopover{ min-width:200px; }
+  .habit-instance-label{ font-family:var(--mono); font-size:10px; color:var(--text-faint); padding:4px 6px 6px; text-transform:uppercase; letter-spacing:0.04em; }
+  .habit-instance-row{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:3px 6px; }
+  .habit-instance-row label{ font-size:11px; color:var(--text-dim); }
+  .habit-instance-row input{ width:88px; font-size:11px; padding:5px 6px; }
   .global-toast{ position:fixed; left:50%; bottom:22px; transform:translateX(-50%); z-index:300; max-width:min(480px, 90vw); background:var(--bg-raised); border:1px solid var(--warn); border-left-width:3px; color:var(--text); font-family:var(--mono); font-size:11.5px; line-height:1.5; padding:10px 14px; border-radius:6px; box-shadow:var(--elev-3); animation:toastIn var(--dur-med) var(--ease-spring); }
   @keyframes toastIn{ from{ opacity:0; transform:translate(-50%, 10px); } to{ opacity:1; transform:translate(-50%, 0); } }
 
@@ -2506,6 +2511,23 @@
   </div>
 </div>
 
+<!-- ===== HABIT INSTANCE POPOVER — edits this one occurrence only (time/duration), never the
+     recurring habit's own pattern. That only happens from the Planner tab's habit modal. ===== -->
+<div class="ctx-menu" id="habitInstancePopover" hidden>
+  <div class="habit-instance-label" id="habitInstancePopoverLabel"></div>
+  <div class="habit-instance-row">
+    <label for="habitInstanceTimeInput">time</label>
+    <input type="time" id="habitInstanceTimeInput">
+  </div>
+  <div class="habit-instance-row">
+    <label for="habitInstanceDurationInput">duration (min)</label>
+    <input type="number" id="habitInstanceDurationInput" min="5" step="5">
+  </div>
+  <div class="ctx-menu-sep"></div>
+  <button class="ctx-menu-item" id="habitInstanceSaveBtn" type="button">save (this day only)</button>
+  <button class="ctx-menu-item" id="habitInstanceResetBtn" type="button">reset to habit default</button>
+</div>
+
 <!-- ===== TODAY TIMELINE "ADD" MENU (click empty row space) ===== -->
 <div class="ctx-menu" id="todayAddMenu" hidden>
   <button class="ctx-menu-item" data-add="habit" type="button">+ habit</button>
@@ -2928,6 +2950,7 @@
     weekdays: "habit day selection", tracker_variable_id: "habit's tracker link", time_of_day: "scheduled time",
     duration_minutes: "duration", category: "area", skip_dates: "skipped habit days",
     categories: "area(s)", custom_interval_days: "custom repeat interval", month_day: "monthly repeat day", extra_dates: "manually scheduled habit days",
+    instance_overrides: "per-day habit adjustments",
     linked_objects: "note links", sentiment: "sentiment tags", title: "note title", priority: "note priority",
     secondary_goal_ids: "secondary goals", secondary_categories: "secondary areas",
     verified: "verified status", like_score: "like score", contact_score: "contact score", year_met: "year met",
@@ -3160,7 +3183,7 @@
     state.goals.sort(function(a,b){ return a.position - b.position; });
     state.projects = (results[1].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), categories:r.categories||[] }; });
     state.projects.sort(function(a,b){ return a.position - b.position; });
-    state.habits = (results[2].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || null, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [], extraDates:r.extra_dates || [], customIntervalDays:r.custom_interval_days||null, monthDay:r.month_day||null, icon:r.icon||null,
+    state.habits = (results[2].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || null, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [], extraDates:r.extra_dates || [], customIntervalDays:r.custom_interval_days||null, monthDay:r.month_day||null, icon:r.icon||null, instanceOverrides:r.instance_overrides || {},
       locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null) }; });
     state.habits.sort(function(a,b){ return a.position - b.position; });
     state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null,
@@ -3935,6 +3958,38 @@
     }
     return true;
   }
+  // A single occurrence's effective time/duration — the habit's own instance_overrides for that date
+  // win over its recurring pattern's own timeOfDay/durationMinutes, so e.g. sleeping in later on one
+  // Sunday doesn't touch the habit's own fields (which every other day still reads) or any other
+  // day's occurrence. This is the ONLY thing an instance can change; the pattern itself (frequency,
+  // weekdays, title, the habit's own base time/duration, etc.) only ever changes from the Planner
+  // tab's own habit modal (data-kind="habit"), never from an instance (data-kind="habit-instance").
+  function habitInstanceFields(h, dateStr){
+    var ov = h.instanceOverrides && h.instanceOverrides[dateStr];
+    return {
+      timeOfDay: (ov && ov.timeOfDay != null) ? ov.timeOfDay : h.timeOfDay,
+      durationMinutes: (ov && ov.durationMinutes != null) ? ov.durationMinutes : h.durationMinutes
+    };
+  }
+  // Merges `patch` ({timeOfDay, durationMinutes}, either key optional) into one date's override, or —
+  // if patch is null — clears that date's override entirely, falling back to the habit's own pattern
+  // again ("reset to habit default").
+  async function setHabitInstanceOverride(id, dateStr, patch){
+    var h = state.habits.find(function(x){ return x.id === id; });
+    if(!h) return;
+    var prev = h.instanceOverrides || {};
+    var next = Object.assign({}, prev);
+    if(patch){
+      next[dateStr] = Object.assign({}, next[dateStr] || {}, patch);
+    } else {
+      delete next[dateStr];
+    }
+    h.instanceOverrides = next;
+    renderAll();
+    var r = await safeUpdate("habits", id, { instance_overrides: next });
+    if(r.error){ console.error(r.error); h.instanceOverrides = prev; renderAll(); return; }
+    warnDroppedFields(r.droppedFields);
+  }
 
   function renderStats(){
     var active = state.goals.filter(function(g){ return goalStatus(g) !== "done"; }).length;
@@ -4128,7 +4183,7 @@
     });
   }
   function habitPayload(snapshot){
-    return { id:snapshot.id, goal_id:snapshot.goalId, secondary_goal_ids:snapshot.secondaryGoalIds, title:snapshot.title, priority:snapshot.priority, frequency:snapshot.frequency, weekdays:snapshot.weekdays, tracker_variable_id:snapshot.trackerVariableId, time_of_day:snapshot.timeOfDay, duration_minutes:snapshot.durationMinutes, days:snapshot.days, position:snapshot.position, skip_dates:snapshot.skipDates, extra_dates:snapshot.extraDates, created_at:snapshot.createdAt, custom_interval_days:snapshot.customIntervalDays, icon:snapshot.icon,
+    return { id:snapshot.id, goal_id:snapshot.goalId, secondary_goal_ids:snapshot.secondaryGoalIds, title:snapshot.title, priority:snapshot.priority, frequency:snapshot.frequency, weekdays:snapshot.weekdays, tracker_variable_id:snapshot.trackerVariableId, time_of_day:snapshot.timeOfDay, duration_minutes:snapshot.durationMinutes, days:snapshot.days, position:snapshot.position, skip_dates:snapshot.skipDates, extra_dates:snapshot.extraDates, created_at:snapshot.createdAt, custom_interval_days:snapshot.customIntervalDays, icon:snapshot.icon, instance_overrides:snapshot.instanceOverrides || {},
       location_address:snapshot.locationAddress, location_lat:snapshot.locationLat, location_lng:snapshot.locationLng };
   }
   function trackerVarPayload(snapshot){
@@ -4414,11 +4469,16 @@
     journal: deleteJournalEntry,
     person: deletePerson
   };
+  // habit-instance's "edit" is handled separately below (openHabitInstancePopover, not editHabit) —
+  // a single occurrence can only ever change its own time/duration (see setHabitInstanceOverride),
+  // never the recurring pattern itself, so it must never reach the full habit modal. The `true` here
+  // is just a presence flag so the ctx menu still shows an "edit" option for this kind (mirrors how
+  // POSTPONE_KINDS below uses plain booleans, not handler functions).
   var EDIT_HANDLERS = {
     goal: editGoal,
     project: editProject,
     habit: editHabit,
-    "habit-instance": editHabit,
+    "habit-instance": true,
     action: editAction,
     journal: editJournalEntry,
     person: editPerson
@@ -4520,6 +4580,49 @@
     }
   });
 
+  // Editing a single habit occurrence (time/duration only, via setHabitInstanceOverride) — a
+  // deliberately small popover instead of the full habit modal, since instances can never touch the
+  // recurring pattern itself (frequency, weekdays, title, etc. — that's the Planner tab's habit modal's
+  // job alone). Reachable only via the global right-click menu's "edit" on a habit-instance block.
+  var habitInstanceTarget = null;
+  function openHabitInstancePopover(x, y, id, date){
+    var h = state.habits.find(function(x){ return x.id === id; });
+    if(!h) return;
+    habitInstanceTarget = { id:id, date:date };
+    var fields = habitInstanceFields(h, date);
+    document.getElementById("habitInstancePopoverLabel").textContent = h.title + " — " + fmtDateLong(date);
+    document.getElementById("habitInstanceTimeInput").value = fields.timeOfDay || "";
+    document.getElementById("habitInstanceDurationInput").value = fields.durationMinutes || "";
+    var pop = document.getElementById("habitInstancePopover");
+    pop.hidden = false;
+    positionFloatingEl(pop, x, y);
+  }
+  function closeHabitInstancePopover(){
+    document.getElementById("habitInstancePopover").hidden = true;
+    habitInstanceTarget = null;
+  }
+  document.addEventListener("click", function(e){
+    var pop = document.getElementById("habitInstancePopover");
+    if(!pop.hidden && !pop.contains(e.target)) closeHabitInstancePopover();
+  });
+  document.getElementById("habitInstanceSaveBtn").addEventListener("click", async function(){
+    if(!habitInstanceTarget) return;
+    var t = habitInstanceTarget;
+    var timeVal = document.getElementById("habitInstanceTimeInput").value || null;
+    var durationVal = document.getElementById("habitInstanceDurationInput").value;
+    var patch = {};
+    if(timeVal) patch.timeOfDay = timeVal;
+    if(durationVal) patch.durationMinutes = Math.max(5, Math.round(Number(durationVal)));
+    closeHabitInstancePopover();
+    await setHabitInstanceOverride(t.id, t.date, patch);
+  });
+  document.getElementById("habitInstanceResetBtn").addEventListener("click", async function(){
+    if(!habitInstanceTarget) return;
+    var t = habitInstanceTarget;
+    closeHabitInstancePopover();
+    await setHabitInstanceOverride(t.id, t.date, null);
+  });
+
   var globalCtxTarget = null;
   function openGlobalCtxMenu(x, y, kind, id, date){
     globalCtxTarget = { kind:kind, id:id, date:date, x:x, y:y };
@@ -4552,8 +4655,14 @@
       var handler = DELETE_HANDLERS[target.kind];
       if(handler) await handler(target.id, target.date);
     } else if(btn.dataset.ctx === "edit"){
-      var editHandler = EDIT_HANDLERS[target.kind];
-      if(editHandler) editHandler(target.id);
+      if(target.kind === "habit-instance"){
+        // Small time/duration-only popover, not the full habit modal — see EDIT_HANDLERS comment.
+        e.stopPropagation();
+        openHabitInstancePopover(target.x, target.y, target.id, target.date);
+      } else {
+        var editHandler = EDIT_HANDLERS[target.kind];
+        if(editHandler) editHandler(target.id);
+      }
     } else if(btn.dataset.ctx === "postpone"){
       // Stop this same click from bubbling to document, where the "click outside closes it" listener
       // for the popover we're about to open would otherwise see this click as "outside" and instantly
@@ -9549,9 +9658,10 @@
     var yesterday = addDaysToDateStr(todaySelectedDate, -1);
     var html = "";
     state.habits.filter(function(h){ return !!h.timeOfDay && habitOccursOnDate(h, todaySelectedDate) && habitCategory(h) === area; }).forEach(function(h){
-      var startFrac = timeToFraction(h.timeOfDay) * 100;
-      var widthFrac = Math.max(1.2, ((h.durationMinutes || 15) / 1440) * 100);
-      html += todayTimelineBlockHtml("habit-instance", h.id, todaySelectedDate, startFrac, widthFrac, h.title + " — " + fmtTimeOfDay(h.timeOfDay), escapeHtml(h.title), area, (habitDoneForDate(h, todaySelectedDate) ? " done" : "") + (h.priority === "P0" ? " p0" : ""), false, true);
+      var fields = habitInstanceFields(h, todaySelectedDate);
+      var startFrac = timeToFraction(fields.timeOfDay) * 100;
+      var widthFrac = Math.max(1.2, ((fields.durationMinutes || 15) / 1440) * 100);
+      html += todayTimelineBlockHtml("habit-instance", h.id, todaySelectedDate, startFrac, widthFrac, h.title + " — " + fmtTimeOfDay(fields.timeOfDay), escapeHtml(h.title), area, (habitDoneForDate(h, todaySelectedDate) ? " done" : "") + (h.priority === "P0" ? " p0" : ""), false, true);
     });
     // Habits that started yesterday and run past midnight (sleep being the obvious one — 11:30pm to
     // 7:30am) show their overnight tail here too, continued from the very start of today. Not
@@ -9559,10 +9669,11 @@
     // time isn't meaningful to move), but its right edge IS resizable: that's how you shorten or
     // lengthen sleep from the wake-up side without having to go edit the original day's block.
     state.habits.filter(function(h){ return !!h.timeOfDay && habitOccursOnDate(h, yesterday) && habitCategory(h) === area; }).forEach(function(h){
-      var spillMin = overnightSpilloverMinutes(h.timeOfDay, h.durationMinutes);
+      var fields = habitInstanceFields(h, yesterday);
+      var spillMin = overnightSpilloverMinutes(fields.timeOfDay, fields.durationMinutes);
       if(!spillMin) return;
       var widthFrac = spillMin / 1440 * 100;
-      html += todayTimelineBlockHtml("habit-instance", h.id, yesterday, 0, widthFrac, h.title + " — continued from " + fmtTimeOfDay(h.timeOfDay) + " yesterday", "‹ " + escapeHtml(h.title), area, (habitDoneForDate(h, yesterday) ? " done" : "") + (h.priority === "P0" ? " p0" : ""), true, "right");
+      html += todayTimelineBlockHtml("habit-instance", h.id, yesterday, 0, widthFrac, h.title + " — continued from " + fmtTimeOfDay(fields.timeOfDay) + " yesterday", "‹ " + escapeHtml(h.title), area, (habitDoneForDate(h, yesterday) ? " done" : "") + (h.priority === "P0" ? " p0" : ""), true, "right");
     });
     state.actions.filter(function(a){ return a.date === todaySelectedDate && !!a.timeOfDay && actionCategory(a) === area; }).forEach(function(a){
       var startFrac = timeToFraction(a.timeOfDay) * 100;
@@ -9653,10 +9764,9 @@
       }
       if(!wasMoved || !newTime) return;
       if(kind === "habit-instance"){
-        var h = state.habits.find(function(x){ return x.id === id; });
-        if(h) h.timeOfDay = newTime;
-        var r = await safeUpdate("habits", id, { time_of_day: newTime });
-        if(r.error) console.error(r.error); else warnDroppedFields(r.droppedFields);
+        // Dragging on Today only ever touches THIS one day's occurrence — see setHabitInstanceOverride
+        // — never the habit's own timeOfDay, which every other day still reads.
+        await setHabitInstanceOverride(id, date, { timeOfDay: newTime });
       } else if(kind === "journal"){
         var n = state.journal.find(function(x){ return x.id === id; });
         if(n) n.timeOfDay = newTime;
@@ -9729,29 +9839,44 @@
     track.addEventListener("pointerup", async function(){
       if(!resizeEl) return;
       var el = resizeEl, id = resizeId, kind = resizeKind, edge = resizeEdge;
-      var isOvernight = el.dataset.overnight === "1";
+      var isOvernight = el.dataset.overnight === "1", date = el.dataset.date;
       var durationMin = el.dataset.pendingDuration, newTime = el.dataset.pendingTime;
       resizeEl = null; resizeId = null; resizeKind = null; resizeEdge = null;
       el.classList.remove("resizing");
       delete el.dataset.pendingTime;
       if(!moved || !durationMin) return;
       durationMin = Number(durationMin);
-      var arr = kind === "habit-instance" ? state.habits : state.actions;
-      var obj = arr.find(function(x){ return x.id === id; });
-      if(!obj) return;
-      // The overnight tail's own width is only the spillover past midnight — its right edge is the
-      // wake/end time, so the real total duration is that spillover plus the (unchanged) stretch
-      // from the item's actual start time up to midnight.
+      if(kind === "habit-instance"){
+        var h = state.habits.find(function(x){ return x.id === id; });
+        if(!h) return;
+        var baseTime = habitInstanceFields(h, date).timeOfDay;
+        // The overnight tail's own width is only the spillover past midnight — its right edge is the
+        // wake/end time, so the real total duration is that spillover plus the (unchanged) stretch
+        // from the item's actual start time up to midnight.
+        var finalDurationH = durationMin;
+        if(isOvernight){
+          var startMinH = timeToFraction(baseTime) * 1440;
+          finalDurationH = Math.max(TIMELINE_RESIZE_MIN_MIN, Math.round((1440 - startMinH) + durationMin));
+        }
+        var patch = { durationMinutes: finalDurationH };
+        if(edge === "left" && newTime) patch.timeOfDay = newTime;
+        // This one day's occurrence only — see setHabitInstanceOverride — never the habit's own
+        // timeOfDay/durationMinutes, which every other day's occurrence still reads.
+        await setHabitInstanceOverride(id, date, patch);
+        return;
+      }
+      var a = state.actions.find(function(x){ return x.id === id; });
+      if(!a) return;
       var finalDuration = durationMin;
       if(isOvernight){
-        var startMin = timeToFraction(obj.timeOfDay) * 1440;
+        var startMin = timeToFraction(a.timeOfDay) * 1440;
         finalDuration = Math.max(TIMELINE_RESIZE_MIN_MIN, Math.round((1440 - startMin) + durationMin));
       }
       var payload = { duration_minutes: finalDuration };
       if(edge === "left" && newTime) payload.time_of_day = newTime;
-      obj.durationMinutes = finalDuration;
-      if(payload.time_of_day) obj.timeOfDay = payload.time_of_day;
-      var r = await safeUpdate(kind === "habit-instance" ? "habits" : "actions", id, payload);
+      a.durationMinutes = finalDuration;
+      if(payload.time_of_day) a.timeOfDay = payload.time_of_day;
+      var r = await safeUpdate("actions", id, payload);
       if(r.error) console.error(r.error); else warnDroppedFields(r.droppedFields);
       renderToday();
     });
@@ -9908,10 +10033,11 @@
     for(var i=range.start; i<=range.end; i++){
       var dateStr = addDaysToDateStr(tlRangeStart, i);
       timedHabits.filter(function(h){ return habitOccursOnDate(h, dateStr); }).forEach(function(h){
-        var leftPx = i*tlPxPerDay + timeToFraction(h.timeOfDay)*tlPxPerDay;
-        var widthPx = Math.max(10, ((h.durationMinutes || 15) / 1440) * tlPxPerDay);
+        var fields = habitInstanceFields(h, dateStr);
+        var leftPx = i*tlPxPerDay + timeToFraction(fields.timeOfDay)*tlPxPerDay;
+        var widthPx = Math.max(10, ((fields.durationMinutes || 15) / 1440) * tlPxPerDay);
         var catClass = habitCategory(h) ? " " + habitCategory(h) : "";
-        html += '<div class="timeline-block' + catClass + '" data-kind="habit-instance" data-id="' + h.id + '" data-day-index="' + i + '" data-date="' + dateStr + '" style="left:' + leftPx + 'px; width:' + widthPx + 'px;" title="' + escapeHtml(h.title) + ' — ' + fmtTimeOfDay(h.timeOfDay) + '">' +
+        html += '<div class="timeline-block' + catClass + '" data-kind="habit-instance" data-id="' + h.id + '" data-day-index="' + i + '" data-date="' + dateStr + '" style="left:' + leftPx + 'px; width:' + widthPx + 'px;" title="' + escapeHtml(h.title) + ' — ' + fmtTimeOfDay(fields.timeOfDay) + '">' +
           '<span class="timeline-block-title">' + escapeHtml(h.title) + '</span></div>';
       });
     }
@@ -10144,11 +10270,11 @@
   // so a habit's block is clamped to its own day column — only its time-of-day can change here).
   function wireTlLayerDrag(trackId, kind){
     var track = document.getElementById(trackId);
-    var dragEl = null, dragId = null, moved = false, startDayIndex = 0;
+    var dragEl = null, dragId = null, dragDate = null, moved = false, startDayIndex = 0;
     track.addEventListener("pointerdown", function(e){
       var block = e.target.closest(".timeline-block");
       if(!block) return;
-      dragEl = block; dragId = block.dataset.id; moved = false;
+      dragEl = block; dragId = block.dataset.id; dragDate = block.dataset.date; moved = false;
       startDayIndex = Number(block.dataset.dayIndex);
       block.setPointerCapture(e.pointerId);
       block.classList.add("dragging");
@@ -10175,15 +10301,14 @@
     });
     track.addEventListener("pointerup", async function(){
       if(!dragEl) return;
-      var el = dragEl, id = dragId, newTime = el.dataset.pendingTime, newDayIndex = el.dataset.pendingDayIndex;
-      dragEl = null; dragId = null;
+      var el = dragEl, id = dragId, date = dragDate, newTime = el.dataset.pendingTime, newDayIndex = el.dataset.pendingDayIndex;
+      dragEl = null; dragId = null; dragDate = null;
       el.classList.remove("dragging");
       if(!moved || !newTime) return;
       if(kind === "habit"){
-        var h = state.habits.find(function(x){ return x.id === id; });
-        if(h) h.timeOfDay = newTime;
-        var r = await safeUpdate("habits", id, { time_of_day: newTime });
-        if(r.error) console.error(r.error); else warnDroppedFields(r.droppedFields);
+        // This one day's occurrence only — see setHabitInstanceOverride — never the habit's own
+        // timeOfDay, which every other day's occurrence still reads.
+        await setHabitInstanceOverride(id, date, { timeOfDay: newTime });
       } else {
         var newDateStr = addDaysToDateStr(tlRangeStart, Number(newDayIndex));
         var table = kind === "journal" ? "journal" : "actions";
@@ -10197,7 +10322,7 @@
     });
     track.addEventListener("pointercancel", function(){
       if(dragEl) dragEl.classList.remove("dragging");
-      dragEl = null; dragId = null;
+      dragEl = null; dragId = null; dragDate = null;
     });
   }
   wireTlLayerDrag("tlHabitsTrack", "habit");
@@ -11384,7 +11509,7 @@
     this.disabled = false;
     if(res.error){ alert(res.error.message); return; }
     var r = res.data;
-    var mapped = { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || mappedVar.id, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [], extraDates:r.extra_dates || [], customIntervalDays:r.custom_interval_days||null, monthDay:r.month_day||null, icon:r.icon||payload.icon||null,
+    var mapped = { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || mappedVar.id, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [], extraDates:r.extra_dates || [], customIntervalDays:r.custom_interval_days||null, monthDay:r.month_day||null, icon:r.icon||payload.icon||null, instanceOverrides:r.instance_overrides || (existingHabit ? existingHabit.instanceOverrides : null) || {},
       locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null) };
     if(isEdit){
       var idx = state.habits.findIndex(function(x){ return x.id === editingHabitId; });
