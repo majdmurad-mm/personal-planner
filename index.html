@@ -1019,6 +1019,7 @@
 
   /* ===== JOURNAL ===== */
   .journal-composer{ background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-top:20px; margin-bottom:22px; }
+  .journal-title-input{ width:100%; font-family:var(--display); font-size:15px; font-weight:700; margin-bottom:10px; }
   .journal-composer-top{ display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:10px; }
   .journal-composer-top input{ width:auto; }
   .journal-composer-meta{ display:flex; flex-wrap:wrap; align-items:center; gap:10px; flex:1; }
@@ -1031,6 +1032,10 @@
   .journal-entry:hover{ box-shadow:var(--elev-1); }
   .journal-entry-top{ display:flex; justify-content:space-between; align-items:center; margin-bottom:7px; }
   .journal-entry-date{ font-family:var(--mono); font-size:10.5px; color:var(--accent); }
+  /* Attribute tags (priority, area) across the top of the card, above the date/actions row — see
+     renderNoteTagsHtml. Reuses .prio-badge/.cat-badge, so styling stays in one place. */
+  .journal-entry-tags{ display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; }
+  .journal-entry-title{ font-family:var(--display); font-size:14.5px; font-weight:700; color:var(--text); margin:0 0 6px; letter-spacing:-0.01em; }
   .journal-entry-text{ font-size:13.5px; line-height:1.55; color:var(--text); white-space:pre-wrap; }
   /* @[Name]/#[Title] tags inside journal note text (see renderNoteTextWithTags) — clickable, opens
      the tagged person/goal/project/habit/action via the same EDIT_HANDLERS map the right-click menu
@@ -1930,6 +1935,7 @@
       </div>
       <div id="journalNotesPanel">
       <div class="journal-composer">
+        <input type="text" id="journalTitleInput" class="journal-title-input" placeholder="Title (optional)">
         <div class="journal-composer-top">
           <div class="journal-composer-meta">
             <input type="date" id="journalDateInput">
@@ -1940,6 +1946,10 @@
             <div class="chip-select" id="journalAreaSelect">
               <div class="chip-opt" role="button" tabindex="0" data-ar="Health">✚ Health</div><div class="chip-opt" role="button" tabindex="0" data-ar="Finance">$ Finance</div><div class="chip-opt sel" role="button" tabindex="0" data-ar="Career">▲ Career</div>
               <div class="chip-opt" role="button" tabindex="0" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" role="button" tabindex="0" data-ar="Growth">↑ Growth</div><div class="chip-opt" role="button" tabindex="0" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" role="button" tabindex="0" data-ar="Sol">◐ Sol</div>
+            </div>
+            <div class="chip-select" id="journalPrioritySelect">
+              <div class="chip-opt sel" role="button" tabindex="0" data-p="">no priority</div>
+              <div class="chip-opt" role="button" tabindex="0" data-p="P0">P0</div><div class="chip-opt" role="button" tabindex="0" data-p="P1">P1</div><div class="chip-opt" role="button" tabindex="0" data-p="P2">P2</div><div class="chip-opt" role="button" tabindex="0" data-p="P3">P3</div>
             </div>
           </div>
           <button class="btn" id="journalRecordBtn" type="button" title="Record a voice note — saves the audio, then transcribes it here">🎤</button>
@@ -2363,6 +2373,7 @@
   <div class="modal">
     <div class="modal-head"><span class="dot g"></span><h2 id="journalModalTitle">edit_note.json</h2></div>
     <div class="modal-inner">
+      <div class="field"><label for="journalEditTitleInput">title (optional)</label><input type="text" id="journalEditTitleInput" placeholder="Title"></div>
       <div class="field-row">
         <div class="field"><label for="journalEditDateInput">date</label><input type="date" id="journalEditDateInput"></div>
         <div class="field"><label for="journalEditTimeInput">time (optional)</label>
@@ -2373,10 +2384,16 @@
           <div class="time-pick-panel" id="journalEditTimePickPanel" hidden></div>
         </div>
       </div>
-      <div class="field"><label>area</label><div class="chip-select" id="journalEditAreaSelect">
-        <div class="chip-opt" role="button" tabindex="0" data-ar="Health">✚ Health</div><div class="chip-opt" role="button" tabindex="0" data-ar="Finance">$ Finance</div><div class="chip-opt sel" role="button" tabindex="0" data-ar="Career">▲ Career</div>
-        <div class="chip-opt" role="button" tabindex="0" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" role="button" tabindex="0" data-ar="Growth">↑ Growth</div><div class="chip-opt" role="button" tabindex="0" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" role="button" tabindex="0" data-ar="Sol">◐ Sol</div>
-      </div></div>
+      <div class="field-row">
+        <div class="field"><label>area</label><div class="chip-select" id="journalEditAreaSelect">
+          <div class="chip-opt" role="button" tabindex="0" data-ar="Health">✚ Health</div><div class="chip-opt" role="button" tabindex="0" data-ar="Finance">$ Finance</div><div class="chip-opt sel" role="button" tabindex="0" data-ar="Career">▲ Career</div>
+          <div class="chip-opt" role="button" tabindex="0" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" role="button" tabindex="0" data-ar="Growth">↑ Growth</div><div class="chip-opt" role="button" tabindex="0" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" role="button" tabindex="0" data-ar="Sol">◐ Sol</div>
+        </div></div>
+        <div class="field"><label>priority (optional)</label><div class="chip-select" id="journalEditPrioritySelect">
+          <div class="chip-opt sel" role="button" tabindex="0" data-p="">no priority</div>
+          <div class="chip-opt" role="button" tabindex="0" data-p="P0">P0</div><div class="chip-opt" role="button" tabindex="0" data-p="P1">P1</div><div class="chip-opt" role="button" tabindex="0" data-p="P2">P2</div><div class="chip-opt" role="button" tabindex="0" data-p="P3">P3</div>
+        </div></div>
+      </div>
       <div class="field"><label for="journalEditTextInput">note</label><textarea id="journalEditTextInput" class="journal-textarea" rows="5"></textarea></div>
       <div class="modal-actions"><button class="btn" id="cancelJournalModalBtn" type="button">cancel</button><button class="btn btn-accent" id="saveJournalEditBtn" type="button">save note</button></div>
     </div>
@@ -2896,7 +2913,7 @@
     weekdays: "habit day selection", tracker_variable_id: "habit's tracker link", time_of_day: "scheduled time",
     duration_minutes: "duration", category: "area", skip_dates: "skipped habit days",
     categories: "area(s)", custom_interval_days: "custom repeat interval", month_day: "monthly repeat day", extra_dates: "manually scheduled habit days",
-    linked_objects: "note links", sentiment: "sentiment tags",
+    linked_objects: "note links", sentiment: "sentiment tags", title: "note title", priority: "note priority",
     secondary_goal_ids: "secondary goals", secondary_categories: "secondary areas",
     verified: "verified status", like_score: "like score", contact_score: "contact score", year_met: "year met",
     relationship_status: "relationship status", social_group: "social group", personality_type: "personality type",
@@ -3134,7 +3151,7 @@
     state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null,
       locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null) }; });
     state.actions.sort(function(a,b){ return a.position - b.position; });
-    state.journal = (results[4].data || []).map(function(r){ return { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null, recordingId:r.recording_id||null, linkedObjects:r.linked_objects||[], sentiment:r.sentiment||[] }; });
+    state.journal = (results[4].data || []).map(function(r){ return { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null, recordingId:r.recording_id||null, linkedObjects:r.linked_objects||[], sentiment:r.sentiment||[], title:r.title||"", priority:r.priority||null }; });
     state.people = (results[5].data || []).map(function(r){
       return { id:r.id, name:r.name, relationship:r.relationship, contact:r.contact, notes:r.notes, position:r.position||0,
         verified:!!r.verified, likeScore:(r.like_score!=null?r.like_score:null), contactScore:(r.contact_score!=null?r.contact_score:null),
@@ -3691,7 +3708,7 @@
   }
 
   [["goalPrioSelect","p"],["projectPrioSelect","p"],["habitPrioSelect","p"],["habitFreqSelect","f"],
-   ["actionPrioSelect","p"],["actionParentTypeSelect","pt"],["actionAreaSelect","ar"],["goalCatSelect","c"],["personRelSelect","r"],["tvTypeSelect","t"],["goalHealthLevelSelect","hl"],["habitTypeSelect","ty"],["habitAreaSelect","ar"],["journalAreaSelect","ar"],["journalEditAreaSelect","ar"]]
+   ["actionPrioSelect","p"],["actionParentTypeSelect","pt"],["actionAreaSelect","ar"],["goalCatSelect","c"],["personRelSelect","r"],["tvTypeSelect","t"],["goalHealthLevelSelect","hl"],["habitTypeSelect","ty"],["habitAreaSelect","ar"],["journalAreaSelect","ar"],["journalEditAreaSelect","ar"],["journalPrioritySelect","p"],["journalEditPrioritySelect","p"]]
    .forEach(function(pair){ wireChipSelect(document.getElementById(pair[0]), pair[1]); });
 
   /* ---------------- Stats ---------------- */
@@ -4288,7 +4305,7 @@
     });
   }
   function journalPayload(snapshot){
-    return { id:snapshot.id, date:snapshot.date, text:snapshot.text, time_of_day:snapshot.timeOfDay, category:snapshot.category, recording_id:snapshot.recordingId, linked_objects:snapshot.linkedObjects||[], sentiment:snapshot.sentiment||[] };
+    return { id:snapshot.id, date:snapshot.date, text:snapshot.text, time_of_day:snapshot.timeOfDay, category:snapshot.category, recording_id:snapshot.recordingId, linked_objects:snapshot.linkedObjects||[], sentiment:snapshot.sentiment||[], title:snapshot.title||null, priority:snapshot.priority||null };
   }
   async function deleteJournalEntry(id){
     var n = state.journal.find(function(x){ return x.id === id; });
@@ -4649,8 +4666,10 @@
       notes.map(function(n){
         var d = new Date(n.date + "T00:00:00");
         return '<div class="journal-entry' + (n.category ? " " + n.category : "") + '" data-kind="journal" data-id="' + n.id + '">' +
+          renderNoteTagsHtml(n) +
           '<div class="journal-entry-top"><span class="journal-entry-date">' + d.toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" }) + (n.timeOfDay ? " · " + fmtTimeOfDay(n.timeOfDay) : "") + '</span>' +
           '<div class="entity-actions"><button class="icon-btn edit" data-action="edit-journal" data-id="' + n.id + '" aria-label="Edit note">✎</button></div></div>' +
+          renderNoteTitleHtml(n) +
           '<div class="journal-entry-text journal-entry-md">' + renderNoteBodyHtml(n.text) + '</div>' +
         '</div>';
       }).join("") + '</div>';
@@ -7359,6 +7378,18 @@
       return renderNoteTextWithTags(tags[Number(i)] || "");
     });
   }
+  // Attribute tags shown across the top of a note card — priority and area, both optional. Reuses
+  // the same .prio-badge/.cat-badge classes goal cards already use, so a note's priority/area reads
+  // identically to everywhere else in the app rather than inventing a third badge style.
+  function renderNoteTagsHtml(entry){
+    var tags = "";
+    if(entry.priority) tags += '<span class="prio-badge ' + entry.priority + '">' + entry.priority + '</span>';
+    if(entry.category) tags += '<span class="cat-badge ' + entry.category + '">' + CATEGORY_ICONS[entry.category] + ' ' + entry.category + '</span>';
+    return tags ? '<div class="journal-entry-tags">' + tags + '</div>' : "";
+  }
+  function renderNoteTitleHtml(entry){
+    return entry.title ? '<h4 class="journal-entry-title">' + escapeHtml(entry.title) + '</h4>' : "";
+  }
   // @/# tag autocomplete, shared by every journal text input (journalTextInput on the main Journal
   // page, journalEditTextInput in the create/edit modal used there and by Today's notes section) via
   // one floating panel (#noteTagSuggest) rather than one per field. State lives here, not per-input,
@@ -7709,7 +7740,7 @@
     var res = await safeWrite(function(p){ return sb.from("journal").insert(p).select().single(); }, payload);
     if(res.error) return res;
     var r = res.data;
-    state.journal.push({ id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null, recordingId:r.recording_id||null, linkedObjects:r.linked_objects||payload.linked_objects||[], sentiment:r.sentiment||[] });
+    state.journal.push({ id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null, recordingId:r.recording_id||null, linkedObjects:r.linked_objects||payload.linked_objects||[], sentiment:r.sentiment||[], title:r.title||payload.title||"", priority:r.priority||payload.priority||null });
     warnDroppedFields(res.droppedFields);
     return res;
   }
@@ -7720,6 +7751,8 @@
     if(!text) return;
     var payload = {
       date: date, text: text,
+      title: document.getElementById("journalTitleInput").value.trim() || null,
+      priority: chipValue(document.getElementById("journalPrioritySelect"), "p") || null,
       time_of_day: document.getElementById("journalTimeInput").value || null,
       category: chipValue(document.getElementById("journalAreaSelect"), "ar") || null,
       recording_id: journalPendingRecording ? journalPendingRecording.id : null
@@ -7728,8 +7761,10 @@
     var res = await saveJournalEntry(payload);
     this.disabled = false;
     if(res.error){ alert(res.error.message); return; }
+    document.getElementById("journalTitleInput").value = "";
     document.getElementById("journalTextInput").value = "";
     document.getElementById("journalTimeInput").value = "";
+    setChip(document.getElementById("journalPrioritySelect"), "p", "");
     journalPendingRecording = null;
     renderAll();
   });
@@ -7747,12 +7782,14 @@
       if(!monthsSeen[monthKey]){ monthsSeen[monthKey] = true; head = '<div class="journal-month-head">' + monthKey + '</div>'; }
       var catClass = entry.category ? " " + entry.category : "";
       return head + '<div class="journal-entry' + catClass + '" data-kind="journal" data-id="' + entry.id + '">' +
+        renderNoteTagsHtml(entry) +
         '<div class="journal-entry-top"><span class="journal-entry-date">' + d.toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" }) + (entry.timeOfDay ? " · " + fmtTimeOfDay(entry.timeOfDay) : "") + '</span>' +
         '<div class="entity-actions">' +
           '<button class="icon-btn" data-action="analyze-sentiment" data-id="' + entry.id + '" aria-label="Analyze sentiment" title="Analyze sentiment (AI)">✨</button>' +
           '<button class="icon-btn edit" data-action="edit-journal" data-id="' + entry.id + '" aria-label="Edit entry">✎</button>' +
           '<button class="icon-btn" data-action="del-journal" data-id="' + entry.id + '" aria-label="Delete entry">&times;</button>' +
         '</div></div>' +
+        renderNoteTitleHtml(entry) +
         '<div class="journal-entry-text journal-entry-md">' + renderNoteBodyHtml(entry.text) + '</div>' +
         renderSentimentChipsHtml(entry) +
         renderJournalWaveformHtml(entry) +
@@ -8040,9 +8077,11 @@
     editingJournalId = n ? n.id : null;
     document.getElementById("journalModalTitle").textContent = n ? "edit_note.json" : "new_note.json";
     document.getElementById("saveJournalEditBtn").textContent = n ? "save note" : "add note";
+    document.getElementById("journalEditTitleInput").value = (n && n.title) || "";
     document.getElementById("journalEditDateInput").value = (n && n.date) || todaySelectedDate || todayStr();
     document.getElementById("journalEditTimeInput").value = (n && n.timeOfDay) || "";
     setChip(document.getElementById("journalEditAreaSelect"), "ar", (n && n.category) || "Career");
+    setChip(document.getElementById("journalEditPrioritySelect"), "p", (n && n.priority) || "");
     document.getElementById("journalEditTextInput").value = (n && n.text) || "";
     document.getElementById("journalEditTimePickPanel").hidden = true;
     openModal("journalModalOverlay");
@@ -8061,6 +8100,8 @@
     var payload = {
       date: document.getElementById("journalEditDateInput").value || todayStr(),
       text: text,
+      title: document.getElementById("journalEditTitleInput").value.trim() || null,
+      priority: chipValue(document.getElementById("journalEditPrioritySelect"), "p") || null,
       time_of_day: document.getElementById("journalEditTimeInput").value || null,
       category: chipValue(document.getElementById("journalEditAreaSelect"), "ar") || null,
       // Re-resolved on every edit — tags added/removed in the text change the structured links too.
@@ -8073,7 +8114,7 @@
       if(res.error){ alert(res.error.message); return; }
       var r = res.data;
       var idx = state.journal.findIndex(function(x){ return x.id === editingJournalId; });
-      if(idx !== -1) state.journal[idx] = { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null, recordingId:r.recording_id||null, linkedObjects:r.linked_objects||payload.linked_objects||[], sentiment:r.sentiment||[] };
+      if(idx !== -1) state.journal[idx] = { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null, recordingId:r.recording_id||null, linkedObjects:r.linked_objects||payload.linked_objects||[], sentiment:r.sentiment||[], title:r.title||payload.title||"", priority:r.priority||payload.priority||null };
       renderAll(); closeModal("journalModalOverlay");
       warnDroppedFields(res.droppedFields);
     } else {
@@ -8081,7 +8122,7 @@
       this.disabled = false;
       if(res2.error){ alert(res2.error.message); return; }
       var r2 = res2.data;
-      state.journal.push({ id:r2.id, date:r2.date, text:r2.text, timeOfDay:r2.time_of_day ? r2.time_of_day.slice(0,5) : null, category:r2.category||null, recordingId:r2.recording_id||null, linkedObjects:r2.linked_objects||payload.linked_objects||[], sentiment:r2.sentiment||[] });
+      state.journal.push({ id:r2.id, date:r2.date, text:r2.text, timeOfDay:r2.time_of_day ? r2.time_of_day.slice(0,5) : null, category:r2.category||null, recordingId:r2.recording_id||null, linkedObjects:r2.linked_objects||payload.linked_objects||[], sentiment:r2.sentiment||[], title:r2.title||payload.title||"", priority:r2.priority||payload.priority||null });
       renderAll(); closeModal("journalModalOverlay");
       warnDroppedFields(res2.droppedFields);
     }
@@ -9679,7 +9720,7 @@
       var res = await safeWrite(function(p){ return sb.from("journal").insert(p).select().single(); }, payload);
       if(res.error){ alert(res.error.message); return; }
       var r = res.data;
-      state.journal.push({ id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null });
+      state.journal.push({ id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null, title:r.title||"", priority:r.priority||null, linkedObjects:extractNoteLinks(r.text||""), sentiment:[] });
       renderToday();
       renderJournal();
       warnDroppedFields(res.droppedFields);
@@ -10239,7 +10280,8 @@
       parent_type:{ type:"string", enum:["goal","project","none"] }, parent_id:{ type:"string" }, date:{ type:"string" }, done:{ type:"boolean" }
     }, required:["id"] } },
     { name:"add_journal_entry", description:"Add a new note.", input_schema:{ type:"object", properties:{
-      date:{ type:"string", description:"YYYY-MM-DD, defaults to today if omitted" }, text:{ type:"string" }
+      date:{ type:"string", description:"YYYY-MM-DD, defaults to today if omitted" }, text:{ type:"string" },
+      title:{ type:"string", description:"optional short title" }, priority:{ type:"string", enum:PRIORITIES, description:"optional priority" }
     }, required:["text"] } },
     { name:"create_person", description:"Add a new person.", input_schema:{ type:"object", properties:{
       name:{ type:"string" }, relationship:{ type:"string", enum:RELATIONSHIPS }, contact:{ type:"string" }, notes:{ type:"string" }
@@ -10407,10 +10449,10 @@
         renderAll(); return { ok:true };
       }
       if(name === "add_journal_entry"){
-        var res9 = await sb.from("journal").insert({ date: input.date || todayStr(), text: input.text }).select().single();
+        var res9 = await safeWrite(function(p){ return sb.from("journal").insert(p).select().single(); }, { date: input.date || todayStr(), text: input.text, title: input.title || null, priority: input.priority || null });
         if(res9.error) return { error: res9.error.message };
         var r9 = res9.data;
-        state.journal.push({ id:r9.id, date:r9.date, text:r9.text });
+        state.journal.push({ id:r9.id, date:r9.date, text:r9.text, title:r9.title||"", priority:r9.priority||null, linkedObjects:extractNoteLinks(r9.text||""), sentiment:[] });
         renderAll(); return { ok:true, id:r9.id };
       }
       if(name === "create_person"){
