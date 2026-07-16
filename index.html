@@ -6190,6 +6190,12 @@
   // ALSO shares a main group gets this pull on top of their auto-linked spring edge (pplApplySpring);
   // a pair that only shares a secondary group gets this small pull alone, with no edge at all.
   var PPL_GROUP_PULL_K = 0.002;
+  // Same "virtual spring" pull as PPL_GROUP_PULL_K, but for every pair sharing the same relationship
+  // TYPE (Family/Friend/Colleague/Mentor/Partner/Other — always set, never null, unlike social group).
+  // Kept a little weaker than the group pull: relationship is a broad, universal bucket everyone has
+  // one of, so without a lighter touch it would compete with (rather than gently complement) the
+  // finer-grained social-group clustering — this should read as a soft bias, not a second hard cluster.
+  var PPL_RELATIONSHIP_PULL_K = 0.0012;
   // A person with no social group set has no group at all (null) — they don't get a hull, aren't
   // auto-linked to anyone via group membership, and take no part in the group push/pull; they just
   // float freely, positioned only by the base repulsion, real relatedPeople connections, and the
@@ -6247,6 +6253,10 @@
   var pplCachedNodeGroups = {};
   var pplCachedNodeGroupLists = {};
   var pplCachedGroupColors = {};
+  // A person's relationship type (Family/Friend/Colleague/Mentor/Partner/Other) — always set (unlike
+  // social group, which can be empty), so this is cached alongside the group lookups purely to avoid
+  // reading state.people per pair on every physics tick, not because it can be null.
+  var pplCachedNodeRelationship = {};
   // Per-person multiplier on the center-pull force (see pplTickPhysics), derived from contact score
   // (typically 0-4, same as the person modal's "contact score" field, but unclamped) rather than one
   // uniform strength for everyone — score 2 (the old midpoint) reproduces the old uniform pull
@@ -6258,9 +6268,11 @@
   function pplRebuildGraphCache(){
     pplCachedNodeGroups = {};
     pplCachedNodeGroupLists = {};
+    pplCachedNodeRelationship = {};
     state.people.forEach(function(p){
       pplCachedNodeGroups[p.id] = pplNodeGroup(p);
       pplCachedNodeGroupLists[p.id] = pplNodeGroupList(p);
+      pplCachedNodeRelationship[p.id] = p.relationship;
     });
     // Colors need to cover every group a person can appear under, including secondary/extra
     // memberships — not just each person's primary group — since a multi-group person's hulls all
@@ -6322,6 +6334,9 @@
     // pull below additionally checks the full group list (any shared group, not just main).
     var groups = nodes.map(function(n){ return pplCachedNodeGroups[n.id]; });
     var groupLists = nodes.map(function(n){ return pplCachedNodeGroupLists[n.id]; });
+    // Each node's relationship type (Family/Friend/...), from the cache — drives a small ambient pull
+    // between same-relationship pairs below (see PPL_RELATIONSHIP_PULL_K), independent of social group.
+    var relationships = nodes.map(function(n){ return pplCachedNodeRelationship[n.id]; });
     for(var i=0;i<nodes.length;i++){
       for(var j=i+1;j<nodes.length;j++){
         var dx = nodes[j].x - nodes[i].x, dy = nodes[j].y - nodes[i].y;
@@ -6342,6 +6357,16 @@
           var pfx = (dx/dist) * pull, pfy = (dy/dist) * pull;
           nodes[i].vx += pfx; nodes[i].vy += pfy;
           nodes[j].vx -= pfx; nodes[j].vy -= pfy;
+        }
+        // Same relationship type (Family/Friend/Colleague/Mentor/Partner/Other) earns its own small
+        // ambient pull, same spring formula as the group pull above but weaker (see PPL_RELATIONSHIP_PULL_K)
+        // and independent of social group — a Family member and a Friend in the same social group still
+        // get this extra tug toward other Family members elsewhere in the graph.
+        if(relationships[i] && relationships[i] === relationships[j]){
+          var relPull = (dist - PPL_LINK_DIST) * PPL_RELATIONSHIP_PULL_K * pplAlpha;
+          var rfx = (dx/dist) * relPull, rfy = (dy/dist) * relPull;
+          nodes[i].vx += rfx; nodes[i].vy += rfy;
+          nodes[j].vx -= rfx; nodes[j].vy -= rfy;
         }
       }
     }
