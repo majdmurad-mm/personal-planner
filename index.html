@@ -1361,6 +1361,10 @@
   .journal-entry-md table{ border-collapse:collapse; margin:0 0 8px; font-size:12.5px; }
   .journal-entry-md th, .journal-entry-md td{ border:1px solid var(--border); padding:4px 9px; }
   .journal-entry-md img{ max-width:100%; border-radius:var(--radius); }
+
+  /* Sentiment tags (AI analyzer output) — quiet violet chips under the note body. */
+  .sentiment-row{ display:flex; flex-wrap:wrap; gap:5px; margin-top:8px; }
+  .sentiment-chip{ font-family:var(--mono); font-size:10px; font-weight:600; letter-spacing:0.04em; padding:2px 8px; border-radius:var(--radius-sm); background:var(--violet-glow); color:var(--violet); border:1px solid var(--violet); opacity:0.9; }
 </style>
 </head>
 <body>
@@ -7741,10 +7745,12 @@
       return head + '<div class="journal-entry' + catClass + '" data-kind="journal" data-id="' + entry.id + '">' +
         '<div class="journal-entry-top"><span class="journal-entry-date">' + d.toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" }) + (entry.timeOfDay ? " · " + fmtTimeOfDay(entry.timeOfDay) : "") + '</span>' +
         '<div class="entity-actions">' +
+          '<button class="icon-btn" data-action="analyze-sentiment" data-id="' + entry.id + '" aria-label="Analyze sentiment" title="Analyze sentiment (AI)">✨</button>' +
           '<button class="icon-btn edit" data-action="edit-journal" data-id="' + entry.id + '" aria-label="Edit entry">✎</button>' +
           '<button class="icon-btn" data-action="del-journal" data-id="' + entry.id + '" aria-label="Delete entry">&times;</button>' +
         '</div></div>' +
         '<div class="journal-entry-text journal-entry-md">' + renderNoteBodyHtml(entry.text) + '</div>' +
+        renderSentimentChipsHtml(entry) +
         renderJournalWaveformHtml(entry) +
       '</div>';
     }).join("");
@@ -7812,6 +7818,61 @@
       renderJournal();
     }
   }
+  // ---------------- AI tool: sentiment analyzer ----------------
+  // Fixed vocabulary rather than free-form tags — a controlled set keeps the "sentiment" attribute
+  // consistent enough to scan and (later) filter on, instead of accumulating near-duplicate
+  // phrasings. Multi-tag by design: a note is often "tired" AND "hopeful" at once.
+  var SENTIMENT_TAGS = ["motivated","grateful","joyful","calm","hopeful","proud","reflective","neutral","tired","anxious","stressed","frustrated","sad","angry"];
+  async function analyzeNoteSentiment(id, btnEl){
+    var n = state.journal.find(function(x){ return x.id === id; });
+    if(!n || !n.text) return;
+    var apiKey = safeGet(window.localStorage, "geminiApiKey");
+    if(!apiKey){ toast('No Gemini API key set — click "api key" in the agent tab to add one.'); return; }
+    if(btnEl){ btnEl.disabled = true; btnEl.classList.add("loading"); }
+    try{
+      var url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=" + encodeURIComponent(apiKey);
+      var body = JSON.stringify({ contents: [{ role:"user", parts: [{ text:
+        "You tag personal journal notes with sentiment. Allowed tags: " + SENTIMENT_TAGS.join(", ") + ".\n" +
+        "Reply with ONLY 1-3 comma-separated tags from the allowed list that best describe the emotional tone of this note. No other text.\n\n" +
+        "Note:\n\"\"\"\n" + n.text + "\n\"\"\""
+      }] }] });
+      // Same transient-overload retry the transcription path uses — Gemini 503s are usually noise.
+      var resp, attempt;
+      for(attempt = 1; attempt <= 3; attempt++){
+        resp = await fetch(url, { method:"POST", headers:{ "Content-Type":"application/json" }, body: body });
+        if(resp.ok) break;
+        if((resp.status === 503 || resp.status === 429) && attempt < 3){
+          await new Promise(function(r){ setTimeout(r, attempt * 1500); });
+          continue;
+        }
+        throw new Error("Gemini API error " + resp.status + ": " + (await resp.text()).slice(0,200));
+      }
+      var data = await resp.json();
+      var raw = (((data.candidates||[])[0]||{}).content||{}).parts;
+      var text = (raw||[]).filter(function(p){ return typeof p.text === "string"; }).map(function(p){ return p.text; }).join(" ");
+      // Only vocabulary words survive — anything else the model smuggled in gets dropped.
+      var tags = text.toLowerCase().split(/[,\n]/).map(function(t){ return t.trim(); })
+        .filter(function(t){ return SENTIMENT_TAGS.indexOf(t) !== -1; })
+        .filter(function(t, i, arr){ return arr.indexOf(t) === i; }).slice(0, 3);
+      if(!tags.length){ toast("The analyzer couldn't settle on any sentiment tags for this note."); return; }
+      var res = await safeWrite(function(p){ return sb.from("journal").update(p).eq("id", id).select().maybeSingle(); }, { sentiment: tags });
+      if(res.error) throw new Error(res.error.message);
+      n.sentiment = tags;
+      if(res.droppedFields && res.droppedFields.length) warnDroppedFields(res.droppedFields);
+      else toast("Sentiment: " + tags.join(", "));
+    } catch(err){
+      toast("Sentiment analysis failed: " + err.message);
+    } finally {
+      if(btnEl){ btnEl.disabled = false; btnEl.classList.remove("loading"); }
+      renderJournal();
+    }
+  }
+  function renderSentimentChipsHtml(entry){
+    if(!entry.sentiment || !entry.sentiment.length) return "";
+    return '<div class="sentiment-row">' + entry.sentiment.map(function(t){
+      return '<span class="sentiment-chip">' + escapeHtml(t) + '</span>';
+    }).join("") + '</div>';
+  }
   async function deleteRecording(id){
     var rec = state.recordings.find(function(r){ return r.id === id; });
     if(!rec) return;
@@ -7831,6 +7892,8 @@
     if(tag){ openNoteTag(tag.dataset.kind, tag.dataset.id); return; }
     var playBtn = e.target.closest('[data-action="play-recording"]');
     if(playBtn){ await playRecording(playBtn.dataset.id, playBtn, e); return; }
+    var sentBtn = e.target.closest('[data-action="analyze-sentiment"]');
+    if(sentBtn){ await analyzeNoteSentiment(sentBtn.dataset.id, sentBtn); return; }
     var editBtn = e.target.closest('[data-action="edit-journal"]');
     if(editBtn){ editJournalEntry(editBtn.dataset.id); return; }
     var del = e.target.closest('[data-action="del-journal"]');
