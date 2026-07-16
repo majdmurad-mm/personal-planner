@@ -1360,15 +1360,61 @@
   /* The hero hosts the (later) Three.js canvas as an absolutely-positioned backdrop; the dashboard
      core is a DOM overlay on top of it — sharp text, zero-cost accessibility, and it IS the page
      when WebGL is unavailable. Tiles are real buttons: the 3D layer only ever mirrors them. */
-  .home-hero{ position:relative; border:1px solid var(--border); border-radius:12px; background:var(--bg-raised); overflow:hidden; min-height:300px; display:flex; align-items:center; justify-content:center; margin-bottom:18px; }
-  @media (max-width:700px){ .home-hero{ min-height:210px; } }
+  .home-hero{ position:relative; border:1px solid var(--border); border-radius:12px; background:var(--bg-raised); overflow:hidden; min-height:220px; display:flex; align-items:center; justify-content:center; margin-bottom:0; }
+  @media (max-width:700px){ .home-hero{ min-height:170px; } }
   #homeCanvas{ position:absolute; inset:0; width:100%; height:100%; display:block; }
-  .home-hero-core{ position:relative; text-align:center; padding:28px 16px; pointer-events:none; }
-  .home-clock-time{ font-family:var(--mono); font-size:52px; font-weight:700; letter-spacing:2px; line-height:1; }
+  .home-hero-core{ position:relative; text-align:center; padding:24px 16px; pointer-events:none; }
+  .home-greet{ font-family:var(--mono); font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--text-faint); margin-bottom:6px; }
+  .home-clock-time{ font-family:var(--mono); font-size:44px; font-weight:700; letter-spacing:2px; line-height:1; font-variant-numeric:tabular-nums; }
   .home-clock-date{ font-family:var(--mono); font-size:13px; color:var(--text-dim); margin-top:8px; }
   .home-weather{ font-family:var(--mono); font-size:13px; color:var(--text-dim); margin-top:10px; display:flex; align-items:center; justify-content:center; gap:7px; min-height:22px; }
   .home-weather .tl-weather-tick-icon{ width:20px; height:20px; }
-  .home-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:12px; }
+
+  /* ---- Areas: one glance chip per life area, "on" (filled dot + count) when there's activity in
+     it today — see computeHomeAreaPulse(). Reuses each category's own CSS color var, same convention
+     .home-tile already uses via --tile-accent. ---- */
+  .home-areas{ display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
+  .home-area-chip{ --area-c:var(--accent); display:flex; align-items:center; gap:7px; padding:6px 12px 6px 9px; border:1px solid var(--border); border-radius:999px; background:var(--bg-raised); color:var(--text-dim); font-family:var(--mono); font-size:12px; cursor:pointer; transition:border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
+  .home-area-chip:hover, .home-area-chip:focus-visible{ border-color:var(--area-c); color:var(--text); outline:none; }
+  .home-area-chip[data-cat="Health"]{ --area-c:var(--cat-health); }
+  .home-area-chip[data-cat="Finance"]{ --area-c:var(--cat-finance); }
+  .home-area-chip[data-cat="Career"]{ --area-c:var(--cat-career); }
+  .home-area-chip[data-cat="Maintenance"]{ --area-c:var(--cat-maintenance); }
+  .home-area-chip[data-cat="Growth"]{ --area-c:var(--cat-growth); }
+  .home-area-chip[data-cat="Relationships"]{ --area-c:var(--cat-relationships); }
+  .home-area-chip[data-cat="Sol"]{ --area-c:var(--cat-sol); }
+  .home-area-dot{ width:8px; height:8px; border-radius:50%; background:var(--border-bright); flex-shrink:0; }
+  .home-area-chip.on .home-area-dot{ background:var(--area-c); box-shadow:0 0 0 3px color-mix(in srgb, var(--area-c) 18%, transparent); }
+  .home-area-chip.on{ color:var(--text); }
+  .home-area-count{ font-weight:700; color:var(--area-c); }
+
+  /* ---- Act: quick capture (chat), record-a-note, and add-item shortcuts — the one place fast
+     capture happens without leaving Home. ---- */
+  .home-capture-row{ display:flex; gap:8px; margin-top:14px; }
+  .home-capture-row input{ flex:1; }
+  .home-capture-reply{ margin-top:10px; padding:10px 12px; background:var(--bg-inset); border:1px solid var(--border); border-radius:var(--radius); font-size:13px; color:var(--text-dim); line-height:1.5; }
+  .home-act-buttons{ display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+
+  /* ---- Glance: today's stat tiles, the open-item list, and the AI day summary. ---- */
+  .home-glance-stats{ display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:10px; margin-top:14px; }
+  .home-stat{ background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:12px 13px 11px; display:flex; flex-direction:column; gap:3px; }
+  .home-stat-label{ font-family:var(--mono); font-size:10px; letter-spacing:0.06em; text-transform:uppercase; color:var(--text-faint); }
+  .home-stat-val{ font-family:var(--mono); font-weight:700; font-size:20px; font-variant-numeric:tabular-nums; line-height:1.2; }
+  .home-stat-val small{ font-size:12px; color:var(--text-faint); font-weight:400; }
+  .home-stat-sub{ font-family:var(--mono); font-size:10.5px; color:var(--text-dim); }
+  .home-glance-tasks{ display:flex; flex-direction:column; gap:6px; margin-top:12px; }
+  .home-task-row{ display:flex; align-items:center; gap:10px; padding:8px 12px; background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); font-size:13px; cursor:pointer; }
+  .home-task-row:hover{ border-color:var(--border-bright); }
+  .home-task-time{ font-family:var(--mono); font-size:11px; color:var(--text-faint); font-variant-numeric:tabular-nums; min-width:42px; }
+  .home-task-title{ flex:1; }
+  .home-task-kind{ font-family:var(--mono); font-size:9.5px; letter-spacing:0.05em; text-transform:uppercase; color:var(--text-faint); border:1px solid var(--border); border-radius:999px; padding:2px 7px; }
+  .home-glance-empty{ font-family:var(--mono); font-size:12px; color:var(--text-faint); padding:6px 0; }
+  .home-summary{ margin-top:16px; padding-top:14px; border-top:1px solid var(--border); }
+  .home-summary-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
+  .home-summary-text{ margin-top:10px; font-size:13.5px; line-height:1.6; color:var(--text-dim); }
+  .home-summary-text:empty::before{ content:"Not generated yet today — click \201C✨ generate\201D for an AI-written recap of how the day looks."; font-family:var(--mono); font-size:11.5px; color:var(--text-faint); }
+
+  .home-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:12px; margin-top:14px; }
   /* Each tile carries its destination's accent (--tile-accent/-bg, matching the tint its 3D panel
      uses in the constellation above) — the board reads as a map of YOUR areas, not a mono-accent
      menu. Glyphs sit in a tinted square chip so color has a consistent shape to live in. */
@@ -1385,8 +1431,9 @@
   .home-tile-name{ font-size:15px; font-weight:700; letter-spacing:1px; }
   .home-tile-cap{ font-size:11.5px; line-height:1.45; color:var(--text-dim); }
   @media (max-width:700px){
-    .home-clock-time{ font-size:38px; }
+    .home-clock-time{ font-size:32px; }
     .home-grid{ grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); }
+    .home-capture-row{ flex-direction:column; }
   }
   /* Seven tabs now — let them wrap instead of overflowing on narrow screens. */
   #plannerTabs{ flex-wrap:wrap; }
@@ -1486,54 +1533,91 @@
 
   <main class="main">
     <!-- ===== HOME SECTION ===== -->
-    <!-- The app's landing page: a dashboard core (live clock + current weather) surrounded by a
-         tile per destination. Graph and Calendar are deliberately absent — they live inside the
-         Planner as views now. Agent and Notes are separate tiles (each its own destination), same
-         as everything else. The tile grid is real, keyboard-focusable buttons; the Three.js layer
-         renders BEHIND this grid and mirrors it visually, so with WebGL unavailable or reduced
-         motion the grid alone is the page. -->
+    <!-- The app's landing page — five bands, top to bottom: orient (clock/weather hero), areas (a
+         one-glance pulse of today's life-area activity), act (capture without leaving home), glance
+         (what today actually looks like, incl. an AI summary), navigate (the one — and only one —
+         grid of destination tiles; the Three.js layer behind the hero is now purely ambient/reactive,
+         not a second clickable copy of the same nav). Graph and Calendar are deliberately absent from
+         the tile grid — they live inside the Planner as views now. -->
     <section id="homeSection">
       <div class="home-hero">
         <canvas id="homeCanvas" aria-hidden="true"></canvas>
         <div class="home-hero-core">
+          <div class="home-greet" id="homeGreet"></div>
           <div class="home-clock-time" id="homeClockTime">--:--</div>
           <div class="home-clock-date" id="homeClockDate"></div>
           <div class="home-weather" id="homeWeatherNow"></div>
         </div>
       </div>
-      <div class="home-grid" id="homeGrid">
-        <button class="home-tile" data-go="today" type="button">
-          <span class="home-tile-glyph">◷</span><span class="home-tile-name">today</span>
-          <span class="home-tile-cap">The day's timeline, actions and notes.</span>
-        </button>
-        <button class="home-tile" data-go="planner" type="button">
-          <span class="home-tile-glyph">▤</span><span class="home-tile-name">planner</span>
-          <span class="home-tile-cap">Areas, goals, projects, habits, actions — plus graph &amp; calendar views.</span>
-        </button>
-        <button class="home-tile" data-go="agent" type="button">
-          <span class="home-tile-glyph">◈</span><span class="home-tile-name">agent</span>
-          <span class="home-tile-cap">Tell it what happened — it captures the rest for you.</span>
-        </button>
-        <button class="home-tile" data-go="journal" type="button">
-          <span class="home-tile-glyph">✎</span><span class="home-tile-name">notes</span>
-          <span class="home-tile-cap">Write or record — voice notes transcribe automatically.</span>
-        </button>
-        <button class="home-tile" data-go="tracker" type="button">
-          <span class="home-tile-glyph">▥</span><span class="home-tile-name">tracker</span>
-          <span class="home-tile-cap">Daily variables, spreadsheet-style.</span>
-        </button>
-        <button class="home-tile" data-go="timeline" type="button">
-          <span class="home-tile-glyph">↔</span><span class="home-tile-name">timeline</span>
-          <span class="home-tile-cap">Everything scheduled, on one zoomable clock.</span>
-        </button>
-        <button class="home-tile" data-go="people" type="button">
-          <span class="home-tile-glyph">☺</span><span class="home-tile-name">people</span>
-          <span class="home-tile-cap">Relationships, groups and the social graph.</span>
-        </button>
-        <button class="home-tile" data-go="location" type="button">
-          <span class="home-tile-glyph">⚲</span><span class="home-tile-name">location</span>
-          <span class="home-tile-cap">Places — people, plans and history on a map.</span>
-        </button>
+
+      <div class="goal-integration-block">
+        <div class="integration-block-head"><h2>areas</h2></div>
+        <div class="home-areas" id="homeAreas"></div>
+      </div>
+
+      <div class="goal-integration-block">
+        <div class="integration-block-head"><h2>act</h2></div>
+        <div class="home-capture-row">
+          <input type="text" id="homeCaptureInput" placeholder="Tell the agent what happened, or what you need to do…">
+          <button class="btn btn-accent" id="homeCaptureSendBtn" type="button">send</button>
+        </div>
+        <div class="home-capture-reply" id="homeCaptureReply" hidden></div>
+        <div class="home-act-buttons">
+          <button class="btn" id="homeRecordBtn" type="button">🎤 record a note</button>
+          <button class="btn" id="homeAddActionBtn" type="button">+ action</button>
+          <button class="btn" id="homeAddNoteBtn" type="button">+ note</button>
+        </div>
+      </div>
+
+      <div class="goal-integration-block">
+        <div class="integration-block-head"><h2>glance</h2></div>
+        <div class="home-glance-stats" id="homeGlanceStats"></div>
+        <div class="home-glance-tasks" id="homeGlanceTasks"></div>
+        <div class="home-summary">
+          <div class="home-summary-head">
+            <span class="panel-hint" style="margin:0;">day summary</span>
+            <button class="btn" id="homeSummaryBtn" type="button">✨ generate</button>
+          </div>
+          <div class="home-summary-text" id="homeSummaryText"></div>
+        </div>
+      </div>
+
+      <div class="goal-integration-block">
+        <div class="integration-block-head"><h2>navigate</h2></div>
+        <div class="home-grid" id="homeGrid">
+          <button class="home-tile" data-go="today" type="button">
+            <span class="home-tile-glyph">◷</span><span class="home-tile-name">today</span>
+            <span class="home-tile-cap">The day's timeline, actions and notes.</span>
+          </button>
+          <button class="home-tile" data-go="planner" type="button">
+            <span class="home-tile-glyph">▤</span><span class="home-tile-name">planner</span>
+            <span class="home-tile-cap">Areas, goals, projects, habits, actions — plus graph &amp; calendar views.</span>
+          </button>
+          <button class="home-tile" data-go="agent" type="button">
+            <span class="home-tile-glyph">◈</span><span class="home-tile-name">agent</span>
+            <span class="home-tile-cap">Tell it what happened — it captures the rest for you.</span>
+          </button>
+          <button class="home-tile" data-go="journal" type="button">
+            <span class="home-tile-glyph">✎</span><span class="home-tile-name">notes</span>
+            <span class="home-tile-cap">Write or record — voice notes transcribe automatically.</span>
+          </button>
+          <button class="home-tile" data-go="tracker" type="button">
+            <span class="home-tile-glyph">▥</span><span class="home-tile-name">tracker</span>
+            <span class="home-tile-cap">Daily variables, spreadsheet-style.</span>
+          </button>
+          <button class="home-tile" data-go="timeline" type="button">
+            <span class="home-tile-glyph">↔</span><span class="home-tile-name">timeline</span>
+            <span class="home-tile-cap">Everything scheduled, on one zoomable clock.</span>
+          </button>
+          <button class="home-tile" data-go="people" type="button">
+            <span class="home-tile-glyph">☺</span><span class="home-tile-name">people</span>
+            <span class="home-tile-cap">Relationships, groups and the social graph.</span>
+          </button>
+          <button class="home-tile" data-go="location" type="button">
+            <span class="home-tile-glyph">⚲</span><span class="home-tile-name">location</span>
+            <span class="home-tile-cap">Places — people, plans and history on a map.</span>
+          </button>
+        </div>
       </div>
     </section>
 
@@ -3385,6 +3469,54 @@
     var tile = e.target.closest("[data-go]");
     if(tile) showSection(tile.dataset.go);
   });
+  document.getElementById("homeAreas").addEventListener("click", function(e){
+    var chip = e.target.closest("[data-cat]");
+    if(chip) openAreaDetailPage(chip.dataset.cat);
+  });
+  // Act: capture, record, add — the fast-path trio, all reachable without leaving Home.
+  // "Chat with agent" reuses sendAgentMessage() directly (the exact same pipeline the Agent tab's
+  // own send button calls), so a message sent from here lands in the SAME conversation — switching
+  // to the Agent tab later shows the full history including anything captured from Home.
+  document.getElementById("homeCaptureSendBtn").addEventListener("click", async function(){
+    var input = document.getElementById("homeCaptureInput");
+    var text = input.value.trim();
+    if(!text) return;
+    input.value = "";
+    var replyEl = document.getElementById("homeCaptureReply");
+    this.disabled = true;
+    replyEl.hidden = false;
+    replyEl.textContent = "…thinking";
+    await sendAgentMessage(text);
+    this.disabled = false;
+    var last = chatMessages[chatMessages.length - 1];
+    replyEl.textContent = (last && last.role === "assistant") ? last.content : "Sent.";
+  });
+  document.getElementById("homeCaptureInput").addEventListener("keydown", function(e){
+    if(e.key === "Enter" && !e.shiftKey){
+      e.preventDefault();
+      document.getElementById("homeCaptureSendBtn").click();
+    }
+  });
+  // Record: local Whisper transcription straight into a saved note (today's date, current time) —
+  // no intermediate panel/model choice, unlike the Notes composer's own recorder, since this is
+  // meant to be a single click-record-click-stop-done path from Home.
+  wireVoiceRecordButton(document.getElementById("homeRecordBtn"), async function(blob){
+    var text;
+    try{ text = await transcribeAudioLocally(blob); }
+    catch(err){ toast("Transcription failed: " + err.message); return; }
+    if(!text){ toast("Couldn't make out any speech in that recording."); return; }
+    var now = new Date();
+    var res = await saveJournalEntry({
+      date: todayStr(), text: text,
+      time_of_day: String(now.getHours()).padStart(2,"0") + ":" + String(now.getMinutes()).padStart(2,"0"),
+      categories: []
+    });
+    if(res.error){ toast("Couldn't save the note: " + res.error.message); return; }
+    toast("Saved as a note.");
+    renderAll();
+  });
+  document.getElementById("homeAddActionBtn").addEventListener("click", function(){ openActionModal(null, null); });
+  document.getElementById("homeAddNoteBtn").addEventListener("click", function(){ openJournalEditModal(null); });
   // Same Berlin-timezone trick berlinTodayParts() uses, extended with the hour — the weather data
   // (berlinWeatherByDate, from the existing Open-Meteo fetch) is keyed by Berlin dates/hours, so
   // "now" has to be Berlin-now too or the lookup drifts around midnight.
@@ -3394,28 +3526,183 @@
     parts.forEach(function(p){ if(p.type !== "literal") out[p.type] = p.value; });
     return { date: out.year + "-" + out.month + "-" + out.day, hour: Number(out.hour) };
   }
+  function homeGreeting(now){
+    var hr = now.getHours();
+    if(hr >= 5 && hr < 12) return "Good morning";
+    if(hr >= 12 && hr < 17) return "Good afternoon";
+    if(hr >= 17 && hr < 22) return "Good evening";
+    return "Good night";
+  }
+  // Today's activity per life area — a chip lights up when there's something scheduled or logged
+  // there today (an action due today, a habit occurring today, or a note saved today), so the strip
+  // reads as "where my day is actually happening" rather than a static list of area names.
+  function computeHomeAreaPulse(){
+    var today = todayStr();
+    return CATEGORIES.map(function(cat){
+      var actions = state.actions.filter(function(a){ return a.date === today && actionCategory(a) === cat; }).length;
+      var habits = state.habits.filter(function(h){ return habitOccursOnDate(h, today) && habitCategory(h) === cat; }).length;
+      var notes = state.journal.filter(function(n){ return n.date === today && noteCategories(n).indexOf(cat) !== -1; }).length;
+      var count = actions + habits + notes;
+      return { cat:cat, count:count, on: count > 0 };
+    });
+  }
+  function renderHomeAreas(){
+    var el = document.getElementById("homeAreas");
+    if(!el) return;
+    el.innerHTML = computeHomeAreaPulse().map(function(a){
+      return '<button class="home-area-chip' + (a.on ? " on" : "") + '" data-cat="' + a.cat + '" type="button" title="' + a.cat + (a.count ? " — " + a.count + " today" : " — nothing today") + '">' +
+        '<span class="home-area-dot"></span><span>' + a.cat + '</span>' +
+        (a.count ? '<span class="home-area-count">' + a.count + '</span>' : '') +
+      '</button>';
+    }).join("");
+  }
+  // Everything relevant to "what does today look like" — open/done habits and actions for today.
+  // Shared by the Glance stat tiles, the open-item list, the AI summary prompt, and the 3D core's
+  // reactive energy (see setHomeSceneEnergy).
+  function computeTodayGlance(){
+    var today = todayStr();
+    var habitsToday = state.habits.filter(function(h){ return habitOccursOnDate(h, today); });
+    var habitsDone = habitsToday.filter(function(h){ return habitDoneForDate(h, today); });
+    var actionsToday = state.actions.filter(function(a){ return a.date === today; });
+    var actionsOpen = actionsToday.filter(function(a){ return !a.done; });
+    var actionsDone = actionsToday.filter(function(a){ return a.done; });
+    var totalToday = habitsToday.length + actionsToday.length;
+    var totalDone = habitsDone.length + actionsDone.length;
+    return {
+      habitsToday:habitsToday, habitsDone:habitsDone,
+      actionsToday:actionsToday, actionsOpen:actionsOpen, actionsDone:actionsDone,
+      ratio: totalToday ? totalDone / totalToday : null
+    };
+  }
+  function renderHomeGlance(weatherNow){
+    var statsEl = document.getElementById("homeGlanceStats");
+    var tasksEl = document.getElementById("homeGlanceTasks");
+    if(!statsEl || !tasksEl) return;
+    var g = computeTodayGlance();
+    setHomeSceneEnergy(g.ratio);
+    var habitPct = g.habitsToday.length ? Math.round(g.habitsDone.length / g.habitsToday.length * 100) : null;
+    statsEl.innerHTML =
+      '<div class="home-stat"><span class="home-stat-label">habits</span><span class="home-stat-val">' + g.habitsDone.length + '<small>/' + g.habitsToday.length + '</small></span>' +
+        '<span class="home-stat-sub">' + (habitPct != null ? habitPct + "% done" : "none scheduled") + '</span></div>' +
+      '<div class="home-stat"><span class="home-stat-label">actions left</span><span class="home-stat-val">' + g.actionsOpen.length + '</span>' +
+        '<span class="home-stat-sub">' + g.actionsDone.length + ' done today</span></div>' +
+      '<div class="home-stat"><span class="home-stat-label">weather</span><span class="home-stat-val">' + (weatherNow ? weatherNow.temp + '°C' : '—') + '</span>' +
+        '<span class="home-stat-sub">' + (weatherNow ? weatherCodeIcon(weatherNow.code) + ' berlin' : 'loading…') + '</span></div>';
+
+    var today = todayStr();
+    var rows = [];
+    g.actionsOpen.forEach(function(a){ rows.push({ time:a.timeOfDay, title:a.title, kind:"action" }); });
+    g.habitsToday.filter(function(h){ return !habitDoneForDate(h, today); }).forEach(function(h){ rows.push({ time:h.timeOfDay, title:h.title, kind:"habit" }); });
+    rows.sort(function(x,y){ if(!x.time) return 1; if(!y.time) return -1; return x.time.localeCompare(y.time); });
+    tasksEl.innerHTML = rows.length
+      ? rows.slice(0, 6).map(function(r){
+          return '<div class="home-task-row" data-go="today">' +
+            '<span class="home-task-time">' + (r.time ? fmtTimeOfDay(r.time) : "—") + '</span>' +
+            '<span class="home-task-title">' + escapeHtml(r.title) + '</span>' +
+            '<span class="home-task-kind">' + r.kind + '</span>' +
+          '</div>';
+        }).join("") + (rows.length > 6 ? '<div class="home-glance-empty">+ ' + (rows.length - 6) + ' more — see today</div>' : "")
+      : '<div class="home-glance-empty">Nothing left open today — clear day.</div>';
+  }
+  document.getElementById("homeGlanceTasks").addEventListener("click", function(e){
+    if(e.target.closest("[data-go]")) showSection("today");
+  });
+
+  // AI day summary — cached in localStorage per calendar day (no DB column needed, matching how the
+  // Gemini API key itself is stored) so it survives reloads without re-hitting the API, but it's
+  // never auto-generated: only the button writes a fresh one.
+  function homeSummaryStorageKey(){ return "pp_day_summary_v1_" + todayStr(); }
+  var homeSummaryLoadedDate = null;
+  function ensureHomeSummaryLoaded(){
+    var today = todayStr();
+    if(homeSummaryLoadedDate === today) return;
+    homeSummaryLoadedDate = today;
+    var el = document.getElementById("homeSummaryText");
+    if(el) el.textContent = safeGet(window.localStorage, homeSummaryStorageKey()) || "";
+  }
+  async function generateHomeDaySummary(){
+    var apiKey = safeGet(window.localStorage, "geminiApiKey");
+    if(!apiKey){ toast('No Gemini API key set — click "api key" in the agent tab to add one.'); return; }
+    var btn = document.getElementById("homeSummaryBtn");
+    var textEl = document.getElementById("homeSummaryText");
+    var origLabel = btn.textContent;
+    btn.disabled = true; btn.textContent = "✨ generating…";
+    try{
+      var g = computeTodayGlance();
+      var lines = [];
+      lines.push("Habits: " + g.habitsDone.length + "/" + g.habitsToday.length + " done today" +
+        (g.habitsToday.length ? " (" + g.habitsToday.map(function(h){ return h.title + (habitDoneForDate(h, todayStr()) ? " [done]" : " [not done]"); }).join(", ") + ")" : ""));
+      lines.push("Actions today: " + g.actionsToday.length + " total, " + g.actionsOpen.length + " still open" +
+        (g.actionsOpen.length ? " (" + g.actionsOpen.map(function(a){ return a.title; }).join(", ") + ")" : ""));
+      var notesToday = state.journal.filter(function(n){ return n.date === todayStr(); });
+      lines.push("Notes written today: " + notesToday.length);
+      var info = berlinNowInfo();
+      var wHours = berlinWeatherByDate[info.date];
+      if(wHours && wHours.length) lines.push("Weather in Berlin today: around " + wHours[Math.min(info.hour, wHours.length - 1)].temp + "°C.");
+
+      var url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=" + encodeURIComponent(apiKey);
+      var body = JSON.stringify({ contents: [{ role:"user", parts: [{ text:
+        "You write a short, warm, plain-language recap of someone's day for a personal planner app's home screen. " +
+        "2-3 sentences, no bullet points, no headings, second person (\"you\"). Base it only on the facts given — don't invent details.\n\n" +
+        lines.join("\n")
+      }] }] });
+      // Same transient-overload retry the transcription/sentiment paths use — Gemini 503s are usually noise.
+      var resp, attempt;
+      for(attempt = 1; attempt <= 3; attempt++){
+        resp = await fetch(url, { method:"POST", headers:{ "Content-Type":"application/json" }, body: body });
+        if(resp.ok) break;
+        if((resp.status === 503 || resp.status === 429) && attempt < 3){
+          await new Promise(function(r){ setTimeout(r, attempt * 1500); });
+          continue;
+        }
+        throw new Error("Gemini API error " + resp.status + ": " + (await resp.text()).slice(0,200));
+      }
+      var data = await resp.json();
+      var raw = (((data.candidates||[])[0]||{}).content||{}).parts;
+      var text = (raw||[]).filter(function(p){ return typeof p.text === "string"; }).map(function(p){ return p.text; }).join(" ").trim();
+      if(!text){ toast("The summary came back empty — try again."); return; }
+      textEl.textContent = text;
+      homeSummaryLoadedDate = todayStr();
+      safeSet(window.localStorage, homeSummaryStorageKey(), text);
+    } catch(err){
+      toast("Day summary failed: " + err.message);
+    } finally {
+      btn.disabled = false; btn.textContent = origLabel;
+    }
+  }
+  document.getElementById("homeSummaryBtn").addEventListener("click", generateHomeDaySummary);
+
   function renderHomeDashboard(){
     // First paint happens post-auth with the section visible and laid out — the right moment to
     // spin up the (lazy, guarded) 3D layer; ensureHomeScene() is a no-op ever after.
     ensureHomeScene();
     var now = new Date();
+    document.getElementById("homeGreet").textContent = homeGreeting(now);
     document.getElementById("homeClockTime").textContent = now.toLocaleTimeString(undefined, { hour:"2-digit", minute:"2-digit", second:"2-digit" });
     document.getElementById("homeClockDate").textContent = now.toLocaleDateString(undefined, { weekday:"long", month:"long", day:"numeric", year:"numeric" });
     var weatherEl = document.getElementById("homeWeatherNow");
     var info = berlinNowInfo();
     var hours = berlinWeatherByDate[info.date];
+    var weatherNow = null;
     if(!hours){
       weatherEl.innerHTML = "";
       if(berlinWeatherFetchState === "idle") fetchBerlinWeather();
-      return;
+    } else {
+      // Exact current hour when present; otherwise the latest hour before now (e.g. right after a
+      // fetch whose horizon ends mid-day) — never a future hour masquerading as "now".
+      var h = null;
+      hours.forEach(function(x){ if(x.hour <= info.hour && (!h || x.hour > h.hour)) h = x; });
+      if(!h) h = hours[0];
+      weatherNow = h;
+      weatherEl.innerHTML = '<span class="tl-weather-tick-icon">' + weatherCodeIcon(h.code) + '</span>' +
+        '<span>' + h.temp + '°C · berlin</span>';
     }
-    // Exact current hour when present; otherwise the latest hour before now (e.g. right after a
-    // fetch whose horizon ends mid-day) — never a future hour masquerading as "now".
-    var h = null;
-    hours.forEach(function(x){ if(x.hour <= info.hour && (!h || x.hour > h.hour)) h = x; });
-    if(!h) h = hours[0];
-    weatherEl.innerHTML = '<span class="tl-weather-tick-icon">' + weatherCodeIcon(h.code) + '</span>' +
-      '<span>' + h.temp + '°C · berlin</span>';
+    // Areas/Glance don't depend on weather being loaded yet — they used to be skipped entirely by an
+    // early return here whenever the forecast hadn't resolved, which on a fresh page load was every
+    // single tick until the fetch settled.
+    renderHomeAreas();
+    renderHomeGlance(weatherNow);
+    ensureHomeSummaryLoaded();
   }
   // One always-on 1s tick; it early-returns unless the home section is what's on screen, so the
   // cost while elsewhere is a single string compare — simpler than start/stop bookkeeping in
@@ -3423,12 +3710,15 @@
   setInterval(function(){ if(activeSection === "home") renderHomeDashboard(); }, 1000);
 
   /* ---------------- Home Three.js constellation ---------------- */
-  // A decorative-but-interactive 3D layer behind the dashboard core: one floating glass panel per
-  // destination orbiting a glowing wireframe core, plus a starfield for depth. Strictly an
-  // enhancement — the DOM tile grid below stays the accessible source of truth, and this whole
-  // block no-ops (leaving the plain page) when WebGL is missing, reduced motion is requested, or
-  // the CDN import fails. Three.js loads lazily via dynamic import the first time the home page
-  // is actually on screen, same pattern as the transformers.js speech model.
+  // A decorative, reactive ambient layer behind the dashboard core: a glowing wireframe core plus a
+  // starfield for depth. This used to also carry one clickable panel per destination, duplicating
+  // the DOM tile grid below (the same 8 destinations shown twice on the same page) — that's gone now;
+  // the tile grid is the single source of navigation, and the 3D layer's only job is to make the
+  // hero feel alive and reflect today's actual state (see setHomeSceneEnergy/computeTodayGlance)
+  // rather than being a second static/decorative copy of the nav. Strictly an enhancement — the whole
+  // block no-ops (leaving the plain hero) when WebGL is missing, reduced motion is requested, or the
+  // CDN import fails. Three.js loads lazily via dynamic import the first time the home page is
+  // actually on screen, same pattern as the transformers.js speech model.
   var homeScene3d = null, homeSceneIniting = false, homeSceneFailed = false;
   // One pinned module, shared by every 3D surface (home constellation, today timeline skin) — a
   // second import() of the same URL is a cache hit, but sharing the promise also shares a failure,
@@ -3438,18 +3728,6 @@
     if(!threeModulePromise) threeModulePromise = import("https://cdn.jsdelivr.net/npm/three@0.170.0/+esm");
     return threeModulePromise;
   }
-  // One panel per DOM tile below (data-go matches). Colors come from the app's CSS custom
-  // properties at init time so the scene always matches the current theme + area palette.
-  var HOME_PANEL_DEFS = [
-    { go:"today", glyphs:"◷", label:"today", colorVar:"--accent" },
-    { go:"planner", glyphs:"▤", label:"planner", colorVar:"--cat-career" },
-    { go:"agent", glyphs:"◈", label:"agent", colorVar:"--violet" },
-    { go:"journal", glyphs:"✎", label:"notes", colorVar:"--cat-health" },
-    { go:"tracker", glyphs:"▥", label:"tracker", colorVar:"--cat-growth" },
-    { go:"timeline", glyphs:"↔", label:"timeline", colorVar:"--cat-finance" },
-    { go:"people", glyphs:"☺", label:"people", colorVar:"--cat-relationships" },
-    { go:"location", glyphs:"⚲", label:"location", colorVar:"--cat-sol" }
-  ];
   function homeWebGLUsable(){
     if(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return false;
     try{
@@ -3461,24 +3739,12 @@
     var v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
     return v || "#7aa2ff";
   }
-  // Glyph + label drawn onto a canvas texture — crisper and far cheaper than font/geometry text,
-  // and it inherits the app's mono typeface for free.
-  function homeGlyphTexture(THREE, def, color){
-    var cv = document.createElement("canvas");
-    cv.width = 256; cv.height = 256;
-    var ctx = cv.getContext("2d");
-    ctx.fillStyle = color;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.font = '104px "IBM Plex Mono", monospace';
-    ctx.fillText(def.glyphs, 128, 108);
-    ctx.font = '600 30px "IBM Plex Mono", monospace';
-    ctx.globalAlpha = 0.9;
-    ctx.fillText(def.label, 128, 204);
-    var tex = new THREE.CanvasTexture(cv);
-    tex.anisotropy = 4;
-    return tex;
-  }
+  // How "full" today looks — habits/actions done vs. scheduled (see computeTodayGlance). Read by the
+  // 3D frame loop every tick; null (nothing scheduled yet) settles to a calm mid-level baseline
+  // rather than reading as an empty/broken day. Safe to call before the scene exists — it just
+  // updates the value the loop will pick up once it does.
+  var homeSceneEnergy = 0.5;
+  function setHomeSceneEnergy(ratio){ homeSceneEnergy = ratio == null ? 0.5 : Math.max(0.15, Math.min(1, ratio)); }
   function ensureHomeScene(){
     if(homeScene3d || homeSceneIniting || homeSceneFailed) return;
     if(!homeWebGLUsable()){ homeSceneFailed = true; return; }
@@ -3492,7 +3758,7 @@
     var THREE = await loadThree();
     var hero = document.querySelector(".home-hero");
     var canvas = document.getElementById("homeCanvas");
-    var w = hero.clientWidth || 800, h = hero.clientHeight || 300;
+    var w = hero.clientWidth || 800, h = hero.clientHeight || 220;
     var renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(w, h, false);
@@ -3503,12 +3769,11 @@
     var accent = new THREE.Color(cssVarColor("--accent"));
 
     // Central core: a slowly-tumbling wireframe icosahedron + a point halo, sitting visually
-    // behind the DOM clock overlay so the time reads as the heart of the system.
+    // behind the DOM clock overlay so the time reads as the heart of the system. Kept as named vars
+    // (not inline) so the frame loop can drive their opacity/speed from homeSceneEnergy.
     var core = new THREE.Group();
-    core.add(new THREE.LineSegments(
-      new THREE.WireframeGeometry(new THREE.IcosahedronGeometry(1.7, 1)),
-      new THREE.LineBasicMaterial({ color: accent, transparent: true, opacity: 0.35 })
-    ));
+    var coreLineMat = new THREE.LineBasicMaterial({ color: accent, transparent: true, opacity: 0.35 });
+    core.add(new THREE.LineSegments(new THREE.WireframeGeometry(new THREE.IcosahedronGeometry(1.7, 1)), coreLineMat));
     var haloCount = 90, haloPos = new Float32Array(haloCount * 3);
     for(var i = 0; i < haloCount; i++){
       var a = Math.random() * Math.PI * 2, r = 2.1 + Math.random() * 0.7;
@@ -3518,7 +3783,8 @@
     }
     var haloGeo = new THREE.BufferGeometry();
     haloGeo.setAttribute("position", new THREE.BufferAttribute(haloPos, 3));
-    core.add(new THREE.Points(haloGeo, new THREE.PointsMaterial({ color: accent, size: 0.05, transparent: true, opacity: 0.7 })));
+    var haloMat = new THREE.PointsMaterial({ color: accent, size: 0.05, transparent: true, opacity: 0.7 });
+    core.add(new THREE.Points(haloGeo, haloMat));
     scene.add(core);
 
     // Background starfield for depth.
@@ -3532,58 +3798,15 @@
     starGeo.setAttribute("position", new THREE.BufferAttribute(starPos, 3));
     scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: new THREE.Color(cssVarColor("--text-dim")), size: 0.04, transparent: true, opacity: 0.55 })));
 
-    // One orbiting glass panel per destination: a translucent tinted plate, a neon edge outline,
-    // and the glyph texture floated just in front. Billboarded toward the camera every frame.
-    var panels = HOME_PANEL_DEFS.map(function(def, idx){
-      var color = new THREE.Color(cssVarColor(def.colorVar));
-      var group = new THREE.Group();
-      var plateGeo = new THREE.PlaneGeometry(1.9, 1.9);
-      group.add(new THREE.Mesh(plateGeo, new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 0.14, side: THREE.DoubleSide, depthWrite: false })));
-      var edges = new THREE.LineSegments(new THREE.EdgesGeometry(plateGeo), new THREE.LineBasicMaterial({ color: color, transparent: true, opacity: 0.85 }));
-      group.add(edges);
-      var glyph = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 1.7), new THREE.MeshBasicMaterial({ map: homeGlyphTexture(THREE, def, "#" + color.getHexString()), transparent: true, depthWrite: false }));
-      glyph.position.z = 0.03;
-      group.add(glyph);
-      scene.add(group);
-      return { def: def, group: group, phase: idx / HOME_PANEL_DEFS.length * Math.PI * 2, targetScale: 1 };
-    });
-
-    // Pointer parallax + raycast hover/click on the panels. The canvas sits behind the DOM overlay
-    // (which is pointer-events:none), so it receives the hero's pointer events directly.
-    var pointer = { x: 0, y: 0 }, raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2(), hovered = null;
-    function pickPanel(e){
-      var rect = canvas.getBoundingClientRect();
-      ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-      ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-      raycaster.setFromCamera(ndc, camera);
-      var groups = panels.map(function(p){ return p.group; });
-      var hit = raycaster.intersectObjects(groups, true)[0];
-      if(!hit) return null;
-      var obj = hit.object;
-      while(obj && groups.indexOf(obj) === -1) obj = obj.parent;
-      return panels.find(function(p){ return p.group === obj; }) || null;
-    }
+    // Gentle pointer parallax on the camera — the canvas sits behind the DOM overlay (which is
+    // pointer-events:none), so it receives the hero's pointer events directly.
+    var pointer = { x: 0, y: 0 };
     function onMove(e){
       var rect = canvas.getBoundingClientRect();
       pointer.x = ((e.clientX - rect.left) / rect.width - 0.5) * 2;
       pointer.y = ((e.clientY - rect.top) / rect.height - 0.5) * 2;
-      hovered = pickPanel(e);
-      canvas.style.cursor = hovered ? "pointer" : "";
-    }
-    function onClick(e){
-      var p = pickPanel(e);
-      if(p) showSection(p.def.go);
     }
     canvas.addEventListener("pointermove", onMove);
-    canvas.addEventListener("click", onClick);
-    // Hovering a DOM tile below pulses its 3D counterpart — ties the two layers together.
-    function onTileOver(e){
-      var tile = e.target.closest("[data-go]");
-      panels.forEach(function(p){ p.domHot = !!(tile && tile.dataset.go === p.def.go); });
-    }
-    var homeGrid = document.getElementById("homeGrid");
-    homeGrid.addEventListener("mouseover", onTileOver);
-    homeGrid.addEventListener("mouseout", function(){ panels.forEach(function(p){ p.domHot = false; }); });
 
     function onResize(){
       var nw = hero.clientWidth || w, nh = hero.clientHeight || h;
@@ -3596,16 +3819,13 @@
     var t0 = performance.now();
     function frame(){
       var t = (performance.now() - t0) / 1000;
-      core.rotation.y = t * 0.15;
+      // Reactive core: a fuller day (higher homeSceneEnergy) spins a touch faster and glows a touch
+      // brighter — the constellation reflects today instead of running the same loop regardless.
+      var e = homeSceneEnergy;
+      core.rotation.y = t * (0.08 + e * 0.14);
       core.rotation.x = Math.sin(t * 0.1) * 0.2;
-      panels.forEach(function(p){
-        var a = p.phase + t * 0.07;
-        p.group.position.set(Math.cos(a) * 7.4, Math.sin(a) * 2.1 + Math.sin(t * 0.8 + p.phase * 3) * 0.12, Math.sin(a) * 1.6);
-        p.group.lookAt(camera.position);
-        var want = (hovered === p || p.domHot) ? 1.16 : 1;
-        p.targetScale += (want - p.targetScale) * 0.12;
-        p.group.scale.setScalar(p.targetScale);
-      });
+      coreLineMat.opacity = 0.22 + e * 0.28;
+      haloMat.opacity = 0.4 + e * 0.5;
       camera.position.x += (pointer.x * 1.1 - camera.position.x) * 0.05;
       camera.position.y += (-pointer.y * 0.6 - camera.position.y) * 0.05;
       camera.lookAt(0, 0, 0);
@@ -3618,7 +3838,6 @@
       dispose: function(){
         renderer.setAnimationLoop(null);
         canvas.removeEventListener("pointermove", onMove);
-        canvas.removeEventListener("click", onClick);
         window.removeEventListener("resize", onResize);
         scene.traverse(function(o){
           if(o.geometry) o.geometry.dispose();
