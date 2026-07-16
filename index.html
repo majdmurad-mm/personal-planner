@@ -4137,9 +4137,19 @@
         b.vx -= fx; b.vy -= fy; b.vz -= fz;
       });
       nodes.forEach(function(n){
-        // Area hubs anchor the middle (stronger center pull), same asymmetry as the 2D graph.
-        var k = (n.type === "area" ? G_CENTER_K * 4 : G_CENTER_K) * g.alpha;
-        n.vx -= n.x * k; n.vy -= n.y * k; n.vz -= n.z * k;
+        // Same center-pull rule as the 2D planner graph (wbTickPhysics): only area hubs get pulled
+        // to the middle, and strongly; a true orphan (no resolvable area at all) gets the same pull
+        // at half strength since it has no area hub to spring-link to either. Everything else — a
+        // goal/project/habit that DOES have an area — gets no direct center pull of its own; it stays
+        // near the middle only by being spring-linked (via buildSystemGraph's edges) to its anchored
+        // area hub, exactly as in the 2D graph.
+        if(n.type === "area"){
+          var k = G_CENTER_K * 4 * g.alpha;
+          n.vx -= n.x * k; n.vy -= n.y * k; n.vz -= n.z * k;
+        } else if(!n.area){
+          var k2 = G_CENTER_K * 0.5 * g.alpha;
+          n.vx -= n.x * k2; n.vy -= n.y * k2; n.vz -= n.z * k2;
+        }
         n.vx *= G_DAMP; n.vy *= G_DAMP; n.vz *= G_DAMP;
         n.x += n.vx; n.y += n.vy; n.z += n.vz;
       });
