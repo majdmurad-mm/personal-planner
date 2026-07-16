@@ -2400,7 +2400,7 @@
         </div>
       </div>
       <div class="field-row">
-        <div class="field"><label>area</label><div class="chip-select" id="journalEditAreaSelect">
+        <div class="field"><label>area(s)</label><div class="chip-select" id="journalEditAreaSelect">
           <div class="chip-opt" role="button" tabindex="0" data-ar="Health">✚ Health</div><div class="chip-opt" role="button" tabindex="0" data-ar="Finance">$ Finance</div><div class="chip-opt sel" role="button" tabindex="0" data-ar="Career">▲ Career</div>
           <div class="chip-opt" role="button" tabindex="0" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" role="button" tabindex="0" data-ar="Growth">↑ Growth</div><div class="chip-opt" role="button" tabindex="0" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" role="button" tabindex="0" data-ar="Sol">◐ Sol</div>
         </div></div>
@@ -3166,7 +3166,7 @@
     state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null,
       locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null) }; });
     state.actions.sort(function(a,b){ return a.position - b.position; });
-    state.journal = (results[4].data || []).map(function(r){ return { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null, recordingId:r.recording_id||null, linkedObjects:r.linked_objects||[], sentiment:r.sentiment||[], title:r.title||"", priority:r.priority||null }; });
+    state.journal = (results[4].data || []).map(function(r){ return { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, categories:r.categories||[], recordingId:r.recording_id||null, linkedObjects:r.linked_objects||[], sentiment:r.sentiment||[], title:r.title||"", priority:r.priority||null }; });
     state.people = (results[5].data || []).map(function(r){
       return { id:r.id, name:r.name, relationship:r.relationship, contact:r.contact, notes:r.notes, position:r.position||0,
         verified:!!r.verified, likeScore:(r.like_score!=null?r.like_score:null), contactScore:(r.contact_score!=null?r.contact_score:null),
@@ -3735,8 +3735,12 @@
   }
 
   [["goalPrioSelect","p"],["projectPrioSelect","p"],["habitPrioSelect","p"],["habitFreqSelect","f"],
-   ["actionPrioSelect","p"],["actionParentTypeSelect","pt"],["actionAreaSelect","ar"],["goalCatSelect","c"],["personRelSelect","r"],["tvTypeSelect","t"],["goalHealthLevelSelect","hl"],["habitTypeSelect","ty"],["habitAreaSelect","ar"],["journalAreaSelect","ar"],["journalEditAreaSelect","ar"],["journalPrioritySelect","p"],["journalEditPrioritySelect","p"]]
+   ["actionPrioSelect","p"],["actionParentTypeSelect","pt"],["actionAreaSelect","ar"],["goalCatSelect","c"],["personRelSelect","r"],["tvTypeSelect","t"],["goalHealthLevelSelect","hl"],["habitTypeSelect","ty"],["habitAreaSelect","ar"],["journalPrioritySelect","p"],["journalEditPrioritySelect","p"]]
    .forEach(function(pair){ wireChipSelect(document.getElementById(pair[0]), pair[1]); });
+  // Notes can span more than one area, like projects (see projectAreaSelect) — multi-select instead
+  // of the mutually-exclusive wireChipSelect used above.
+  wireMultiChipSelect(document.getElementById("journalAreaSelect"));
+  wireMultiChipSelect(document.getElementById("journalEditAreaSelect"));
 
   /* ---------------- Stats ---------------- */
   function goalDirectChildren(g){
@@ -4332,7 +4336,7 @@
     });
   }
   function journalPayload(snapshot){
-    return { id:snapshot.id, date:snapshot.date, text:snapshot.text, time_of_day:snapshot.timeOfDay, category:snapshot.category, recording_id:snapshot.recordingId, linked_objects:snapshot.linkedObjects||[], sentiment:snapshot.sentiment||[], title:snapshot.title||null, priority:snapshot.priority||null };
+    return { id:snapshot.id, date:snapshot.date, text:snapshot.text, time_of_day:snapshot.timeOfDay, categories:snapshot.categories||[], recording_id:snapshot.recordingId, linked_objects:snapshot.linkedObjects||[], sentiment:snapshot.sentiment||[], title:snapshot.title||null, priority:snapshot.priority||null };
   }
   async function deleteJournalEntry(id){
     var n = state.journal.find(function(x){ return x.id === id; });
@@ -4692,7 +4696,7 @@
     return '<div class="goal-integration-block"><div class="integration-block-head"><h2>related notes</h2></div>' +
       notes.map(function(n){
         var d = new Date(n.date + "T00:00:00");
-        return '<div class="journal-entry' + (n.category ? " " + n.category : "") + '" data-kind="journal" data-id="' + n.id + '">' +
+        return '<div class="journal-entry' + (noteCategory(n) ? " " + noteCategory(n) : "") + '" data-kind="journal" data-id="' + n.id + '">' +
           renderNoteTagsHtml(n) +
           '<div class="journal-entry-top"><span class="journal-entry-date">' + d.toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" }) + (n.timeOfDay ? " · " + fmtTimeOfDay(n.timeOfDay) : "") + '</span>' +
           '<div class="entity-actions"><button class="icon-btn edit" data-action="edit-journal" data-id="' + n.id + '" aria-label="Edit note">✎</button></div></div>' +
@@ -4855,6 +4859,15 @@
   }
   function projectCategory(p){
     var cats = projectCategories(p);
+    return cats.length ? cats[0] : null;
+  }
+  // A note's area(s) — same multi-area shape as projects (see projectCategories), no goal fallback
+  // since notes aren't attached to a goal.
+  function noteCategories(n){
+    return n.categories || [];
+  }
+  function noteCategory(n){
+    var cats = noteCategories(n);
     return cats.length ? cats[0] : null;
   }
   function renderProjects(){
@@ -7451,7 +7464,9 @@
   function renderNoteTagsHtml(entry){
     var tags = "";
     if(entry.priority) tags += '<span class="prio-badge ' + entry.priority + '">' + entry.priority + '</span>';
-    if(entry.category) tags += '<span class="cat-badge ' + entry.category + '">' + CATEGORY_ICONS[entry.category] + ' ' + entry.category + '</span>';
+    noteCategories(entry).forEach(function(cat){
+      tags += '<span class="cat-badge ' + cat + '">' + CATEGORY_ICONS[cat] + ' ' + cat + '</span>';
+    });
     return tags ? '<div class="journal-entry-tags">' + tags + '</div>' : "";
   }
   function renderNoteTitleHtml(entry){
@@ -7771,7 +7786,7 @@
         var notePayload = {
           date: dateToLocalStr(recordedAt), text: mergedText,
           time_of_day: String(recordedAt.getHours()).padStart(2,"0") + ":" + String(recordedAt.getMinutes()).padStart(2,"0"),
-          category: chipValue(document.getElementById("journalAreaSelect"), "ar") || null,
+          categories: multiChipValues(document.getElementById("journalAreaSelect"), "ar"),
           recording_id: rec.id
         };
         var saveRes = await saveJournalEntry(notePayload);
@@ -7807,7 +7822,7 @@
     var res = await safeWrite(function(p){ return sb.from("journal").insert(p).select().single(); }, payload);
     if(res.error) return res;
     var r = res.data;
-    state.journal.push({ id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null, recordingId:r.recording_id||null, linkedObjects:r.linked_objects||payload.linked_objects||[], sentiment:r.sentiment||[], title:r.title||payload.title||"", priority:r.priority||payload.priority||null });
+    state.journal.push({ id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, categories:r.categories||[], recordingId:r.recording_id||null, linkedObjects:r.linked_objects||payload.linked_objects||[], sentiment:r.sentiment||[], title:r.title||payload.title||"", priority:r.priority||payload.priority||null });
     warnDroppedFields(res.droppedFields);
     return res;
   }
@@ -7821,7 +7836,7 @@
       title: document.getElementById("journalTitleInput").value.trim() || null,
       priority: chipValue(document.getElementById("journalPrioritySelect"), "p") || null,
       time_of_day: document.getElementById("journalTimeInput").value || null,
-      category: chipValue(document.getElementById("journalAreaSelect"), "ar") || null,
+      categories: multiChipValues(document.getElementById("journalAreaSelect"), "ar"),
       recording_id: journalPendingRecording ? journalPendingRecording.id : null
     };
     this.disabled = true;
@@ -7847,7 +7862,7 @@
       var monthKey = d.toLocaleDateString(undefined, { month:"long", year:"numeric" });
       var head = "";
       if(!monthsSeen[monthKey]){ monthsSeen[monthKey] = true; head = '<div class="journal-month-head">' + monthKey + '</div>'; }
-      var catClass = entry.category ? " " + entry.category : "";
+      var catClass = noteCategory(entry) ? " " + noteCategory(entry) : "";
       return head + '<div class="journal-entry' + catClass + '" data-kind="journal" data-id="' + entry.id + '">' +
         renderNoteTagsHtml(entry) +
         '<div class="journal-entry-top"><span class="journal-entry-date">' + d.toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" }) + (entry.timeOfDay ? " · " + fmtTimeOfDay(entry.timeOfDay) : "") + '</span>' +
@@ -8147,7 +8162,7 @@
     document.getElementById("journalEditTitleInput").value = (n && n.title) || "";
     document.getElementById("journalEditDateInput").value = (n && n.date) || todaySelectedDate || todayStr();
     document.getElementById("journalEditTimeInput").value = (n && n.timeOfDay) || "";
-    setChip(document.getElementById("journalEditAreaSelect"), "ar", (n && n.category) || "Career");
+    setMultiChip(document.getElementById("journalEditAreaSelect"), "ar", (n && n.categories && n.categories.length) ? n.categories : ["Career"]);
     setChip(document.getElementById("journalEditPrioritySelect"), "p", (n && n.priority) || "");
     document.getElementById("journalEditTextInput").value = (n && n.text) || "";
     document.getElementById("journalEditTimePickPanel").hidden = true;
@@ -8170,7 +8185,7 @@
       title: document.getElementById("journalEditTitleInput").value.trim() || null,
       priority: chipValue(document.getElementById("journalEditPrioritySelect"), "p") || null,
       time_of_day: document.getElementById("journalEditTimeInput").value || null,
-      category: chipValue(document.getElementById("journalEditAreaSelect"), "ar") || null,
+      categories: multiChipValues(document.getElementById("journalEditAreaSelect"), "ar"),
       // Re-resolved on every edit — tags added/removed in the text change the structured links too.
       linked_objects: extractNoteLinks(text)
     };
@@ -8181,7 +8196,7 @@
       if(res.error){ alert(res.error.message); return; }
       var r = res.data;
       var idx = state.journal.findIndex(function(x){ return x.id === editingJournalId; });
-      if(idx !== -1) state.journal[idx] = { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null, recordingId:r.recording_id||null, linkedObjects:r.linked_objects||payload.linked_objects||[], sentiment:r.sentiment||[], title:r.title||payload.title||"", priority:r.priority||payload.priority||null };
+      if(idx !== -1) state.journal[idx] = { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, categories:r.categories||[], recordingId:r.recording_id||null, linkedObjects:r.linked_objects||payload.linked_objects||[], sentiment:r.sentiment||[], title:r.title||payload.title||"", priority:r.priority||payload.priority||null };
       renderAll(); closeModal("journalModalOverlay");
       warnDroppedFields(res.droppedFields);
     } else {
@@ -8189,7 +8204,7 @@
       this.disabled = false;
       if(res2.error){ alert(res2.error.message); return; }
       var r2 = res2.data;
-      state.journal.push({ id:r2.id, date:r2.date, text:r2.text, timeOfDay:r2.time_of_day ? r2.time_of_day.slice(0,5) : null, category:r2.category||null, recordingId:r2.recording_id||null, linkedObjects:r2.linked_objects||payload.linked_objects||[], sentiment:r2.sentiment||[], title:r2.title||payload.title||"", priority:r2.priority||payload.priority||null });
+      state.journal.push({ id:r2.id, date:r2.date, text:r2.text, timeOfDay:r2.time_of_day ? r2.time_of_day.slice(0,5) : null, categories:r2.categories||[], recordingId:r2.recording_id||null, linkedObjects:r2.linked_objects||payload.linked_objects||[], sentiment:r2.sentiment||[], title:r2.title||payload.title||"", priority:r2.priority||payload.priority||null });
       renderAll(); closeModal("journalModalOverlay");
       warnDroppedFields(res2.droppedFields);
     }
@@ -9564,7 +9579,7 @@
     });
     // Notes are a point in time, not a span — no duration field, so every block is the same small
     // fixed width, positioned by time_of_day.
-    state.journal.filter(function(n){ return n.date === todaySelectedDate && !!n.timeOfDay && n.category === area; }).forEach(function(n){
+    state.journal.filter(function(n){ return n.date === todaySelectedDate && !!n.timeOfDay && noteCategories(n).indexOf(area) !== -1; }).forEach(function(n){
       var startFrac = timeToFraction(n.timeOfDay) * 100;
       var preview = n.text.length > 60 ? n.text.slice(0, 60) + "…" : n.text;
       html += todayTimelineBlockHtml("journal", n.id, todaySelectedDate, startFrac, 1.4, preview + " — " + fmtTimeOfDay(n.timeOfDay), "✎ " + escapeHtml(preview), area);
@@ -9783,11 +9798,11 @@
     } else if(btn.dataset.add === "note"){
       var text = prompt("New " + (target.area || "uncategorized") + " note at " + fmtTimeOfDay(target.time) + ":");
       if(!text || !text.trim()) return;
-      var payload = { date: todaySelectedDate, text: text.trim(), time_of_day: target.time, category: target.area };
+      var payload = { date: todaySelectedDate, text: text.trim(), time_of_day: target.time, categories: target.area ? [target.area] : [] };
       var res = await safeWrite(function(p){ return sb.from("journal").insert(p).select().single(); }, payload);
       if(res.error){ alert(res.error.message); return; }
       var r = res.data;
-      state.journal.push({ id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, category:r.category||null, title:r.title||"", priority:r.priority||null, linkedObjects:extractNoteLinks(r.text||""), sentiment:[] });
+      state.journal.push({ id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, categories:r.categories||[], title:r.title||"", priority:r.priority||null, linkedObjects:extractNoteLinks(r.text||""), sentiment:[] });
       renderToday();
       renderJournal();
       warnDroppedFields(res.droppedFields);
@@ -9937,7 +9952,7 @@
       (byDate[dateStr] || []).forEach(function(n){
         var leftPx = i*tlPxPerDay + timeToFraction(n.timeOfDay)*tlPxPerDay;
         var widthPx = Math.max(10, tlPxPerDay * 0.02);
-        var catClass = n.category ? " " + n.category : "";
+        var catClass = noteCategory(n) ? " " + noteCategory(n) : "";
         var preview = n.text.length > 60 ? n.text.slice(0, 60) + "…" : n.text;
         html += '<div class="timeline-block' + catClass + '" data-kind="journal" data-id="' + n.id + '" data-day-index="' + i + '" style="left:' + leftPx + 'px; width:' + widthPx + 'px;" title="' + escapeHtml(preview) + ' — ' + fmtTimeOfDay(n.timeOfDay) + '">' +
           '<span class="timeline-block-title">✎ ' + escapeHtml(preview) + '</span></div>';
@@ -10213,7 +10228,7 @@
     var notesToday = state.journal.filter(function(n){ return n.date === todaySelectedDate; });
     document.getElementById("todayNotesEmpty").style.display = notesToday.length ? "none" : "";
     document.getElementById("todayNotesList").innerHTML = notesToday.map(function(n){
-      var nCatClass = n.category ? " " + n.category : "";
+      var nCatClass = noteCategory(n) ? " " + noteCategory(n) : "";
       var preview = n.text.length > 80 ? n.text.slice(0, 80) + "…" : n.text;
       return '<div class="today-row' + nCatClass + '" data-kind="journal" data-id="' + n.id + '">' +
         '<span class="today-row-title">' + escapeHtml(preview) + '</span>' +
@@ -10348,7 +10363,8 @@
     }, required:["id"] } },
     { name:"add_journal_entry", description:"Add a new note.", input_schema:{ type:"object", properties:{
       date:{ type:"string", description:"YYYY-MM-DD, defaults to today if omitted" }, text:{ type:"string" },
-      title:{ type:"string", description:"optional short title" }, priority:{ type:"string", enum:PRIORITIES, description:"optional priority" }
+      title:{ type:"string", description:"optional short title" }, priority:{ type:"string", enum:PRIORITIES, description:"optional priority" },
+      categories:{ type:"array", items:{ type:"string", enum:CATEGORIES }, description:"optional area(s) — a note can span more than one" }
     }, required:["text"] } },
     { name:"create_person", description:"Add a new person.", input_schema:{ type:"object", properties:{
       name:{ type:"string" }, relationship:{ type:"string", enum:RELATIONSHIPS }, contact:{ type:"string" }, notes:{ type:"string" }
@@ -10516,10 +10532,10 @@
         renderAll(); return { ok:true };
       }
       if(name === "add_journal_entry"){
-        var res9 = await safeWrite(function(p){ return sb.from("journal").insert(p).select().single(); }, { date: input.date || todayStr(), text: input.text, title: input.title || null, priority: input.priority || null });
+        var res9 = await safeWrite(function(p){ return sb.from("journal").insert(p).select().single(); }, { date: input.date || todayStr(), text: input.text, title: input.title || null, priority: input.priority || null, categories: input.categories || [] });
         if(res9.error) return { error: res9.error.message };
         var r9 = res9.data;
-        state.journal.push({ id:r9.id, date:r9.date, text:r9.text, title:r9.title||"", priority:r9.priority||null, linkedObjects:extractNoteLinks(r9.text||""), sentiment:[] });
+        state.journal.push({ id:r9.id, date:r9.date, text:r9.text, title:r9.title||"", priority:r9.priority||null, categories:r9.categories||[], linkedObjects:extractNoteLinks(r9.text||""), sentiment:[] });
         renderAll(); return { ok:true, id:r9.id };
       }
       if(name === "create_person"){
