@@ -1636,6 +1636,7 @@
           <button class="filter-chip" data-filter="pending" type="button">pending today</button>
           <button class="filter-chip" data-filter="daily" type="button">daily</button>
           <button class="filter-chip" data-filter="weekly" type="button">weekly</button>
+          <button class="filter-chip" data-filter="monthly" type="button">monthly</button>
         </div>
         <div class="entity-list" id="habitList"></div>
         <div class="empty-state" id="habitEmptyState" style="display:none;">
@@ -2187,7 +2188,7 @@
           <div class="chip-opt" role="button" tabindex="0" data-p="P0">P0</div><div class="chip-opt" role="button" tabindex="0" data-p="P1">P1</div><div class="chip-opt sel" role="button" tabindex="0" data-p="P2">P2</div><div class="chip-opt" role="button" tabindex="0" data-p="P3">P3</div>
         </div></div>
         <div class="field"><label>frequency</label><div class="chip-select" id="habitFreqSelect">
-          <div class="chip-opt sel" role="button" tabindex="0" data-f="daily">daily</div><div class="chip-opt" role="button" tabindex="0" data-f="weekly">weekly</div><div class="chip-opt" role="button" tabindex="0" data-f="custom">custom</div>
+          <div class="chip-opt sel" role="button" tabindex="0" data-f="daily">daily</div><div class="chip-opt" role="button" tabindex="0" data-f="weekly">weekly</div><div class="chip-opt" role="button" tabindex="0" data-f="monthly">monthly</div><div class="chip-opt" role="button" tabindex="0" data-f="custom">custom</div>
         </div></div>
         <div class="field"><label for="habitTimeInput">time (optional)</label>
           <div class="time-pick-row">
@@ -2202,6 +2203,7 @@
         <div class="chip-opt" role="button" tabindex="0" data-wd="Mon">Mon</div><div class="chip-opt" role="button" tabindex="0" data-wd="Tue">Tue</div><div class="chip-opt" role="button" tabindex="0" data-wd="Wed">Wed</div><div class="chip-opt" role="button" tabindex="0" data-wd="Thu">Thu</div>
         <div class="chip-opt" role="button" tabindex="0" data-wd="Fri">Fri</div><div class="chip-opt" role="button" tabindex="0" data-wd="Sat">Sat</div><div class="chip-opt" role="button" tabindex="0" data-wd="Sun">Sun</div>
       </div></div>
+      <div class="field" id="habitMonthDayField" style="display:none;"><label for="habitMonthDayInput">day of month</label><input type="number" min="1" max="31" step="1" id="habitMonthDayInput" placeholder="e.g. 15"></div>
       <div class="field" id="habitCustomIntervalField" style="display:none;"><label for="habitCustomIntervalInput">repeat every N days (from when it's created)</label><input type="number" min="1" step="1" id="habitCustomIntervalInput" placeholder="e.g. 3"></div>
       <div class="field-row">
         <div class="field"><label>tracking type</label><div class="chip-select" id="habitTypeSelect">
@@ -2865,7 +2867,7 @@
     whiteboard_x: "graph position", whiteboard_y: "graph position",
     weekdays: "habit day selection", tracker_variable_id: "habit's tracker link", time_of_day: "scheduled time",
     duration_minutes: "duration", category: "area", skip_dates: "skipped habit days",
-    categories: "area(s)", custom_interval_days: "custom repeat interval", extra_dates: "manually scheduled habit days",
+    categories: "area(s)", custom_interval_days: "custom repeat interval", month_day: "monthly repeat day", extra_dates: "manually scheduled habit days",
     secondary_goal_ids: "secondary goals", secondary_categories: "secondary areas",
     verified: "verified status", like_score: "like score", contact_score: "contact score", year_met: "year met",
     relationship_status: "relationship status", social_group: "social group", personality_type: "personality type",
@@ -3097,7 +3099,7 @@
     state.goals.sort(function(a,b){ return a.position - b.position; });
     state.projects = (results[1].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), categories:r.categories||[] }; });
     state.projects.sort(function(a,b){ return a.position - b.position; });
-    state.habits = (results[2].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || null, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [], extraDates:r.extra_dates || [], customIntervalDays:r.custom_interval_days||null, icon:r.icon||null,
+    state.habits = (results[2].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || null, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [], extraDates:r.extra_dates || [], customIntervalDays:r.custom_interval_days||null, monthDay:r.month_day||null, icon:r.icon||null,
       locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null) }; });
     state.habits.sort(function(a,b){ return a.position - b.position; });
     state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null,
@@ -3819,6 +3821,7 @@
   }
   function habitScheduleLabel(h){
     if(h.frequency === "weekly" && h.weekdays && h.weekdays.length) return "weekly · " + h.weekdays.join(", ");
+    if(h.frequency === "monthly") return "monthly · day " + (h.monthDay || 1);
     if(h.frequency === "custom") return "every " + (h.customIntervalDays || 1) + " day" + ((h.customIntervalDays||1) === 1 ? "" : "s");
     return h.frequency;
   }
@@ -3840,6 +3843,14 @@
     if(h.extraDates && h.extraDates.indexOf(dateStr) !== -1) return true;
     if(h.createdAt && dateStr < h.createdAt) return false;
     if(h.frequency === "weekly") return (h.weekdays || []).indexOf(WEEKDAY_ABBR[new Date(dateStr + "T00:00:00").getDay()]) !== -1;
+    if(h.frequency === "monthly"){
+      var d = new Date(dateStr + "T00:00:00");
+      var lastDayOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+      // Months shorter than the target day (e.g. day 31 in April, or day 30 in February) land on
+      // that month's last day instead of skipping the month entirely.
+      var targetDay = Math.min(h.monthDay || 1, lastDayOfMonth);
+      return d.getDate() === targetDay;
+    }
     if(h.frequency === "custom" && h.createdAt){
       var interval = h.customIntervalDays || 1;
       var daysSince = Math.round((new Date(dateStr + "T00:00:00") - new Date(h.createdAt + "T00:00:00")) / 86400000);
@@ -4861,7 +4872,7 @@
       if(f === "all") return true;
       if(f === "today") return habitDoneForDate(h, today);
       if(f === "pending") return !habitDoneForDate(h, today);
-      if(f === "daily" || f === "weekly") return h.frequency === f;
+      if(f === "daily" || f === "weekly" || f === "monthly") return h.frequency === f;
       return true;
     });
     if(views.habits === "matrix") renderHabitsMatrix(list); else renderHabitsList(list);
@@ -9964,12 +9975,13 @@
       categories:{ type:"array", items:{ type:"string", enum:CATEGORIES } }
     }, required:["id"] } },
     { name:"create_habit", description:"Create a new recurring habit, optionally attached to a goal.", input_schema:{ type:"object", properties:{
-      title:{ type:"string" }, goal_id:{ type:"string" }, priority:{ type:"string", enum:PRIORITIES }, frequency:{ type:"string", enum:["daily","weekly","custom"] },
+      title:{ type:"string" }, goal_id:{ type:"string" }, priority:{ type:"string", enum:PRIORITIES }, frequency:{ type:"string", enum:["daily","weekly","monthly","custom"] },
+      month_day:{ type:"number", description:"required when frequency is monthly — day of month, 1-31 (clamped to the last day in shorter months)" },
       custom_interval_days:{ type:"number", description:"required when frequency is custom — repeat every N days from creation" }
     }, required:["title","priority","frequency"] } },
     { name:"edit_habit", description:"Edit an existing habit by id.", input_schema:{ type:"object", properties:{
-      id:{ type:"string" }, title:{ type:"string" }, goal_id:{ type:"string" }, priority:{ type:"string", enum:PRIORITIES }, frequency:{ type:"string", enum:["daily","weekly","custom"] },
-      custom_interval_days:{ type:"number" }
+      id:{ type:"string" }, title:{ type:"string" }, goal_id:{ type:"string" }, priority:{ type:"string", enum:PRIORITIES }, frequency:{ type:"string", enum:["daily","weekly","monthly","custom"] },
+      month_day:{ type:"number" }, custom_interval_days:{ type:"number" }
     }, required:["id"] } },
     { name:"create_action", description:"Create a new quick, single-shot action, optionally attached to a goal or project.", input_schema:{ type:"object", properties:{
       title:{ type:"string" }, type:{ type:"string", enum:ACTION_TYPES }, priority:{ type:"string", enum:PRIORITIES },
@@ -10005,7 +10017,7 @@
     state.projects.forEach(function(p){ lines.push("- " + p.id + " | " + p.title + " | " + (p.goalId||"none") + " | " + p.priority + " | " + (p.due||"—") + " | " + p.hours + "h | " + (p.done?"done":"open") + " | " + (p.categories && p.categories.length ? p.categories.join(",") : "none")); });
     lines.push("");
     lines.push("Current habits (id | title | goalId | priority | frequency):");
-    state.habits.forEach(function(h){ lines.push("- " + h.id + " | " + h.title + " | " + (h.goalId||"none") + " | " + h.priority + " | " + h.frequency + (h.frequency==="custom" ? " (every " + (h.customIntervalDays||1) + " days)" : "")); });
+    state.habits.forEach(function(h){ lines.push("- " + h.id + " | " + h.title + " | " + (h.goalId||"none") + " | " + h.priority + " | " + h.frequency + (h.frequency==="custom" ? " (every " + (h.customIntervalDays||1) + " days)" : "") + (h.frequency==="monthly" ? " (day " + (h.monthDay||1) + ")" : "")); });
     lines.push("");
     lines.push("Current actions (id | title | type | priority | parentType | parentId | date | done):");
     state.actions.forEach(function(a){ lines.push("- " + a.id + " | " + a.title + " | " + a.type + " | " + a.priority + " | " + a.parentType + " | " + (a.parentId||"—") + " | " + (a.date||"—") + " | " + (a.done?"done":"open")); });
@@ -10082,10 +10094,10 @@
           habitVarId = hv.id;
         }
         var iconKey5 = pickHabitIconKey(input.title, state.habits.map(function(x){ return x.icon; }).filter(Boolean));
-        var res5 = await safeInsert("habits", { goal_id: input.goal_id || null, title:input.title, priority:input.priority, frequency:input.frequency, tracker_variable_id: habitVarId, days:{}, custom_interval_days: input.frequency === "custom" ? Math.max(1, Math.round(input.custom_interval_days) || 1) : null, icon: iconKey5 }, state.habits);
+        var res5 = await safeInsert("habits", { goal_id: input.goal_id || null, title:input.title, priority:input.priority, frequency:input.frequency, tracker_variable_id: habitVarId, days:{}, month_day: input.frequency === "monthly" ? Math.max(1, Math.min(31, Math.round(input.month_day) || 1)) : null, custom_interval_days: input.frequency === "custom" ? Math.max(1, Math.round(input.custom_interval_days) || 1) : null, icon: iconKey5 }, state.habits);
         if(res5.error) return { error: res5.error.message };
         var r5 = res5.data;
-        state.habits.push({ id:r5.id, goalId:r5.goal_id, title:r5.title, priority:r5.priority, frequency:r5.frequency, weekdays:r5.weekdays || [], trackerVariableId:r5.tracker_variable_id || habitVarId, timeOfDay:r5.time_of_day ? r5.time_of_day.slice(0,5) : null, durationMinutes:r5.duration_minutes||null, days:r5.days || {}, position:r5.position||0, createdAt:r5.created_at ? r5.created_at.slice(0,10) : null, skipDates:r5.skip_dates || [], extraDates:r5.extra_dates || [], customIntervalDays:r5.custom_interval_days||null, icon:r5.icon||iconKey5 });
+        state.habits.push({ id:r5.id, goalId:r5.goal_id, title:r5.title, priority:r5.priority, frequency:r5.frequency, weekdays:r5.weekdays || [], trackerVariableId:r5.tracker_variable_id || habitVarId, timeOfDay:r5.time_of_day ? r5.time_of_day.slice(0,5) : null, durationMinutes:r5.duration_minutes||null, days:r5.days || {}, position:r5.position||0, createdAt:r5.created_at ? r5.created_at.slice(0,10) : null, skipDates:r5.skip_dates || [], extraDates:r5.extra_dates || [], customIntervalDays:r5.custom_interval_days||null, monthDay:r5.month_day||null, icon:r5.icon||iconKey5 });
         renderAll(); return { ok:true, id:r5.id };
       }
       if(name === "edit_habit"){
@@ -10097,12 +10109,13 @@
         if(input.goal_id !== undefined) hp.goal_id = input.goal_id || null;
         if(input.priority !== undefined) hp.priority = input.priority;
         if(input.frequency !== undefined) hp.frequency = input.frequency;
+        if(input.month_day !== undefined) hp.month_day = Math.max(1, Math.min(31, Math.round(input.month_day) || 1));
         if(input.custom_interval_days !== undefined) hp.custom_interval_days = input.custom_interval_days;
         var res6 = await sb.from("habits").update(hp).eq("id", input.id).select().single();
         if(res6.error) return { error: res6.error.message };
         var r6 = res6.data;
         var i6 = state.habits.findIndex(function(x){ return x.id === input.id; });
-        if(i6 !== -1){ state.habits[i6].title = r6.title; state.habits[i6].goalId = r6.goal_id; state.habits[i6].priority = r6.priority; state.habits[i6].frequency = r6.frequency; state.habits[i6].customIntervalDays = r6.custom_interval_days||null; state.habits[i6].icon = r6.icon||null; }
+        if(i6 !== -1){ state.habits[i6].title = r6.title; state.habits[i6].goalId = r6.goal_id; state.habits[i6].priority = r6.priority; state.habits[i6].frequency = r6.frequency; state.habits[i6].customIntervalDays = r6.custom_interval_days||null; state.habits[i6].monthDay = r6.month_day||null; state.habits[i6].icon = r6.icon||null; }
         if(input.title !== undefined && h.trackerVariableId){
           var vUpd = await sb.from("tracker_variables").update({ name: input.title }).eq("id", h.trackerVariableId);
           if(!vUpd.error){
@@ -10802,6 +10815,7 @@
   document.getElementById("habitFreqSelect").addEventListener("click", function(){
     var freq = chipValue(this, "f");
     document.getElementById("habitWeekdaysField").style.display = freq === "weekly" ? "" : "none";
+    document.getElementById("habitMonthDayField").style.display = freq === "monthly" ? "" : "none";
     document.getElementById("habitCustomIntervalField").style.display = freq === "custom" ? "" : "none";
   });
   document.getElementById("habitTypeSelect").addEventListener("click", function(){
@@ -10923,6 +10937,8 @@
     setChip(document.getElementById("habitFreqSelect"), "f", freq);
     setMultiChip(document.getElementById("habitWeekdaysSelect"), "wd", editHabitObj ? (editHabitObj.weekdays || []) : []);
     document.getElementById("habitWeekdaysField").style.display = freq === "weekly" ? "" : "none";
+    document.getElementById("habitMonthDayInput").value = editHabitObj && editHabitObj.monthDay ? editHabitObj.monthDay : "";
+    document.getElementById("habitMonthDayField").style.display = freq === "monthly" ? "" : "none";
     document.getElementById("habitCustomIntervalInput").value = editHabitObj && editHabitObj.customIntervalDays ? editHabitObj.customIntervalDays : "";
     document.getElementById("habitCustomIntervalField").style.display = freq === "custom" ? "" : "none";
     var linkedVar = editHabitObj ? state.trackerVars.find(function(v){ return v.id === editHabitObj.trackerVariableId; }) : null;
@@ -10979,6 +10995,7 @@
       tracker_variable_id: mappedVar.id,
       time_of_day: document.getElementById("habitTimeInput").value || null,
       duration_minutes: document.getElementById("habitDurationInput").value ? Math.max(0, Math.round(Number(document.getElementById("habitDurationInput").value))) : null,
+      month_day: freq === "monthly" ? Math.max(1, Math.min(31, Math.round(Number(document.getElementById("habitMonthDayInput").value)) || 1)) : null,
       custom_interval_days: freq === "custom" ? Math.max(1, Math.round(Number(document.getElementById("habitCustomIntervalInput").value)) || 1) : null,
       // Whatever's drafted in the icon gallery wins; falls back to the title-based auto-pick only if
       // the user never typed a title long enough to trigger a live suggestion (see habitTitleInput).
@@ -10996,7 +11013,7 @@
     this.disabled = false;
     if(res.error){ alert(res.error.message); return; }
     var r = res.data;
-    var mapped = { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || mappedVar.id, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [], extraDates:r.extra_dates || [], customIntervalDays:r.custom_interval_days||null, icon:r.icon||payload.icon||null,
+    var mapped = { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || mappedVar.id, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [], extraDates:r.extra_dates || [], customIntervalDays:r.custom_interval_days||null, monthDay:r.month_day||null, icon:r.icon||payload.icon||null,
       locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null) };
     if(isEdit){
       var idx = state.habits.findIndex(function(x){ return x.id === editingHabitId; });
