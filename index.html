@@ -2788,6 +2788,12 @@
     for(var k in payload){ attempt[k] = payload[k]; }
     var dropped = [];
     for(var i=0; i<8; i++){
+      // If every field we tried to send got stripped (e.g. a single-field payload whose one column
+      // doesn't exist yet), there's nothing left worth sending — an empty update has no valid SQL to
+      // run and would just come back as a second, more confusing error. Fail clearly instead.
+      if(!Object.keys(attempt).length && dropped.length){
+        return { error: { message: "Could not save — the " + dropped.join(", ") + " column doesn't exist yet. Run the pending database migration." } };
+      }
       var res = await op(attempt);
       if(!res.error){ res.droppedFields = dropped; return res; }
       var col = parseMissingColumn(res.error.message);
@@ -3987,7 +3993,13 @@
     h.instanceOverrides = next;
     renderAll();
     var r = await safeUpdate("habits", id, { instance_overrides: next });
-    if(r.error){ console.error(r.error); h.instanceOverrides = prev; renderAll(); return; }
+    if(r.error){
+      console.error(r.error);
+      h.instanceOverrides = prev;
+      renderAll();
+      toast("Couldn't save that change — " + r.error.message);
+      return;
+    }
     warnDroppedFields(r.droppedFields);
   }
 
