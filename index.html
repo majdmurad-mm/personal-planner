@@ -1369,7 +1369,11 @@
   #homeCanvas{ position:absolute; inset:0; width:100%; height:100%; display:block; cursor:grab; touch-action:none; }
   #homeCanvas.dragging{ cursor:grabbing; }
   #homeCanvas.panning{ cursor:move; }
+  /* [hidden] must be repeated here: author rules always beat the UA [hidden]{display:none} rule
+     regardless of specificity, so an unconditional display:flex leaves this visible even with the
+     hidden attribute set — this panel showed permanently until this override was added. */
   .home-graph-fallback{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; text-align:center; padding:20px; }
+  .home-graph-fallback[hidden]{ display:none; }
   /* Split handle: drag to trade height between the graph and the timeline dock (persisted in
      --home-dock-h). A thin bar with a row-resize cursor and a centered grip. */
   .home-split-handle{ position:relative; flex-shrink:0; height:9px; background:var(--bg-raised); border-top:1px solid var(--border); cursor:row-resize; display:flex; align-items:center; justify-content:center; touch-action:none; z-index:6; }
