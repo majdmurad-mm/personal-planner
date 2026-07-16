@@ -1336,6 +1336,7 @@
     h1{ font-size:19px; }
     #locationSection{ margin:-56px -18px -60px; padding:12px 18px 12px; }
     #peopleSection.ppl-fullscreen-graph, #plannerSection.planner-fullscreen-graph{ margin:-56px -18px -60px; padding:12px 18px 12px; }
+    #homeSection.home-cockpit{ margin:-56px -18px -60px; }
     .today-two-col{ grid-template-columns:1fr; }
     /* Mobile sidebar is an off-canvas drawer, not the desktop's inline column — hidden by default
        (regardless of the desktop-only data-sidebar-collapsed preference, which this ignores
@@ -1354,86 +1355,79 @@
     .main{ padding:44px 24px 20px; }
     #locationSection{ margin:-44px -24px -20px; padding:10px 24px 10px; }
     #peopleSection.ppl-fullscreen-graph, #plannerSection.planner-fullscreen-graph{ margin:-44px -24px -20px; padding:10px 24px 10px; }
+    #homeSection.home-cockpit{ margin:-44px -24px -20px; }
   }
 
-  /* ===== Home (landing) ===== */
-  /* The hero hosts the (later) Three.js canvas as an absolutely-positioned backdrop; the dashboard
-     core is a DOM overlay on top of it — sharp text, zero-cost accessibility, and it IS the page
-     when WebGL is unavailable. Tiles are real buttons: the 3D layer only ever mirrors them. */
-  .home-hero{ position:relative; border:1px solid var(--border); border-radius:12px; background:var(--bg-raised); overflow:hidden; min-height:220px; display:flex; align-items:center; justify-content:center; margin-bottom:0; }
-  @media (max-width:700px){ .home-hero{ min-height:170px; } }
-  #homeCanvas{ position:absolute; inset:0; width:100%; height:100%; display:block; }
-  .home-hero-core{ position:relative; text-align:center; padding:24px 16px; pointer-events:none; }
-  .home-greet{ font-family:var(--mono); font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--text-faint); margin-bottom:6px; }
-  .home-clock-time{ font-family:var(--mono); font-size:44px; font-weight:700; letter-spacing:2px; line-height:1; font-variant-numeric:tabular-nums; }
-  .home-clock-date{ font-family:var(--mono); font-size:13px; color:var(--text-dim); margin-top:8px; }
-  .home-weather{ font-family:var(--mono); font-size:13px; color:var(--text-dim); margin-top:10px; display:flex; align-items:center; justify-content:center; gap:7px; min-height:22px; }
-  .home-weather .tl-weather-tick-icon{ width:20px; height:20px; }
-
-  /* ---- Areas: one glance chip per life area, "on" (filled dot + count) when there's activity in
-     it today — see computeHomeAreaPulse(). Reuses each category's own CSS color var, same convention
-     .home-tile already uses via --tile-accent. ---- */
-  .home-areas{ display:flex; flex-wrap:wrap; gap:8px; margin-top:14px; }
-  .home-area-chip{ --area-c:var(--accent); display:flex; align-items:center; gap:7px; padding:6px 12px 6px 9px; border:1px solid var(--border); border-radius:999px; background:var(--bg-raised); color:var(--text-dim); font-family:var(--mono); font-size:12px; cursor:pointer; transition:border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out); }
-  .home-area-chip:hover, .home-area-chip:focus-visible{ border-color:var(--area-c); color:var(--text); outline:none; }
-  .home-area-chip[data-cat="Health"]{ --area-c:var(--cat-health); }
-  .home-area-chip[data-cat="Finance"]{ --area-c:var(--cat-finance); }
-  .home-area-chip[data-cat="Career"]{ --area-c:var(--cat-career); }
-  .home-area-chip[data-cat="Maintenance"]{ --area-c:var(--cat-maintenance); }
-  .home-area-chip[data-cat="Growth"]{ --area-c:var(--cat-growth); }
-  .home-area-chip[data-cat="Relationships"]{ --area-c:var(--cat-relationships); }
-  .home-area-chip[data-cat="Sol"]{ --area-c:var(--cat-sol); }
-  .home-area-dot{ width:8px; height:8px; border-radius:50%; background:var(--border-bright); flex-shrink:0; }
-  .home-area-chip.on .home-area-dot{ background:var(--area-c); box-shadow:0 0 0 3px color-mix(in srgb, var(--area-c) 18%, transparent); }
-  .home-area-chip.on{ color:var(--text); }
-  .home-area-count{ font-weight:700; color:var(--area-c); }
-
-  /* ---- Act: quick capture (chat), record-a-note, and add-item shortcuts — the one place fast
-     capture happens without leaving Home. ---- */
-  .home-capture-row{ display:flex; gap:8px; margin-top:14px; }
-  .home-capture-row input{ flex:1; }
-  .home-capture-reply{ margin-top:10px; padding:10px 12px; background:var(--bg-inset); border:1px solid var(--border); border-radius:var(--radius); font-size:13px; color:var(--text-dim); line-height:1.5; }
-  .home-act-buttons{ display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
-
-  /* ---- Glance: today's stat tiles, the open-item list, and the AI day summary. ---- */
-  .home-glance-stats{ display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:10px; margin-top:14px; }
-  .home-stat{ background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:12px 13px 11px; display:flex; flex-direction:column; gap:3px; }
-  .home-stat-label{ font-family:var(--mono); font-size:10px; letter-spacing:0.06em; text-transform:uppercase; color:var(--text-faint); }
-  .home-stat-val{ font-family:var(--mono); font-weight:700; font-size:20px; font-variant-numeric:tabular-nums; line-height:1.2; }
-  .home-stat-val small{ font-size:12px; color:var(--text-faint); font-weight:400; }
-  .home-stat-sub{ font-family:var(--mono); font-size:10.5px; color:var(--text-dim); }
-  .home-glance-tasks{ display:flex; flex-direction:column; gap:6px; margin-top:12px; }
-  .home-task-row{ display:flex; align-items:center; gap:10px; padding:8px 12px; background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); font-size:13px; cursor:pointer; }
-  .home-task-row:hover{ border-color:var(--border-bright); }
-  .home-task-time{ font-family:var(--mono); font-size:11px; color:var(--text-faint); font-variant-numeric:tabular-nums; min-width:42px; }
-  .home-task-title{ flex:1; }
-  .home-task-kind{ font-family:var(--mono); font-size:9.5px; letter-spacing:0.05em; text-transform:uppercase; color:var(--text-faint); border:1px solid var(--border); border-radius:999px; padding:2px 7px; }
-  .home-glance-empty{ font-family:var(--mono); font-size:12px; color:var(--text-faint); padding:6px 0; }
-  .home-summary{ margin-top:16px; padding-top:14px; border-top:1px solid var(--border); }
-  .home-summary-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
-  .home-summary-text{ margin-top:10px; font-size:13.5px; line-height:1.6; color:var(--text-dim); }
-  .home-summary-text:empty::before{ content:"Not generated yet today — click \201C✨ generate\201D for an AI-written recap of how the day looks."; font-family:var(--mono); font-size:11.5px; color:var(--text-faint); }
-
-  .home-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(210px, 1fr)); gap:12px; margin-top:14px; }
-  /* Each tile carries its destination's accent (--tile-accent/-bg, matching the tint its 3D panel
-     uses in the constellation above) — the board reads as a map of YOUR areas, not a mono-accent
-     menu. Glyphs sit in a tinted square chip so color has a consistent shape to live in. */
-  .home-tile{ --tile-accent:var(--accent); --tile-accent-bg:var(--accent-glow); position:relative; display:flex; flex-direction:column; align-items:flex-start; gap:8px; text-align:left; padding:18px 16px 14px; border:1px solid var(--border); border-radius:var(--radius-lg); background:var(--bg-raised); color:var(--text); cursor:pointer; font-family:var(--mono); transition:transform var(--dur-med) var(--ease-out), border-color var(--dur-med) var(--ease-out), box-shadow var(--dur-med) var(--ease-out); }
-  .home-tile[data-go="planner"]{ --tile-accent:var(--cat-career); --tile-accent-bg:var(--cat-career-bg); }
-  .home-tile[data-go="tracker"]{ --tile-accent:var(--cat-growth); --tile-accent-bg:var(--cat-growth-bg); }
-  .home-tile[data-go="timeline"]{ --tile-accent:var(--cat-finance); --tile-accent-bg:var(--cat-finance-bg); }
-  .home-tile[data-go="people"]{ --tile-accent:var(--cat-relationships); --tile-accent-bg:var(--cat-relationships-bg); }
-  .home-tile[data-go="location"]{ --tile-accent:var(--cat-sol); --tile-accent-bg:var(--cat-sol-bg); }
-  .home-tile[data-go="agent"]{ --tile-accent:var(--violet); --tile-accent-bg:var(--violet-glow); }
-  .home-tile[data-go="journal"]{ --tile-accent:var(--cat-health); --tile-accent-bg:var(--cat-health-bg); }
-  .home-tile:hover, .home-tile:focus-visible{ transform:translateY(-3px); border-color:var(--tile-accent); box-shadow:var(--elev-2); outline:none; }
-  .home-tile-glyph{ font-size:22px; line-height:1; color:var(--tile-accent); background:var(--tile-accent-bg); width:44px; height:44px; display:grid; place-items:center; border-radius:var(--radius); }
-  .home-tile-name{ font-size:15px; font-weight:700; letter-spacing:1px; }
-  .home-tile-cap{ font-size:11.5px; line-height:1.45; color:var(--text-dim); }
-  @media (max-width:700px){
-    .home-clock-time{ font-size:32px; }
-    .home-grid{ grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); }
-    .home-capture-row{ flex-direction:column; }
+  /* ===== Home (cockpit) ===== */
+  /* One fixed-viewport screen, never scrollable: the 3D system graph fills the middle, today's
+     timeline docks along the bottom, and the clock/weather, Google Photos, and areas legend float
+     over the graph as HUD panels. Uses the same margin-cancel full-bleed trick as
+     .ppl-fullscreen-graph / .planner-fullscreen-graph (values mirror .main's padding, including
+     its media-query variants below). */
+  #homeSection.home-cockpit{ margin:-32px -40px -70px; height:100vh; height:100dvh; box-sizing:border-box; display:flex; flex-direction:column; overflow:hidden; }
+  .home-graph-wrap{ position:relative; flex:1; min-height:0; overflow:hidden; background:var(--bg-inset); }
+  #homeCanvas{ position:absolute; inset:0; width:100%; height:100%; display:block; cursor:grab; touch-action:none; }
+  #homeCanvas.dragging{ cursor:grabbing; }
+  .home-graph-fallback{ position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; text-align:center; padding:20px; }
+  /* HUD: clock + date + weather, top-left. pointer-events:none so graph drags starting here still
+     reach the canvas — there's nothing clickable in this panel. */
+  .home-hud-clock{ position:absolute; top:16px; left:20px; z-index:5; pointer-events:none; }
+  .home-clock-time{ font-family:var(--mono); font-size:38px; font-weight:700; letter-spacing:2px; line-height:1; font-variant-numeric:tabular-nums; }
+  .home-clock-date{ font-family:var(--mono); font-size:12.5px; color:var(--text-dim); margin-top:6px; }
+  .home-weather{ font-family:var(--mono); font-size:12.5px; color:var(--text-dim); margin-top:8px; display:flex; align-items:center; gap:7px; min-height:20px; }
+  .home-weather .tl-weather-tick-icon{ width:18px; height:18px; }
+  /* Google Photos slideshow, top-right — frosted panel; images crossfade via the .show class. */
+  .home-photos{ position:absolute; top:14px; right:14px; z-index:5; width:230px; height:150px; border-radius:10px; overflow:hidden; border:1px solid var(--border); background:rgba(var(--bg-raised-rgb), 0.55); backdrop-filter:blur(8px); }
+  .home-photos img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; opacity:0; transition:opacity 0.9s var(--ease-out); }
+  .home-photos img.show{ opacity:1; }
+  .home-photos-connect{ position:absolute; inset:0; display:grid; place-items:center; padding:10px; text-align:center; }
+  .home-photos-repick{ position:absolute; bottom:6px; right:6px; z-index:2; opacity:0; transition:opacity var(--dur-fast) var(--ease-out); }
+  .home-photos:hover .home-photos-repick{ opacity:1; }
+  /* Areas legend — the graph's map key: thin, semi-transparent right rail, one row per life area
+     with its icon/color plus a live "items today" count. Rows click through to the area page. */
+  .home-areas-rail{ position:absolute; top:50%; right:14px; transform:translateY(-50%); z-index:5; display:flex; flex-direction:column; gap:2px; padding:10px 12px; max-width:170px; border-radius:10px; border:1px solid var(--border); background:rgba(var(--bg-raised-rgb), 0.5); backdrop-filter:blur(8px); }
+  .home-rail-title{ font-family:var(--mono); font-size:9.5px; letter-spacing:0.1em; text-transform:uppercase; color:var(--text-faint); margin-bottom:5px; }
+  .home-rail-row{ display:flex; align-items:center; gap:8px; padding:3px 5px; border:none; border-radius:4px; background:none; font-family:var(--mono); font-size:11.5px; color:var(--text-dim); cursor:pointer; text-align:left; width:100%; }
+  .home-rail-row:hover, .home-rail-row:focus-visible{ color:var(--text); background:var(--bg-inset); outline:none; }
+  .home-rail-icon{ width:18px; height:18px; display:grid; place-items:center; border-radius:4px; font-size:11px; flex-shrink:0; }
+  .home-rail-count{ margin-left:auto; font-weight:700; font-size:10.5px; color:var(--text-faint); }
+  .home-rail-row[data-cat="Health"] .home-rail-icon{ color:var(--cat-health); background:var(--cat-health-bg); }
+  .home-rail-row[data-cat="Finance"] .home-rail-icon{ color:var(--cat-finance); background:var(--cat-finance-bg); }
+  .home-rail-row[data-cat="Career"] .home-rail-icon{ color:var(--cat-career); background:var(--cat-career-bg); }
+  .home-rail-row[data-cat="Maintenance"] .home-rail-icon{ color:var(--cat-maintenance); background:var(--cat-maintenance-bg); }
+  .home-rail-row[data-cat="Growth"] .home-rail-icon{ color:var(--cat-growth); background:var(--cat-growth-bg); }
+  .home-rail-row[data-cat="Relationships"] .home-rail-icon{ color:var(--cat-relationships); background:var(--cat-relationships-bg); }
+  .home-rail-row[data-cat="Sol"] .home-rail-icon{ color:var(--cat-sol); background:var(--cat-sol-bg); }
+  /* Hover tooltip for 3D graph nodes (goal/project/habit titles live here, not as 3D text). */
+  .home-node-tip{ position:absolute; z-index:6; pointer-events:none; font-family:var(--mono); font-size:11px; padding:4px 9px; border-radius:4px; background:var(--bg-raised); border:1px solid var(--border-bright); color:var(--text); box-shadow:var(--elev-2); white-space:nowrap; max-width:320px; overflow:hidden; text-overflow:ellipsis; }
+  /* Today's timeline dock — full width along the bottom: an hour ruler, three thin lanes
+     (habits/actions/notes) against the shared hour-grid background, and a now marker. */
+  .home-timeline-dock{ position:relative; flex-shrink:0; height:138px; border-top:1px solid var(--border); background:var(--bg-raised); }
+  .home-tl-hours{ position:absolute; top:4px; left:0; right:0; height:12px; }
+  .home-tl-hours span{ position:absolute; transform:translateX(-50%); font-family:var(--mono); font-size:9px; color:var(--text-faint); }
+  .home-tl-lanes{ position:absolute; top:20px; bottom:6px; left:0; right:0; background:var(--tl-hour-grid); }
+  .home-tl-lane{ position:relative; height:33.333%; border-top:1px dashed var(--border); }
+  .home-tl-lane:first-child{ border-top:none; }
+  .home-tl-lane-label{ position:absolute; left:6px; top:50%; transform:translateY(-50%); font-family:var(--mono); font-size:9px; letter-spacing:0.08em; text-transform:uppercase; color:var(--text-faint); pointer-events:none; }
+  .home-tl-block{ position:absolute; top:3px; bottom:3px; z-index:1; border-radius:3px; border:1px solid var(--border-bright); background:var(--bg-inset); color:var(--text); font-family:var(--mono); font-size:9.5px; line-height:1.15; padding:2px 5px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; cursor:pointer; }
+  .home-tl-block.done{ opacity:0.45; }
+  .home-tl-block.Health{ background:var(--cat-health-bg); border-color:var(--cat-health); }
+  .home-tl-block.Finance{ background:var(--cat-finance-bg); border-color:var(--cat-finance); }
+  .home-tl-block.Career{ background:var(--cat-career-bg); border-color:var(--cat-career); }
+  .home-tl-block.Maintenance{ background:var(--cat-maintenance-bg); border-color:var(--cat-maintenance); }
+  .home-tl-block.Growth{ background:var(--cat-growth-bg); border-color:var(--cat-growth); }
+  .home-tl-block.Relationships{ background:var(--cat-relationships-bg); border-color:var(--cat-relationships); }
+  .home-tl-block.Sol{ background:var(--cat-sol-bg); border-color:var(--cat-sol); }
+  .home-tl-now{ position:absolute; top:16px; bottom:0; width:2px; margin-left:-1px; background:var(--accent); z-index:2; pointer-events:none; box-shadow:0 0 6px var(--accent-glow); }
+  /* Small screens: a true no-scroll cockpit can't fit — fall back to a scrollable stack with the
+     graph at a fixed height. Margin values mirror the mobile .main padding, same as the other
+     fullscreen sections' media overrides below. */
+  @media (max-width:820px){
+    #homeSection.home-cockpit{ height:auto; min-height:100dvh; overflow:visible; }
+    .home-graph-wrap{ flex:none; height:52vh; }
+    .home-photos{ display:none; }
+    .home-clock-time{ font-size:26px; }
+    .home-areas-rail{ right:8px; padding:8px 9px; }
   }
   /* Seven tabs now — let them wrap instead of overflowing on narrow screens. */
   #plannerTabs{ flex-wrap:wrap; }
@@ -1533,91 +1527,42 @@
 
   <main class="main">
     <!-- ===== HOME SECTION ===== -->
-    <!-- The app's landing page — five bands, top to bottom: orient (clock/weather hero), areas (a
-         one-glance pulse of today's life-area activity), act (capture without leaving home), glance
-         (what today actually looks like, incl. an AI summary), navigate (the one — and only one —
-         grid of destination tiles; the Three.js layer behind the hero is now purely ambient/reactive,
-         not a second clickable copy of the same nav). Graph and Calendar are deliberately absent from
-         the tile grid — they live inside the Planner as views now. -->
-    <section id="homeSection">
-      <div class="home-hero">
+    <!-- Fullscreen, non-scrolling "cockpit" (see .home-cockpit): the 3D system graph (same data as
+         Planner ▸ Graph, rendered with Three.js) fills the middle; today's timeline docks along the
+         bottom edge at full width; and three HUD panels float over the graph — clock/date/weather
+         (top-left), a Google Photos slideshow (top-right), and the areas legend rail (right edge),
+         which doubles as the graph's color key. Navigation lives solely in the sidebar now. When
+         WebGL is unavailable (or reduced motion is on), the graph cell shows a plain fallback with a
+         jump to the 2D planner graph — every other zone is ordinary DOM and unaffected. -->
+    <section id="homeSection" class="home-cockpit">
+      <div class="home-graph-wrap">
         <canvas id="homeCanvas" aria-hidden="true"></canvas>
-        <div class="home-hero-core">
-          <div class="home-greet" id="homeGreet"></div>
+        <div class="home-graph-fallback" id="homeGraphFallback" hidden>
+          <p class="panel-hint">The 3D graph needs WebGL (and motion enabled) — it's unavailable here.</p>
+          <button class="btn" id="homeGraphFallbackBtn" type="button">open the planner graph instead</button>
+        </div>
+        <div class="home-hud-clock">
           <div class="home-clock-time" id="homeClockTime">--:--</div>
           <div class="home-clock-date" id="homeClockDate"></div>
           <div class="home-weather" id="homeWeatherNow"></div>
         </div>
-      </div>
-
-      <div class="goal-integration-block">
-        <div class="integration-block-head"><h2>areas</h2></div>
-        <div class="home-areas" id="homeAreas"></div>
-      </div>
-
-      <div class="goal-integration-block">
-        <div class="integration-block-head"><h2>act</h2></div>
-        <div class="home-capture-row">
-          <input type="text" id="homeCaptureInput" placeholder="Tell the agent what happened, or what you need to do…">
-          <button class="btn btn-accent" id="homeCaptureSendBtn" type="button">send</button>
-        </div>
-        <div class="home-capture-reply" id="homeCaptureReply" hidden></div>
-        <div class="home-act-buttons">
-          <button class="btn" id="homeRecordBtn" type="button">🎤 record a note</button>
-          <button class="btn" id="homeAddActionBtn" type="button">+ action</button>
-          <button class="btn" id="homeAddNoteBtn" type="button">+ note</button>
-        </div>
-      </div>
-
-      <div class="goal-integration-block">
-        <div class="integration-block-head"><h2>glance</h2></div>
-        <div class="home-glance-stats" id="homeGlanceStats"></div>
-        <div class="home-glance-tasks" id="homeGlanceTasks"></div>
-        <div class="home-summary">
-          <div class="home-summary-head">
-            <span class="panel-hint" style="margin:0;">day summary</span>
-            <button class="btn" id="homeSummaryBtn" type="button">✨ generate</button>
+        <div class="home-photos" id="homePhotos">
+          <div class="home-photos-connect" id="homePhotosConnect">
+            <button class="btn" id="homePhotosConnectBtn" type="button" title="Pick photos from your Google Photos library for this slideshow">▣ connect google photos</button>
           </div>
-          <div class="home-summary-text" id="homeSummaryText"></div>
+          <button class="icon-btn home-photos-repick" id="homePhotosRepickBtn" type="button" title="Pick different photos" hidden>⟳</button>
         </div>
+        <div class="home-areas-rail" id="homeAreasRail"></div>
+        <div class="home-node-tip" id="homeNodeTip" hidden></div>
       </div>
-
-      <div class="goal-integration-block">
-        <div class="integration-block-head"><h2>navigate</h2></div>
-        <div class="home-grid" id="homeGrid">
-          <button class="home-tile" data-go="today" type="button">
-            <span class="home-tile-glyph">◷</span><span class="home-tile-name">today</span>
-            <span class="home-tile-cap">The day's timeline, actions and notes.</span>
-          </button>
-          <button class="home-tile" data-go="planner" type="button">
-            <span class="home-tile-glyph">▤</span><span class="home-tile-name">planner</span>
-            <span class="home-tile-cap">Areas, goals, projects, habits, actions — plus graph &amp; calendar views.</span>
-          </button>
-          <button class="home-tile" data-go="agent" type="button">
-            <span class="home-tile-glyph">◈</span><span class="home-tile-name">agent</span>
-            <span class="home-tile-cap">Tell it what happened — it captures the rest for you.</span>
-          </button>
-          <button class="home-tile" data-go="journal" type="button">
-            <span class="home-tile-glyph">✎</span><span class="home-tile-name">notes</span>
-            <span class="home-tile-cap">Write or record — voice notes transcribe automatically.</span>
-          </button>
-          <button class="home-tile" data-go="tracker" type="button">
-            <span class="home-tile-glyph">▥</span><span class="home-tile-name">tracker</span>
-            <span class="home-tile-cap">Daily variables, spreadsheet-style.</span>
-          </button>
-          <button class="home-tile" data-go="timeline" type="button">
-            <span class="home-tile-glyph">↔</span><span class="home-tile-name">timeline</span>
-            <span class="home-tile-cap">Everything scheduled, on one zoomable clock.</span>
-          </button>
-          <button class="home-tile" data-go="people" type="button">
-            <span class="home-tile-glyph">☺</span><span class="home-tile-name">people</span>
-            <span class="home-tile-cap">Relationships, groups and the social graph.</span>
-          </button>
-          <button class="home-tile" data-go="location" type="button">
-            <span class="home-tile-glyph">⚲</span><span class="home-tile-name">location</span>
-            <span class="home-tile-cap">Places — people, plans and history on a map.</span>
-          </button>
+      <div class="home-timeline-dock" id="homeTimelineDock">
+        <div class="home-tl-hours" id="homeTlHours"></div>
+        <div class="home-tl-lanes">
+          <div class="home-tl-lane" id="homeTlLaneHabits"></div>
+          <div class="home-tl-lane" id="homeTlLaneActions"></div>
+          <div class="home-tl-lane" id="homeTlLaneNotes"></div>
         </div>
+        <div class="home-tl-now" id="homeTlNow"></div>
       </div>
     </section>
 
@@ -3463,79 +3408,31 @@
     document.documentElement.removeAttribute("data-mobile-menu-open");
   });
 
-  /* ---------------- Home (landing) dashboard ---------------- */
-  // Every tile is an independent link — click routes straight to its section.
-  document.getElementById("homeGrid").addEventListener("click", function(e){
-    var tile = e.target.closest("[data-go]");
-    if(tile) showSection(tile.dataset.go);
+  /* ---------------- Home (cockpit) dashboard ---------------- */
+  // Areas legend rail — each row routes to that area's dashboard page.
+  document.getElementById("homeAreasRail").addEventListener("click", function(e){
+    var row = e.target.closest("[data-cat]");
+    if(row) openAreaDetailPage(row.dataset.cat);
   });
-  document.getElementById("homeAreas").addEventListener("click", function(e){
-    var chip = e.target.closest("[data-cat]");
-    if(chip) openAreaDetailPage(chip.dataset.cat);
+  // The graph is the only cockpit zone with no plain-DOM twin, so its no-WebGL fallback gets an
+  // explicit jump to the 2D planner graph. Simulating a click on the real tab button reuses the
+  // planner's own tab-switching handler (panel visibility, headers, fullscreen class, activation)
+  // instead of re-implementing it here.
+  document.getElementById("homeGraphFallbackBtn").addEventListener("click", function(){
+    showSection("planner");
+    var tab = document.querySelector('#plannerTabs .view-tab[data-tab="graph"]');
+    if(tab) tab.click();
   });
-  // Act: capture, record, add — the fast-path trio, all reachable without leaving Home.
-  // "Chat with agent" reuses sendAgentMessage() directly (the exact same pipeline the Agent tab's
-  // own send button calls), so a message sent from here lands in the SAME conversation — switching
-  // to the Agent tab later shows the full history including anything captured from Home.
-  document.getElementById("homeCaptureSendBtn").addEventListener("click", async function(){
-    var input = document.getElementById("homeCaptureInput");
-    var text = input.value.trim();
-    if(!text) return;
-    input.value = "";
-    var replyEl = document.getElementById("homeCaptureReply");
-    this.disabled = true;
-    replyEl.hidden = false;
-    replyEl.textContent = "…thinking";
-    await sendAgentMessage(text);
-    this.disabled = false;
-    var last = chatMessages[chatMessages.length - 1];
-    replyEl.textContent = (last && last.role === "assistant") ? last.content : "Sent.";
+  // Timeline dock blocks are a read-only picture of today — clicking any of them goes to the Today
+  // page where the full editing surface (drag, resize, context menu) lives. Right-click still works
+  // here directly, since the blocks carry the same data-kind/data-id/data-date the global
+  // context-menu listener keys on.
+  document.getElementById("homeTimelineDock").addEventListener("click", function(e){
+    if(e.target.closest(".home-tl-block")) showSection("today");
   });
-  document.getElementById("homeCaptureInput").addEventListener("keydown", function(e){
-    if(e.key === "Enter" && !e.shiftKey){
-      e.preventDefault();
-      document.getElementById("homeCaptureSendBtn").click();
-    }
-  });
-  // Record: local Whisper transcription straight into a saved note (today's date, current time) —
-  // no intermediate panel/model choice, unlike the Notes composer's own recorder, since this is
-  // meant to be a single click-record-click-stop-done path from Home.
-  wireVoiceRecordButton(document.getElementById("homeRecordBtn"), async function(blob){
-    var text;
-    try{ text = await transcribeAudioLocally(blob); }
-    catch(err){ toast("Transcription failed: " + err.message); return; }
-    if(!text){ toast("Couldn't make out any speech in that recording."); return; }
-    var now = new Date();
-    var res = await saveJournalEntry({
-      date: todayStr(), text: text,
-      time_of_day: String(now.getHours()).padStart(2,"0") + ":" + String(now.getMinutes()).padStart(2,"0"),
-      categories: []
-    });
-    if(res.error){ toast("Couldn't save the note: " + res.error.message); return; }
-    toast("Saved as a note.");
-    renderAll();
-  });
-  document.getElementById("homeAddActionBtn").addEventListener("click", function(){ openActionModal(null, null); });
-  document.getElementById("homeAddNoteBtn").addEventListener("click", function(){ openJournalEditModal(null); });
-  // Same Berlin-timezone trick berlinTodayParts() uses, extended with the hour — the weather data
-  // (berlinWeatherByDate, from the existing Open-Meteo fetch) is keyed by Berlin dates/hours, so
-  // "now" has to be Berlin-now too or the lookup drifts around midnight.
-  function berlinNowInfo(){
-    var parts = new Intl.DateTimeFormat("en-CA", { timeZone:"Europe/Berlin", year:"numeric", month:"2-digit", day:"2-digit", hour:"2-digit", hourCycle:"h23" }).formatToParts(new Date());
-    var out = {};
-    parts.forEach(function(p){ if(p.type !== "literal") out[p.type] = p.value; });
-    return { date: out.year + "-" + out.month + "-" + out.day, hour: Number(out.hour) };
-  }
-  function homeGreeting(now){
-    var hr = now.getHours();
-    if(hr >= 5 && hr < 12) return "Good morning";
-    if(hr >= 12 && hr < 17) return "Good afternoon";
-    if(hr >= 17 && hr < 22) return "Good evening";
-    return "Good night";
-  }
-  // Today's activity per life area — a chip lights up when there's something scheduled or logged
-  // there today (an action due today, a habit occurring today, or a note saved today), so the strip
-  // reads as "where my day is actually happening" rather than a static list of area names.
+  // Today's activity per life area — feeds the legend rail's live counts (an action due today, a
+  // habit occurring today, or a note saved today), so the rail reads as "where my day is actually
+  // happening", not just a static color key.
   function computeHomeAreaPulse(){
     var today = todayStr();
     return CATEGORIES.map(function(cat){
@@ -3546,183 +3443,320 @@
       return { cat:cat, count:count, on: count > 0 };
     });
   }
-  function renderHomeAreas(){
-    var el = document.getElementById("homeAreas");
+  // The legend rail doubles as the 3D graph's color key: icon + name per area (same CATEGORY_ICONS
+  // + --cat-* colors the nodes use), plus today's activity count. Signature-guarded because the
+  // home tick calls this every second — the DOM only rebuilds when a count actually changes.
+  function renderHomeAreasRail(){
+    var el = document.getElementById("homeAreasRail");
     if(!el) return;
-    el.innerHTML = computeHomeAreaPulse().map(function(a){
-      return '<button class="home-area-chip' + (a.on ? " on" : "") + '" data-cat="' + a.cat + '" type="button" title="' + a.cat + (a.count ? " — " + a.count + " today" : " — nothing today") + '">' +
-        '<span class="home-area-dot"></span><span>' + a.cat + '</span>' +
-        (a.count ? '<span class="home-area-count">' + a.count + '</span>' : '') +
+    var pulse = computeHomeAreaPulse();
+    var sig = pulse.map(function(a){ return a.cat + ":" + a.count; }).join("|");
+    if(el.dataset.sig === sig) return;
+    el.dataset.sig = sig;
+    el.innerHTML = '<div class="home-rail-title">areas</div>' + pulse.map(function(a){
+      return '<button class="home-rail-row" data-cat="' + a.cat + '" type="button" title="' + a.cat + (a.count ? " — " + a.count + " today" : "") + '">' +
+        '<span class="home-rail-icon">' + CATEGORY_ICONS[a.cat] + '</span>' +
+        '<span>' + a.cat + '</span>' +
+        (a.count ? '<span class="home-rail-count">' + a.count + '</span>' : '') +
       '</button>';
     }).join("");
   }
-  // Everything relevant to "what does today look like" — open/done habits and actions for today.
-  // Shared by the Glance stat tiles, the open-item list, the AI summary prompt, and the 3D core's
-  // reactive energy (see setHomeSceneEnergy).
-  function computeTodayGlance(){
-    var today = todayStr();
-    var habitsToday = state.habits.filter(function(h){ return habitOccursOnDate(h, today); });
-    var habitsDone = habitsToday.filter(function(h){ return habitDoneForDate(h, today); });
-    var actionsToday = state.actions.filter(function(a){ return a.date === today; });
-    var actionsOpen = actionsToday.filter(function(a){ return !a.done; });
-    var actionsDone = actionsToday.filter(function(a){ return a.done; });
-    var totalToday = habitsToday.length + actionsToday.length;
-    var totalDone = habitsDone.length + actionsDone.length;
-    return {
-      habitsToday:habitsToday, habitsDone:habitsDone,
-      actionsToday:actionsToday, actionsOpen:actionsOpen, actionsDone:actionsDone,
-      ratio: totalToday ? totalDone / totalToday : null
-    };
-  }
-  function renderHomeGlance(weatherNow){
-    var statsEl = document.getElementById("homeGlanceStats");
-    var tasksEl = document.getElementById("homeGlanceTasks");
-    if(!statsEl || !tasksEl) return;
-    var g = computeTodayGlance();
-    setHomeSceneEnergy(g.ratio);
-    var habitPct = g.habitsToday.length ? Math.round(g.habitsDone.length / g.habitsToday.length * 100) : null;
-    statsEl.innerHTML =
-      '<div class="home-stat"><span class="home-stat-label">habits</span><span class="home-stat-val">' + g.habitsDone.length + '<small>/' + g.habitsToday.length + '</small></span>' +
-        '<span class="home-stat-sub">' + (habitPct != null ? habitPct + "% done" : "none scheduled") + '</span></div>' +
-      '<div class="home-stat"><span class="home-stat-label">actions left</span><span class="home-stat-val">' + g.actionsOpen.length + '</span>' +
-        '<span class="home-stat-sub">' + g.actionsDone.length + ' done today</span></div>' +
-      '<div class="home-stat"><span class="home-stat-label">weather</span><span class="home-stat-val">' + (weatherNow ? weatherNow.temp + '°C' : '—') + '</span>' +
-        '<span class="home-stat-sub">' + (weatherNow ? weatherCodeIcon(weatherNow.code) + ' berlin' : 'loading…') + '</span></div>';
 
-    var today = todayStr();
-    var rows = [];
-    g.actionsOpen.forEach(function(a){ rows.push({ time:a.timeOfDay, title:a.title, kind:"action" }); });
-    g.habitsToday.filter(function(h){ return !habitDoneForDate(h, today); }).forEach(function(h){ rows.push({ time:h.timeOfDay, title:h.title, kind:"habit" }); });
-    rows.sort(function(x,y){ if(!x.time) return 1; if(!y.time) return -1; return x.time.localeCompare(y.time); });
-    tasksEl.innerHTML = rows.length
-      ? rows.slice(0, 6).map(function(r){
-          return '<div class="home-task-row" data-go="today">' +
-            '<span class="home-task-time">' + (r.time ? fmtTimeOfDay(r.time) : "—") + '</span>' +
-            '<span class="home-task-title">' + escapeHtml(r.title) + '</span>' +
-            '<span class="home-task-kind">' + r.kind + '</span>' +
-          '</div>';
-        }).join("") + (rows.length > 6 ? '<div class="home-glance-empty">+ ' + (rows.length - 6) + ' more — see today</div>' : "")
-      : '<div class="home-glance-empty">Nothing left open today — clear day.</div>';
+  // ---- Weather for *your* location (HUD widget). Coordinates come from the browser's geolocation
+  // prompt once, get cached in localStorage (with a reverse-geocoded place name via Nominatim, which
+  // the app already uses for address autocomplete), and every later load reuses the cache. Denied/
+  // unavailable geolocation falls back to Berlin — the same city the Timeline page's forecast band
+  // is hard-wired to — so the widget always shows something. Open-Meteo's `current` endpoint, like
+  // the Berlin forecast fetch, needs no API key.
+  var homeWeather = { state:"idle", temp:null, code:null, place:null };
+  var homeWeatherRenderedKey = null;
+  function homeGeoCached(){
+    try{ return JSON.parse(safeGet(window.localStorage, "pp_home_geo_v1") || "null"); }catch(e){ return null; }
   }
-  document.getElementById("homeGlanceTasks").addEventListener("click", function(e){
-    if(e.target.closest("[data-go]")) showSection("today");
-  });
-
-  // AI day summary — cached in localStorage per calendar day (no DB column needed, matching how the
-  // Gemini API key itself is stored) so it survives reloads without re-hitting the API, but it's
-  // never auto-generated: only the button writes a fresh one.
-  function homeSummaryStorageKey(){ return "pp_day_summary_v1_" + todayStr(); }
-  var homeSummaryLoadedDate = null;
-  function ensureHomeSummaryLoaded(){
-    var today = todayStr();
-    if(homeSummaryLoadedDate === today) return;
-    homeSummaryLoadedDate = today;
-    var el = document.getElementById("homeSummaryText");
-    if(el) el.textContent = safeGet(window.localStorage, homeSummaryStorageKey()) || "";
+  function homeGeoRequest(){
+    return new Promise(function(resolve){
+      if(!navigator.geolocation) return resolve(null);
+      navigator.geolocation.getCurrentPosition(function(pos){
+        // 3 decimals ≈ 100m — plenty for weather, and avoids caching an overly precise location.
+        resolve({ lat: Math.round(pos.coords.latitude * 1000) / 1000, lon: Math.round(pos.coords.longitude * 1000) / 1000 });
+      }, function(){ resolve(null); }, { timeout: 8000, maximumAge: 3600000 });
+    });
   }
-  async function generateHomeDaySummary(){
-    var apiKey = safeGet(window.localStorage, "geminiApiKey");
-    if(!apiKey){ toast('No Gemini API key set — click "api key" in the agent tab to add one.'); return; }
-    var btn = document.getElementById("homeSummaryBtn");
-    var textEl = document.getElementById("homeSummaryText");
-    var origLabel = btn.textContent;
-    btn.disabled = true; btn.textContent = "✨ generating…";
+  async function homeGeoPlaceName(lat, lon){
     try{
-      var g = computeTodayGlance();
-      var lines = [];
-      lines.push("Habits: " + g.habitsDone.length + "/" + g.habitsToday.length + " done today" +
-        (g.habitsToday.length ? " (" + g.habitsToday.map(function(h){ return h.title + (habitDoneForDate(h, todayStr()) ? " [done]" : " [not done]"); }).join(", ") + ")" : ""));
-      lines.push("Actions today: " + g.actionsToday.length + " total, " + g.actionsOpen.length + " still open" +
-        (g.actionsOpen.length ? " (" + g.actionsOpen.map(function(a){ return a.title; }).join(", ") + ")" : ""));
-      var notesToday = state.journal.filter(function(n){ return n.date === todayStr(); });
-      lines.push("Notes written today: " + notesToday.length);
-      var info = berlinNowInfo();
-      var wHours = berlinWeatherByDate[info.date];
-      if(wHours && wHours.length) lines.push("Weather in Berlin today: around " + wHours[Math.min(info.hour, wHours.length - 1)].temp + "°C.");
-
-      var url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=" + encodeURIComponent(apiKey);
-      var body = JSON.stringify({ contents: [{ role:"user", parts: [{ text:
-        "You write a short, warm, plain-language recap of someone's day for a personal planner app's home screen. " +
-        "2-3 sentences, no bullet points, no headings, second person (\"you\"). Base it only on the facts given — don't invent details.\n\n" +
-        lines.join("\n")
-      }] }] });
-      // Same transient-overload retry the transcription/sentiment paths use — Gemini 503s are usually noise.
-      var resp, attempt;
-      for(attempt = 1; attempt <= 3; attempt++){
-        resp = await fetch(url, { method:"POST", headers:{ "Content-Type":"application/json" }, body: body });
-        if(resp.ok) break;
-        if((resp.status === 503 || resp.status === 429) && attempt < 3){
-          await new Promise(function(r){ setTimeout(r, attempt * 1500); });
-          continue;
+      var r = await fetch("https://nominatim.openstreetmap.org/reverse?format=json&zoom=10&lat=" + lat + "&lon=" + lon, { headers: { "Accept": "application/json" } });
+      if(!r.ok) return null;
+      var d = await r.json();
+      var a = d.address || {};
+      return ((a.city || a.town || a.village || a.municipality || d.name || "") + "").toLowerCase() || null;
+    }catch(e){ return null; }
+  }
+  async function fetchHomeWeather(){
+    if(homeWeather.state === "loading") return;
+    homeWeather.state = "loading";
+    try{
+      var geo = homeGeoCached();
+      if(!geo){
+        geo = await homeGeoRequest();
+        if(geo){
+          geo.name = await homeGeoPlaceName(geo.lat, geo.lon);
+          safeSet(window.localStorage, "pp_home_geo_v1", JSON.stringify(geo));
         }
-        throw new Error("Gemini API error " + resp.status + ": " + (await resp.text()).slice(0,200));
       }
+      var lat = geo ? geo.lat : BERLIN_LAT, lon = geo ? geo.lon : BERLIN_LON;
+      var place = geo ? (geo.name || "here") : "berlin";
+      var resp = await fetch("https://api.open-meteo.com/v1/forecast?latitude=" + lat + "&longitude=" + lon + "&current=temperature_2m,weather_code&timezone=auto");
+      if(!resp.ok) throw new Error("weather " + resp.status);
       var data = await resp.json();
-      var raw = (((data.candidates||[])[0]||{}).content||{}).parts;
-      var text = (raw||[]).filter(function(p){ return typeof p.text === "string"; }).map(function(p){ return p.text; }).join(" ").trim();
-      if(!text){ toast("The summary came back empty — try again."); return; }
-      textEl.textContent = text;
-      homeSummaryLoadedDate = todayStr();
-      safeSet(window.localStorage, homeSummaryStorageKey(), text);
-    } catch(err){
-      toast("Day summary failed: " + err.message);
-    } finally {
-      btn.disabled = false; btn.textContent = origLabel;
+      homeWeather = { state:"done", temp: Math.round(data.current.temperature_2m), code: data.current.weather_code, place: place };
+    }catch(err){
+      console.warn("home weather unavailable:", err.message);
+      homeWeather.state = "error";
     }
   }
-  document.getElementById("homeSummaryBtn").addEventListener("click", generateHomeDaySummary);
+
+  // ---- Today's timeline dock: every timed habit/action/note for today on one 24h strip, in three
+  // thin lanes (one per kind) so overlapping items never need collision layout. Uses the same
+  // per-day resolution rules the Today page does — habitInstanceFields for per-day time/duration
+  // overrides, plus the overnight spillover of yesterday's late blocks (sleep past midnight).
+  // Blocks carry data-kind/data-id/data-date, so the global right-click menu (edit / postpone /
+  // skip) works on them exactly like it does on the Today page's own blocks.
+  function computeHomeTimelineBlocks(){
+    var today = todayStr();
+    var yesterday = addDaysToDateStr(today, -1);
+    var blocks = { habit:[], action:[], note:[] };
+    state.habits.filter(function(h){ return habitOccursOnDate(h, today); }).forEach(function(h){
+      var f = habitInstanceFields(h, today);
+      if(!f.timeOfDay) return;
+      blocks.habit.push({ kind:"habit-instance", id:h.id, date:today, title:h.title, start:timeToFraction(f.timeOfDay), width:Math.max((f.durationMinutes || 15) / 1440, 0.006), area:habitCategory(h), done:habitDoneForDate(h, today) });
+    });
+    state.habits.filter(function(h){ return habitOccursOnDate(h, yesterday); }).forEach(function(h){
+      var f = habitInstanceFields(h, yesterday);
+      if(!f.timeOfDay) return;
+      var spill = overnightSpilloverMinutes(f.timeOfDay, f.durationMinutes);
+      if(!spill) return;
+      blocks.habit.push({ kind:"habit-instance", id:h.id, date:yesterday, title:"‹ " + h.title, start:0, width:spill / 1440, area:habitCategory(h), done:habitDoneForDate(h, yesterday) });
+    });
+    state.actions.filter(function(a){ return a.date === today && a.timeOfDay; }).forEach(function(a){
+      blocks.action.push({ kind:"action", id:a.id, date:today, title:a.title, start:timeToFraction(a.timeOfDay), width:Math.max((a.durationMinutes || 15) / 1440, 0.006), area:actionCategory(a), done:!!a.done });
+    });
+    state.journal.filter(function(n){ return n.date === today && n.timeOfDay; }).forEach(function(n){
+      var preview = (n.title || n.text || "").slice(0, 40);
+      blocks.note.push({ kind:"journal", id:n.id, date:today, title:"✎ " + preview, start:timeToFraction(n.timeOfDay), width:0.008, area:noteCategory(n), done:false });
+    });
+    return blocks;
+  }
+  function homeTlLaneHtml(label, list){
+    return '<span class="home-tl-lane-label">' + label + '</span>' + list.map(function(b){
+      return '<div class="home-tl-block' + (b.area ? " " + b.area : "") + (b.done ? " done" : "") + '" data-kind="' + b.kind + '" data-id="' + b.id + '" data-date="' + b.date + '"' +
+        ' style="left:' + (b.start * 100) + '%; width:' + Math.max(b.width * 100, 0.7) + '%;" title="' + escapeHtml(b.title) + '">' + escapeHtml(b.title) + '</div>';
+    }).join("");
+  }
+  function renderHomeTimelineDock(){
+    var laneHabits = document.getElementById("homeTlLaneHabits");
+    if(!laneHabits) return;
+    var blocks = computeHomeTimelineBlocks();
+    var sig = ["habit","action","note"].map(function(k){
+      return blocks[k].map(function(b){ return b.id + ":" + b.start + ":" + b.width + ":" + (b.done ? 1 : 0); }).join(",");
+    }).join("|");
+    var dock = document.getElementById("homeTimelineDock");
+    if(dock.dataset.sig !== sig){
+      dock.dataset.sig = sig;
+      laneHabits.innerHTML = homeTlLaneHtml("habits", blocks.habit);
+      document.getElementById("homeTlLaneActions").innerHTML = homeTlLaneHtml("actions", blocks.action);
+      document.getElementById("homeTlLaneNotes").innerHTML = homeTlLaneHtml("notes", blocks.note);
+      var hoursEl = document.getElementById("homeTlHours");
+      if(!hoursEl.childElementCount){
+        var hh = "";
+        for(var h = 0; h < 24; h += 3) hh += '<span style="left:' + (h / 24 * 100) + '%">' + String(h).padStart(2, "0") + '</span>';
+        hoursEl.innerHTML = hh;
+      }
+    }
+    var now = new Date();
+    document.getElementById("homeTlNow").style.left = ((now.getHours() * 60 + now.getMinutes()) / 1440 * 100) + "%";
+  }
+
+  // ---- Google Photos slideshow (top-right HUD). Google locked the broad library-read scope down
+  // in 2025 — the sanctioned browser flow is the Photos *Picker* API: the user explicitly picks a
+  // handful of photos in a Google-hosted tab, and the app may read exactly those. Picker downloads
+  // require an OAuth token (which a pure-browser app can't silently refresh), so the picked photos
+  // are downscaled onto a canvas immediately and stored as JPEG data URIs in localStorage — after
+  // that the slideshow works forever, offline, with no re-auth. Setup needs a Google Cloud OAuth
+  // client ID with this page's origin authorized (entered once, stored like the Gemini key).
+  var HOME_PHOTOS_KEY = "pp_home_photos_v1", HOME_PHOTOS_CLIENT_KEY = "pp_gphotos_client_id";
+  var homePhotos = null, homePhotoIdx = -1, homePhotoLastSwap = 0;
+  function homePhotosLoad(){
+    if(homePhotos) return homePhotos;
+    try{ homePhotos = JSON.parse(safeGet(window.localStorage, HOME_PHOTOS_KEY) || "[]"); }catch(e){ homePhotos = []; }
+    if(!Array.isArray(homePhotos)) homePhotos = [];
+    return homePhotos;
+  }
+  function homePhotosRenderState(){
+    var photos = homePhotosLoad();
+    document.getElementById("homePhotosConnect").style.display = photos.length ? "none" : "";
+    document.getElementById("homePhotosRepickBtn").hidden = !photos.length;
+  }
+  function homePhotosTick(now){
+    var photos = homePhotosLoad();
+    if(!photos.length) return;
+    if(now.getTime() - homePhotoLastSwap < 8000) return;
+    homePhotoLastSwap = now.getTime();
+    var wrap = document.getElementById("homePhotos");
+    var imgs = wrap.querySelectorAll("img");
+    if(imgs.length !== 2){
+      wrap.insertAdjacentHTML("afterbegin", '<img alt=""><img alt="">');
+      imgs = wrap.querySelectorAll("img");
+    }
+    homePhotoIdx = (homePhotoIdx + 1) % photos.length;
+    var showing = wrap.dataset.front === "0" ? 1 : 0;
+    imgs[showing].src = photos[homePhotoIdx];
+    imgs[showing].classList.add("show");
+    imgs[1 - showing].classList.remove("show");
+    wrap.dataset.front = String(showing);
+  }
+  var gisScriptPromise = null;
+  function loadGisScript(){
+    if(gisScriptPromise) return gisScriptPromise;
+    gisScriptPromise = new Promise(function(resolve, reject){
+      var s = document.createElement("script");
+      s.src = "https://accounts.google.com/gsi/client";
+      s.onload = function(){ resolve(); };
+      s.onerror = function(){ gisScriptPromise = null; reject(new Error("couldn't load the Google sign-in script")); };
+      document.head.appendChild(s);
+    });
+    return gisScriptPromise;
+  }
+  function getGooglePhotosToken(clientId){
+    return new Promise(function(resolve, reject){
+      var client = google.accounts.oauth2.initTokenClient({
+        client_id: clientId,
+        scope: "https://www.googleapis.com/auth/photospicker.mediaitems.readonly",
+        callback: function(resp){
+          if(resp && resp.access_token) resolve(resp.access_token);
+          else reject(new Error((resp && resp.error) || "no token"));
+        },
+        error_callback: function(err){ reject(new Error((err && err.message) || "sign-in was cancelled")); }
+      });
+      client.requestAccessToken();
+    });
+  }
+  function blobToJpegDataUri(blob, maxW){
+    return new Promise(function(resolve, reject){
+      var url = URL.createObjectURL(blob);
+      var img = new Image();
+      img.onload = function(){
+        var scale = Math.min(1, maxW / img.width);
+        var cv = document.createElement("canvas");
+        cv.width = Math.round(img.width * scale); cv.height = Math.round(img.height * scale);
+        cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+        URL.revokeObjectURL(url);
+        resolve(cv.toDataURL("image/jpeg", 0.78));
+      };
+      img.onerror = function(){ URL.revokeObjectURL(url); reject(new Error("image decode failed")); };
+      img.src = url;
+    });
+  }
+  async function connectGooglePhotos(){
+    var clientId = safeGet(window.localStorage, HOME_PHOTOS_CLIENT_KEY) || "";
+    clientId = prompt(
+      "Google OAuth client ID (from a Google Cloud project with the Photos Picker API enabled; this page's origin must be an authorized JavaScript origin):",
+      clientId);
+    if(clientId === null) return;
+    clientId = clientId.trim();
+    if(!clientId){ toast("No client ID — photos not connected."); return; }
+    safeSet(window.localStorage, HOME_PHOTOS_CLIENT_KEY, clientId);
+    // Opened synchronously inside the click so popup blockers allow it — pointed at the picker URL
+    // once the session exists, closed again if anything fails before then.
+    var pickerWin = window.open("", "_blank");
+    var btn = document.getElementById("homePhotosConnectBtn");
+    btn.disabled = true;
+    try{
+      await loadGisScript();
+      var token = await getGooglePhotosToken(clientId);
+      var authHeaders = { "Authorization": "Bearer " + token, "Content-Type": "application/json" };
+      var sessResp = await fetch("https://photospicker.googleapis.com/v1/sessions", { method:"POST", headers: authHeaders, body: "{}" });
+      if(!sessResp.ok) throw new Error("picker session failed (" + sessResp.status + ")");
+      var sess = await sessResp.json();
+      if(pickerWin) pickerWin.location = sess.pickerUri; else window.open(sess.pickerUri, "_blank");
+      toast("Pick your photos in the Google tab — they import here automatically when you finish.");
+      var deadline = Date.now() + 5 * 60 * 1000;
+      var ready = false;
+      while(Date.now() < deadline){
+        await new Promise(function(r){ setTimeout(r, 3500); });
+        var st = await fetch("https://photospicker.googleapis.com/v1/sessions/" + encodeURIComponent(sess.id), { headers: authHeaders });
+        if(!st.ok) throw new Error("picker session lost (" + st.status + ")");
+        if((await st.json()).mediaItemsSet){ ready = true; break; }
+      }
+      if(!ready) throw new Error("timed out waiting for the picker — try again");
+      var itemsResp = await fetch("https://photospicker.googleapis.com/v1/mediaItems?sessionId=" + encodeURIComponent(sess.id) + "&pageSize=25", { headers: authHeaders });
+      if(!itemsResp.ok) throw new Error("couldn't list the picked photos (" + itemsResp.status + ")");
+      var items = ((await itemsResp.json()).mediaItems || []).filter(function(it){ return it.type === "PHOTO" && it.mediaFile && it.mediaFile.baseUrl; }).slice(0, 12);
+      if(!items.length) throw new Error("no photos were picked");
+      toast("Importing " + items.length + " photo" + (items.length === 1 ? "" : "s") + "…");
+      var stored = [];
+      for(var i = 0; i < items.length; i++){
+        try{
+          var imgResp = await fetch(items[i].mediaFile.baseUrl + "=w640-h480", { headers: { "Authorization": "Bearer " + token } });
+          if(imgResp.ok) stored.push(await blobToJpegDataUri(await imgResp.blob(), 640));
+        }catch(e){ /* one bad photo shouldn't sink the batch */ }
+      }
+      if(!stored.length) throw new Error("the photos couldn't be downloaded");
+      homePhotos = stored;
+      safeSet(window.localStorage, HOME_PHOTOS_KEY, JSON.stringify(stored));
+      homePhotoIdx = -1; homePhotoLastSwap = 0;
+      homePhotosRenderState();
+      toast("Google Photos connected — " + stored.length + " photo" + (stored.length === 1 ? "" : "s") + " in the slideshow.");
+    }catch(err){
+      if(pickerWin && !pickerWin.closed && String(pickerWin.location.href).indexOf("http") !== 0){ try{ pickerWin.close(); }catch(e){} }
+      toast("Google Photos: " + err.message);
+    }finally{
+      btn.disabled = false;
+    }
+  }
+  document.getElementById("homePhotosConnectBtn").addEventListener("click", connectGooglePhotos);
+  document.getElementById("homePhotosRepickBtn").addEventListener("click", connectGooglePhotos);
+  homePhotosRenderState();
 
   function renderHomeDashboard(){
     // First paint happens post-auth with the section visible and laid out — the right moment to
     // spin up the (lazy, guarded) 3D layer; ensureHomeScene() is a no-op ever after.
     ensureHomeScene();
     var now = new Date();
-    document.getElementById("homeGreet").textContent = homeGreeting(now);
     document.getElementById("homeClockTime").textContent = now.toLocaleTimeString(undefined, { hour:"2-digit", minute:"2-digit", second:"2-digit" });
     document.getElementById("homeClockDate").textContent = now.toLocaleDateString(undefined, { weekday:"long", month:"long", day:"numeric", year:"numeric" });
-    var weatherEl = document.getElementById("homeWeatherNow");
-    var info = berlinNowInfo();
-    var hours = berlinWeatherByDate[info.date];
-    var weatherNow = null;
-    if(!hours){
-      weatherEl.innerHTML = "";
-      if(berlinWeatherFetchState === "idle") fetchBerlinWeather();
-    } else {
-      // Exact current hour when present; otherwise the latest hour before now (e.g. right after a
-      // fetch whose horizon ends mid-day) — never a future hour masquerading as "now".
-      var h = null;
-      hours.forEach(function(x){ if(x.hour <= info.hour && (!h || x.hour > h.hour)) h = x; });
-      if(!h) h = hours[0];
-      weatherNow = h;
-      weatherEl.innerHTML = '<span class="tl-weather-tick-icon">' + weatherCodeIcon(h.code) + '</span>' +
-        '<span>' + h.temp + '°C · berlin</span>';
+    if(homeWeather.state === "idle") fetchHomeWeather();
+    // Weather HTML only rewrites when its content actually changes — this runs on a 1s tick, and
+    // resetting identical innerHTML every second would needlessly rebuild the icon SVG.
+    var weatherKey = homeWeather.state + ":" + homeWeather.temp + ":" + homeWeather.code + ":" + homeWeather.place;
+    if(weatherKey !== homeWeatherRenderedKey){
+      homeWeatherRenderedKey = weatherKey;
+      document.getElementById("homeWeatherNow").innerHTML = homeWeather.state === "done"
+        ? '<span class="tl-weather-tick-icon">' + weatherCodeIcon(homeWeather.code) + '</span><span>' + homeWeather.temp + '°C · ' + escapeHtml(homeWeather.place || "") + '</span>'
+        : (homeWeather.state === "error" ? "" : '<span>…</span>');
     }
-    // Areas/Glance don't depend on weather being loaded yet — they used to be skipped entirely by an
-    // early return here whenever the forecast hadn't resolved, which on a fresh page load was every
-    // single tick until the fetch settled.
-    renderHomeAreas();
-    renderHomeGlance(weatherNow);
-    ensureHomeSummaryLoaded();
+    renderHomeAreasRail();
+    renderHomeTimelineDock();
+    homeSyncGraphData();  // cheap signature compare; rebuilds the 3D node/edge set only on change
+    homePhotosTick(now);  // advances the slideshow every ~8s
   }
   // One always-on 1s tick; it early-returns unless the home section is what's on screen, so the
   // cost while elsewhere is a single string compare — simpler than start/stop bookkeeping in
   // every showSection transition.
   setInterval(function(){ if(activeSection === "home") renderHomeDashboard(); }, 1000);
 
-  /* ---------------- Home Three.js constellation ---------------- */
-  // A decorative, reactive ambient layer behind the dashboard core: a glowing wireframe core plus a
-  // starfield for depth. This used to also carry one clickable panel per destination, duplicating
-  // the DOM tile grid below (the same 8 destinations shown twice on the same page) — that's gone now;
-  // the tile grid is the single source of navigation, and the 3D layer's only job is to make the
-  // hero feel alive and reflect today's actual state (see setHomeSceneEnergy/computeTodayGlance)
-  // rather than being a second static/decorative copy of the nav. Strictly an enhancement — the whole
-  // block no-ops (leaving the plain hero) when WebGL is missing, reduced motion is requested, or the
-  // CDN import fails. Three.js loads lazily via dynamic import the first time the home page is
-  // actually on screen, same pattern as the transformers.js speech model.
+  /* ---------------- Home 3D system graph (Three.js) ---------------- */
+  // The cockpit's centerpiece: the same nodes and edges the Planner ▸ Graph shows — area hubs,
+  // goals, projects and habits (actions stay out, matching that view's default) — rendered as a 3D
+  // force-directed constellation. Structure comes from buildSystemGraph(), which calls the SAME
+  // pure edge builders the 2D whiteboard physics runs on (wbHierarchyEdges / wbAreaLeafEdges plus
+  // the stored wbConnections), so the two views can't drift apart. Strictly an enhancement: when
+  // WebGL is missing, reduced motion is requested, or the CDN import fails, #homeGraphFallback
+  // appears with a jump to the 2D graph instead. Three.js loads lazily via dynamic import the
+  // first time the home page is actually on screen, same pattern as the transformers.js model.
   var homeScene3d = null, homeSceneIniting = false, homeSceneFailed = false;
-  // One pinned module, shared by every 3D surface (home constellation, today timeline skin) — a
-  // second import() of the same URL is a cache hit, but sharing the promise also shares a failure,
-  // so an offline first paint doesn't retry per-surface forever.
+  // One pinned module, shared by every 3D surface (home graph, today timeline skin) — a second
+  // import() of the same URL is a cache hit, but sharing the promise also shares a failure, so an
+  // offline first paint doesn't retry per-surface forever.
   var threeModulePromise = null;
   function loadThree(){
     if(!threeModulePromise) threeModulePromise = import("https://cdn.jsdelivr.net/npm/three@0.170.0/+esm");
@@ -3739,106 +3773,342 @@
     var v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
     return v || "#7aa2ff";
   }
-  // How "full" today looks — habits/actions done vs. scheduled (see computeTodayGlance). Read by the
-  // 3D frame loop every tick; null (nothing scheduled yet) settles to a calm mid-level baseline
-  // rather than reading as an empty/broken day. Safe to call before the scene exists — it just
-  // updates the value the loop will pick up once it does.
-  var homeSceneEnergy = 0.5;
-  function setHomeSceneEnergy(ratio){ homeSceneEnergy = ratio == null ? 0.5 : Math.max(0.15, Math.min(1, ratio)); }
+  // Shared graph-structure builder: one node per area/goal/project/habit plus every edge the 2D
+  // planner graph derives (parent/child hierarchy, secondary links, leaf-to-area anchors, manual
+  // wbConnections). Edges referencing a node that isn't in this set (e.g. action edges while the
+  // planner's actions layer is toggled on) are dropped rather than dangling.
+  function buildSystemGraph(){
+    var nodes = [];
+    CATEGORIES.forEach(function(cat){ nodes.push({ type:"area", id:cat, label:cat, area:cat, r:1.35 }); });
+    state.goals.forEach(function(g){ nodes.push({ type:"goal", id:g.id, label:g.title, area:g.category, r:1.0 }); });
+    state.projects.forEach(function(p){ nodes.push({ type:"project", id:p.id, label:p.title, area:projectCategory(p), r:0.75 }); });
+    state.habits.forEach(function(h){ nodes.push({ type:"habit", id:h.id, label:h.title, area:habitCategory(h), r:0.65 }); });
+    var index = {};
+    nodes.forEach(function(n, i){ index[n.type + ":" + n.id] = i; });
+    var edges = [];
+    wbHierarchyEdges().concat(wbAreaLeafEdges(), state.wbConnections || []).forEach(function(c){
+      var a = index[c.fromType + ":" + c.fromId], b = index[c.toType + ":" + c.toId];
+      if(a != null && b != null) edges.push({ a:a, b:b, secondary: !!c.secondary });
+    });
+    return { nodes:nodes, edges:edges };
+  }
+  // Cheap change detector for the 1s home tick — ids + areas + titles catch adds, deletes and the
+  // renames/moves that matter visually, without deep-hashing every field every second.
+  function systemGraphSignature(){
+    return [
+      state.goals.map(function(g){ return g.id + (g.category || "") + g.title; }).join(","),
+      state.projects.map(function(p){ return p.id + (projectCategory(p) || "") + p.title; }).join(","),
+      state.habits.map(function(h){ return h.id + (habitCategory(h) || "") + h.title; }).join(","),
+      (state.wbConnections || []).length
+    ].join("|");
+  }
+  var homeGraphSig = null;
+  function homeSyncGraphData(){
+    var sig = systemGraphSignature();
+    if(sig === homeGraphSig) return;
+    homeGraphSig = sig;
+    if(homeScene3d) homeScene3d.resync();
+  }
   function ensureHomeScene(){
     if(homeScene3d || homeSceneIniting || homeSceneFailed) return;
-    if(!homeWebGLUsable()){ homeSceneFailed = true; return; }
+    if(!homeWebGLUsable()){
+      homeSceneFailed = true;
+      document.getElementById("homeGraphFallback").hidden = false;
+      return;
+    }
     homeSceneIniting = true;
+    document.getElementById("homeGraphFallback").hidden = true;
     initHomeScene().catch(function(err){
       homeSceneFailed = true;
-      console.warn("home 3D scene unavailable:", err.message);
+      document.getElementById("homeGraphFallback").hidden = false;
+      console.warn("home 3D graph unavailable:", err.message);
     }).finally(function(){ homeSceneIniting = false; });
   }
   async function initHomeScene(){
     var THREE = await loadThree();
-    var hero = document.querySelector(".home-hero");
+    var wrap = document.querySelector(".home-graph-wrap");
     var canvas = document.getElementById("homeCanvas");
-    var w = hero.clientWidth || 800, h = hero.clientHeight || 220;
+    var w = wrap.clientWidth || 800, h = wrap.clientHeight || 500;
     var renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(w, h, false);
     var scene = new THREE.Scene();
-    var camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 100);
-    camera.position.set(0, 0, 14);
+    var camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 400);
 
-    var accent = new THREE.Color(cssVarColor("--accent"));
-
-    // Central core: a slowly-tumbling wireframe icosahedron + a point halo, sitting visually
-    // behind the DOM clock overlay so the time reads as the heart of the system. Kept as named vars
-    // (not inline) so the frame loop can drive their opacity/speed from homeSceneEnergy.
-    var core = new THREE.Group();
-    var coreLineMat = new THREE.LineBasicMaterial({ color: accent, transparent: true, opacity: 0.35 });
-    core.add(new THREE.LineSegments(new THREE.WireframeGeometry(new THREE.IcosahedronGeometry(1.7, 1)), coreLineMat));
-    var haloCount = 90, haloPos = new Float32Array(haloCount * 3);
-    for(var i = 0; i < haloCount; i++){
-      var a = Math.random() * Math.PI * 2, r = 2.1 + Math.random() * 0.7;
-      haloPos[i*3] = Math.cos(a) * r;
-      haloPos[i*3+1] = Math.sin(a) * r * 0.55;
-      haloPos[i*3+2] = (Math.random() - 0.5) * 1.2;
-    }
-    var haloGeo = new THREE.BufferGeometry();
-    haloGeo.setAttribute("position", new THREE.BufferAttribute(haloPos, 3));
-    var haloMat = new THREE.PointsMaterial({ color: accent, size: 0.05, transparent: true, opacity: 0.7 });
-    core.add(new THREE.Points(haloGeo, haloMat));
-    scene.add(core);
-
-    // Background starfield for depth.
-    var starCount = 220, starPos = new Float32Array(starCount * 3);
+    // Starfield backdrop, kept from the old constellation — a depth cue behind the graph.
+    var starCount = 260, starPos = new Float32Array(starCount * 3);
     for(var s = 0; s < starCount; s++){
-      starPos[s*3] = (Math.random() - 0.5) * 34;
-      starPos[s*3+1] = (Math.random() - 0.5) * 12;
-      starPos[s*3+2] = -3 - Math.random() * 10;
+      starPos[s*3] = (Math.random() - 0.5) * 160;
+      starPos[s*3+1] = (Math.random() - 0.5) * 90;
+      starPos[s*3+2] = (Math.random() - 0.5) * 160;
     }
     var starGeo = new THREE.BufferGeometry();
     starGeo.setAttribute("position", new THREE.BufferAttribute(starPos, 3));
-    scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: new THREE.Color(cssVarColor("--text-dim")), size: 0.04, transparent: true, opacity: 0.55 })));
+    scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: new THREE.Color(cssVarColor("--text-faint")), size: 0.22, transparent: true, opacity: 0.5 })));
 
-    // Gentle pointer parallax on the camera — the canvas sits behind the DOM overlay (which is
-    // pointer-events:none), so it receives the hero's pointer events directly.
-    var pointer = { x: 0, y: 0 };
-    function onMove(e){
-      var rect = canvas.getBoundingClientRect();
-      pointer.x = ((e.clientX - rect.left) / rect.width - 0.5) * 2;
-      pointer.y = ((e.clientY - rect.top) / rect.height - 0.5) * 2;
+    // ---- graph content (rebuilt whenever homeSyncGraphData sees the data change) ----
+    var AREA_VAR = { Health:"--cat-health", Finance:"--cat-finance", Career:"--cat-career", Maintenance:"--cat-maintenance", Growth:"--cat-growth", Relationships:"--cat-relationships", Sol:"--cat-sol" };
+    var sphereGeo = new THREE.SphereGeometry(1, 14, 10);
+    var matByColor = {};  // one material per distinct color, shared by every node of that area
+    function materialFor(cssVar){
+      var hex = cssVarColor(cssVar);
+      if(!matByColor[hex]) matByColor[hex] = new THREE.MeshBasicMaterial({ color: new THREE.Color(hex) });
+      return matByColor[hex];
     }
+    var edgeMat = new THREE.LineBasicMaterial({ color: new THREE.Color(cssVarColor("--text-dim")), transparent: true, opacity: 0.3 });
+    function areaLabelSprite(cat){
+      var cv = document.createElement("canvas");
+      cv.width = 256; cv.height = 64;
+      var ctx = cv.getContext("2d");
+      ctx.fillStyle = cssVarColor(AREA_VAR[cat] || "--text-dim");
+      ctx.font = '600 30px "IBM Plex Mono", monospace';
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(cat.toLowerCase(), 128, 32);
+      var sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, opacity: 0.9, depthTest: false }));
+      sp.scale.set(9, 2.25, 1);
+      return sp;
+    }
+    var graph = null;
+    function disposeGraph(){
+      if(!graph) return;
+      graph.meshes.forEach(function(m){ scene.remove(m); });
+      graph.labels.forEach(function(l){ scene.remove(l); if(l.material.map) l.material.map.dispose(); l.material.dispose(); });
+      scene.remove(graph.lines);
+      graph.lines.geometry.dispose();
+      graph = null;
+    }
+    function rebuildGraph(){
+      disposeGraph();
+      var data = buildSystemGraph();
+      var meshes = [], labels = [];
+      data.nodes.forEach(function(n, i){
+        // Seed start positions loosely clustered by area, so the sim settles fast and each area's
+        // constellation lands roughly where its cluster will end up rather than exploding outward.
+        var seed = (n.area ? CATEGORIES.indexOf(n.area) : -1) + 1;
+        var baseA = seed / (CATEGORIES.length + 1) * Math.PI * 2;
+        n.x = Math.cos(baseA) * 14 + (Math.random() - 0.5) * 8;
+        n.y = (Math.random() - 0.5) * 10;
+        n.z = Math.sin(baseA) * 14 + (Math.random() - 0.5) * 8;
+        n.vx = 0; n.vy = 0; n.vz = 0;
+        var mesh = new THREE.Mesh(sphereGeo, (n.area && AREA_VAR[n.area]) ? materialFor(AREA_VAR[n.area]) : materialFor("--text-faint"));
+        mesh.scale.setScalar(n.r);
+        mesh.userData.nodeIndex = i;
+        scene.add(mesh);
+        meshes.push(mesh);
+        if(n.type === "area"){
+          var sp = areaLabelSprite(n.id);
+          scene.add(sp);
+          labels.push(sp);
+          n.labelSprite = sp;
+        }
+      });
+      var linePos = new Float32Array(data.edges.length * 6);
+      var lineGeo = new THREE.BufferGeometry();
+      lineGeo.setAttribute("position", new THREE.BufferAttribute(linePos, 3));
+      var lines = new THREE.LineSegments(lineGeo, edgeMat);
+      scene.add(lines);
+      graph = { nodes: data.nodes, edges: data.edges, meshes: meshes, labels: labels, lines: lines, linePos: linePos, alpha: 1 };
+    }
+    rebuildGraph();
+
+    // ---- physics: the whiteboard's 2D force model (repulsion + extra cross-area push, edge
+    // springs, center anchoring, damped integration with decaying alpha) extended with a z axis.
+    // Constants are re-scaled versions of the WB_* ones — that world is ~2000px across, this one is
+    // ~40 scene units. ----
+    var G_REPEL = 260, G_AREA_PUSH = 90, G_LINK_DIST = 6.5, G_LINK_K = 0.03, G_CENTER_K = 0.012, G_DAMP = 0.85, G_ALPHA_DECAY = 0.992;
+    function tickGraph(){
+      var g = graph;
+      if(!g || g.alpha < 0.02) return;
+      var nodes = g.nodes;
+      for(var i = 0; i < nodes.length; i++){
+        for(var j = i + 1; j < nodes.length; j++){
+          var dx = nodes[j].x - nodes[i].x, dy = nodes[j].y - nodes[i].y, dz = nodes[j].z - nodes[i].z;
+          var distSq = dx*dx + dy*dy + dz*dz || 0.01, dist = Math.sqrt(distSq);
+          var repel = G_REPEL;
+          if(nodes[i].area && nodes[j].area && nodes[i].area !== nodes[j].area) repel += G_AREA_PUSH;
+          var f = (repel / distSq) * g.alpha;
+          var fx = dx/dist*f, fy = dy/dist*f, fz = dz/dist*f;
+          nodes[i].vx -= fx; nodes[i].vy -= fy; nodes[i].vz -= fz;
+          nodes[j].vx += fx; nodes[j].vy += fy; nodes[j].vz += fz;
+        }
+      }
+      g.edges.forEach(function(e){
+        var a = nodes[e.a], b = nodes[e.b];
+        var dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
+        var dist = Math.sqrt(dx*dx + dy*dy + dz*dz) || 0.01;
+        var f = (dist - G_LINK_DIST) * G_LINK_K * g.alpha * (e.secondary ? 0.5 : 1);
+        var fx = dx/dist*f, fy = dy/dist*f, fz = dz/dist*f;
+        a.vx += fx; a.vy += fy; a.vz += fz;
+        b.vx -= fx; b.vy -= fy; b.vz -= fz;
+      });
+      nodes.forEach(function(n){
+        // Area hubs anchor the middle (stronger center pull), same asymmetry as the 2D graph.
+        var k = (n.type === "area" ? G_CENTER_K * 4 : G_CENTER_K) * g.alpha;
+        n.vx -= n.x * k; n.vy -= n.y * k; n.vz -= n.z * k;
+        n.vx *= G_DAMP; n.vy *= G_DAMP; n.vz *= G_DAMP;
+        n.x += n.vx; n.y += n.vy; n.z += n.vz;
+      });
+      g.alpha *= G_ALPHA_DECAY;
+    }
+    function syncGraphToScene(){
+      var g = graph;
+      if(!g) return;
+      g.nodes.forEach(function(n, i){
+        g.meshes[i].position.set(n.x, n.y, n.z);
+        if(n.labelSprite) n.labelSprite.position.set(n.x, n.y + 2.1, n.z);
+      });
+      for(var e = 0; e < g.edges.length; e++){
+        var a = g.nodes[g.edges[e].a], b = g.nodes[g.edges[e].b];
+        g.linePos[e*6] = a.x; g.linePos[e*6+1] = a.y; g.linePos[e*6+2] = a.z;
+        g.linePos[e*6+3] = b.x; g.linePos[e*6+4] = b.y; g.linePos[e*6+5] = b.z;
+      }
+      g.lines.geometry.attributes.position.needsUpdate = true;
+    }
+
+    // ---- orbit / zoom / pinch / hover / click. Hand-rolled spherical orbit (~40 lines) rather
+    // than pulling OrbitControls from a second CDN module. Idle auto-rotate resumes a few seconds
+    // after the last interaction. A clean (non-drag) click routes exactly like the 2D graph's
+    // node click: area page / goal detail / project modal / habit modal. ----
+    var orbit = { theta: 0.6, phi: 1.15, dist: 46, autoUntil: 0 };
+    var dragging = false, lastX = 0, lastY = 0, downX = 0, downY = 0, pinchDist = null;
+    var activePointers = {};
+    var raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2(), hoveredIdx = null;
+    var tipEl = document.getElementById("homeNodeTip");
+    function applyCamera(){
+      orbit.phi = Math.max(0.25, Math.min(Math.PI - 0.25, orbit.phi));
+      orbit.dist = Math.max(14, Math.min(120, orbit.dist));
+      camera.position.set(
+        orbit.dist * Math.sin(orbit.phi) * Math.cos(orbit.theta),
+        orbit.dist * Math.cos(orbit.phi),
+        orbit.dist * Math.sin(orbit.phi) * Math.sin(orbit.theta)
+      );
+      camera.lookAt(0, 0, 0);
+    }
+    function pickNode(e){
+      var rect = canvas.getBoundingClientRect();
+      ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(ndc, camera);
+      var hit = graph ? raycaster.intersectObjects(graph.meshes, false)[0] : null;
+      return hit ? hit.object.userData.nodeIndex : null;
+    }
+    function onDown(e){
+      canvas.setPointerCapture(e.pointerId);
+      activePointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+      var ids = Object.keys(activePointers);
+      if(ids.length === 2){
+        var p0 = activePointers[ids[0]], p1 = activePointers[ids[1]];
+        pinchDist = Math.hypot(p0.x - p1.x, p0.y - p1.y);
+        dragging = false;
+      } else {
+        dragging = true;
+        lastX = downX = e.clientX; lastY = downY = e.clientY;
+      }
+      canvas.classList.add("dragging");
+      orbit.autoUntil = Infinity;
+    }
+    function onMove(e){
+      if(activePointers[e.pointerId]) activePointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+      var ids = Object.keys(activePointers);
+      if(pinchDist != null && ids.length === 2){
+        var p0 = activePointers[ids[0]], p1 = activePointers[ids[1]];
+        var nd = Math.hypot(p0.x - p1.x, p0.y - p1.y);
+        if(nd > 0){ orbit.dist *= pinchDist / nd; pinchDist = nd; }
+        return;
+      }
+      if(dragging){
+        orbit.theta += (e.clientX - lastX) * 0.005;
+        orbit.phi -= (e.clientY - lastY) * 0.005;
+        lastX = e.clientX; lastY = e.clientY;
+        return;
+      }
+      var idx = pickNode(e);
+      hoveredIdx = idx;
+      canvas.style.cursor = idx != null ? "pointer" : "";
+      if(idx != null && graph){
+        var n = graph.nodes[idx];
+        tipEl.hidden = false;
+        tipEl.textContent = n.type === "area" ? n.label : (n.type + " · " + n.label);
+        var wrapRect = wrap.getBoundingClientRect();
+        tipEl.style.left = (e.clientX - wrapRect.left + 14) + "px";
+        tipEl.style.top = (e.clientY - wrapRect.top + 10) + "px";
+      } else {
+        tipEl.hidden = true;
+      }
+    }
+    function onUp(e){
+      delete activePointers[e.pointerId];
+      if(Object.keys(activePointers).length < 2) pinchDist = null;
+      var wasDragging = dragging;
+      // Only fully stand down once the last finger lifts — a pinch releases its two pointers one
+      // at a time, and the first release must not leave the "dragging" cursor/auto-rotate stuck.
+      if(!Object.keys(activePointers).length){
+        dragging = false;
+        canvas.classList.remove("dragging");
+        orbit.autoUntil = performance.now() + 6000;
+      }
+      if(!wasDragging || !graph) return;
+      var moved = Math.abs(e.clientX - downX) + Math.abs(e.clientY - downY) > 6;
+      if(moved) return;
+      var idx = pickNode(e);
+      if(idx == null) return;
+      var n = graph.nodes[idx];
+      if(n.type === "area") openAreaDetailPage(n.id);
+      else if(n.type === "goal") openGoalDetailPage(n.id);
+      else if(n.type === "project") editProject(n.id);
+      else editHabit(n.id);
+    }
+    function onCancel(e){
+      delete activePointers[e.pointerId];
+      pinchDist = null;
+      dragging = false;
+      canvas.classList.remove("dragging");
+      orbit.autoUntil = performance.now() + 6000;
+    }
+    function onWheel(e){
+      e.preventDefault();
+      orbit.dist *= (1 + Math.sign(e.deltaY) * 0.08);
+      orbit.autoUntil = performance.now() + 6000;
+    }
+    canvas.addEventListener("pointerdown", onDown);
     canvas.addEventListener("pointermove", onMove);
+    canvas.addEventListener("pointerup", onUp);
+    canvas.addEventListener("pointercancel", onCancel);
+    canvas.addEventListener("wheel", onWheel, { passive: false });
 
     function onResize(){
-      var nw = hero.clientWidth || w, nh = hero.clientHeight || h;
+      var nw = wrap.clientWidth || w, nh = wrap.clientHeight || h;
       renderer.setSize(nw, nh, false);
       camera.aspect = nw / nh;
       camera.updateProjectionMatrix();
     }
     window.addEventListener("resize", onResize);
 
-    var t0 = performance.now();
     function frame(){
-      var t = (performance.now() - t0) / 1000;
-      // Reactive core: a fuller day (higher homeSceneEnergy) spins a touch faster and glows a touch
-      // brighter — the constellation reflects today instead of running the same loop regardless.
-      var e = homeSceneEnergy;
-      core.rotation.y = t * (0.08 + e * 0.14);
-      core.rotation.x = Math.sin(t * 0.1) * 0.2;
-      coreLineMat.opacity = 0.22 + e * 0.28;
-      haloMat.opacity = 0.4 + e * 0.5;
-      camera.position.x += (pointer.x * 1.1 - camera.position.x) * 0.05;
-      camera.position.y += (-pointer.y * 0.6 - camera.position.y) * 0.05;
-      camera.lookAt(0, 0, 0);
+      if(performance.now() > orbit.autoUntil) orbit.theta += 0.0016;  // slow idle auto-rotate
+      tickGraph();
+      syncGraphToScene();
+      if(graph) graph.meshes.forEach(function(m, i){
+        var want = (i === hoveredIdx) ? graph.nodes[i].r * 1.5 : graph.nodes[i].r;
+        m.scale.setScalar(m.scale.x + (want - m.scale.x) * 0.2);
+      });
+      applyCamera();
       renderer.render(scene, camera);
     }
     renderer.setAnimationLoop(frame);
 
     homeScene3d = {
       setRunning: function(on){ renderer.setAnimationLoop(on ? frame : null); },
+      resync: function(){ rebuildGraph(); },
       dispose: function(){
         renderer.setAnimationLoop(null);
+        canvas.removeEventListener("pointerdown", onDown);
         canvas.removeEventListener("pointermove", onMove);
+        canvas.removeEventListener("pointerup", onUp);
+        canvas.removeEventListener("pointercancel", onCancel);
+        canvas.removeEventListener("wheel", onWheel);
         window.removeEventListener("resize", onResize);
+        disposeGraph();
         scene.traverse(function(o){
           if(o.geometry) o.geometry.dispose();
           if(o.material){
