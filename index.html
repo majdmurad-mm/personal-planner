@@ -1472,18 +1472,22 @@
   .home-todo-resize:hover::before{ opacity:1; border-color:var(--accent-dim); }
   /* Notes widget, bottom-right — a compact bar by default (record / quick-add / today's overall
      sentiment / expand), same movable+resizable pattern as the to-do matrix (wireHomeNotesDrag /
-     wireHomeNotesResize). The resize grip only appears once expanded — resizing a one-row bar has
-     nothing to do — and collapsing clears the inline height so the CSS bar height takes back over. */
+     wireHomeNotesResize). Resizable in both states now — while collapsed the grip only adjusts
+     width (there's no sensible "taller bar"), height only takes effect once expanded — and
+     collapsing clears the inline height so the CSS bar height takes back over. */
   .home-notes-widget{ position:absolute; bottom:14px; right:14px; z-index:5; width:250px; height:42px; min-width:200px; min-height:42px; border-radius:10px; border:1px solid var(--border); background:rgba(var(--bg-raised-rgb), 0.55); backdrop-filter:blur(8px); display:flex; flex-direction:column; overflow:hidden; }
   .home-notes-widget.expanded{ height:230px; }
-  .home-notes-bar{ display:flex; align-items:center; gap:6px; padding:0 8px; height:42px; flex-shrink:0; cursor:grab; touch-action:none; }
+  /* Today's overall mood (homeNotesSentimentSummary, averaged over today's LOG-length entries) washes
+     the whole bar, not just the dot — --sent-h is set on the bar itself (see renderHomeNotesWidget)
+     and inherited down to the dot's own color, same --sent-h mechanism as the Notes page's per-entry
+     .sentiment-chip. .empty-sentiment (no tagged logs yet today) drops back to the plain background. */
+  .home-notes-bar{ display:flex; align-items:center; gap:6px; padding:0 8px; height:42px; flex-shrink:0; cursor:grab; touch-action:none; background:hsla(var(--sent-h, 65), 60%, 50%, 0.22); transition:background var(--dur-med, 0.25s) var(--ease-out, ease); }
+  .home-notes-bar.empty-sentiment{ background:none; }
   .home-notes-widget.dragging .home-notes-bar{ cursor:grabbing; }
   .home-notes-icon-btn{ width:26px; height:26px; border-radius:6px; border:1px solid var(--border-bright); background:none; color:var(--text-dim); font-size:13px; line-height:1; display:grid; place-items:center; cursor:pointer; flex-shrink:0; padding:0; }
   .home-notes-icon-btn:hover{ color:var(--text); background:var(--bg-inset); }
   #homeNotesRecordBtn.on{ background:#DC2626; color:#fff; border-color:#DC2626; animation:agentMicPulse 1.2s ease-in-out infinite; }
   #homeNotesRecordBtn.transcribing{ opacity:0.6; cursor:wait; }
-  /* Today's overall mood from the day's logs (see homeNotesSentimentSummary) — one dot, averaged hue,
-     same --sent-h mechanism as the Notes page's per-entry .sentiment-chip so the color language matches. */
   .home-notes-sentiment-dot{ width:10px; height:10px; border-radius:50%; margin:0 2px; flex-shrink:0; background:hsl(var(--sent-h,65),70%,50%); box-shadow:0 0 5px hsla(var(--sent-h,65),70%,50%,0.55); }
   .home-notes-sentiment-dot.empty{ background:none; box-shadow:inset 0 0 0 1px var(--border-bright); }
   .home-notes-expand-btn{ margin-left:auto; }
@@ -1502,7 +1506,6 @@
   .home-notes-resize{ position:absolute; right:0; bottom:0; width:16px; height:16px; cursor:nwse-resize; touch-action:none; }
   .home-notes-resize::before{ content:""; position:absolute; right:4px; bottom:4px; width:7px; height:7px; border-right:2px solid var(--border-bright); border-bottom:2px solid var(--border-bright); opacity:0.7; }
   .home-notes-resize:hover::before{ opacity:1; border-color:var(--accent-dim); }
-  .home-notes-widget:not(.expanded) .home-notes-resize{ display:none; }
   /* Mobile-only toggle for the timeline drawer (see @media max-width:820px) — hidden entirely on
      desktop, where the timeline is always docked. z-index above the drawer itself so it stays
      clickable (to close again) even once the drawer is open and covering that corner. */
@@ -4052,19 +4055,24 @@
       '<span class="home-notes-detail-text">' + escapeHtml(preview || n.title || "(empty)") + '</span></div>';
   }
   function renderHomeNotesWidget(){
+    var bar = document.getElementById("homeNotesBar");
     var dot = document.getElementById("homeNotesSentimentDot");
-    if(!dot) return;
+    if(!dot || !bar) return;
     var summary = homeNotesSentimentSummary();
     var sig = summary ? summary.hue + ":" + summary.count : "empty";
     if(dot.dataset.sig !== sig){
       dot.dataset.sig = sig;
       if(summary){
         dot.classList.remove("empty");
-        dot.style.setProperty("--sent-h", summary.hue);
+        bar.classList.remove("empty-sentiment");
+        // Set once on the bar, not the dot — --sent-h inherits down to the dot's own color rule, so
+        // the whole bar washes with today's mood instead of just the small dot.
+        bar.style.setProperty("--sent-h", summary.hue);
         dot.title = "today's overall mood — " + summary.count + " sentiment tag" + (summary.count === 1 ? "" : "s") + " across today's logs";
       } else {
         dot.classList.add("empty");
-        dot.style.removeProperty("--sent-h");
+        bar.classList.add("empty-sentiment");
+        bar.style.removeProperty("--sent-h");
         dot.title = "no sentiment-tagged logs yet today";
       }
     }
@@ -4175,13 +4183,30 @@
     handle.addEventListener("pointermove", function(e){
       if(!active) return;
       var w = Math.max(MIN_W, Math.min(maxW, startW + (e.clientX - startX)));
-      var h = Math.max(MIN_H, Math.min(maxH, startH + (e.clientY - startY)));
-      el.style.width = w + "px"; el.style.height = h + "px";
+      el.style.width = w + "px";
+      // Height only applies once expanded — while collapsed the widget is a fixed-height bar (see
+      // .home-notes-widget{height:42px}), so dragging vertically there would just open up dead space
+      // below the icon row rather than doing anything useful.
+      if(el.classList.contains("expanded")){
+        var h = Math.max(MIN_H, Math.min(maxH, startH + (e.clientY - startY)));
+        el.style.height = h + "px";
+      }
     });
     function end(){
       if(!active) return;
       active = false;
-      safeSet(window.localStorage, "pp_home_notes_size", JSON.stringify({ w: el.offsetWidth, h: el.offsetHeight }));
+      // Only overwrite the persisted height when a genuine expanded-state resize happened — a
+      // width-only drag while collapsed must not clobber the last known expanded height with the
+      // collapsed bar's own 42px (which would otherwise make the drawer reopen useless-short).
+      var payload = { w: el.offsetWidth };
+      if(el.classList.contains("expanded")){
+        payload.h = el.offsetHeight;
+      } else {
+        var prev = null;
+        try{ prev = JSON.parse(safeGet(window.localStorage, "pp_home_notes_size") || "null"); }catch(err){}
+        if(prev && prev.h) payload.h = prev.h;
+      }
+      safeSet(window.localStorage, "pp_home_notes_size", JSON.stringify(payload));
     }
     handle.addEventListener("pointerup", end);
     handle.addEventListener("pointercancel", end);
