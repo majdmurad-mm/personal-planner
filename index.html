@@ -9412,6 +9412,7 @@
     var r = res.data;
     state.journal.push({ id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, categories:r.categories||[], recordingId:r.recording_id||null, linkedObjects:r.linked_objects||payload.linked_objects||[], sentiment:r.sentiment||[], title:r.title||payload.title||"", priority:r.priority||payload.priority||null, createdAt:r.created_at||null });
     warnDroppedFields(res.droppedFields);
+    maybeAutoAnalyzeSentiment(r.id);  // covers both callers below: typed composer save + record-and-auto-save
     return res;
   }
   wireNotesRecorder();
@@ -9555,11 +9556,18 @@
     angry:0, sad:11, frustrated:22, stressed:33, anxious:44, tired:55,
     neutral:65, reflective:76, calm:87, hopeful:98, proud:109, grateful:120, motivated:132, joyful:145
   };
-  async function analyzeNoteSentiment(id, btnEl){
+  // silent=true is for the auto-trigger path (maybeAutoAnalyzeSentiment, below) — every explicit,
+  // user-clicked call stays exactly as before (unaffected, since silent is only ever passed by that
+  // one caller). Suppresses the narrative toasts (no key / no tags found / success / failure) so
+  // saving a note doesn't also queue up a toast a moment later for something the user didn't
+  // explicitly ask for; warnDroppedFields (a schema-level warning, not a narrative one) still fires
+  // either way. The home widget's mood color is refreshed in the finally block regardless of mode,
+  // since that's the one visible effect auto-analysis is actually FOR.
+  async function analyzeNoteSentiment(id, btnEl, silent){
     var n = state.journal.find(function(x){ return x.id === id; });
     if(!n || !n.text) return;
     var apiKey = safeGet(window.localStorage, "geminiApiKey");
-    if(!apiKey){ toast('No Gemini API key set — click "api key" in the agent tab to add one.'); return; }
+    if(!apiKey){ if(!silent) toast('No Gemini API key set — click "api key" in the agent tab to add one.'); return; }
     if(btnEl){ btnEl.disabled = true; btnEl.classList.add("loading"); }
     try{
       var url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=" + encodeURIComponent(apiKey);
@@ -9586,18 +9594,29 @@
       var tags = text.toLowerCase().split(/[,\n]/).map(function(t){ return t.trim(); })
         .filter(function(t){ return SENTIMENT_TAGS.indexOf(t) !== -1; })
         .filter(function(t, i, arr){ return arr.indexOf(t) === i; }).slice(0, 3);
-      if(!tags.length){ toast("The analyzer couldn't settle on any sentiment tags for this note."); return; }
+      if(!tags.length){ if(!silent) toast("The analyzer couldn't settle on any sentiment tags for this note."); return; }
       var res = await safeWrite(function(p){ return sb.from("journal").update(p).eq("id", id).select().maybeSingle(); }, { sentiment: tags });
       if(res.error) throw new Error(res.error.message);
       n.sentiment = tags;
       if(res.droppedFields && res.droppedFields.length) warnDroppedFields(res.droppedFields);
-      else toast("Sentiment: " + tags.join(", "));
+      else if(!silent) toast("Sentiment: " + tags.join(", "));
     } catch(err){
-      toast("Sentiment analysis failed: " + err.message);
+      if(!silent) toast("Sentiment analysis failed: " + err.message);
     } finally {
       if(btnEl){ btnEl.disabled = false; btnEl.classList.remove("loading"); }
       renderJournal();
+      renderHomeNotesWidget();  // reflects the new/changed sentiment in the home widget's mood color right away
     }
+  }
+  // A freshly created note (typed, quick-added, or transcribed from a recording) gets sentiment-
+  // tagged automatically, so the home widget's mood color reflects the day's logs without the user
+  // ever pressing the manual "analyze" button. Silent — no API key configured is a normal, expected
+  // state (not every user sets one up), not something worth nagging about on every single save; the
+  // explicit manual button still shows that reminder. Not awaited by callers — this shouldn't hold up
+  // the note-save flow (closing a modal, clearing a composer) waiting on a network round-trip.
+  async function maybeAutoAnalyzeSentiment(id){
+    if(!safeGet(window.localStorage, "geminiApiKey")) return;
+    await analyzeNoteSentiment(id, null, true);
   }
   function renderSentimentChipsHtml(entry){
     if(!entry.sentiment || !entry.sentiment.length) return "";
@@ -9818,6 +9837,7 @@
       state.journal.push({ id:r2.id, date:r2.date, text:r2.text, timeOfDay:r2.time_of_day ? r2.time_of_day.slice(0,5) : null, categories:r2.categories||[], recordingId:r2.recording_id||null, linkedObjects:r2.linked_objects||payload.linked_objects||[], sentiment:r2.sentiment||[], title:r2.title||payload.title||"", priority:r2.priority||payload.priority||null, createdAt:r2.created_at||null });
       renderAll(); closeModal("journalModalOverlay");
       warnDroppedFields(res2.droppedFields);
+      maybeAutoAnalyzeSentiment(r2.id);
     }
   });
 
@@ -11451,6 +11471,7 @@
       renderToday();
       renderJournal();
       warnDroppedFields(res.droppedFields);
+      maybeAutoAnalyzeSentiment(r.id);
     }
   });
   TODAY_TIMELINE_AREAS.forEach(function(area){
@@ -12209,7 +12230,9 @@
         if(res9.error) return { error: res9.error.message };
         var r9 = res9.data;
         state.journal.push({ id:r9.id, date:r9.date, text:r9.text, title:r9.title||"", priority:r9.priority||null, categories:r9.categories||[], linkedObjects:extractNoteLinks(r9.text||""), sentiment:[], createdAt:r9.created_at||null });
-        renderAll(); return { ok:true, id:r9.id };
+        renderAll();
+        maybeAutoAnalyzeSentiment(r9.id);
+        return { ok:true, id:r9.id };
       }
       if(name === "create_person"){
         var res10 = await safeInsert("people", { name:input.name, relationship:input.relationship, contact:input.contact || "", notes:input.notes || "" }, state.people);
