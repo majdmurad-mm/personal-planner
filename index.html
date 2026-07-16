@@ -5545,7 +5545,7 @@
   }
   function wbSimStep(){
     if(!wbSimRunning) return;
-    if(activeSection !== "whiteboard"){ wbSimRunning = false; return; }
+    if(activeSection !== "planner" || activePlannerTab !== "graph"){ wbSimRunning = false; return; }
     wbTickPhysics();
     wbApplyPositionsToDom();
     renderWbConnections();
@@ -5555,7 +5555,7 @@
   }
   function wbReheat(amount){
     wbAlpha = Math.max(wbAlpha, amount == null ? 1 : amount);
-    if(!wbSimRunning && activeSection === "whiteboard"){
+    if(!wbSimRunning && activeSection === "planner" && activePlannerTab === "graph"){
       wbSimRunning = true;
       requestAnimationFrame(wbSimStep);
     }
