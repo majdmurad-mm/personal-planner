@@ -1041,6 +1041,14 @@
   .journal-composer-meta .time-pick-row{ width:auto; }
   .journal-composer-meta .time-pick-row input[type="time"]{ width:auto; flex:none; }
   .journal-textarea{ width:100%; font-size:14px; line-height:1.5; min-height:70px; }
+  /* Notes split into three columns by auto-classified length (see noteLengthType/renderJournal) —
+     auto-fit/minmax so it degrades from 3 columns down to 1 on narrower viewports without a manual
+     breakpoint, same pattern .home-grid already uses. */
+  .journal-columns{ display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:18px; align-items:start; margin-top:20px; }
+  .journal-column{ min-width:0; }
+  .journal-column-head{ display:flex; align-items:center; gap:8px; margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid var(--border); }
+  .journal-column-count{ font-family:var(--mono); font-size:11px; color:var(--text-faint); }
+  .journal-column-list:empty::after{ content:"nothing here yet"; display:block; font-family:var(--mono); font-size:11px; color:var(--text-faint); padding:4px 0 16px; }
   .journal-month-head{ font-family:var(--mono); font-size:10.5px; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-faint); margin:20px 0 10px; padding-bottom:7px; border-bottom:1px solid var(--border); }
   .journal-month-head:first-child{ margin-top:0; }
   .journal-entry{ background:var(--bg-raised); border:1px solid var(--border); border-left:3px solid var(--accent-dim); border-radius:var(--radius); padding:13px 15px; margin-bottom:9px; transition:box-shadow var(--dur-fast) var(--ease-out); }
@@ -2009,13 +2017,20 @@
         <div class="loc-geocode-status" id="journalRecordStatus"></div>
         <textarea id="journalTextInput" class="journal-textarea" placeholder="Write today's entry… Markdown supported — @ tags people, # tags goals/projects/habits/actions" rows="3"></textarea>
       </div>
-      <div class="filter-row" id="journalFilterRow">
-        <button class="filter-chip active" data-filter="all" type="button">all</button>
-        <button class="filter-chip" data-filter="log" type="button">log</button>
-        <button class="filter-chip" data-filter="note" type="button">note</button>
-        <button class="filter-chip" data-filter="document" type="button">document</button>
+      <div class="journal-columns" id="journalEntries">
+        <div class="journal-column">
+          <div class="journal-column-head"><span class="length-badge log">log</span><span class="journal-column-count" id="journalColCountLog"></span></div>
+          <div class="journal-column-list" id="journalColLog"></div>
+        </div>
+        <div class="journal-column">
+          <div class="journal-column-head"><span class="length-badge note">note</span><span class="journal-column-count" id="journalColCountNote"></span></div>
+          <div class="journal-column-list" id="journalColNote"></div>
+        </div>
+        <div class="journal-column">
+          <div class="journal-column-head"><span class="length-badge document">document</span><span class="journal-column-count" id="journalColCountDocument"></span></div>
+          <div class="journal-column-list" id="journalColDocument"></div>
+        </div>
       </div>
-      <div id="journalEntries"></div>
       <div class="empty-state" id="journalEmptyState" style="display:none;">
         <div class="glyph">✎</div><h3>no entries yet</h3><p>Write your first note above.</p>
       </div>
@@ -3315,7 +3330,7 @@
   /* ---------------- Top-level + planner tabs ---------------- */
   var activeSection = "home";
   var activePlannerTab = "areas";
-  var filters = { goals:"all", projects:"all", habits:"all", actions:"all", people:"all", journal:"all" };
+  var filters = { goals:"all", projects:"all", habits:"all", actions:"all", people:"all" };
   var views = { goals:"list", projects:"matrix", habits:"matrix", actions:"matrix", sleep:"daily", people:"cards", journal:"notes" };
 
   function wireSubViewToggle(containerId, panelKey, renderFn){
@@ -3686,7 +3701,6 @@
   wireFilterRow("habitFilterRow","habits");
   wireFilterRow("actionFilterRow","actions");
   wireFilterRow("peopleFilterRow","people");
-  wireFilterRow("journalFilterRow","journal");
 
   wireSubViewToggle("goalsSubToggle", "goals", renderGoals);
   wireSubViewToggle("projectsSubToggle", "projects", renderProjects);
@@ -8019,16 +8033,11 @@
     journalPendingRecording = null;
     renderAll();
   });
-  function renderJournal(){
-    var view = views.journal;
-    document.getElementById("journalNotesPanel").style.display = view === "recordings" ? "none" : "";
-    document.getElementById("journalRecordingsPanel").style.display = view === "recordings" ? "" : "none";
-    if(view === "recordings"){ renderRecordingsList(); return; }
-    var sorted = state.journal.filter(function(n){
-      return filters.journal === "all" || noteLengthType(n) === filters.journal;
-    }).sort(function(a,b){ return b.date.localeCompare(a.date); });
+  // Renders one column's worth of note cards — month headers restart per column, since each column
+  // (log/note/document) is now its own independent chronological list rather than one shared feed.
+  function renderNoteCardsHtml(list){
     var monthsSeen = {};
-    var html = sorted.map(function(entry){
+    return list.map(function(entry){
       var d = new Date(entry.date + "T00:00:00");
       var monthKey = d.toLocaleDateString(undefined, { month:"long", year:"numeric" });
       var head = "";
@@ -8048,7 +8057,23 @@
         renderJournalWaveformHtml(entry) +
       '</div>';
     }).join("");
-    document.getElementById("journalEntries").innerHTML = html;
+  }
+  // One column per auto-classified length type (see noteLengthType) instead of one shared feed —
+  // each column is independently sorted newest-first.
+  var JOURNAL_COLUMN_IDS = { log:"journalColLog", note:"journalColNote", document:"journalColDocument" };
+  var JOURNAL_COLUMN_COUNT_IDS = { log:"journalColCountLog", note:"journalColCountNote", document:"journalColCountDocument" };
+  function renderJournal(){
+    var view = views.journal;
+    document.getElementById("journalNotesPanel").style.display = view === "recordings" ? "none" : "";
+    document.getElementById("journalRecordingsPanel").style.display = view === "recordings" ? "" : "none";
+    if(view === "recordings"){ renderRecordingsList(); return; }
+    var sorted = state.journal.slice().sort(function(a,b){ return b.date.localeCompare(a.date); });
+    var columns = { log:[], note:[], document:[] };
+    sorted.forEach(function(entry){ columns[noteLengthType(entry)].push(entry); });
+    ["log","note","document"].forEach(function(type){
+      document.getElementById(JOURNAL_COLUMN_IDS[type]).innerHTML = renderNoteCardsHtml(columns[type]);
+      document.getElementById(JOURNAL_COLUMN_COUNT_IDS[type]).textContent = columns[type].length;
+    });
     document.getElementById("journalEmptyState").style.display = sorted.length ? "none" : "";
   }
   // Every recording, independent of whether a journal entry still references it — includes ones
