@@ -347,6 +347,14 @@
   .cat-badge.Relationships{ color:var(--cat-relationships); background:var(--cat-relationships-bg); }
   .cat-badge.Sol{ color:var(--cat-goal-sol); background:var(--cat-goal-sol-bg); }
 
+  /* Auto-classified by length (see noteLengthType) — log (<200 chars) is the lightest-weight
+     treatment since it's the most common/throwaway case, document (>500 words) is the boldest since
+     it's the rarest and most substantial, note sits in between. */
+  .length-badge{ font-family:var(--mono); font-size:10px; font-weight:700; padding:2px 7px; border-radius:3px; letter-spacing:0.03em; text-transform:uppercase; }
+  .length-badge.log{ color:var(--text-faint); background:var(--bg-inset); }
+  .length-badge.note{ color:var(--text-dim); background:var(--bg-inset); border:1px solid var(--border); }
+  .length-badge.document{ color:var(--violet); background:var(--violet-glow); }
+
   .infinite-badge{ font-family:var(--mono); font-size:10px; font-weight:700; padding:2px 7px; border-radius:3px; color:var(--violet); background:var(--violet-glow); letter-spacing:0.03em; }
   .type-badge{ font-family:var(--mono); font-size:10px; font-weight:700; padding:2px 7px; border-radius:3px; color:var(--accent); background:var(--accent-glow); letter-spacing:0.03em; }
   .parent-tag{ font-family:var(--mono); font-size:10.5px; color:var(--text-faint); }
@@ -1391,9 +1399,15 @@
   .journal-entry-md th, .journal-entry-md td{ border:1px solid var(--border); padding:4px 9px; }
   .journal-entry-md img{ max-width:100%; border-radius:var(--radius); }
 
-  /* Sentiment tags (AI analyzer output) — quiet violet chips under the note body. */
+  /* Sentiment tags (AI analyzer output) — colored chips under the note body, one hue per tag. */
   .sentiment-row{ display:flex; flex-wrap:wrap; gap:5px; margin-top:8px; }
-  .sentiment-chip{ font-family:var(--mono); font-size:10px; font-weight:600; letter-spacing:0.04em; padding:2px 8px; border-radius:var(--radius-sm); background:var(--violet-glow); color:var(--violet); border:1px solid var(--violet); opacity:0.9; }
+  /* --sent-h (0=red…145=green) is set inline per chip from SENTIMENT_HUES, so each of the 14
+     sentiment tags gets its own color along a negative→positive spectrum instead of one flat violet —
+     falls back to violet's own hue (255) if a tag somehow has none. Light/dark just retune
+     saturation/lightness once here, the same split --violet uses (darker+more saturated for light,
+     lighter for dark), rather than needing per-tag light/dark colors. */
+  .sentiment-chip{ --sent-h:255; font-family:var(--mono); font-size:10px; font-weight:600; letter-spacing:0.04em; padding:2px 8px; border-radius:var(--radius-sm); background:hsla(var(--sent-h),75%,45%,0.14); color:hsl(var(--sent-h),80%,42%); border:1px solid hsl(var(--sent-h),70%,50%); }
+  :root[data-theme="dark"] .sentiment-chip{ color:hsl(var(--sent-h),80%,70%); border-color:hsl(var(--sent-h),65%,58%); }
 </style>
 </head>
 <body>
@@ -1989,6 +2003,12 @@
         </div>
         <div class="loc-geocode-status" id="journalRecordStatus"></div>
         <textarea id="journalTextInput" class="journal-textarea" placeholder="Write today's entry… Markdown supported — @ tags people, # tags goals/projects/habits/actions" rows="3"></textarea>
+      </div>
+      <div class="filter-row" id="journalFilterRow">
+        <button class="filter-chip active" data-filter="all" type="button">all</button>
+        <button class="filter-chip" data-filter="log" type="button">log</button>
+        <button class="filter-chip" data-filter="note" type="button">note</button>
+        <button class="filter-chip" data-filter="document" type="button">document</button>
       </div>
       <div id="journalEntries"></div>
       <div class="empty-state" id="journalEmptyState" style="display:none;">
@@ -3283,7 +3303,7 @@
   /* ---------------- Top-level + planner tabs ---------------- */
   var activeSection = "home";
   var activePlannerTab = "areas";
-  var filters = { goals:"all", projects:"all", habits:"all", actions:"all", people:"all" };
+  var filters = { goals:"all", projects:"all", habits:"all", actions:"all", people:"all", journal:"all" };
   var views = { goals:"list", projects:"matrix", habits:"matrix", actions:"matrix", sleep:"daily", people:"cards", journal:"notes" };
 
   function wireSubViewToggle(containerId, panelKey, renderFn){
@@ -3654,6 +3674,7 @@
   wireFilterRow("habitFilterRow","habits");
   wireFilterRow("actionFilterRow","actions");
   wireFilterRow("peopleFilterRow","people");
+  wireFilterRow("journalFilterRow","journal");
 
   wireSubViewToggle("goalsSubToggle", "goals", renderGoals);
   wireSubViewToggle("projectsSubToggle", "projects", renderProjects);
@@ -4990,6 +5011,19 @@
   function noteCategory(n){
     var cats = noteCategories(n);
     return cats.length ? cats[0] : null;
+  }
+  // Notes are auto-classified by length rather than manually tagged — a quick jot vs. a full
+  // write-up read very differently, and length is the one signal that's always available without
+  // asking the user to categorize every entry themselves. Char count decides "log" first (a log is
+  // meant to be tiny — a word-count check alone would let a handful of very long words slip through),
+  // then word count decides "document"; everything in between is a plain "note".
+  var NOTE_LOG_MAX_CHARS = 200, NOTE_DOCUMENT_MIN_WORDS = 500;
+  function noteLengthType(n){
+    var text = (n.text || "").trim();
+    if(text.length < NOTE_LOG_MAX_CHARS) return "log";
+    var wordCount = text.split(/\s+/).filter(Boolean).length;
+    if(wordCount > NOTE_DOCUMENT_MIN_WORDS) return "document";
+    return "note";
   }
   function renderProjects(){
     var f = filters.projects;
@@ -7579,16 +7613,16 @@
       return renderNoteTextWithTags(tags[Number(i)] || "");
     });
   }
-  // Attribute tags shown across the top of a note card — priority and area, both optional. Reuses
-  // the same .prio-badge/.cat-badge classes goal cards already use, so a note's priority/area reads
-  // identically to everywhere else in the app rather than inventing a third badge style.
+  // Attribute tags shown across the top of a note card — the auto-classified length type (always
+  // shown), plus priority and area (both optional). Priority/area reuse the same .prio-badge/
+  // .cat-badge classes goal cards already use, so they read identically to everywhere else in the app.
   function renderNoteTagsHtml(entry){
-    var tags = "";
+    var tags = '<span class="length-badge ' + noteLengthType(entry) + '">' + noteLengthType(entry) + '</span>';
     if(entry.priority) tags += '<span class="prio-badge ' + entry.priority + '">' + entry.priority + '</span>';
     noteCategories(entry).forEach(function(cat){
       tags += '<span class="cat-badge ' + cat + '">' + CATEGORY_ICONS[cat] + ' ' + cat + '</span>';
     });
-    return tags ? '<div class="journal-entry-tags">' + tags + '</div>' : "";
+    return '<div class="journal-entry-tags">' + tags + '</div>';
   }
   function renderNoteTitleHtml(entry){
     return entry.title ? '<h4 class="journal-entry-title">' + escapeHtml(entry.title) + '</h4>' : "";
@@ -7976,7 +8010,9 @@
     document.getElementById("journalNotesPanel").style.display = view === "recordings" ? "none" : "";
     document.getElementById("journalRecordingsPanel").style.display = view === "recordings" ? "" : "none";
     if(view === "recordings"){ renderRecordingsList(); return; }
-    var sorted = state.journal.slice().sort(function(a,b){ return b.date.localeCompare(a.date); });
+    var sorted = state.journal.filter(function(n){
+      return filters.journal === "all" || noteLengthType(n) === filters.journal;
+    }).sort(function(a,b){ return b.date.localeCompare(a.date); });
     var monthsSeen = {};
     var html = sorted.map(function(entry){
       var d = new Date(entry.date + "T00:00:00");
@@ -8067,6 +8103,14 @@
   // consistent enough to scan and (later) filter on, instead of accumulating near-duplicate
   // phrasings. Multi-tag by design: a note is often "tired" AND "hopeful" at once.
   var SENTIMENT_TAGS = ["motivated","grateful","joyful","calm","hopeful","proud","reflective","neutral","tired","anxious","stressed","frustrated","sad","angry"];
+  // Each tag gets its own hue along a red(negative)→green(positive) spectrum, ordered by emotional
+  // valence — set once here as a CSS custom property per chip (--sent-h, see .sentiment-chip) rather
+  // than as 14 hardcoded hex colors, so light/dark theme only has to tune saturation/lightness once
+  // instead of per tag.
+  var SENTIMENT_HUES = {
+    angry:0, sad:11, frustrated:22, stressed:33, anxious:44, tired:55,
+    neutral:65, reflective:76, calm:87, hopeful:98, proud:109, grateful:120, motivated:132, joyful:145
+  };
   async function analyzeNoteSentiment(id, btnEl){
     var n = state.journal.find(function(x){ return x.id === id; });
     if(!n || !n.text) return;
@@ -8114,7 +8158,9 @@
   function renderSentimentChipsHtml(entry){
     if(!entry.sentiment || !entry.sentiment.length) return "";
     return '<div class="sentiment-row">' + entry.sentiment.map(function(t){
-      return '<span class="sentiment-chip">' + escapeHtml(t) + '</span>';
+      var hue = SENTIMENT_HUES[t];
+      var style = hue != null ? ' style="--sent-h:' + hue + '"' : "";
+      return '<span class="sentiment-chip"' + style + '>' + escapeHtml(t) + '</span>';
     }).join("") + '</div>';
   }
   async function deleteRecording(id){
