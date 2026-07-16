@@ -993,15 +993,19 @@
   .rec-panel-actions{ display:flex; gap:8px; margin-top:8px; }
   /* SoundCloud-style waveform bar on a note card — bar heights come from the recording's stored
      peak-amplitude array, the whole strip is a single click-to-play control. */
-  .rec-waveform{ display:flex; align-items:center; gap:8px; margin-top:8px; cursor:pointer; position:relative; }
-  .rec-waveform-bars{ display:flex; align-items:flex-end; gap:1.5px; height:28px; flex:1; position:relative; z-index:1; }
-  .rec-waveform-bars span{ display:block; width:2px; background:var(--accent); border-radius:1px; opacity:0.7; }
+  .rec-waveform{ display:flex; align-items:center; gap:8px; margin-top:8px; cursor:pointer; }
+  /* Bars stretch edge-to-edge (flex:1 per bar, not a fixed width) so the visual amplitude strip
+     fills exactly the same box the progress sweep and click-to-seek math use below — no dead space
+     between the last bar and the duration label for a click to land in and throw off the seek. */
+  .rec-waveform-bars{ display:flex; align-items:flex-end; gap:1.5px; height:28px; flex:1; position:relative; }
+  .rec-waveform-bars span{ display:block; flex:1; min-width:1.5px; background:var(--accent); border-radius:1px; opacity:0.7; position:relative; z-index:1; }
   .rec-waveform:hover .rec-waveform-bars span{ opacity:1; }
   .rec-waveform.loading{ opacity:0.5; pointer-events:none; }
-  .rec-waveform-time{ font-family:var(--mono); font-size:10px; color:var(--text-faint); white-space:nowrap; position:relative; z-index:1; }
-  /* Playback progress sweep — a translucent fill that tracks currentTime across the clip's bar
-     (width driven from updateJournalPlayerUi). Sits under the bars/time (z-index 0 vs their 1). */
-  .rec-waveform-progress{ position:absolute; left:0; top:0; bottom:0; width:0%; background:var(--accent-glow); border-radius:3px; pointer-events:none; }
+  .rec-waveform-time{ font-family:var(--mono); font-size:10px; color:var(--text-faint); white-space:nowrap; }
+  /* Playback progress sweep — a translucent fill that tracks currentTime, scoped to exactly the
+     bars' own box (a child of .rec-waveform-bars, not .rec-waveform) so its length always matches
+     the visible decibel bar, not the wider row that also includes the duration label. */
+  .rec-waveform-progress{ position:absolute; left:0; top:0; bottom:0; width:0%; background:var(--accent-glow); border-radius:3px; pointer-events:none; z-index:0; }
   /* The clip currently loaded in the shared player — bars turn green while actually playing (not
      just loaded/paused), so "what's making sound right now" is unambiguous at a glance in a list. */
   .rec-waveform.playing .rec-waveform-bars span{ background:#22C55E; opacity:1; }
@@ -7914,8 +7918,7 @@
     var bars = peaks.map(function(p){ return '<span style="height:' + Math.max(10, Math.round(p * 100)) + '%"></span>'; }).join("");
     var playingClass = journalPlayerCurrentId === rec.id && journalAudioEl && !journalAudioEl.paused ? " playing" : "";
     return '<div class="rec-waveform' + playingClass + '" data-action="play-recording" data-id="' + rec.id + '" title="Play — click anywhere on the bar to seek">' +
-      '<div class="rec-waveform-progress"></div>' +
-      '<div class="rec-waveform-bars">' + bars + '</div>' +
+      '<div class="rec-waveform-bars"><div class="rec-waveform-progress"></div>' + bars + '</div>' +
       '<span class="rec-waveform-time">' + formatClipTime(rec.durationSeconds || 0) + '</span>' +
     '</div>';
   }
@@ -7994,7 +7997,11 @@
     ensureJournalAudioEl();
     if(journalPlayerCurrentId === id){
       if(clickEvent && journalAudioEl.duration){
-        var rect = btnEl.getBoundingClientRect();
+        // Measured against the decibel bars themselves (.rec-waveform-bars), not the wider
+        // .rec-waveform row that also holds the duration label — otherwise a click past the last
+        // bar (in that label's dead space) would seek further than what the bars visually show.
+        var barsEl = btnEl.querySelector(".rec-waveform-bars") || btnEl;
+        var rect = barsEl.getBoundingClientRect();
         var frac = Math.min(1, Math.max(0, (clickEvent.clientX - rect.left) / rect.width));
         journalAudioEl.currentTime = frac * journalAudioEl.duration;
       }
