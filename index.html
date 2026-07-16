@@ -355,6 +355,11 @@
   .length-badge.note{ color:var(--text-dim); background:var(--bg-inset); border:1px solid var(--border); }
   .length-badge.document{ color:var(--violet); background:var(--violet-glow); }
 
+  /* The clock time a note was actually saved (created_at, automatic — see fmtSavedAt) — plain text,
+     not a colored badge, since it's passive metadata rather than a classification like the badges
+     above it. */
+  .saved-badge{ font-family:var(--mono); font-size:10px; color:var(--text-faint); padding:2px 2px; letter-spacing:0.02em; }
+
   .infinite-badge{ font-family:var(--mono); font-size:10px; font-weight:700; padding:2px 7px; border-radius:3px; color:var(--violet); background:var(--violet-glow); letter-spacing:0.03em; }
   .type-badge{ font-family:var(--mono); font-size:10px; font-weight:700; padding:2px 7px; border-radius:3px; color:var(--accent); background:var(--accent-glow); letter-spacing:0.03em; }
   .parent-tag{ font-family:var(--mono); font-size:10.5px; color:var(--text-faint); }
@@ -2976,7 +2981,7 @@
     weekdays: "habit day selection", tracker_variable_id: "habit's tracker link", time_of_day: "scheduled time",
     duration_minutes: "duration", category: "area", skip_dates: "skipped habit days",
     categories: "area(s)", custom_interval_days: "custom repeat interval", month_day: "monthly repeat day", extra_dates: "manually scheduled habit days",
-    instance_overrides: "per-day habit adjustments",
+    instance_overrides: "per-day habit adjustments", created_at: "saved time",
     linked_objects: "note links", sentiment: "sentiment tags", title: "note title", priority: "note priority",
     secondary_goal_ids: "secondary goals", secondary_categories: "secondary areas",
     verified: "verified status", like_score: "like score", contact_score: "contact score", year_met: "year met",
@@ -3002,6 +3007,13 @@
   function fmtTimeOfDay(t){
     if(!t) return "";
     return new Date("2000-01-01T" + t).toLocaleTimeString(undefined, { hour:"numeric", minute:"2-digit" });
+  }
+  // The clock time a note was actually saved (its DB row's created_at, set automatically at insert
+  // and never touched again) — distinct from a note's optional timeOfDay, which is a user-editable
+  // "this happened/is scheduled at" field, not a record of when the entry itself was written.
+  function fmtSavedAt(createdAt){
+    if(!createdAt) return "";
+    return new Date(createdAt).toLocaleTimeString(undefined, { hour:"numeric", minute:"2-digit" });
   }
   function escapeHtml(s){
     return String(s).replace(/[&<>"']/g, function(c){ return { "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]; });
@@ -3215,7 +3227,7 @@
     state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null,
       locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null) }; });
     state.actions.sort(function(a,b){ return a.position - b.position; });
-    state.journal = (results[4].data || []).map(function(r){ return { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, categories:r.categories||[], recordingId:r.recording_id||null, linkedObjects:r.linked_objects||[], sentiment:r.sentiment||[], title:r.title||"", priority:r.priority||null }; });
+    state.journal = (results[4].data || []).map(function(r){ return { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, categories:r.categories||[], recordingId:r.recording_id||null, linkedObjects:r.linked_objects||[], sentiment:r.sentiment||[], title:r.title||"", priority:r.priority||null, createdAt:r.created_at||null }; });
     state.people = (results[5].data || []).map(function(r){
       return { id:r.id, name:r.name, relationship:r.relationship, contact:r.contact, notes:r.notes, position:r.position||0,
         verified:!!r.verified, likeScore:(r.like_score!=null?r.like_score:null), contactScore:(r.contact_score!=null?r.contact_score:null),
@@ -4424,7 +4436,7 @@
     });
   }
   function journalPayload(snapshot){
-    return { id:snapshot.id, date:snapshot.date, text:snapshot.text, time_of_day:snapshot.timeOfDay, categories:snapshot.categories||[], recording_id:snapshot.recordingId, linked_objects:snapshot.linkedObjects||[], sentiment:snapshot.sentiment||[], title:snapshot.title||null, priority:snapshot.priority||null };
+    return { id:snapshot.id, date:snapshot.date, text:snapshot.text, time_of_day:snapshot.timeOfDay, categories:snapshot.categories||[], recording_id:snapshot.recordingId, linked_objects:snapshot.linkedObjects||[], sentiment:snapshot.sentiment||[], title:snapshot.title||null, priority:snapshot.priority||null, created_at:snapshot.createdAt||null };
   }
   async function deleteJournalEntry(id){
     var n = state.journal.find(function(x){ return x.id === id; });
@@ -7613,11 +7625,13 @@
       return renderNoteTextWithTags(tags[Number(i)] || "");
     });
   }
-  // Attribute tags shown across the top of a note card — the auto-classified length type (always
-  // shown), plus priority and area (both optional). Priority/area reuse the same .prio-badge/
-  // .cat-badge classes goal cards already use, so they read identically to everywhere else in the app.
+  // Attribute tags shown across the top of a note card — the auto-classified length type and saved
+  // time (always shown, both automatic — see noteLengthType/fmtSavedAt), plus priority and area (both
+  // optional/manual). Priority/area reuse the same .prio-badge/.cat-badge classes goal cards already
+  // use, so they read identically to everywhere else in the app.
   function renderNoteTagsHtml(entry){
     var tags = '<span class="length-badge ' + noteLengthType(entry) + '">' + noteLengthType(entry) + '</span>';
+    if(entry.createdAt) tags += '<span class="saved-badge" title="Saved at ' + escapeHtml(fmtSavedAt(entry.createdAt)) + '">saved ' + escapeHtml(fmtSavedAt(entry.createdAt)) + '</span>';
     if(entry.priority) tags += '<span class="prio-badge ' + entry.priority + '">' + entry.priority + '</span>';
     noteCategories(entry).forEach(function(cat){
       tags += '<span class="cat-badge ' + cat + '">' + CATEGORY_ICONS[cat] + ' ' + cat + '</span>';
@@ -7977,7 +7991,7 @@
     var res = await safeWrite(function(p){ return sb.from("journal").insert(p).select().single(); }, payload);
     if(res.error) return res;
     var r = res.data;
-    state.journal.push({ id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, categories:r.categories||[], recordingId:r.recording_id||null, linkedObjects:r.linked_objects||payload.linked_objects||[], sentiment:r.sentiment||[], title:r.title||payload.title||"", priority:r.priority||payload.priority||null });
+    state.journal.push({ id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, categories:r.categories||[], recordingId:r.recording_id||null, linkedObjects:r.linked_objects||payload.linked_objects||[], sentiment:r.sentiment||[], title:r.title||payload.title||"", priority:r.priority||payload.priority||null, createdAt:r.created_at||null });
     warnDroppedFields(res.droppedFields);
     return res;
   }
@@ -8363,7 +8377,7 @@
       if(res.error){ alert(res.error.message); return; }
       var r = res.data;
       var idx = state.journal.findIndex(function(x){ return x.id === editingJournalId; });
-      if(idx !== -1) state.journal[idx] = { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, categories:r.categories||[], recordingId:r.recording_id||null, linkedObjects:r.linked_objects||payload.linked_objects||[], sentiment:r.sentiment||[], title:r.title||payload.title||"", priority:r.priority||payload.priority||null };
+      if(idx !== -1) state.journal[idx] = { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, categories:r.categories||[], recordingId:r.recording_id||null, linkedObjects:r.linked_objects||payload.linked_objects||[], sentiment:r.sentiment||[], title:r.title||payload.title||"", priority:r.priority||payload.priority||null, createdAt:r.created_at||null };
       renderAll(); closeModal("journalModalOverlay");
       warnDroppedFields(res.droppedFields);
     } else {
@@ -8371,7 +8385,7 @@
       this.disabled = false;
       if(res2.error){ alert(res2.error.message); return; }
       var r2 = res2.data;
-      state.journal.push({ id:r2.id, date:r2.date, text:r2.text, timeOfDay:r2.time_of_day ? r2.time_of_day.slice(0,5) : null, categories:r2.categories||[], recordingId:r2.recording_id||null, linkedObjects:r2.linked_objects||payload.linked_objects||[], sentiment:r2.sentiment||[], title:r2.title||payload.title||"", priority:r2.priority||payload.priority||null });
+      state.journal.push({ id:r2.id, date:r2.date, text:r2.text, timeOfDay:r2.time_of_day ? r2.time_of_day.slice(0,5) : null, categories:r2.categories||[], recordingId:r2.recording_id||null, linkedObjects:r2.linked_objects||payload.linked_objects||[], sentiment:r2.sentiment||[], title:r2.title||payload.title||"", priority:r2.priority||payload.priority||null, createdAt:r2.created_at||null });
       renderAll(); closeModal("journalModalOverlay");
       warnDroppedFields(res2.droppedFields);
     }
@@ -9985,7 +9999,7 @@
       var res = await safeWrite(function(p){ return sb.from("journal").insert(p).select().single(); }, payload);
       if(res.error){ alert(res.error.message); return; }
       var r = res.data;
-      state.journal.push({ id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, categories:r.categories||[], title:r.title||"", priority:r.priority||null, linkedObjects:extractNoteLinks(r.text||""), sentiment:[] });
+      state.journal.push({ id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, categories:r.categories||[], title:r.title||"", priority:r.priority||null, linkedObjects:extractNoteLinks(r.text||""), sentiment:[], createdAt:r.created_at||null });
       renderToday();
       renderJournal();
       warnDroppedFields(res.droppedFields);
@@ -10718,7 +10732,7 @@
         var res9 = await safeWrite(function(p){ return sb.from("journal").insert(p).select().single(); }, { date: input.date || todayStr(), text: input.text, title: input.title || null, priority: input.priority || null, categories: input.categories || [] });
         if(res9.error) return { error: res9.error.message };
         var r9 = res9.data;
-        state.journal.push({ id:r9.id, date:r9.date, text:r9.text, title:r9.title||"", priority:r9.priority||null, categories:r9.categories||[], linkedObjects:extractNoteLinks(r9.text||""), sentiment:[] });
+        state.journal.push({ id:r9.id, date:r9.date, text:r9.text, title:r9.title||"", priority:r9.priority||null, categories:r9.categories||[], linkedObjects:extractNoteLinks(r9.text||""), sentiment:[], createdAt:r9.created_at||null });
         renderAll(); return { ok:true, id:r9.id };
       }
       if(name === "create_person"){
