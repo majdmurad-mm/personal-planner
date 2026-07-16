@@ -1421,6 +1421,30 @@
   .home-rail-row[data-cat="Sol"] .home-rail-icon{ color:var(--cat-sol); background:var(--cat-sol-bg); }
   /* Hover tooltip for 3D graph nodes (goal/project/habit titles live here, not as 3D text). */
   .home-node-tip{ position:absolute; z-index:6; pointer-events:none; font-family:var(--mono); font-size:11px; padding:4px 9px; border-radius:4px; background:var(--bg-raised); border:1px solid var(--border-bright); color:var(--text); box-shadow:var(--elev-2); white-space:nowrap; max-width:320px; overflow:hidden; text-overflow:ellipsis; }
+  /* Today's to-dos: a 2x2 matrix, bottom-left — either the 4 priority tiers or a personal/career
+     split of actions (top row) and habit instances (bottom row). See renderHomeTodoMatrix. */
+  .home-todo-matrix{ position:absolute; bottom:14px; left:14px; z-index:5; width:290px; max-height:230px; border-radius:10px; border:1px solid var(--border); background:rgba(var(--bg-raised-rgb), 0.55); backdrop-filter:blur(8px); display:flex; flex-direction:column; overflow:hidden; }
+  .home-todo-head{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px 6px; flex-shrink:0; }
+  .home-todo-title{ font-family:var(--mono); font-size:9.5px; letter-spacing:0.1em; text-transform:uppercase; color:var(--text-faint); }
+  .home-todo-tabs{ display:flex; gap:4px; }
+  .home-todo-tab{ font-family:var(--mono); font-size:9px; padding:3px 7px; border-radius:5px; border:1px solid var(--border-bright); background:none; color:var(--text-dim); cursor:pointer; }
+  .home-todo-tab:hover{ color:var(--text); }
+  .home-todo-tab.sel{ background:var(--accent-glow); color:var(--accent); border-color:var(--accent-dim); }
+  .home-todo-grid{ display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:1px; background:var(--border); flex:1; min-height:120px; }
+  .home-todo-quad{ background:var(--bg-raised); padding:6px 7px; overflow-y:auto; }
+  .home-todo-quad-label{ font-family:var(--mono); font-size:8.5px; letter-spacing:0.06em; text-transform:uppercase; color:var(--text-faint); margin-bottom:4px; }
+  .home-todo-quad.P0 .home-todo-quad-label{ color:var(--p0); }
+  .home-todo-quad.P1 .home-todo-quad-label{ color:var(--p1); }
+  .home-todo-quad.P2 .home-todo-quad-label{ color:var(--p2); }
+  .home-todo-quad.P3 .home-todo-quad-label{ color:var(--p3); }
+  .home-todo-item{ display:flex; align-items:center; gap:5px; font-family:var(--mono); font-size:10px; color:var(--text); cursor:pointer; line-height:1.4; padding:1px 0; }
+  .home-todo-item:hover{ color:var(--accent); }
+  .home-todo-item.done{ opacity:0.45; }
+  .home-todo-item.done .home-todo-item-text{ text-decoration:line-through; }
+  .home-todo-item-dot{ width:6px; height:6px; border-radius:50%; flex-shrink:0; box-shadow:inset 0 0 0 1px var(--border-bright); }
+  .home-todo-item-dot.done{ background:var(--accent); box-shadow:none; }
+  .home-todo-item-text{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .home-todo-empty{ font-family:var(--mono); font-size:9.5px; color:var(--text-faint); opacity:0.55; }
   /* Today's timeline dock — full width along the bottom: an hour ruler, three interactive lanes
      (habits/actions/notes) against the shared hour-grid background, a now marker, and a day/night
      band pinned at the very bottom. Height is the resizable split (--home-dock-h). */
@@ -1591,6 +1615,16 @@
         </div>
         <div class="home-areas-rail" id="homeAreasRail"></div>
         <div class="home-node-tip" id="homeNodeTip" hidden></div>
+        <div class="home-todo-matrix" id="homeTodoMatrix">
+          <div class="home-todo-head">
+            <span class="home-todo-title">today</span>
+            <div class="home-todo-tabs">
+              <button class="home-todo-tab sel" data-mode="priority" type="button">priority</button>
+              <button class="home-todo-tab" data-mode="worklife" type="button">personal/work</button>
+            </div>
+          </div>
+          <div class="home-todo-grid" id="homeTodoGrid"></div>
+        </div>
       </div>
       <div class="home-split-handle" id="homeSplitHandle" title="Drag to resize the graph and timeline"></div>
       <div class="home-timeline-dock" id="homeTimelineDock">
@@ -3654,6 +3688,99 @@
     }).join("");
   }
 
+  // ---- Today's to-dos widget: a 2x2 matrix combining today's actions and today's habit
+  // occurrences, viewable two ways. "priority" sorts the same pooled list of both into the four
+  // existing priority tiers (P0..P3, same field goals/projects/habits/actions all already carry).
+  // "worklife" instead splits by type-then-area: top row is actions (personal | career), bottom row
+  // is habit instances (personal | career) — "personal" meaning every area except Career, not just
+  // non-work-labeled items, so it's a strict partition with career's exact complement. Respects the
+  // areas rail's on/off toggle like the graph and timeline dock do, for the same reason: hiding an
+  // area should hide it everywhere on the home page, not just two of three surfaces. Clicking an
+  // item toggles it done via the same handlers the timeline dock uses.
+  var HOME_TODO_MODE_KEY = "pp_home_todo_mode";
+  var homeTodoMode = (function(){
+    var v = safeGet(window.localStorage, HOME_TODO_MODE_KEY);
+    return v === "worklife" ? "worklife" : "priority";
+  })();
+  var HOME_TODO_LABELS = {
+    priority: ["P0", "P1", "P2", "P3"],
+    worklife: ["personal · actions", "career · actions", "personal · habits", "career · habits"]
+  };
+  function homeTodayActionsList(){
+    var today = todayStr();
+    return state.actions.filter(function(a){ return a.date === today && homeAreaVisible(actionCategory(a)); });
+  }
+  function homeTodayHabitList(){
+    var today = todayStr();
+    return state.habits.filter(function(h){ return habitOccursOnDate(h, today) && homeAreaVisible(habitCategory(h)); });
+  }
+  function homeTodoPriorityQuadrants(){
+    var today = todayStr();
+    var q = { P0:[], P1:[], P2:[], P3:[] };
+    homeTodayActionsList().forEach(function(a){
+      (q[a.priority] || q.P2).push({ kind:"action", id:a.id, date:today, title:a.title, done:!!a.done, area:actionCategory(a) });
+    });
+    homeTodayHabitList().forEach(function(h){
+      (q[h.priority] || q.P2).push({ kind:"habit-instance", id:h.id, date:today, title:h.title, done:habitDoneForDate(h, today), area:habitCategory(h) });
+    });
+    return [q.P0, q.P1, q.P2, q.P3];
+  }
+  function homeTodoWorklifeQuadrants(){
+    var today = todayStr();
+    var personalActions = [], careerActions = [], personalHabits = [], careerHabits = [];
+    homeTodayActionsList().forEach(function(a){
+      var item = { kind:"action", id:a.id, date:today, title:a.title, done:!!a.done, area:actionCategory(a) };
+      (item.area === "Career" ? careerActions : personalActions).push(item);
+    });
+    homeTodayHabitList().forEach(function(h){
+      var item = { kind:"habit-instance", id:h.id, date:today, title:h.title, done:habitDoneForDate(h, today), area:habitCategory(h) };
+      (item.area === "Career" ? careerHabits : personalHabits).push(item);
+    });
+    return [personalActions, careerActions, personalHabits, careerHabits];
+  }
+  function homeTodoItemHtml(it){
+    return '<div class="home-todo-item' + (it.done ? " done" : "") + '" data-kind="' + it.kind + '" data-id="' + it.id + '" data-date="' + it.date + '" title="' + escapeHtml(it.title) + '">' +
+      '<span class="home-todo-item-dot' + (it.done ? " done" : "") + '"></span>' +
+      '<span class="home-todo-item-text">' + escapeHtml(it.title) + '</span></div>';
+  }
+  function renderHomeTodoMatrix(){
+    var grid = document.getElementById("homeTodoGrid");
+    if(!grid) return;
+    var quads = homeTodoMode === "worklife" ? homeTodoWorklifeQuadrants() : homeTodoPriorityQuadrants();
+    var labels = HOME_TODO_LABELS[homeTodoMode];
+    var sig = homeTodoMode + "|" + quads.map(function(list){
+      return list.map(function(it){ return it.id + ":" + (it.done ? 1 : 0); }).join(",");
+    }).join("|");
+    if(grid.dataset.sig === sig) return;
+    grid.dataset.sig = sig;
+    grid.innerHTML = quads.map(function(list, i){
+      var quadClass = homeTodoMode === "priority" ? (" " + labels[i]) : "";
+      return '<div class="home-todo-quad' + quadClass + '">' +
+        '<div class="home-todo-quad-label">' + escapeHtml(labels[i]) + '</div>' +
+        (list.length ? list.map(homeTodoItemHtml).join("") : '<div class="home-todo-empty">clear</div>') +
+      '</div>';
+    }).join("");
+  }
+  // The markup hardcodes "priority" as the selected tab; reconcile with whatever mode was persisted
+  // (e.g. the user left it on "personal/work" last session).
+  document.querySelectorAll("#homeTodoMatrix .home-todo-tab").forEach(function(t){ t.classList.toggle("sel", t.dataset.mode === homeTodoMode); });
+  document.getElementById("homeTodoMatrix").addEventListener("click", async function(e){
+    var tab = e.target.closest(".home-todo-tab");
+    if(tab){
+      if(tab.dataset.mode === homeTodoMode) return;
+      homeTodoMode = tab.dataset.mode;
+      safeSet(window.localStorage, HOME_TODO_MODE_KEY, homeTodoMode);
+      document.querySelectorAll("#homeTodoMatrix .home-todo-tab").forEach(function(t){ t.classList.toggle("sel", t === tab); });
+      renderHomeTodoMatrix();
+      return;
+    }
+    var item = e.target.closest(".home-todo-item");
+    if(!item) return;
+    var kind = item.dataset.kind, id = item.dataset.id, date = item.dataset.date;
+    if(kind === "habit-instance") await handleHabitMarkClick(id, date);
+    else await toggleActionDone(id);
+  });
+
   // ---- Weather for *your* location (HUD widget). Coordinates come from the browser's geolocation
   // prompt once, get cached in localStorage (with a reverse-geocoded place name via Nominatim, which
   // the app already uses for address autocomplete), and every later load reuses the cache. Denied/
@@ -3942,6 +4069,7 @@
     }
     renderHomeAreasRail();
     renderHomeTimelineDock();
+    renderHomeTodoMatrix();
     homeSyncGraphData();  // cheap signature compare; rebuilds the 3D node/edge set only on change
     homePhotosTick(now);  // advances the slideshow every ~8s
   }
@@ -4044,14 +4172,16 @@
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(w, h, false);
     var scene = new THREE.Scene();
-    var camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 400);
+    var camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 700);
 
-    // Starfield backdrop, kept from the old constellation — a depth cue behind the graph.
-    var starCount = 260, starPos = new Float32Array(starCount * 3);
+    // Starfield backdrop, kept from the old constellation — a depth cue behind the graph. Spread
+    // scaled up alongside the raised zoom-out ceiling (orbit.dist now maxes at 320, was 140) so
+    // zooming all the way out doesn't sail past the stars into an empty void.
+    var starCount = 420, starPos = new Float32Array(starCount * 3);
     for(var s = 0; s < starCount; s++){
-      starPos[s*3] = (Math.random() - 0.5) * 160;
-      starPos[s*3+1] = (Math.random() - 0.5) * 90;
-      starPos[s*3+2] = (Math.random() - 0.5) * 160;
+      starPos[s*3] = (Math.random() - 0.5) * 400;
+      starPos[s*3+1] = (Math.random() - 0.5) * 220;
+      starPos[s*3+2] = (Math.random() - 0.5) * 400;
     }
     var starGeo = new THREE.BufferGeometry();
     starGeo.setAttribute("position", new THREE.BufferAttribute(starPos, 3));
@@ -4236,7 +4366,7 @@
     }
     function applyCamera(){
       orbit.phi = Math.max(0.25, Math.min(Math.PI - 0.25, orbit.phi));
-      orbit.dist = Math.max(10, Math.min(140, orbit.dist));
+      orbit.dist = Math.max(10, Math.min(320, orbit.dist));  // was 140 — lets the graph zoom out much further
       camera.position.set(
         target.x + orbit.dist * Math.sin(orbit.phi) * Math.cos(orbit.theta),
         target.y + orbit.dist * Math.cos(orbit.phi),
