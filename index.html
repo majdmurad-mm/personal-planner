@@ -894,9 +894,9 @@
   .today-timeline-body.gl-on #todayGlCanvas{ display:block; }
   .today-timeline-body.gl-on .today-timeline-viewport{ z-index:1; background:transparent; }
   .today-timeline-body.gl-on .today-timeline-row:not(.today-timeline-daynight-row){ background:var(--tl-hour-grid); }
-  /* !important because the per-area .timeline-block.Health{...} tints above would otherwise win —
-     the 3D bar underneath is the fill now; the DOM block keeps only its text (and icon). */
-  .today-timeline-body.gl-on .today-timeline-row .timeline-block{ background:transparent !important; border-color:transparent !important; box-shadow:none; }
+  /* The DOM blocks keep their original per-area tint (.timeline-block.Health{...} etc., defined
+     above) instead of going transparent — the 3D bar renders underneath for depth/shadow/lighting,
+     showing through the block's own semi-transparent background rather than replacing its color. */
 
   /* ===== TIMELINE PAGE ===== */
   /* Fixed-pixel row heights (not flex:1) so the row-labels column and the scrollable world column
