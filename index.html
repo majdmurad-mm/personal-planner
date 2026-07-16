@@ -516,8 +516,10 @@
      whole content area edge-to-edge instead of sitting in a scrolling column like every other page —
      the canvas is the page here. Re-adds a slim padding of its own around just the compact header;
      the canvas-wrap (flex:1) takes all the remaining height. Values must mirror .main's padding
-     exactly (including its own @media override) since they're what's being cancelled out. */
-  #whiteboardSection, #locationSection{ margin:-32px -40px -70px; padding:14px 40px 14px; height:100vh; box-sizing:border-box; display:flex; flex-direction:column; }
+     exactly (including its own @media override) since they're what's being cancelled out.
+     (Graph itself moved into the Planner as a tab — see #plannerSection.planner-fullscreen-graph
+     near the People graph rules below — so only Location still uses this standalone-section form.) */
+  #locationSection{ margin:-32px -40px -70px; padding:14px 40px 14px; height:100vh; box-sizing:border-box; display:flex; flex-direction:column; }
   .wb-compact-header{ margin-bottom:10px; flex-shrink:0; }
   .wb-compact-header h1{ font-size:17px; }
   .wb-toolbar{ display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
@@ -1084,6 +1086,19 @@
   #peopleSection.ppl-fullscreen-graph .sub-view-toggle{ flex-shrink:0; }
   #peopleSection.ppl-fullscreen-graph #peopleGraphPanel{ flex:1; min-height:0; display:flex; flex-direction:column; }
   #peopleSection.ppl-fullscreen-graph .ppl-canvas-wrap{ flex:1; height:auto; min-height:0; margin-top:0; }
+  /* Same story for the Planner's Graph tab (#graphPanel) — it moved out of its own standalone
+     #whiteboardSection (see the WHITEBOARD block above) into a tab inside #plannerSection, but
+     .wb-canvas-wrap's flex:1 still needs an actual flex container with real height to size against.
+     Without this, #graphPanel has no explicit height (its only content is the absolutely-positioned
+     .wb-world, which contributes nothing to parent height), so the canvas collapses to ~0px — the
+     graph "not showing correctly" bug this fixes. Toggled on #plannerSection by the plannerTabs click
+     handler and by showSection() whenever the Graph tab is the active one. */
+  #plannerSection.planner-fullscreen-graph{ margin:-32px -40px -70px; padding:14px 40px 14px; height:100vh; box-sizing:border-box; display:flex; flex-direction:column; }
+  #plannerSection.planner-fullscreen-graph .main-header{ margin-bottom:10px; flex-shrink:0; }
+  #plannerSection.planner-fullscreen-graph .main-header .subhead{ display:none; }
+  #plannerSection.planner-fullscreen-graph .view-toggle{ flex-shrink:0; }
+  #plannerSection.planner-fullscreen-graph #graphPanel{ flex:1; min-height:0; display:flex; flex-direction:column; }
+  #plannerSection.planner-fullscreen-graph #graphPanel .wb-canvas-wrap{ flex:1; min-height:0; }
   .ppl-node{ position:absolute; border-radius:50%; width:15px; height:15px; pointer-events:auto; cursor:grab; box-shadow:0 0 0 2px var(--bg-inset), 0 2px 8px rgba(0,0,0,0.35); user-select:none; touch-action:none; }
   .ppl-node:hover{ box-shadow:0 0 0 2px var(--bg-inset), 0 0 0 5px var(--accent-glow), 0 2px 8px rgba(0,0,0,0.35); }
   .ppl-node.dragging{ cursor:grabbing; z-index:50; box-shadow:0 0 0 2px var(--bg-inset), 0 4px 16px rgba(0,0,0,0.5); }
@@ -1293,8 +1308,8 @@
        not the sidebar. */
     .main{ padding:56px 18px 60px; }
     h1{ font-size:19px; }
-    #whiteboardSection, #locationSection{ margin:-56px -18px -60px; padding:12px 18px 12px; }
-    #peopleSection.ppl-fullscreen-graph{ margin:-56px -18px -60px; padding:12px 18px 12px; }
+    #locationSection{ margin:-56px -18px -60px; padding:12px 18px 12px; }
+    #peopleSection.ppl-fullscreen-graph, #plannerSection.planner-fullscreen-graph{ margin:-56px -18px -60px; padding:12px 18px 12px; }
     .today-two-col{ grid-template-columns:1fr; }
     /* Mobile sidebar is an off-canvas drawer, not the desktop's inline column — hidden by default
        (regardless of the desktop-only data-sidebar-collapsed preference, which this ignores
@@ -1311,8 +1326,8 @@
      is the scarce dimension here rather than width. */
   @media (max-height: 500px) and (orientation: landscape){
     .main{ padding:44px 24px 20px; }
-    #whiteboardSection, #locationSection{ margin:-44px -24px -20px; padding:10px 24px 10px; }
-    #peopleSection.ppl-fullscreen-graph{ margin:-44px -24px -20px; padding:10px 24px 10px; }
+    #locationSection{ margin:-44px -24px -20px; padding:10px 24px 10px; }
+    #peopleSection.ppl-fullscreen-graph, #plannerSection.planner-fullscreen-graph{ margin:-44px -24px -20px; padding:10px 24px 10px; }
   }
 
   /* ===== Home (landing) ===== */
@@ -3262,13 +3277,22 @@
     });
     homeSceneSetActive(name === "home");
     todayGlSetActive(name === "today");
+    // The graph lives inside the Planner now — entering the planner needs the same full-viewport
+    // layout class the tab switcher applies (see plannerTabs' click handler below and
+    // #plannerSection.planner-fullscreen-graph) kept in sync regardless of which tab is active, since
+    // .wb-canvas-wrap's flex:1 needs a real flex container to size against or the canvas collapses to
+    // ~0px — this call is a no-op unless activePlannerTab is actually "graph".
+    if(name === "planner") syncPlannerFullscreenGraphClass();
     if(name === "today"){ renderToday(); todayApplyZoomWidth(); ensureTodayGl(); }
     else if(name === "timeline") activateTimeline();
     else if(name === "location") activateLocation();
-    // The graph lives inside the Planner now — entering the planner with its Graph tab still active
-    // needs the same physics/reheat activation the old top-level Graph section got on entry.
+    // Entering the planner with its Graph tab still active needs the same physics/reheat activation
+    // the old top-level Graph section got on entry.
     else if(name === "planner" && activePlannerTab === "graph") activateWhiteboard();
     else renderActiveSectionContent();
+  }
+  function syncPlannerFullscreenGraphClass(){
+    document.getElementById("plannerSection").classList.toggle("planner-fullscreen-graph", activePlannerTab === "graph");
   }
   document.getElementById("sideNav").addEventListener("click", function(e){
     var btn = e.target.closest(".side-link");
@@ -3571,6 +3595,9 @@
     plannerSubhead.textContent = meta.sub;
     addBtn.style.display = meta.add ? "" : "none";
     if(meta.add) addBtn.textContent = meta.add;
+    // Switches #plannerSection in/out of the full-viewport layout the Graph tab needs — see
+    // showSection's matching call and #plannerSection.planner-fullscreen-graph.
+    syncPlannerFullscreenGraphClass();
     // The graph's physics only runs while its panel is visible — same lazy activation the old
     // top-level section got via showSection; areas/calendar just re-render their innerHTML.
     if(activePlannerTab === "graph") activateWhiteboard();
