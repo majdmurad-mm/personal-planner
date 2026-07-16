@@ -993,17 +993,23 @@
   .rec-panel-actions{ display:flex; gap:8px; margin-top:8px; }
   /* SoundCloud-style waveform bar on a note card — bar heights come from the recording's stored
      peak-amplitude array, the whole strip is a single click-to-play control. */
-  .rec-waveform{ display:flex; align-items:center; gap:8px; margin-top:8px; cursor:pointer; }
-  .rec-waveform-bars{ display:flex; align-items:flex-end; gap:1.5px; height:28px; flex:1; }
+  .rec-waveform{ display:flex; align-items:center; gap:8px; margin-top:8px; cursor:pointer; position:relative; }
+  .rec-waveform-bars{ display:flex; align-items:flex-end; gap:1.5px; height:28px; flex:1; position:relative; z-index:1; }
   .rec-waveform-bars span{ display:block; width:2px; background:var(--accent); border-radius:1px; opacity:0.7; }
   .rec-waveform:hover .rec-waveform-bars span{ opacity:1; }
   .rec-waveform.loading{ opacity:0.5; pointer-events:none; }
-  .rec-waveform-time{ font-family:var(--mono); font-size:10px; color:var(--text-faint); white-space:nowrap; }
+  .rec-waveform-time{ font-family:var(--mono); font-size:10px; color:var(--text-faint); white-space:nowrap; position:relative; z-index:1; }
+  /* Playback progress sweep — a translucent fill that tracks currentTime across the clip's bar
+     (width driven from updateJournalPlayerUi). Sits under the bars/time (z-index 0 vs their 1). */
+  .rec-waveform-progress{ position:absolute; left:0; top:0; bottom:0; width:0%; background:var(--accent-glow); border-radius:3px; pointer-events:none; }
   /* The clip currently loaded in the shared player — bars turn green while actually playing (not
      just loaded/paused), so "what's making sound right now" is unambiguous at a glance in a list. */
   .rec-waveform.playing .rec-waveform-bars span{ background:#22C55E; opacity:1; }
-  .rec-player{ display:flex; align-items:center; gap:8px; margin:14px 0; padding:8px 12px; border:1px solid var(--border-bright); border-radius:var(--radius); background:var(--bg-raised); }
+  .rec-waveform.playing .rec-waveform-progress{ background:rgba(34,197,94,0.15); }
+  .rec-player{ display:flex; align-items:center; gap:8px; margin:14px 0; padding:8px 12px; border:1px solid var(--border-bright); border-radius:var(--radius); background:var(--bg-raised); flex-wrap:wrap; }
   .rec-player-time{ font-family:var(--mono); font-size:11px; color:var(--text-dim); margin-left:auto; }
+  #journalPlayerVolume{ width:74px; accent-color:var(--accent); }
+  #journalPlayerSpeedBtn{ min-width:46px; }
   .agent-msg-replay{ background:none; border:none; color:var(--text-faint); cursor:pointer; font-size:11px; padding:0; margin-left:8px; vertical-align:middle; }
   .agent-msg-replay:hover{ color:var(--accent); }
 
@@ -1910,6 +1916,9 @@
         <button class="btn btn-accent" id="journalPlayerPlayBtn" type="button" title="Play/pause">▶</button>
         <button class="btn" id="journalPlayerSkipFwdBtn" type="button" title="Skip forward 10s">10s ⏩</button>
         <span class="rec-player-time" id="journalPlayerTime">0:00 / 0:00</span>
+        <button class="btn" id="journalPlayerSpeedBtn" type="button" title="Playback speed">1×</button>
+        <input type="range" id="journalPlayerVolume" min="0" max="1" step="0.05" value="1" title="Volume" aria-label="Volume">
+        <button class="btn" id="journalPlayerDownloadBtn" type="button" title="Download this recording">⬇</button>
       </div>
       <div id="journalNotesPanel">
       <div class="journal-composer">
@@ -4276,8 +4285,26 @@
   async function deleteJournalEntry(id){
     var n = state.journal.find(function(x){ return x.id === id; });
     if(!n) return;
+    // A voice note's audio belongs to its note (every recording is attached to one — see
+    // handleRecordingComplete), so deleting the note takes the recording with it rather than
+    // leaving an orphaned audio file. Confirmed because unlike the note itself (trash + undo),
+    // the deleted audio is NOT recoverable — the undo restores a text-only note.
+    if(n.recordingId){
+      if(!confirm("This note has a voice recording attached — deleting the note deletes the recording too, and the audio can't be restored (undo brings back the text only). Delete both?")) return;
+    }
     var snapshot = Object.assign({}, n);
     state.journal = state.journal.filter(function(x){ return x.id !== id; });
+    if(snapshot.recordingId){
+      var rec = state.recordings.find(function(x){ return x.id === snapshot.recordingId; });
+      state.recordings = state.recordings.filter(function(x){ return x.id !== snapshot.recordingId; });
+      if(rec){
+        var rmStore = await sb.storage.from("notes-audio").remove([rec.storagePath]);
+        if(rmStore.error) console.error(rmStore.error);
+        var rmRow = await sb.from("recordings").delete().eq("id", rec.id);
+        if(rmRow.error) console.error(rmRow.error);
+      }
+      snapshot.recordingId = null; // the restored note can't point at audio that no longer exists
+    }
     renderAll();
     var r = await sb.from("journal").delete().eq("id", id);
     if(r.error){ console.error(r.error); return; }
@@ -4572,6 +4599,14 @@
   document.getElementById("goalList").addEventListener("change", handleGoalCardChange);
   document.getElementById("areaList").addEventListener("change", handleGoalCardChange);
   document.getElementById("goalDetailBody").addEventListener("change", handleGoalCardChange);
+  // The goal page's "related notes" block (see renderLinkedNotesHtml) reuses journal-entry cards —
+  // their edit buttons and inline @/# tags need the same delegation the Notes page gives them.
+  document.getElementById("goalDetailBody").addEventListener("click", function(e){
+    var tag = e.target.closest(".note-tag");
+    if(tag){ openNoteTag(tag.dataset.kind, tag.dataset.id); return; }
+    var editBtn = e.target.closest('[data-action="edit-journal"]');
+    if(editBtn) editJournalEntry(editBtn.dataset.id);
+  });
 
   /* ---------------- Goal detail page ---------------- */
   var goalDetailId = null;
@@ -4591,11 +4626,32 @@
   function isSleepGoal(g){
     return !!g.title && g.title.trim().toLowerCase() === "sleep";
   }
+  // Reverse note lookup — every note whose saved linked_objects reference this entity. Id-based
+  // (see extractNoteLinks), so it keeps working after the entity is renamed, unlike re-matching
+  // the @/# tag titles would.
+  function notesLinkedTo(kind, id){
+    return state.journal.filter(function(n){
+      return (n.linkedObjects || []).some(function(l){ return l.kind === kind && l.id === id; });
+    }).sort(function(a,b){ return b.date.localeCompare(a.date); });
+  }
+  function renderLinkedNotesHtml(kind, id){
+    var notes = notesLinkedTo(kind, id);
+    if(!notes.length) return "";
+    return '<div class="goal-integration-block"><div class="integration-block-head"><h2>related notes</h2></div>' +
+      notes.map(function(n){
+        var d = new Date(n.date + "T00:00:00");
+        return '<div class="journal-entry' + (n.category ? " " + n.category : "") + '" data-kind="journal" data-id="' + n.id + '">' +
+          '<div class="journal-entry-top"><span class="journal-entry-date">' + d.toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" }) + (n.timeOfDay ? " · " + fmtTimeOfDay(n.timeOfDay) : "") + '</span>' +
+          '<div class="entity-actions"><button class="icon-btn edit" data-action="edit-journal" data-id="' + n.id + '" aria-label="Edit note">✎</button></div></div>' +
+          '<div class="journal-entry-text journal-entry-md">' + renderNoteBodyHtml(n.text) + '</div>' +
+        '</div>';
+      }).join("") + '</div>';
+  }
   function renderGoalDetail(){
     if(activeSection !== "goalDetail" || !goalDetailId) return;
     var g = goalById(goalDetailId);
     if(!g){ closeGoalDetailPage(); return; }
-    document.getElementById("goalDetailBody").innerHTML = renderGoalCardHtml(g);
+    document.getElementById("goalDetailBody").innerHTML = renderGoalCardHtml(g) + renderLinkedNotesHtml("goal", g.id);
     var sleepBlock = document.getElementById("sleepIntegrationBlock");
     if(isSleepGoal(g)){
       sleepBlock.style.display = "";
@@ -7577,51 +7633,57 @@
         toast("Couldn't save that recording: " + err.message);
         return;
       }
+      // Every recording that survives to this point ends up attached to a note — that's the
+      // invariant. Transcription succeeding just decides WHAT the note says: the transcript when
+      // there is one, a placeholder otherwise (re-transcribable later from the recordings list) —
+      // never an orphaned audio file with no note to find it from.
+      var transcript = "";
+      var transcribeErr = null;
+      try{ transcript = await transcribeAudioBufferWithEngine(audioBuffer, selectedEngine) || ""; }
+      catch(err){ transcribeErr = err; }
       try{
-        var text = await transcribeAudioBufferWithEngine(audioBuffer, selectedEngine);
         var input = document.getElementById("journalTextInput");
-        if(text){
-          var mergedText = (input.value.trim() ? input.value.trim() + " " : "") + text;
-          input.value = mergedText;
+        if(transcript){
           // Persisted on the recording itself, not just the note about to be saved below — the
           // recording already exists in Storage+DB by this point regardless of whether that note
           // insert succeeds, so without this the transcript would otherwise vanish if it ever fails.
-          journalPendingRecording.transcript = text;
+          journalPendingRecording.transcript = transcript;
           // maybeSingle(), not single() — if this row can no longer be found (RLS, or it was deleted
           // in another tab in the seconds since it was created), that's a 0-row result, not an error;
           // single() would throw an opaque "Cannot coerce the result to a single JSON object" for it.
-          var updateRes = await safeWrite(function(p){ return sb.from("recordings").update(p).eq("id", rec.id).select().maybeSingle(); }, { transcript: text });
+          var updateRes = await safeWrite(function(p){ return sb.from("recordings").update(p).eq("id", rec.id).select().maybeSingle(); }, { transcript: transcript });
           if(updateRes.error) console.error(updateRes.error);
           else if(!updateRes.data) console.warn("Couldn't find recording " + rec.id + " to save its transcript — it may have been deleted.");
           else warnDroppedFields(updateRes.droppedFields);
-          // Auto-save straight to a note. Date/time come from when the recording was actually made
-          // (rec.created_at), not "now" — transcription can take a few seconds, or ~15s the very
-          // first time while the speech model downloads. Area is whatever's selected in the composer
-          // at save time, same as a manual save would use.
-          var recordedAt = new Date(rec.created_at);
-          var notePayload = {
-            date: dateToLocalStr(recordedAt), text: mergedText,
-            time_of_day: String(recordedAt.getHours()).padStart(2,"0") + ":" + String(recordedAt.getMinutes()).padStart(2,"0"),
-            category: chipValue(document.getElementById("journalAreaSelect"), "ar") || null,
-            recording_id: rec.id
-          };
-          var saveRes = await saveJournalEntry(notePayload);
-          if(saveRes.error){
-            toast("Transcribed, but couldn't save the note automatically: " + saveRes.error.message + " — you can still save it manually.");
-          } else {
-            input.value = "";
-            document.getElementById("journalTimeInput").value = "";
-            journalPendingRecording = null;
-            renderAll();
-            toast("Recording transcribed and saved as a new note.");
-          }
+        }
+        var mergedText = (input.value.trim() ? input.value.trim() + " " : "") + (transcript || "*(voice note — no transcript yet)*");
+        // Auto-save straight to a note. Date/time come from when the recording was actually made
+        // (rec.created_at), not "now" — transcription can take a few seconds, or ~15s the very
+        // first time while the speech model downloads. Area is whatever's selected in the composer
+        // at save time, same as a manual save would use.
+        var recordedAt = new Date(rec.created_at);
+        var notePayload = {
+          date: dateToLocalStr(recordedAt), text: mergedText,
+          time_of_day: String(recordedAt.getHours()).padStart(2,"0") + ":" + String(recordedAt.getMinutes()).padStart(2,"0"),
+          category: chipValue(document.getElementById("journalAreaSelect"), "ar") || null,
+          recording_id: rec.id
+        };
+        var saveRes = await saveJournalEntry(notePayload);
+        if(saveRes.error){
+          toast((transcript ? "Transcribed, but couldn't" : "Couldn't") + " save the note automatically: " + saveRes.error.message + " — you can still save it manually.");
         } else {
-          toast("Recording saved, but couldn't make out any speech to transcribe — you can still type it in.");
+          input.value = "";
+          document.getElementById("journalTimeInput").value = "";
+          journalPendingRecording = null;
+          renderAll();
+          if(transcript) toast("Recording transcribed and saved as a new note.");
+          else if(transcribeErr) toast(transcribeErr.message === "no_api_key"
+            ? "Saved as a note without a transcript — no Gemini API key is set. Add one from the agent tab, or use the recordings list's transcribe button with whisper."
+            : ("Saved as a note, but transcription failed: " + transcribeErr.message + " — retry from the recordings list."));
+          else toast("Saved as a note, but couldn't make out any speech — edit the note or re-transcribe from the recordings list.");
         }
       } catch(err){
-        toast(err.message === "no_api_key"
-          ? "Recording saved, but no Gemini API key is set — add one from the agent tab, or record again and pick whisper instead."
-          : ("Recording saved, but transcription failed: " + err.message));
+        toast("Recording saved, but attaching it to a note failed: " + err.message);
       } finally {
         if(statusEl) statusEl.textContent = "";
         recordBtn.disabled = false;
@@ -7788,7 +7850,8 @@
     var peaks = (rec.waveform && rec.waveform.length) ? rec.waveform : [0.3];
     var bars = peaks.map(function(p){ return '<span style="height:' + Math.max(10, Math.round(p * 100)) + '%"></span>'; }).join("");
     var playingClass = journalPlayerCurrentId === rec.id && journalAudioEl && !journalAudioEl.paused ? " playing" : "";
-    return '<div class="rec-waveform' + playingClass + '" data-action="play-recording" data-id="' + rec.id + '" title="Play recording">' +
+    return '<div class="rec-waveform' + playingClass + '" data-action="play-recording" data-id="' + rec.id + '" title="Play — click anywhere on the bar to seek">' +
+      '<div class="rec-waveform-progress"></div>' +
       '<div class="rec-waveform-bars">' + bars + '</div>' +
       '<span class="rec-waveform-time">' + formatClipTime(rec.durationSeconds || 0) + '</span>' +
     '</div>';
@@ -7816,10 +7879,47 @@
     var playing = journalAudioEl && !journalAudioEl.paused && !journalAudioEl.ended;
     if(playBtn) playBtn.textContent = playing ? "⏸" : "▶";
     if(timeEl && journalAudioEl) timeEl.textContent = formatClipTime(journalAudioEl.currentTime) + " / " + formatClipTime(journalAudioEl.duration || 0);
+    // Progress sweep across the current clip's waveform(s) — the same recording can be rendered on
+    // a note card AND in the recordings list, so this walks every matching bar, not just one.
+    var pct = journalAudioEl && journalAudioEl.duration ? (journalAudioEl.currentTime / journalAudioEl.duration * 100) : 0;
     document.querySelectorAll(".rec-waveform").forEach(function(el){
-      el.classList.toggle("playing", playing && el.dataset.id === journalPlayerCurrentId);
+      var isCurrent = el.dataset.id === journalPlayerCurrentId;
+      el.classList.toggle("playing", playing && isCurrent);
+      var fill = el.querySelector(".rec-waveform-progress");
+      if(fill) fill.style.width = isCurrent ? pct + "%" : "0%";
     });
   }
+  // Speed cycles through the common listening rates; 1× sits between the slow-down and the
+  // speed-ups so one tap from default goes faster (the overwhelmingly common direction for
+  // voice notes) and cycling wraps back around through 0.75× for dense recordings.
+  var JOURNAL_PLAYER_SPEEDS = [1, 1.25, 1.5, 2, 0.75];
+  var journalPlayerSpeedIdx = 0;
+  document.getElementById("journalPlayerSpeedBtn").addEventListener("click", function(){
+    journalPlayerSpeedIdx = (journalPlayerSpeedIdx + 1) % JOURNAL_PLAYER_SPEEDS.length;
+    var rate = JOURNAL_PLAYER_SPEEDS[journalPlayerSpeedIdx];
+    this.textContent = rate + "×";
+    if(journalAudioEl){ journalAudioEl.playbackRate = rate; journalAudioEl.defaultPlaybackRate = rate; }
+  });
+  document.getElementById("journalPlayerVolume").addEventListener("input", function(){
+    if(journalAudioEl) journalAudioEl.volume = Number(this.value);
+  });
+  document.getElementById("journalPlayerDownloadBtn").addEventListener("click", async function(){
+    var rec = state.recordings.find(function(r){ return r.id === journalPlayerCurrentId; });
+    if(!rec) return;
+    this.disabled = true;
+    try{
+      var signed = await sb.storage.from("notes-audio").createSignedUrl(rec.storagePath, 300);
+      if(signed.error) throw new Error(signed.error.message);
+      var a = document.createElement("a");
+      a.href = signed.data.signedUrl;
+      a.download = rec.storagePath.split("/").pop() || "recording";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch(err){
+      toast("Couldn't download the recording: " + err.message);
+    } finally { this.disabled = false; }
+  });
   // Clicking a waveform always (re)starts playback from that point — pause is a dedicated action
   // (the player bar's play/pause button), not something a waveform click also toggles, so seeking
   // mid-listen can never accidentally stop playback instead of relocating it. If it's the clip
