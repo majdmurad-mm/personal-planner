@@ -94,6 +94,30 @@ function owned(table: string) {
   return db.from(table).select("*").eq("user_id", OWNER);
 }
 
+// Mirrors the app's own safeWrite: run a write, and if the database rejects it for a
+// column it doesn't have yet (a migration that wasn't run), drop that column and retry.
+// Keeps the connector working against a database that's behind on migrations — the same
+// reason SELECT * reads already tolerate missing columns, but a raw insert would not.
+function missingColumn(error: any): string | null {
+  const msg = String((error && error.message) || "") + " " + String((error && error.details) || "");
+  let m = msg.match(/Could not find the '([^']+)' column/);
+  if (m) return m[1];
+  m = msg.match(/column "([^"]+)"[^"]*does not exist/);
+  if (m) return m[1];
+  return null;
+}
+async function safeWrite(op: (p: Record<string, unknown>) => any, payload: Record<string, unknown>) {
+  const p: Record<string, unknown> = { ...payload };
+  for (let i = 0; i < 15; i++) {
+    const res = await op(p);
+    if (!res.error) return res;
+    const col = missingColumn(res.error);
+    if (col && Object.prototype.hasOwnProperty.call(p, col)) { delete p[col]; continue; }
+    return res;
+  }
+  return await op(p);
+}
+
 // ---- MCP server ------------------------------------------------------------
 const mcp = new McpServer({
   name: "personal-planner",
@@ -328,10 +352,10 @@ mcp.tool("create_goal", {
   }),
   handler: async (args: { title: string; priority: string; area: string; due?: string; ongoing?: boolean }) => {
     const ongoing = !!args.ongoing;
-    const { data, error } = await db.from("goals").insert({
+    const { data, error } = await safeWrite((p) => db.from("goals").insert(p).select().single(), {
       user_id: OWNER, title: args.title, priority: args.priority, category: args.area,
       due: ongoing ? null : (args.due || null), ongoing,
-    }).select().single();
+    });
     if (error) return fail(error.message);
     return ok({ ok: true, id: data.id });
   },
@@ -355,7 +379,7 @@ mcp.tool("edit_goal", {
     if (args.due !== undefined) patch.due = args.due || null;
     if (args.ongoing !== undefined) patch.ongoing = args.ongoing;
     if (args.ongoing === true) patch.due = null;
-    const { error } = await db.from("goals").update(patch).eq("id", args.id).eq("user_id", OWNER);
+    const { error } = await safeWrite((p) => db.from("goals").update(p).eq("id", args.id).eq("user_id", OWNER), patch);
     if (error) return fail(error.message);
     return ok({ ok: true });
   },
@@ -372,10 +396,10 @@ mcp.tool("create_project", {
     areas: z.array(z.enum(CATEGORIES)).optional().describe("the project's own area(s); omit to inherit the parent goal's area"),
   }),
   handler: async (args: any) => {
-    const { data, error } = await db.from("projects").insert({
+    const { data, error } = await safeWrite((p) => db.from("projects").insert(p).select().single(), {
       user_id: OWNER, goal_id: args.goalId || null, title: args.title, priority: args.priority,
       due: args.due || null, hours: args.hours || 0, done: false, categories: args.areas || [],
-    }).select().single();
+    });
     if (error) return fail(error.message);
     return ok({ ok: true, id: data.id });
   },
@@ -402,7 +426,7 @@ mcp.tool("edit_project", {
     if (args.hours !== undefined) patch.hours = args.hours;
     if (args.done !== undefined) patch.done = args.done;
     if (args.areas !== undefined) patch.categories = args.areas;
-    const { error } = await db.from("projects").update(patch).eq("id", args.id).eq("user_id", OWNER);
+    const { error } = await safeWrite((p) => db.from("projects").update(p).eq("id", args.id).eq("user_id", OWNER), patch);
     if (error) return fail(error.message);
     return ok({ ok: true });
   },
@@ -426,17 +450,17 @@ mcp.tool("create_habit", {
     // Mirror the app: each habit gets its own boolean tracker variable so day-by-day
     // completion can live in tracker_entries.
     let trackerVariableId: string | null = null;
-    const vr = await db.from("tracker_variables").insert({ user_id: OWNER, name: args.title, type: "boolean" }).select().single();
+    const vr = await safeWrite((p) => db.from("tracker_variables").insert(p).select().single(), { user_id: OWNER, name: args.title, type: "boolean" });
     if (!vr.error && vr.data) trackerVariableId = vr.data.id;
 
-    const { data, error } = await db.from("habits").insert({
+    const { data, error } = await safeWrite((p) => db.from("habits").insert(p).select().single(), {
       user_id: OWNER, goal_id: args.goalId || null, title: args.title, priority: args.priority,
       frequency: args.frequency, days: {}, weekdays: args.frequency === "weekly" ? (args.weekdays || []) : null,
       month_day: args.frequency === "monthly" ? Math.max(1, Math.min(31, Math.round(args.monthDay) || 1)) : null,
       custom_interval_days: args.frequency === "custom" ? Math.max(1, Math.round(args.customIntervalDays) || 1) : null,
       time_of_day: args.timeOfDay || null, duration_minutes: args.durationMinutes || null,
       tracker_variable_id: trackerVariableId,
-    }).select().single();
+    });
     if (error) return fail(error.message);
     return ok({ ok: true, id: data.id });
   },
@@ -467,13 +491,13 @@ mcp.tool("edit_habit", {
     if (args.customIntervalDays !== undefined) patch.custom_interval_days = args.customIntervalDays;
     if (args.timeOfDay !== undefined) patch.time_of_day = args.timeOfDay || null;
     if (args.durationMinutes !== undefined) patch.duration_minutes = args.durationMinutes;
-    const { error } = await db.from("habits").update(patch).eq("id", args.id).eq("user_id", OWNER);
+    const { error } = await safeWrite((p) => db.from("habits").update(p).eq("id", args.id).eq("user_id", OWNER), patch);
     if (error) return fail(error.message);
     // Keep the linked tracker variable's name in step with a renamed habit.
     if (args.title !== undefined) {
       const h = await owned("habits").eq("id", args.id).maybeSingle();
       if (!h.error && h.data && h.data.tracker_variable_id) {
-        await db.from("tracker_variables").update({ name: args.title }).eq("id", h.data.tracker_variable_id).eq("user_id", OWNER);
+        await safeWrite((p) => db.from("tracker_variables").update(p).eq("id", h.data.tracker_variable_id).eq("user_id", OWNER), { name: args.title });
       }
     }
     return ok({ ok: true });
@@ -495,12 +519,12 @@ mcp.tool("create_action", {
   }),
   handler: async (args: any) => {
     const pt = args.parentType || "none";
-    const { data, error } = await db.from("actions").insert({
+    const { data, error } = await safeWrite((p) => db.from("actions").insert(p).select().single(), {
       user_id: OWNER, title: args.title, type: args.type, priority: args.priority,
       parent_type: pt, parent_id: pt === "none" ? null : (args.parentId || null),
       date: args.date || null, done: false, time_of_day: args.timeOfDay || null,
       duration_minutes: args.durationMinutes || null, category: args.area || null,
-    }).select().single();
+    });
     if (error) return fail(error.message);
     return ok({ ok: true, id: data.id });
   },
@@ -533,7 +557,7 @@ mcp.tool("edit_action", {
     if (args.durationMinutes !== undefined) patch.duration_minutes = args.durationMinutes;
     if (args.area !== undefined) patch.category = args.area;
     if (args.done !== undefined) patch.done = args.done;
-    const { error } = await db.from("actions").update(patch).eq("id", args.id).eq("user_id", OWNER);
+    const { error } = await safeWrite((p) => db.from("actions").update(p).eq("id", args.id).eq("user_id", OWNER), patch);
     if (error) return fail(error.message);
     return ok({ ok: true });
   },
@@ -546,9 +570,7 @@ mcp.tool("complete_action", {
     done: z.boolean().optional().describe("defaults to true"),
   }),
   handler: async (args: { id: string; done?: boolean }) => {
-    const { error } = await db.from("actions")
-      .update({ done: args.done === undefined ? true : args.done })
-      .eq("id", args.id).eq("user_id", OWNER);
+    const { error } = await safeWrite((p) => db.from("actions").update(p).eq("id", args.id).eq("user_id", OWNER), { done: args.done === undefined ? true : args.done });
     if (error) return fail(error.message);
     return ok({ ok: true });
   },
@@ -565,11 +587,11 @@ mcp.tool("add_note", {
     timeOfDay: z.string().optional().describe("HH:MM 24h, optional"),
   }),
   handler: async (args: any) => {
-    const { data, error } = await db.from("journal").insert({
+    const { data, error } = await safeWrite((p) => db.from("journal").insert(p).select().single(), {
       user_id: OWNER, date: args.date || todayUTC(), text: args.text,
       title: args.title || null, priority: args.priority || null,
       categories: args.areas || [], time_of_day: args.timeOfDay || null,
-    }).select().single();
+    });
     if (error) return fail(error.message);
     return ok({ ok: true, id: data.id });
   },
@@ -595,7 +617,7 @@ mcp.tool("edit_note", {
     if (args.date !== undefined) patch.date = args.date;
     if (args.timeOfDay !== undefined) patch.time_of_day = args.timeOfDay || null;
     if (Object.keys(patch).length === 0) return fail("nothing to update — pass at least one field");
-    const { error } = await db.from("journal").update(patch).eq("id", args.id).eq("user_id", OWNER);
+    const { error } = await safeWrite((p) => db.from("journal").update(p).eq("id", args.id).eq("user_id", OWNER), patch);
     if (error) return fail(error.message);
     return ok({ ok: true });
   },
@@ -611,10 +633,10 @@ mcp.tool("create_person", {
     socialGroup: z.string().optional(),
   }),
   handler: async (args: any) => {
-    const { data, error } = await db.from("people").insert({
+    const { data, error } = await safeWrite((p) => db.from("people").insert(p).select().single(), {
       user_id: OWNER, name: args.name, relationship: args.relationship,
       contact: args.contact || "", notes: args.notes || "", social_group: args.socialGroup || null,
-    }).select().single();
+    });
     if (error) return fail(error.message);
     return ok({ ok: true, id: data.id });
   },
@@ -637,7 +659,7 @@ mcp.tool("edit_person", {
     if (args.contact !== undefined) patch.contact = args.contact;
     if (args.notes !== undefined) patch.notes = args.notes;
     if (args.socialGroup !== undefined) patch.social_group = args.socialGroup || null;
-    const { error } = await db.from("people").update(patch).eq("id", args.id).eq("user_id", OWNER);
+    const { error } = await safeWrite((p) => db.from("people").update(p).eq("id", args.id).eq("user_id", OWNER), patch);
     if (error) return fail(error.message);
     return ok({ ok: true });
   },
