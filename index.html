@@ -8475,7 +8475,12 @@
       if(a.parentType === "goal" && a.parentId) (goalActions[a.parentId] = goalActions[a.parentId] || []).push(a);
       else if(a.parentType === "project" && a.parentId) (projectActions[a.parentId] = projectActions[a.parentId] || []).push(a);
     });
-    var rows = byAreaOrder(state.goals, function(g){ return g.category; }).map(function(g){
+    // A timeline is for things with an end — an ongoing/infinite goal (g.ongoing, the same "∞
+    // ongoing" flag the goal card and area tile already show) has none by design, so it's excluded
+    // here rather than drawn with some arbitrary made-up end date. Its projects/actions still show
+    // normally; only the goal's own row is skipped.
+    var finiteGoals = state.goals.filter(function(g){ return !g.ongoing; });
+    var rows = byAreaOrder(finiteGoals, function(g){ return g.category; }).map(function(g){
       return { kind:"goal", obj:g, span: goalActions[g.id] || [] };
     }).concat(byAreaOrder(state.projects, function(p){ return projectCategory(p); }).map(function(p){
       return { kind:"project", obj:p, span: projectActions[p.id] || [] };
