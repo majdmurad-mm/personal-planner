@@ -11112,10 +11112,12 @@
   });
 
   /* ---------------- Calendar / Google Calendar ---------------- */
-  // Replace with the OAuth 2.0 Client ID from Google Cloud Console (APIs & Services -> Credentials).
-  // Safe to embed client-side — it identifies the app, not a secret. The read-only scope below
-  // means this app can only ever list your events, never create/edit/delete anything in Google Calendar.
-  var GOOGLE_CLIENT_ID = "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com";
+  // OAuth 2.0 Client ID from Google Cloud Console (APIs & Services -> Credentials). Shared by
+  // Calendar and Knowledge/Drive — each requests its own scope via its own token client (see
+  // GOOGLE_CAL_SCOPE below and DRIVE_SCOPE near wireKnowledge), so connecting/disconnecting one
+  // never touches the other's token. Safe to embed client-side — it identifies the app, not a
+  // secret; access is gated by the OAuth consent screen + authorized-origins allowlist.
+  var GOOGLE_CLIENT_ID = "520025864051-7g8fe4mkc08345dcjpbbom10egldeges.apps.googleusercontent.com";
   var GOOGLE_CAL_SCOPE = "https://www.googleapis.com/auth/calendar.readonly";
   var googleTokenClient = null;
   var googleAccessToken = null;
