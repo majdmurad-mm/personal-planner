@@ -1640,7 +1640,7 @@
         <button class="side-link" data-section="planner" type="button"><span class="sl-glyph">▤</span>Planner</button>
         <button class="side-link" data-section="tracker" type="button"><span class="sl-glyph">▥</span>Tracker</button>
         <button class="side-link" data-section="timeline" type="button"><span class="sl-glyph">↔</span>Timeline</button>
-        <button class="side-link" data-section="agent" type="button"><span class="sl-glyph">◈</span>Claude MCP</button>
+        <button class="side-link" data-section="agent" type="button"><span class="sl-glyph">◈</span>Brains</button>
         <button class="side-link" data-section="journal" type="button"><span class="sl-glyph">✎</span>Notes</button>
         <button class="side-link" data-section="people" type="button"><span class="sl-glyph">☺</span>People</button>
         <button class="side-link" data-section="location" type="button"><span class="sl-glyph">⚲</span>Location</button>
@@ -2053,70 +2053,91 @@
     <section id="agentSection" style="display:none;">
       <div class="main-header">
         <div>
-          <h1>claude mcp</h1>
-          <p class="subhead">This planner talks to Claude through an MCP connector — ask Claude about your day or tell it to capture something, and it reads and updates the same data you see here.</p>
+          <h1>brains</h1>
+          <p class="subhead">Every AI this planner uses, and what each one is for. Some run in the cloud, some right in your browser.</p>
         </div>
-        <button class="btn" id="agentKeyBtn" type="button" title="Gemini key — powers in-app note sentiment &amp; voice transcription. Separate from the Claude connector.">gemini key</button>
       </div>
 
       <style>
-        .mcp-doc{max-width:880px;line-height:1.6;font-size:.95rem;}
-        .mcp-doc h2{margin:1.8em 0 .5em;font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;opacity:.55;}
-        .mcp-doc p{margin:.55em 0;opacity:.9;}
-        .mcp-doc b{font-weight:600;}
-        .mcp-doc code{font-family:inherit;font-size:.88em;padding:1px 5px;border-radius:5px;background:rgba(127,127,127,.16);word-break:break-all;}
-        .mcp-card{border:1px solid rgba(127,127,127,.25);border-radius:14px;padding:14px 20px;margin:14px 0;}
-        .mcp-flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:10px;margin:8px 0 4px;}
-        .mcp-flow .node{border:1px solid rgba(127,127,127,.32);border-radius:10px;padding:8px 12px;font-size:.85rem;display:flex;flex-direction:column;justify-content:center;}
-        .mcp-flow .node b{font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;opacity:.55;margin-bottom:2px;}
-        .mcp-flow .arrow{align-self:center;opacity:.4;}
-        .mcp-tools{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:3px 18px;margin:.5em 0 .2em;}
-        .mcp-tools span{font-size:.86rem;opacity:.82;}
-        .mcp-pill{display:inline-block;font-size:.68rem;letter-spacing:.05em;text-transform:uppercase;padding:2px 9px;border-radius:999px;border:1px solid rgba(127,127,127,.4);opacity:.7;margin-left:6px;vertical-align:middle;}
-        .mcp-doc a{color:inherit;}
+        .brains-tabs{display:flex;gap:6px;margin:4px 0 20px;flex-wrap:wrap;}
+        .brains-tab{font:inherit;cursor:pointer;padding:7px 15px;border-radius:999px;border:1px solid rgba(127,127,127,.3);background:transparent;color:inherit;opacity:.6;}
+        .brains-tab:hover{opacity:1;}
+        .brains-tab.active{opacity:1;border-color:var(--accent,#8ab4f8);background:rgba(127,127,127,.14);}
+        .brains-panel[hidden]{display:none;}
+        .brains-doc{max-width:880px;line-height:1.6;font-size:.95rem;}
+        .brains-doc h2{margin:1.7em 0 .5em;font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;opacity:.55;}
+        .brains-doc p{margin:.55em 0;opacity:.9;}
+        .brains-doc b{font-weight:600;}
+        .brains-doc code{font-family:inherit;font-size:.88em;padding:1px 5px;border-radius:5px;background:rgba(127,127,127,.16);word-break:break-all;}
+        .brains-hero{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:2px;}
+        .brains-hero h3{font-size:1.15rem;margin:0;}
+        .brains-hero .by{opacity:.5;font-size:.85rem;}
+        .brains-tagrow{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 4px;}
+        .brains-tag{font-size:.68rem;letter-spacing:.05em;text-transform:uppercase;padding:2px 9px;border-radius:999px;border:1px solid rgba(127,127,127,.4);opacity:.75;}
+        .brains-card{border:1px solid rgba(127,127,127,.25);border-radius:14px;padding:14px 20px;margin:14px 0;}
+        .brains-flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:10px;margin:8px 0 4px;}
+        .brains-flow .node{border:1px solid rgba(127,127,127,.32);border-radius:10px;padding:8px 12px;font-size:.85rem;display:flex;flex-direction:column;justify-content:center;}
+        .brains-flow .node b{font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;opacity:.55;margin-bottom:2px;}
+        .brains-flow .arrow{align-self:center;opacity:.4;}
+        .brains-doc a{color:inherit;}
       </style>
 
-      <div class="mcp-doc">
-        <div class="mcp-flow">
-          <span class="node"><b>you</b>talk to Claude</span>
-          <span class="arrow">→</span>
-          <span class="node"><b>Claude</b>Cowork · web · mobile</span>
-          <span class="arrow">→</span>
-          <span class="node"><b>planner-mcp</b>Supabase edge function</span>
-          <span class="arrow">→</span>
-          <span class="node"><b>your data</b>this planner's database</span>
-        </div>
-        <p>Claude never touches this database directly. It calls a small server — an <b>MCP connector</b> — that lives next to the data, checks a secret token, and runs only the specific actions below, always scoped to your account.</p>
+      <div class="brains-tabs">
+        <button class="brains-tab active" data-brain="claude" type="button">Claude MCP</button>
+        <button class="brains-tab" data-brain="gemini" type="button">Gemini</button>
+        <button class="brains-tab" data-brain="whisper" type="button">Whisper</button>
+      </div>
 
-        <h2>What Claude can do</h2>
-        <p><b>Read</b><span class="mcp-pill">anytime</span></p>
-        <div class="mcp-tools">
-          <span>· today's agenda</span><span>· goals</span><span>· projects</span>
-          <span>· habits</span><span>· actions</span><span>· notes</span>
-          <span>· people</span><span>· tracker / mood</span>
+      <div class="brains-panel" data-brain="claude">
+        <div class="brains-doc">
+          <div class="brains-hero"><h3>Claude MCP</h3><span class="by">by Anthropic · cloud</span></div>
+          <div class="brains-tagrow"><span class="brains-tag">reads &amp; writes your data</span><span class="brains-tag">no key needed here</span></div>
+          <p>Claude connects to this planner through an <b>MCP connector</b> — so you can ask Claude about your day or tell it to capture something, from Cowork, the web, or your phone, and it works with the same data you see here.</p>
+          <div class="brains-flow">
+            <span class="node"><b>you</b>talk to Claude</span><span class="arrow">→</span>
+            <span class="node"><b>Claude</b>Cowork · web · mobile</span><span class="arrow">→</span>
+            <span class="node"><b>planner-mcp</b>Supabase edge function</span><span class="arrow">→</span>
+            <span class="node"><b>your data</b>this planner</span>
+          </div>
+          <h2>What it does</h2>
+          <p><b>Reads:</b> today's agenda, goals, projects, habits, actions, notes, people, tracker / mood.</p>
+          <p><b>Creates &amp; edits:</b> the same, on request. It can <b>never delete</b> — deletions stay a manual action here.</p>
+          <h2>How it's wired</h2>
+          <div class="brains-card">
+            <p>A <b>Supabase edge function</b> (<code>planner-mcp</code>) deployed next to the database. Claude authenticates with a secret token carried in the connector URL:</p>
+            <p><code>https://&lt;project&gt;.supabase.co/functions/v1/planner-mcp/&lt;token&gt;/mcp</code></p>
+            <p>The server-side key never leaves the server, and every query is locked to your account. Source and setup live in the repo under <code>supabase/functions/planner-mcp</code>.</p>
+          </div>
+          <h2>Use it</h2>
+          <p>In Claude → <b>Settings → Connectors</b> it's <b>Personal Planner</b>. Turn it on in a chat, then just talk: <code>"what's on my plate today?"</code> · <code>"add a P1 task to call the dentist tomorrow"</code> · <code>"log my mood as 4"</code>.</p>
         </div>
-        <p style="margin-top:1em;"><b>Create &amp; edit</b><span class="mcp-pill">on request</span></p>
-        <div class="mcp-tools">
-          <span>· goals</span><span>· projects</span><span>· habits</span>
-          <span>· actions (tasks)</span><span>· notes</span><span>· people</span>
-          <span>· log a metric</span><span>· complete an action</span>
+      </div>
+
+      <div class="brains-panel" data-brain="gemini" hidden>
+        <div class="brains-doc">
+          <div class="brains-hero"><h3>Gemini</h3><span class="by">by Google · cloud · needs an API key</span></div>
+          <div class="brains-tagrow"><span class="brains-tag">note sentiment</span><span class="brains-tag">voice transcription</span></div>
+          <p>Gemini (<code>gemini-3.5-flash</code>) is a cloud model. Give it an API key with the button below and it powers two in-app features:</p>
+          <h2>What it does</h2>
+          <p><b>Note sentiment</b> — reads each note and tags its emotional tone from a fixed vocabulary. Those tags color the note and drive the home notes widget's mood color.</p>
+          <p><b>Voice transcription (cloud option)</b> — an alternative to on-device Whisper when you record a voice note; you choose the engine as you record.</p>
+          <p>Without a key these are simply off — sentiment is skipped and transcription falls back to Whisper. (Gemini also used to run the old in-app chat agent, now retired in favor of Claude MCP.)</p>
+          <h2>Privacy</h2>
+          <p>When used, the note text or the audio is sent to Google. If you'd rather nothing leave your device, skip the key and let Whisper handle transcription.</p>
+          <p><button class="btn" id="agentKeyBtn" type="button">set / change gemini key</button></p>
         </div>
-        <p>It can <b>never delete</b> anything — deletions stay a manual action here in the app.</p>
+      </div>
 
-        <h2>How it's wired</h2>
-        <div class="mcp-card">
-          <p>The connector is a <b>Supabase edge function</b> (<code>planner-mcp</code>) deployed alongside this app's database. Claude authenticates with a secret token carried in the connector URL:</p>
-          <p><code>https://&lt;project&gt;.supabase.co/functions/v1/planner-mcp/&lt;token&gt;/mcp</code></p>
-          <p>The function reads and writes with a server-side key that never leaves the server, and every query is locked to your account. Source and setup steps live in the repo under <code>supabase/functions/planner-mcp</code>.</p>
+      <div class="brains-panel" data-brain="whisper" hidden>
+        <div class="brains-doc">
+          <div class="brains-hero"><h3>Whisper</h3><span class="by">OpenAI model · runs in your browser</span></div>
+          <div class="brains-tagrow"><span class="brains-tag">on-device</span><span class="brains-tag">no key · no cost</span><span class="brains-tag">private</span></div>
+          <p>Whisper (<code>whisper-base</code>) is a speech-to-text model that runs <b>entirely in your browser</b> via transformers.js — no API key, no per-use cost, and your audio never leaves your device.</p>
+          <h2>What it does</h2>
+          <p>It's the <b>default engine for transcribing voice notes</b> — record in the Notes composer and Whisper turns the audio into text, locally.</p>
+          <h2>Good to know</h2>
+          <p>The model (~75&nbsp;MB, quantized) downloads once the first time you transcribe, then the browser caches it for every time after, including across reloads. The first transcription is slower while it downloads; after that it's quick and fully offline.</p>
         </div>
-
-        <h2>Use it</h2>
-        <p>In Claude → <b>Settings → Connectors</b>, this is the <b>Personal Planner</b> connector. Turn it on in a chat, then just talk:</p>
-        <p><code>"what's on my plate today?"</code> · <code>"add a P1 task to call the dentist tomorrow"</code> · <code>"log my mood as 4"</code></p>
-        <p>Set standing instructions in <b>Settings → Cowork</b> so every chat starts already knowing to use it.</p>
-
-        <h2>Gemini key</h2>
-        <p>The <b>gemini key</b> button above is separate from the Claude connector — it powers this app's own note features (sentiment coloring and voice-note transcription). Leave it unset if you don't use those.</p>
       </div>
     </section>
 
@@ -12235,6 +12256,18 @@
     });
   }
 
+  // Brains sub-tabs (Claude MCP / Gemini / Whisper) — plain show/hide, nothing to persist.
+  (function(){
+    var tabs = Array.prototype.slice.call(document.querySelectorAll(".brains-tab"));
+    var panels = Array.prototype.slice.call(document.querySelectorAll(".brains-panel"));
+    tabs.forEach(function(tab){
+      tab.addEventListener("click", function(){
+        var target = tab.dataset.brain;
+        tabs.forEach(function(t){ t.classList.toggle("active", t === tab); });
+        panels.forEach(function(pnl){ pnl.hidden = (pnl.dataset.brain !== target); });
+      });
+    });
+  })();
   document.getElementById("agentKeyBtn").addEventListener("click", function(){
     document.getElementById("agentApiKeyInput").value = safeGet(window.localStorage, "geminiApiKey") || "";
     openModal("agentKeyModalOverlay");
