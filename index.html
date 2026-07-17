@@ -2525,11 +2525,25 @@
         .knowledge-empty .btn{margin-top:14px;}
         .knowledge-types{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:26px;padding-top:18px;border-top:1px solid var(--border);}
         .knowledge-type{font-family:var(--mono);font-size:11px;padding:4px 10px;border-radius:999px;border:1px solid var(--border);color:var(--text-dim);}
+        /* Graph tab — reuses the app's established force-graph wrapper (.wb-canvas-wrap/.wb-world/
+           .wb-conn-svg, same as Planner Graph and People Graph) with its own kg-prefixed node styling.
+           Those base classes assume a flex:1 parent for sizing; this page has none, so give the wrap
+           an explicit height directly. */
+        .kg-canvas-wrap{height:min(70vh, 640px);}
+        .kg-node{position:absolute;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;user-select:none;}
+        .kg-node-circle{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-size:18px;border:2px solid var(--border-bright);background:var(--bg-raised);box-shadow:var(--elev-1);}
+        .kg-node.root .kg-node-circle{width:60px;height:60px;font-size:24px;border-color:var(--accent);background:var(--bg-inset);color:var(--accent);}
+        .kg-node.folder .kg-node-circle{border-color:var(--accent-dim);}
+        .kg-node.folder.expanded .kg-node-circle{border-color:var(--accent);background:var(--bg-inset);}
+        .kg-node.filetype .kg-node-circle{width:36px;height:36px;font-size:15px;opacity:.9;}
+        .kg-node-label{font-family:var(--mono);font-size:10.5px;color:var(--text-dim);max-width:100px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+        .kg-node.root .kg-node-label{color:var(--text);font-weight:600;max-width:130px;}
       </style>
 
       <div class="knowledge-tabs">
         <button class="knowledge-tab active" data-kv="pinned" type="button">Knowledge Base</button>
         <button class="knowledge-tab" data-kv="drive" type="button">Drive Navigator</button>
+        <button class="knowledge-tab" data-kv="graph" type="button">Graph</button>
         <button class="knowledge-tab" data-kv="overview" type="button">Overview</button>
       </div>
 
@@ -2562,6 +2576,26 @@
           <span class="knowledge-type">🖼 Images</span>
           <span class="knowledge-type">📁 Folders</span>
           <span class="knowledge-type">◦ Other</span>
+        </div>
+      </div>
+
+      <div class="knowledge-panel" data-kv="graph" hidden>
+        <p class="knowledge-pinned-hint">Folder structure of your pinned folders — expand a folder to see its subfolders and the types of files inside. Click a file-type node to open that folder in Drive Navigator.</p>
+        <div class="wb-canvas-wrap kg-canvas-wrap" id="kgCanvasWrap">
+          <div class="wb-toolbar wb-toolbar-float" id="kgToolbarFloat">
+            <div class="wb-zoom-group">
+              <button class="cal-nav-btn" id="kgZoomOutBtn" type="button" aria-label="Zoom out">−</button>
+              <span class="wb-zoom-label" id="kgZoomLabel">100%</span>
+              <button class="cal-nav-btn" id="kgZoomInBtn" type="button" aria-label="Zoom in">+</button>
+              <button class="btn" id="kgCenterBtn" type="button">reset view</button>
+            </div>
+            <button class="btn" id="kgRefreshBtn" type="button" title="Re-fetch folder contents from Drive">⟳ refresh</button>
+          </div>
+          <p class="panel-hint wb-hint-float wb-pan-hint">Pan: drag empty space. Zoom: scroll, or the +/− buttons. Click a folder to expand or collapse it; click a file-type node to open that folder in Drive Navigator.</p>
+          <div class="wb-world kg-world" id="kgWorld">
+            <svg class="wb-conn-svg" id="kgConnSvg"><g id="kgConnLayer"></g></svg>
+            <div id="kgOverlay"></div>
+          </div>
         </div>
       </div>
 
@@ -3770,6 +3804,7 @@
   /* ---------------- Top-level + planner tabs ---------------- */
   var activeSection = "home";
   var activePlannerTab = "areas";
+  var activeKnowledgeTab = "pinned";
   var filters = { goals:"all", projects:"all", habits:"all", actions:"all", people:"all" };
   var views = { goals:"list", projects:"matrix", habits:"matrix", actions:"matrix", sleep:"daily", people:"cards", journal:"notes" };
 
@@ -3827,6 +3862,7 @@
     // Entering the planner with its Graph tab still active needs the same physics/reheat activation
     // the old top-level Graph section got on entry.
     else if(name === "planner" && activePlannerTab === "graph") activateWhiteboard();
+    else if(name === "knowledge" && activeKnowledgeTab === "graph") activateKnowledgeGraph();
     else renderActiveSectionContent();
   }
   function syncPlannerFullscreenGraphClass(){
@@ -4008,6 +4044,8 @@
     var panels = Array.prototype.slice.call(section.querySelectorAll(".knowledge-panel"));
     tabs.forEach(function(t){ t.classList.toggle("active", t.dataset.kv === target); });
     panels.forEach(function(p){ p.hidden = (p.dataset.kv !== target); });
+    activeKnowledgeTab = target;
+    if(target === "graph") activateKnowledgeGraph();
   }
   function renderKnowledgeEmpty(){
     var el = document.getElementById("knowledgeFiles");
@@ -4072,6 +4110,328 @@
     var safe = term.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
     var files = await driveApiList("name contains '" + safe + "' and trashed=false");
     if(files) renderKnowledgeFiles(files);
+  }
+
+  var KNOWLEDGE_MIME_LABELS = {
+    "application/vnd.google-apps.document": "Docs",
+    "application/vnd.google-apps.spreadsheet": "Sheets",
+    "application/vnd.google-apps.presentation": "Slides",
+    "application/pdf": "PDF"
+  };
+  function knowledgeTypeLabel(mimeType){
+    if(KNOWLEDGE_MIME_LABELS[mimeType]) return KNOWLEDGE_MIME_LABELS[mimeType];
+    if(mimeType && mimeType.indexOf("image/") === 0) return "Images";
+    return "Other";
+  }
+
+  /* ---- Knowledge graph: folder-structure + file-type map of pinned Drive folders — same DOM-node +
+     CSS-transform + SVG-edge + requestAnimationFrame physics pattern as the Planner Graph and People
+     Graph (see pplTickPhysics et al above), reusing .wb-canvas-wrap/.wb-world/.wb-conn-svg/
+     .wb-toolbar-float directly with its own kg-prefixed node styling and sim state. A node is either a
+     pinned-folder root, a subfolder, or a "file type" aggregate (one node per mime type present in a
+     folder, e.g. "📄 Docs ×4") — individual files never get their own node, matching the ask ("the
+     folder structure and the type of files inside each folder"). Deliberately scoped down from the
+     People graph: single-pointer drag-to-pan only (works for touch via Pointer Events too), no
+     pinch-to-zoom, no fullscreen — not needed for a folder tree this small. */
+  var KG_WORLD_W = 3000, KG_WORLD_H = 1600;
+  var KG_CENTER_X = KG_WORLD_W / 2, KG_CENTER_Y = KG_WORLD_H / 2;
+  var kgPanX = 0, kgPanY = 0, kgZoom = 1;
+  var kgWorldEl, kgWrapEl;
+  // { id, driveId, kind:'root'|'folder'|'filetype', name, parentNodeId, x, y, vx, vy, anchorX, anchorY (root only), mimeType (filetype only) }
+  var kgNodes = [];
+  var kgEdges = []; // { fromId, toId }
+  var kgExpanded = {}; // node id -> true once its children have been fetched/built
+  // Drive folder id -> { folders:[{id,name}], typeBuckets:[{mimeType,count}] } — avoids refetching
+  // Drive every time a folder is collapsed and re-expanded; cleared only by the toolbar's refresh.
+  var kgLoadedChildren = {};
+  var KG_REPEL = 6000, KG_LINK_DIST = 110, KG_LINK_K = 0.03, KG_DAMPING = 0.82, KG_ALPHA_DECAY = 0.985;
+  // Roots pull toward their own fixed anchor (keeps separate pinned-folder trees from drifting into
+  // one blob); everything else gets a much weaker pull toward the world center, same "don't drift off
+  // forever" role as PPL_CONTACT_PULL_K in the People graph.
+  var KG_CENTER_PULL_K = 0.0015, KG_ROOT_PULL_K = 0.01;
+  var kgAlpha = 0, kgSimRunning = false;
+  var kgNodeElCache = {};
+
+  function kgFindNode(id){
+    for(var i=0;i<kgNodes.length;i++){ if(kgNodes[i].id === id) return kgNodes[i]; }
+    return null;
+  }
+  // Builds one root node per pinned folder, spread out horizontally with its own anchor point. Called
+  // fresh on every activation so a newly pinned/unpinned folder is always reflected; existing
+  // expanded subtrees for folders that are still pinned are left untouched (only roots whose folder
+  // got unpinned, and everything under them, are dropped).
+  function buildKnowledgeGraphRoots(){
+    var pins = loadKnowledgePins();
+    var wantedRootIds = {};
+    pins.forEach(function(p){ wantedRootIds["root:" + p.id] = true; });
+    function rootIdOf(n){
+      var cur = n, guard = 0;
+      while(cur && cur.kind !== "root" && guard++ < 200) cur = kgFindNode(cur.parentNodeId);
+      return cur ? cur.id : null;
+    }
+    kgNodes = kgNodes.filter(function(n){ return wantedRootIds[rootIdOf(n)]; });
+    pins.forEach(function(p, i){
+      var id = "root:" + p.id;
+      var anchorX = 260 + i * 420, anchorY = 300;
+      var existing = kgFindNode(id);
+      if(existing){ existing.anchorX = anchorX; existing.anchorY = anchorY; existing.name = p.name; }
+      else kgNodes.push({ id: id, driveId: p.id, kind: "root", name: p.name, parentNodeId: null,
+        x: anchorX, y: anchorY, vx: 0, vy: 0, anchorX: anchorX, anchorY: anchorY });
+    });
+    kgEdges = kgEdges.filter(function(e){ return kgFindNode(e.fromId) && kgFindNode(e.toId); });
+  }
+  // Collapsing removes the folder's whole subtree (recursively, via parentNodeId), not just its
+  // immediate children — re-expanding refetches from kgLoadedChildren's cache, so nothing is lost.
+  function kgCollapseFolder(node){
+    var toRemove = {};
+    (function collect(parentId){
+      kgNodes.forEach(function(n){
+        if(n.parentNodeId === parentId){ toRemove[n.id] = true; collect(n.id); }
+      });
+    })(node.id);
+    kgNodes = kgNodes.filter(function(n){ return !toRemove[n.id]; });
+    kgEdges = kgEdges.filter(function(e){ return !toRemove[e.fromId] && !toRemove[e.toId]; });
+    kgExpanded[node.id] = false;
+  }
+  async function kgExpandFolder(node){
+    if(kgExpanded[node.id]){ kgCollapseFolder(node); kgRenderNodes(); kgReheat(1); return; }
+    if(!driveAccessToken){ toast("Connect Google Drive to expand this folder."); return; }
+    var children = kgLoadedChildren[node.driveId];
+    if(!children){
+      var files = await driveApiList("'" + node.driveId + "' in parents and trashed=false");
+      if(!files) return;
+      var folders = files.filter(function(f){ return f.mimeType === "application/vnd.google-apps.folder"; })
+        .map(function(f){ return { id: f.id, name: f.name }; });
+      var counts = {};
+      files.forEach(function(f){
+        if(f.mimeType === "application/vnd.google-apps.folder") return;
+        counts[f.mimeType] = (counts[f.mimeType] || 0) + 1;
+      });
+      var typeBuckets = Object.keys(counts).map(function(mt){ return { mimeType: mt, count: counts[mt] }; });
+      children = { folders: folders, typeBuckets: typeBuckets };
+      kgLoadedChildren[node.driveId] = children;
+    }
+    kgExpanded[node.id] = true;
+    var total = children.folders.length + children.typeBuckets.length;
+    var angleBase = Math.random() * Math.PI * 2, i = 0;
+    children.folders.forEach(function(f){
+      var childId = "folder:" + f.id + ":" + node.id;
+      if(!kgFindNode(childId)){
+        var angle = angleBase + (i / Math.max(1, total)) * Math.PI * 2;
+        kgNodes.push({ id: childId, driveId: f.id, kind: "folder", name: f.name, parentNodeId: node.id,
+          x: node.x + Math.cos(angle) * 60, y: node.y + Math.sin(angle) * 60, vx: 0, vy: 0 });
+        kgEdges.push({ fromId: node.id, toId: childId });
+      }
+      i++;
+    });
+    children.typeBuckets.forEach(function(b){
+      var childId = "type:" + b.mimeType + ":" + node.id;
+      if(!kgFindNode(childId)){
+        var angle = angleBase + (i / Math.max(1, total)) * Math.PI * 2;
+        kgNodes.push({ id: childId, kind: "filetype", name: knowledgeTypeLabel(b.mimeType) + " ×" + b.count,
+          mimeType: b.mimeType, parentNodeId: node.id,
+          x: node.x + Math.cos(angle) * 60, y: node.y + Math.sin(angle) * 60, vx: 0, vy: 0 });
+        kgEdges.push({ fromId: node.id, toId: childId });
+      }
+      i++;
+    });
+    if(!total) toast('"' + node.name + '" is empty.');
+    kgRenderNodes();
+    kgReheat(1);
+  }
+  function kgNodeIcon(n){
+    if(n.kind === "root") return "📌";
+    if(n.kind === "folder") return "📁";
+    return knowledgeIconFor(n.mimeType);
+  }
+  function kgNodeHtml(n){
+    var cls = "kg-node " + n.kind + (n.kind !== "filetype" && kgExpanded[n.id] ? " expanded" : "");
+    return '<div class="' + cls + '" data-id="' + n.id + '" style="left:' + n.x + 'px; top:' + n.y + 'px;" title="' + escapeHtml(n.name) + '">' +
+      '<span class="kg-node-circle">' + kgNodeIcon(n) + '</span>' +
+      '<span class="kg-node-label">' + escapeHtml(n.name) + '</span>' +
+    '</div>';
+  }
+  function rebuildKgNodeElCache(overlay){
+    kgNodeElCache = {};
+    overlay.querySelectorAll(".kg-node").forEach(function(el){ kgNodeElCache[el.dataset.id] = el; });
+  }
+  function kgRenderNodes(){
+    var overlay = document.getElementById("kgOverlay");
+    if(!overlay) return;
+    if(!kgNodes.length){
+      overlay.innerHTML = '<div class="wb-empty-hint">🕸️ Nothing to graph yet — pin a folder from Drive Navigator first.</div>';
+      rebuildKgNodeElCache(overlay);
+      kgRenderEdges();
+      return;
+    }
+    overlay.innerHTML = kgNodes.map(kgNodeHtml).join("");
+    rebuildKgNodeElCache(overlay);
+    kgRenderEdges();
+  }
+  function kgRenderEdges(){
+    var layer = document.getElementById("kgConnLayer");
+    if(!layer) return;
+    layer.innerHTML = kgEdges.map(function(e){
+      var a = kgFindNode(e.fromId), b = kgFindNode(e.toId);
+      if(!a || !b) return "";
+      return '<line class="wb-conn-line" x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '"></line>';
+    }).join("");
+  }
+  function kgApplyPositionsToDom(){
+    kgNodes.forEach(function(n){
+      var el = kgNodeElCache[n.id];
+      if(el){ el.style.left = n.x + "px"; el.style.top = n.y + "px"; }
+    });
+  }
+  function kgTickPhysics(){
+    var nodes = kgNodes;
+    for(var i=0;i<nodes.length;i++){
+      for(var j=i+1;j<nodes.length;j++){
+        var dx = nodes[j].x - nodes[i].x, dy = nodes[j].y - nodes[i].y;
+        var distSq = dx*dx + dy*dy || 0.01, dist = Math.sqrt(distSq);
+        var force = (KG_REPEL / distSq) * kgAlpha;
+        var fx = (dx/dist) * force, fy = (dy/dist) * force;
+        nodes[i].vx -= fx; nodes[i].vy -= fy;
+        nodes[j].vx += fx; nodes[j].vy += fy;
+      }
+    }
+    kgEdges.forEach(function(e){
+      var a = kgFindNode(e.fromId), b = kgFindNode(e.toId);
+      if(!a || !b) return;
+      var dx = b.x - a.x, dy = b.y - a.y;
+      var dist = Math.sqrt(dx*dx + dy*dy) || 0.01;
+      var force = (dist - KG_LINK_DIST) * KG_LINK_K * kgAlpha;
+      var fx = (dx/dist) * force, fy = (dy/dist) * force;
+      a.vx += fx; a.vy += fy;
+      b.vx -= fx; b.vy -= fy;
+    });
+    nodes.forEach(function(n){
+      if(n.kind === "root"){
+        n.vx += (n.anchorX - n.x) * KG_ROOT_PULL_K * kgAlpha;
+        n.vy += (n.anchorY - n.y) * KG_ROOT_PULL_K * kgAlpha;
+      } else {
+        n.vx += (KG_CENTER_X - n.x) * KG_CENTER_PULL_K * kgAlpha;
+        n.vy += (KG_CENTER_Y - n.y) * KG_CENTER_PULL_K * kgAlpha;
+      }
+      n.vx *= KG_DAMPING; n.vy *= KG_DAMPING;
+      n.x += n.vx; n.y += n.vy;
+    });
+  }
+  function kgSimStep(){
+    if(!kgSimRunning) return;
+    if(activeSection !== "knowledge" || activeKnowledgeTab !== "graph"){ kgSimRunning = false; return; }
+    kgTickPhysics();
+    kgApplyPositionsToDom();
+    kgRenderEdges();
+    kgAlpha *= KG_ALPHA_DECAY;
+    if(kgAlpha < 0.01){ kgSimRunning = false; return; }
+    requestAnimationFrame(kgSimStep);
+  }
+  function kgReheat(amount){
+    kgAlpha = Math.max(kgAlpha, amount == null ? 1 : amount);
+    if(!kgSimRunning && activeSection === "knowledge" && activeKnowledgeTab === "graph"){
+      kgSimRunning = true;
+      requestAnimationFrame(kgSimStep);
+    }
+  }
+  function applyKgTransform(){
+    if(kgWorldEl) kgWorldEl.style.transform = "translate(" + kgPanX + "px, " + kgPanY + "px) scale(" + kgZoom + ")";
+    var label = document.getElementById("kgZoomLabel");
+    if(label) label.textContent = Math.round(kgZoom * 100) + "%";
+  }
+  function kgZoomAt(newZoom, viewportX, viewportY){
+    newZoom = Math.max(0.25, Math.min(3, newZoom));
+    var worldX = (viewportX - kgPanX) / kgZoom;
+    var worldY = (viewportY - kgPanY) / kgZoom;
+    kgZoom = newZoom;
+    kgPanX = viewportX - worldX * kgZoom;
+    kgPanY = viewportY - worldY * kgZoom;
+    applyKgTransform();
+  }
+  function kgCenterView(){
+    if(!kgWrapEl) return;
+    var w = kgWrapEl.clientWidth, h = kgWrapEl.clientHeight;
+    kgPanX = w / 2 - KG_CENTER_X * kgZoom;
+    kgPanY = h / 2 - KG_CENTER_Y * kgZoom;
+    applyKgTransform();
+  }
+  var kgInitialized = false, kgCenteredOnce = false;
+  function initKnowledgeGraphWrap(){
+    kgWorldEl = document.getElementById("kgWorld");
+    kgWrapEl = document.getElementById("kgCanvasWrap");
+    kgWorldEl.style.width = KG_WORLD_W + "px";
+    kgWorldEl.style.height = KG_WORLD_H + "px";
+
+    var kgPanning = false, kgPanPointerId = null, kgPanStartClientX, kgPanStartClientY, kgPanStartX, kgPanStartY;
+    kgWrapEl.addEventListener("pointerdown", function(e){
+      if(e.target.closest(".wb-toolbar-float") || e.target.closest(".kg-node")) return;
+      e.preventDefault();
+      kgPanning = true;
+      kgPanPointerId = e.pointerId;
+      kgPanStartClientX = e.clientX; kgPanStartClientY = e.clientY;
+      kgPanStartX = kgPanX; kgPanStartY = kgPanY;
+      kgWrapEl.setPointerCapture(e.pointerId);
+      kgWrapEl.classList.add("panning");
+    });
+    kgWrapEl.addEventListener("pointermove", function(e){
+      if(!kgPanning || e.pointerId !== kgPanPointerId) return;
+      kgPanX = kgPanStartX + (e.clientX - kgPanStartClientX);
+      kgPanY = kgPanStartY + (e.clientY - kgPanStartClientY);
+      applyKgTransform();
+    });
+    function endKgPan(e){
+      if(!kgPanning || (e.pointerId !== undefined && e.pointerId !== kgPanPointerId)) return;
+      kgPanning = false; kgPanPointerId = null;
+      kgWrapEl.classList.remove("panning");
+    }
+    kgWrapEl.addEventListener("pointerup", endKgPan);
+    kgWrapEl.addEventListener("pointercancel", endKgPan);
+    kgWrapEl.addEventListener("wheel", function(e){
+      e.preventDefault();
+      var rect = kgWrapEl.getBoundingClientRect();
+      var factor = e.deltaY < 0 ? 1.1 : 0.9;
+      kgZoomAt(kgZoom * factor, e.clientX - rect.left, e.clientY - rect.top);
+    }, { passive:false });
+    document.getElementById("kgZoomInBtn").addEventListener("click", function(){
+      var rect = kgWrapEl.getBoundingClientRect();
+      kgZoomAt(kgZoom * 1.25, rect.width / 2, rect.height / 2);
+    });
+    document.getElementById("kgZoomOutBtn").addEventListener("click", function(){
+      var rect = kgWrapEl.getBoundingClientRect();
+      kgZoomAt(kgZoom / 1.25, rect.width / 2, rect.height / 2);
+    });
+    document.getElementById("kgCenterBtn").addEventListener("click", function(){
+      kgZoom = 1;
+      kgCenterView();
+    });
+    document.getElementById("kgRefreshBtn").addEventListener("click", function(){
+      kgLoadedChildren = {};
+      kgExpanded = {};
+      kgNodes = [];
+      kgEdges = [];
+      activateKnowledgeGraph();
+      toast("Refreshed from Drive.");
+    });
+    document.getElementById("kgOverlay").addEventListener("click", function(e){
+      var el = e.target.closest(".kg-node");
+      if(!el) return;
+      var n = kgFindNode(el.dataset.id);
+      if(!n) return;
+      if(n.kind === "filetype"){
+        var parent = kgFindNode(n.parentNodeId);
+        if(parent) openPinnedFolder(parent.driveId, parent.name);
+      } else {
+        kgExpandFolder(n);
+      }
+    });
+    applyKgTransform();
+  }
+  function activateKnowledgeGraph(){
+    if(!kgInitialized){ kgInitialized = true; initKnowledgeGraphWrap(); }
+    buildKnowledgeGraphRoots();
+    kgRenderNodes();
+    kgReheat(1);
+    if(!kgCenteredOnce){ kgCenteredOnce = true; kgCenterView(); }
   }
 
   (function wireKnowledge(){
