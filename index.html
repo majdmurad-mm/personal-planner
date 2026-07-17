@@ -1501,8 +1501,9 @@
   /* Sticky notes — individual floating cards on the home cockpit, each colored by its (possibly
      multiple) areas — they're part of the Notes system: every sticky can be filed into Notes via ✓,
      inheriting its areas. The draft (text, areas, x/y) lives in localStorage until saved or
-     discarded. Card color comes from inline --sticky-c / --sticky-bg vars (var(--cat-*) /
-     var(--cat-*-bg)) set from the first selected area. See wireHomeStickies. */
+     discarded. Card color comes from inline --sticky-c / --sticky-bg vars set to an actual RGB
+     blend across every selected area's own color (see areaStyle in wireHomeStickies), not just one
+     of them. */
   .home-sticky{ position:absolute; z-index:5; width:172px; border-radius:8px; border:1px solid var(--sticky-c, var(--border-bright)); background:var(--sticky-bg, var(--bg-raised)); box-shadow:0 3px 10px rgba(0,0,0,0.28); display:flex; flex-direction:column; overflow:hidden; backdrop-filter:blur(6px); }
   .home-sticky-grip{ height:15px; flex-shrink:0; cursor:grab; touch-action:none; background:var(--sticky-c, var(--border-bright)); opacity:0.5; }
   .home-sticky.dragging{ z-index:8; }
@@ -5853,12 +5854,26 @@
       return arr;
     }
     function update(id, patch){ var arr = load(); var i = arr.findIndex(function(x){ return x.id === id; }); if(i !== -1){ Object.assign(arr[i], patch); save(arr); } }
-    // The card's own border/background color comes from its FIRST selected area (same "primary"
-    // convention projectCategory() uses for multi-area projects elsewhere) — a sticky with no areas
-    // stays neutral, same as before.
+    function hexToRgb(hex){
+      var h = hex.replace("#", "");
+      if(h.length === 3) h = h.split("").map(function(c){ return c + c; }).join("");
+      var n = parseInt(h, 16);
+      return { r:(n >> 16) & 255, g:(n >> 8) & 255, b:n & 255 };
+    }
+    // The card's own border/background color is an actual RGB blend across EVERY selected area
+    // (plain channel average, via cssVarColor — which already resolves the current theme's real hex
+    // for a --cat-* token), not just the first one picked — two areas produces a genuinely new
+    // in-between color, not either area's own color. A sticky with no areas stays neutral.
     function areaStyle(areas){
-      var primary = areas && areas[0];
-      return primary ? ("--sticky-c: var(--cat-" + primary.toLowerCase() + "); --sticky-bg: var(--cat-" + primary.toLowerCase() + "-bg);") : "";
+      var list = areas || [];
+      if(!list.length) return "";
+      var sum = { r:0, g:0, b:0 };
+      list.forEach(function(a){
+        var rgb = hexToRgb(cssVarColor("--cat-" + a.toLowerCase()));
+        sum.r += rgb.r; sum.g += rgb.g; sum.b += rgb.b;
+      });
+      var r = Math.round(sum.r / list.length), g = Math.round(sum.g / list.length), b = Math.round(sum.b / list.length);
+      return "--sticky-c: rgb(" + r + "," + g + "," + b + "); --sticky-bg: rgba(" + r + "," + g + "," + b + ",0.13);";
     }
     // Once a card has been manually resized (note.h set), its height is fixed and the textarea
     // fills it (see .home-sticky.resized) instead of growing with content — auto-grow only applies
