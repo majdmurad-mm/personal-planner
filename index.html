@@ -1498,6 +1498,15 @@
   .home-notes-resize{ position:absolute; right:0; bottom:0; width:16px; height:16px; cursor:nwse-resize; touch-action:none; }
   .home-notes-resize::before{ content:""; position:absolute; right:4px; bottom:4px; width:7px; height:7px; border-right:2px solid var(--border-bright); border-bottom:2px solid var(--border-bright); opacity:0.7; }
   .home-notes-resize:hover::before{ opacity:1; border-color:var(--accent-dim); }
+  /* Today's-locations map widget — sits below the Google Photos slideshow on the same right edge
+     (see .home-photos above) so the two don't overlap by default; draggable by its own bar only
+     (not the whole card), same convention as the todo/notes widgets, since the map body needs its
+     own pointer events for Leaflet's pan/zoom. Not resizable — a fixed size keeps this simple like
+     the clock/photos widgets, rather than every floating widget needing its own resize grip. */
+  .home-map-widget{ position:absolute; top:178px; right:14px; z-index:5; width:230px; height:190px; border-radius:10px; border:1px solid var(--border); background:rgba(var(--bg-raised-rgb), 0.55); backdrop-filter:blur(8px); display:flex; flex-direction:column; overflow:hidden; }
+  .home-map-bar{ flex:0 0 auto; padding:5px 9px; cursor:grab; touch-action:none; user-select:none; font-family:var(--mono); font-size:9.5px; letter-spacing:0.05em; text-transform:uppercase; color:var(--text-dim); border-bottom:1px solid var(--border); }
+  .home-map-widget.dragging .home-map-bar{ cursor:grabbing; }
+  .home-map-canvas{ flex:1; min-height:0; }
   /* Sticky notes — individual floating cards on the home cockpit, each colored by its (possibly
      multiple) areas — they're part of the Notes system: every sticky can be filed into Notes via ✓,
      inheriting its areas. The draft (text, areas, x/y) lives in localStorage until saved or
@@ -1599,6 +1608,7 @@
     .home-graph-wrap{ flex:1; height:auto; }
     #homeCanvas{ pointer-events:none; }  /* viewable but not interactable */
     .home-photos{ display:none; }
+    .home-map-widget{ display:none; }
     .home-clock-time{ font-size:26px; }
     .home-areas-rail{ right:8px; padding:8px 9px; }
     /* The to-do matrix and notes bar are still fully movable/resizable on mobile, but their desktop
@@ -1782,6 +1792,10 @@
           </div>
           <div class="home-notes-detail" id="homeNotesDetail" hidden></div>
           <div class="home-notes-resize" id="homeNotesResize" title="Drag to resize"></div>
+        </div>
+        <div class="home-map-widget" id="homeMapWidget">
+          <div class="home-map-bar" id="homeMapBar" title="Drag to move">today's action locations</div>
+          <div class="home-map-canvas" id="homeMapCanvas"></div>
         </div>
         <!-- Mobile only (see @media max-width:820px): on a phone the graph fills the whole screen as
              a view-only background and the timeline becomes an on-demand drawer instead of a fixed
@@ -5270,6 +5284,43 @@
     el.addEventListener("pointercancel", end);
   })();
 
+  // Today's-locations map widget — draggable by its bar only (not the whole card), same convention
+  // as the todo/notes widgets below, since the map body itself needs its own pointer events for
+  // Leaflet's own pan/zoom. Not resizable, position persisted separately (pp_home_map_pos).
+  (function wireHomeMapDrag(){
+    var el = document.getElementById("homeMapWidget");
+    var bar = document.getElementById("homeMapBar");
+    var wrap = document.querySelector(".home-graph-wrap");
+    var pos = null;
+    try{ pos = JSON.parse(safeGet(window.localStorage, "pp_home_map_pos") || "null"); }catch(e){}
+    if(pos && typeof pos.left === "number"){ el.style.left = pos.left + "px"; el.style.top = pos.top + "px"; el.style.right = "auto"; el.style.bottom = "auto"; }
+    var dragging = false, offX = 0, offY = 0, moved = false;
+    bar.addEventListener("pointerdown", function(e){
+      dragging = true; moved = false;
+      var r = el.getBoundingClientRect();
+      offX = e.clientX - r.left; offY = e.clientY - r.top;
+      bar.setPointerCapture(e.pointerId);
+      el.classList.add("dragging");
+      e.preventDefault();
+    });
+    bar.addEventListener("pointermove", function(e){
+      if(!dragging) return;
+      moved = true;
+      var wr = wrap.getBoundingClientRect();
+      var left = Math.max(0, Math.min(wr.width - el.offsetWidth, e.clientX - wr.left - offX));
+      var top = Math.max(0, Math.min(wr.height - el.offsetHeight, e.clientY - wr.top - offY));
+      el.style.left = left + "px"; el.style.top = top + "px"; el.style.right = "auto"; el.style.bottom = "auto";
+    });
+    function end(){
+      if(!dragging) return;
+      dragging = false;
+      el.classList.remove("dragging");
+      if(moved) safeSet(window.localStorage, "pp_home_map_pos", JSON.stringify({ left: parseFloat(el.style.left) || 0, top: parseFloat(el.style.top) || 0 }));
+    }
+    bar.addEventListener("pointerup", end);
+    bar.addEventListener("pointercancel", end);
+  })();
+
   // Today's to-dos widget: draggable by its head (same pattern as the clock above — position
   // persisted, clamped to stay inside the graph area) and resizable by its corner grip (size
   // persisted separately). Dragging starts from anywhere on the head EXCEPT the mode tabs, so tab
@@ -6275,6 +6326,50 @@
     }
   }
 
+  // ---- Today's-locations map widget: a small Leaflet map showing every action scheduled for today
+  // that has a saved location (locationLat/locationLng — same fields the Location page's own actions
+  // layer, locRenderActionsLayer, already reads). Deliberately stays zoomed on a fixed home base
+  // (Lindenstr. 75a, 10969 Berlin, geocoded once via Nominatim) rather than auto-fitting the markers'
+  // bounds, so the view is stable and legible with zero, one, or several actions plotted instead of
+  // zooming wildly out for a single far-away location. Lazily initialized the same way as the 3D
+  // graph (ensureHomeScene) — first paint after the home section is actually on screen and laid out.
+  var HOME_MAP_BASE_LAT = 52.5062069, HOME_MAP_BASE_LON = 13.3964178;
+  var homeMap = null, homeMapMarkers = null, homeMapMarkersSig = null;
+  function ensureHomeMap(){
+    if(homeMap || typeof L === "undefined") return;
+    var el = document.getElementById("homeMapCanvas");
+    if(!el) return;
+    homeMap = L.map(el, { zoomControl:false }).setView([HOME_MAP_BASE_LAT, HOME_MAP_BASE_LON], 13);
+    L.control.zoom({ position:"topright" }).addTo(homeMap);
+    // Same CARTO "Dark Matter" basemap as the Location page (locMap) — no API key, permanently dark
+    // regardless of the app's own theme toggle.
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      maxZoom: 19, subdomains: "abcd",
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+    }).addTo(homeMap);
+    // circleMarker, not L.marker — same choice the Location page's own layers make throughout,
+    // since a default L.marker needs external icon image assets this app never bundles.
+    L.circleMarker([HOME_MAP_BASE_LAT, HOME_MAP_BASE_LON], { radius:7, color:"#FFD54A", weight:1.5, opacity:0.9, fillColor:"#FFD54A", fillOpacity:0.55 })
+      .addTo(homeMap)
+      .bindPopup('<div class="loc-city-popup"><b>Home base</b><br>Lindenstr. 75a, 10969 Berlin</div>');
+    homeMapMarkers = L.layerGroup().addTo(homeMap);
+  }
+  function renderHomeMapWidget(){
+    if(!homeMap) return;
+    var today = todayStr();
+    var located = state.actions.filter(function(a){ return a.date === today && a.locationLat != null && a.locationLng != null; });
+    var sig = located.map(function(a){ return a.id + ":" + a.locationLat + ":" + a.locationLng + ":" + (a.timeOfDay || "") + ":" + a.title; }).join("|");
+    if(sig === homeMapMarkersSig) return;
+    homeMapMarkersSig = sig;
+    homeMapMarkers.clearLayers();
+    located.forEach(function(a){
+      var marker = L.circleMarker([a.locationLat, a.locationLng], { radius:6, color:"#2DD4BF", weight:1.5, opacity:0.9, fillColor:"#2DD4BF", fillOpacity:0.55 });
+      marker.bindPopup('<div class="loc-city-popup"><b>' + escapeHtml(a.title || "Untitled") + '</b>' + (a.timeOfDay ? '<br>' + escapeHtml(fmtTimeOfDay(a.timeOfDay)) : '') + '</div>');
+      marker.on("click", function(){ editAction(a.id); });
+      homeMapMarkers.addLayer(marker);
+    });
+  }
+
   // ---- Google Photos slideshow (top-right HUD). Google locked the broad library-read scope down
   // in 2025 — the sanctioned browser flow is the Photos *Picker* API: the user explicitly picks a
   // handful of photos in a Google-hosted tab, and the app may read exactly those. Picker downloads
@@ -6439,6 +6534,8 @@
     renderHomeNotesWidget();
     homeSyncGraphData();  // cheap signature compare; rebuilds the 3D node/edge set only on change
     homePhotosTick(now);  // advances the slideshow every ~8s
+    ensureHomeMap();      // same lazy/no-op-after-first-success pattern as ensureHomeScene()
+    renderHomeMapWidget();
   }
   // One always-on 1s tick; it early-returns unless the home section is what's on screen, so the
   // cost while elsewhere is a single string compare — simpler than start/stop bookkeeping in
