@@ -2475,6 +2475,18 @@
         .future-section-title{font-size:15px;color:var(--text);margin:0 0 4px;}
         .future-area-group{margin-bottom:20px;}
         .future-area-label{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px;}
+        /* Goals/Projects/Habits galleries — one horizontal, non-scrolling row of icon tiles per area,
+           under the calendar strip. Each row's items shrink (flex, no min-width) rather than overflow
+           or wrap, so a whole area's worth of goals/projects/habits always stays on one line and on
+           screen — see renderFutureGoalsGallery et al. */
+        .future-gallery-section{max-width:100%;margin-bottom:24px;}
+        .future-gallery-row{display:flex;gap:10px;width:100%;}
+        .future-gallery-item{flex:1 1 0;min-width:0;max-width:72px;display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;}
+        .future-gallery-icon-wrap{width:100%;max-width:36px;aspect-ratio:1;border-radius:50%;border:2px solid var(--border-bright);background:var(--bg-raised);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;}
+        .future-gallery-item:hover .future-gallery-icon-wrap{box-shadow:0 0 0 2px var(--bg-inset);}
+        .future-gallery-icon-img{width:58%;height:58%;}
+        .future-gallery-icon-initial{font-family:var(--mono);font-size:13px;font-weight:700;}
+        .future-gallery-item-label{font-family:var(--mono);font-size:9.5px;color:var(--text-dim);text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;}
       </style>
 
       <!-- Horizontal month strip — same clickable day-picker as Present's own (.today-month-strip),
@@ -2489,6 +2501,19 @@
           </div>
         </div>
         <div class="today-month-strip-days" id="futureCalGrid"></div>
+      </div>
+
+      <div class="future-gallery-section">
+        <h2 class="future-section-title">goals</h2>
+        <div id="futureGoalsGallery"></div>
+      </div>
+      <div class="future-gallery-section">
+        <h2 class="future-section-title">projects</h2>
+        <div id="futureProjectsGallery"></div>
+      </div>
+      <div class="future-gallery-section">
+        <h2 class="future-section-title">habits</h2>
+        <div id="futureHabitsGallery"></div>
       </div>
 
       <div class="future-body" id="futureBody"></div>
@@ -14349,7 +14374,66 @@
       body.innerHTML = html;
     }
     renderFutureCalGrid();
+    renderFutureGoalsGallery();
+    renderFutureProjectsGallery();
+    renderFutureHabitsGallery();
     renderFutureUnscheduled();
+  }
+  // One icon tile shared by all three galleries below — a circular icon (the item's own uploaded/
+  // assigned icon if it has one, else its initial letter) plus a truncated label, colored by area via
+  // the same categoryColorVar() every other area-colored icon in the app already uses. flex:1 1 0 with
+  // no min-width (see .future-gallery-item) is what keeps a whole area's row on one line instead of
+  // overflowing or wrapping, per the "make sure they all fit on screen" ask.
+  function futureGalleryItemHtml(kind, id, title, iconInner){
+    return '<div class="future-gallery-item" data-kind="' + kind + '" data-id="' + id + '" title="' + escapeHtml(title) + '">' +
+      '<div class="future-gallery-icon-wrap">' + iconInner + '</div>' +
+      '<span class="future-gallery-item-label">' + escapeHtml(title) + '</span>' +
+    '</div>';
+  }
+  function futureGalleryInitialHtml(title, cat){
+    var initial = title.trim().charAt(0).toUpperCase() || "?";
+    return '<span class="future-gallery-icon-initial" style="color:' + categoryColorVar(cat) + ';">' + initial + '</span>';
+  }
+  function renderFutureGoalsGallery(){
+    var el = document.getElementById("futureGoalsGallery");
+    if(!el) return;
+    if(!state.goals.length){ el.innerHTML = '<div class="future-empty">No goals yet.</div>'; return; }
+    el.innerHTML = renderByCategorySections(state.goals, function(g){ return g.category; }, function(cat, label, items){
+      var tiles = items.map(function(g){
+        var icon = g.icon ? iconMaskHtml("future-gallery-icon-img", resolveEntityIconDataUri(g.icon), g.category) : futureGalleryInitialHtml(g.title, g.category);
+        return futureGalleryItemHtml("goal", g.id, g.title, icon);
+      }).join("");
+      return '<div class="future-area-group"><div class="future-area-label">' + label + '</div><div class="future-gallery-row">' + tiles + '</div></div>';
+    });
+  }
+  function renderFutureProjectsGallery(){
+    var el = document.getElementById("futureProjectsGallery");
+    if(!el) return;
+    if(!state.projects.length){ el.innerHTML = '<div class="future-empty">No projects yet.</div>'; return; }
+    el.innerHTML = renderByCategorySections(state.projects, projectCategory, function(cat, label, items){
+      var tiles = items.map(function(p){
+        var pCat = projectCategory(p);
+        var icon = p.icon ? iconMaskHtml("future-gallery-icon-img", resolveEntityIconDataUri(p.icon), pCat) : futureGalleryInitialHtml(p.title, pCat);
+        return futureGalleryItemHtml("project", p.id, p.title, icon);
+      }).join("");
+      return '<div class="future-area-group"><div class="future-area-label">' + label + '</div><div class="future-gallery-row">' + tiles + '</div></div>';
+    });
+  }
+  // "Parent" habits — the habit definitions themselves (state.habits), not their day-by-day
+  // occurrences on the Today timeline (those aren't separate stored objects at all, see
+  // habitOccursOnDate), so this is simply every habit, same as the goals/projects galleries above.
+  function renderFutureHabitsGallery(){
+    var el = document.getElementById("futureHabitsGallery");
+    if(!el) return;
+    if(!state.habits.length){ el.innerHTML = '<div class="future-empty">No habits yet.</div>'; return; }
+    el.innerHTML = renderByCategorySections(state.habits, habitCategory, function(cat, label, items){
+      var tiles = items.map(function(h){
+        var hCat = habitCategory(h);
+        var icon = h.icon ? iconMaskHtml("future-gallery-icon-img", habitIconDataUri(h.icon), hCat) : futureGalleryInitialHtml(h.title, hCat);
+        return futureGalleryItemHtml("habit", h.id, h.title, icon);
+      }).join("");
+      return '<div class="future-area-group"><div class="future-area-label">' + label + '</div><div class="future-gallery-row">' + tiles + '</div></div>';
+    });
   }
   // Actions with no date at all — the other half of the "overview of my time and planned actions"
   // ask: what's decided but not yet placed on the calendar. Grouped by area with the same shared
