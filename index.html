@@ -2064,6 +2064,24 @@
       </div>
       <div id="goalDetailBody"></div>
 
+      <div class="goal-integration-block">
+        <div class="integration-block-head"><h2>plan</h2></div>
+        <p class="panel-hint">The whole plan under this goal — its projects and every action, direct or nested under a project. Drag a bar left/right to reschedule it. Drag the ◉ handle from one action onto another to make the second depend on the first — you'll be asked whether it's a hard "must be done first" requirement (dashed arrow) or just an ordering link (solid arrow). Click an arrow to remove it.</p>
+        <div class="gantt-wrap" id="goalGanttWrap"></div>
+      </div>
+      <div class="goal-integration-block">
+        <div class="integration-block-head">
+          <h2>notes</h2>
+          <div class="sub-view-toggle" id="goalMdToggle">
+            <button class="sub-view-tab active" data-md-view="write" type="button">write</button>
+            <button class="sub-view-tab" data-md-view="preview" type="button">preview</button>
+          </div>
+        </div>
+        <textarea id="goalMdInput" class="journal-textarea" rows="14" placeholder="Write anything about this goal — plain text or Markdown (# headings, - lists, **bold**, ...)."></textarea>
+        <div id="goalMdPreview" class="journal-entry-text journal-entry-md" style="display:none;"></div>
+        <p class="panel-hint" id="goalMdStatus"></p>
+      </div>
+
       <div class="goal-integration-block" id="sleepIntegrationBlock" style="display:none;">
         <div class="integration-block-head">
           <h2>sleep data</h2>
@@ -3945,7 +3963,7 @@
     // position defaults to 0 (via ||0) when the migration_positions.sql column doesn't exist yet —
     // Array.sort is stable, so that's a no-op and rows keep the server's created_at order until
     // the migration runs and real position values exist.
-    state.goals = (results[0].data || []).map(function(r){ return { id:r.id, title:r.title, priority:r.priority, category:r.category, secondaryCategories:r.secondary_categories || [], secondaryGoalIds:r.secondary_goal_ids || [], due:r.due, ongoing:r.ongoing, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null) }; });
+    state.goals = (results[0].data || []).map(function(r){ return { id:r.id, title:r.title, priority:r.priority, category:r.category, secondaryCategories:r.secondary_categories || [], secondaryGoalIds:r.secondary_goal_ids || [], due:r.due, ongoing:r.ongoing, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), notesMd:r.notes_md||"" }; });
     state.goals.sort(function(a,b){ return a.position - b.position; });
     state.projects = (results[1].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), categories:r.categories||[], notesMd:r.notes_md||"" }; });
     state.projects.sort(function(a,b){ return a.position - b.position; });
@@ -7413,7 +7431,7 @@
     });
   }
   function goalPayload(snapshot){
-    return { id:snapshot.id, title:snapshot.title, priority:snapshot.priority, category:snapshot.category, secondary_categories:snapshot.secondaryCategories, secondary_goal_ids:snapshot.secondaryGoalIds, due:snapshot.due, ongoing:snapshot.ongoing, position:snapshot.position, health_override:snapshot.healthOverride, health_pct_override:snapshot.healthPctOverride, icon:snapshot.icon, whiteboard_x:snapshot.wbX, whiteboard_y:snapshot.wbY };
+    return { id:snapshot.id, title:snapshot.title, priority:snapshot.priority, category:snapshot.category, secondary_categories:snapshot.secondaryCategories, secondary_goal_ids:snapshot.secondaryGoalIds, due:snapshot.due, ongoing:snapshot.ongoing, position:snapshot.position, health_override:snapshot.healthOverride, health_pct_override:snapshot.healthPctOverride, icon:snapshot.icon, whiteboard_x:snapshot.wbX, whiteboard_y:snapshot.wbY, notes_md:snapshot.notesMd };
   }
   async function deleteGoal(goalId){
     var g = state.goals.find(function(x){ return x.id === goalId; });
@@ -7943,8 +7961,46 @@
     } else {
       sleepBlock.style.display = "none";
     }
+    // Never clobber the textarea mid-typing — renderAll() fires on every save (including this
+    // page's own autosave round-trips), and resetting .value would jump the caret.
+    var ta = document.getElementById("goalMdInput");
+    if(document.activeElement !== ta) ta.value = g.notesMd || "";
+    if(document.getElementById("goalMdPreview").style.display !== "none"){
+      document.getElementById("goalMdPreview").innerHTML = renderNoteBodyHtml(g.notesMd || "") || '<span class="panel-hint">Nothing written yet.</span>';
+    }
+    renderGoalGanttChart();
   }
   document.getElementById("goalDetailBackBtn").addEventListener("click", closeGoalDetailPage);
+  // ---- Goal Markdown notes: debounced autosave straight to goals.notes_md — same pattern as the
+  // project/action page's entityMdInput below.
+  var goalMdSaveTimer = null;
+  document.getElementById("goalMdInput").addEventListener("input", function(){
+    var id = goalDetailId;
+    if(!id) return;
+    var value = this.value;
+    var g = goalById(id);
+    if(g) g.notesMd = value;
+    document.getElementById("goalMdStatus").textContent = "…";
+    clearTimeout(goalMdSaveTimer);
+    goalMdSaveTimer = setTimeout(async function(){
+      var r = await safeUpdate("goals", id, { notes_md: value });
+      if(r.error){ console.error(r.error); document.getElementById("goalMdStatus").textContent = "couldn't save — " + r.error.message; return; }
+      warnDroppedFields(r.droppedFields);
+      document.getElementById("goalMdStatus").textContent = "saved";
+    }, 800);
+  });
+  document.getElementById("goalMdToggle").addEventListener("click", function(e){
+    var tab = e.target.closest("[data-md-view]");
+    if(!tab) return;
+    this.querySelectorAll(".sub-view-tab").forEach(function(t){ t.classList.toggle("active", t === tab); });
+    var preview = tab.dataset.mdView === "preview";
+    document.getElementById("goalMdInput").style.display = preview ? "none" : "";
+    document.getElementById("goalMdPreview").style.display = preview ? "" : "none";
+    if(preview){
+      var g = goalById(goalDetailId);
+      document.getElementById("goalMdPreview").innerHTML = renderNoteBodyHtml((g && g.notesMd) || "") || '<span class="panel-hint">Nothing written yet.</span>';
+    }
+  });
 
   /* ---------------- Project / Action detail pages (entityPage) ---------------- */
   // One shared page for both kinds: a Gantt planning chart of the project + its actions on top, and
@@ -8025,36 +8081,14 @@
     }
   });
 
-  /* ---- Gantt chart: day-scale bars for the project + its actions, with draggable scheduling and
-     action-to-action dependency arrows. Dependencies live on the DEPENDENT action
-     (a.dependencies = [{id, requiresDone}]) — requiresDone marks the conditional "can only start
-     once the prerequisite is DONE" kind, drawn dashed; a plain ordering link is drawn solid. ---- */
+  /* ---- Gantt chart: shared day-scale bar/arrow system used by both the project/action page above
+     and the goal detail page below. A chart's data is { rows, actions, selfId } — rows are derived
+     (non-draggable) bars for a goal or project, each carrying its own "span" (the subset of actions
+     that determine its date range); actions are draggable bars that can carry dependency links to
+     each other. Dependencies live on the DEPENDENT action (a.dependencies = [{id, requiresDone}]) —
+     requiresDone marks the conditional "can only start once the prerequisite is DONE" kind, drawn
+     dashed; a plain ordering link is drawn solid. ---- */
   var GANTT_COL_W = 30, GANTT_LABEL_W = 170;
-  // Which project + actions this page's chart covers: a project page shows itself + its child
-  // actions; an action page shows its parent project's whole chart (with itself highlighted) so the
-  // action is always seen in context, or — for a parentless/goal-parented action — itself plus
-  // anything dependency-linked to it in either direction.
-  function ganttItemsFor(){
-    var project = null, actions = [], selfId = null;
-    if(entityPage.kind === "project"){
-      project = projectById(entityPage.id);
-      actions = state.actions.filter(function(a){ return a.parentType === "project" && a.parentId === entityPage.id; });
-    } else {
-      var self = entityPageObj();
-      if(!self) return { project:null, actions:[], selfId:null };
-      selfId = self.id;
-      if(self.parentType === "project" && self.parentId && projectById(self.parentId)){
-        project = projectById(self.parentId);
-        actions = state.actions.filter(function(a){ return a.parentType === "project" && a.parentId === project.id; });
-      } else {
-        var ids = { }; ids[self.id] = true;
-        (self.dependencies || []).forEach(function(d){ ids[d.id] = true; });
-        state.actions.forEach(function(a){ if((a.dependencies || []).some(function(d){ return d.id === self.id; })) ids[a.id] = true; });
-        actions = state.actions.filter(function(a){ return ids[a.id]; });
-      }
-    }
-    return { project: project, actions: actions, selfId: selfId };
-  }
   function ganttDayIndex(startStr, dateStr){
     return Math.round((new Date(dateStr + "T00:00:00") - new Date(startStr + "T00:00:00")) / 86400000);
   }
@@ -8067,19 +8101,106 @@
       return pre && !pre.done;
     });
   }
-  function renderEntityGantt(){
-    var wrap = document.getElementById("entityGanttWrap");
-    if(!wrap) return;
-    var data = ganttItemsFor();
-    if(!data.project && !data.actions.length){
-      wrap.innerHTML = '<div class="gantt-empty">Nothing to plan yet — add actions under this ' + (entityPage.kind || "item") + ' and they’ll appear here.</div>';
+  async function saveActionDependencies(a){
+    var r = await safeUpdate("actions", a.id, { dependencies: a.dependencies });
+    if(r.error) console.error(r.error); else warnDroppedFields(r.droppedFields);
+  }
+  // Deep prerequisite check — does `id` (transitively) depend on `onId`? Used to refuse creating a
+  // cycle (A→B while B already →A, directly or through a chain).
+  function ganttDependsOn(id, onId, seen){
+    seen = seen || {};
+    if(seen[id]) return false;
+    seen[id] = true;
+    var a = actionById(id);
+    return !!a && (a.dependencies || []).some(function(d){ return d.id === onId || ganttDependsOn(d.id, onId, seen); });
+  }
+  // Which project + actions the project/action page's chart covers: a project page shows itself +
+  // its child actions; an action page shows its parent project's whole chart (with itself
+  // highlighted) so the action is always seen in context, or — for a parentless/goal-parented action
+  // — itself plus anything dependency-linked to it in either direction.
+  function ganttItemsForEntity(){
+    var rows = [], actions = [], selfId = null;
+    if(entityPage.kind === "project"){
+      var project = projectById(entityPage.id);
+      actions = state.actions.filter(function(a){ return a.parentType === "project" && a.parentId === entityPage.id; });
+      if(project) rows.push({ kind:"project", obj:project, span:actions });
+    } else {
+      var self = entityPageObj();
+      if(!self) return { rows:[], actions:[], selfId:null };
+      selfId = self.id;
+      if(self.parentType === "project" && self.parentId && projectById(self.parentId)){
+        var proj = projectById(self.parentId);
+        actions = state.actions.filter(function(a){ return a.parentType === "project" && a.parentId === proj.id; });
+        rows.push({ kind:"project", obj:proj, span:actions });
+      } else {
+        var ids = { }; ids[self.id] = true;
+        (self.dependencies || []).forEach(function(d){ ids[d.id] = true; });
+        state.actions.forEach(function(a){ if((a.dependencies || []).some(function(d){ return d.id === self.id; })) ids[a.id] = true; });
+        actions = state.actions.filter(function(a){ return ids[a.id]; });
+      }
+    }
+    return { rows: rows, actions: actions, selfId: selfId };
+  }
+  // A goal's chart: the goal's own row, every child project as its own row, and every action either
+  // directly under the goal or nested under any of its projects — the whole plan for everything
+  // under it, one level deeper than a project's own page.
+  function ganttItemsForGoal(goalId){
+    var g = goalById(goalId);
+    if(!g) return { rows:[], actions:[], selfId:null };
+    var projects = state.projects.filter(function(p){ return p.goalId === goalId; });
+    var directActions = state.actions.filter(function(a){ return a.parentType === "goal" && a.parentId === goalId; });
+    var rows = [];
+    var allActions = directActions.slice();
+    projects.forEach(function(p){
+      var pActions = state.actions.filter(function(a){ return a.parentType === "project" && a.parentId === p.id; });
+      allActions = allActions.concat(pActions);
+      rows.push({ kind:"project", obj:p, span:pActions });
+    });
+    rows.unshift({ kind:"goal", obj:g, span:allActions });
+    return { rows: rows, actions: allActions, selfId: null };
+  }
+  function ganttRowLabelHtml(kind, obj){ return (kind === "goal" ? "◆ " : "▤ ") + escapeHtml(obj.title); }
+  // A goal/project's bar is derived, not directly draggable here — it spans from its earliest
+  // relevant scheduled action (or today) to its own due date (goals have none, so a goal row always
+  // runs to its latest child action) or a week past its last action.
+  function ganttDerivedBarHtml(kind, obj, start, span, today, selfId){
+    var childDates = span.filter(function(a){ return a.date; }).map(function(a){ return a.date; }).sort();
+    var due = kind === "project" ? obj.due : null;
+    var spanStart = childDates[0] || today;
+    var spanEnd = due || childDates[childDates.length - 1] || addDaysToDateStr(spanStart, 7);
+    if(spanEnd < spanStart) spanEnd = spanStart;
+    var idx = Math.max(0, ganttDayIndex(start, spanStart));
+    var w = Math.max(1, ganttDayIndex(start, spanEnd) - idx + 1);
+    var cat = kind === "goal" ? obj.category : projectCategory(obj);
+    return '<div class="gantt-bar gantt-bar-project' + (cat ? " " + cat : "") + (obj.done ? " done" : "") + (obj.id === selfId ? " gantt-bar-self" : "") + '" data-kind="' + kind + '" data-id="' + obj.id + '" style="left:' + (idx * GANTT_COL_W) + 'px;width:' + (w * GANTT_COL_W - 4) + 'px;" title="' + escapeHtml(obj.title) + (due ? " — due " + fmtDate(due) : "") + '">' + escapeHtml(obj.title) + '</div>';
+  }
+  function ganttActionBarHtml(a, start, today, selfId){
+    var cat = actionCategory(a);
+    var undated = !a.date;
+    var idx = Math.max(0, ganttDayIndex(start, a.date || today));
+    var blocked = ganttActionBlocked(a);
+    return '<div class="gantt-bar' + (cat ? " " + cat : "") + (a.done ? " done" : "") + (undated ? " undated" : "") + (blocked ? " blocked" : "") + (a.id === selfId ? " gantt-bar-self" : "") + '" data-kind="action" data-id="' + a.id + '" data-gantt-action="' + a.id + '" style="left:' + (idx * GANTT_COL_W) + 'px;width:' + (GANTT_COL_W * 2 - 4) + 'px;" title="' + escapeHtml(a.title) + (undated ? " — no date yet (drag to schedule)" : " — " + fmtDate(a.date)) + (blocked ? " — blocked: a required action isn’t done yet" : "") + '">' +
+      escapeHtml(a.title) +
+      '<span class="gantt-link-handle" data-link-from="' + a.id + '" title="drag onto another action to create a dependency">◉</span>' +
+    '</div>';
+  }
+  function ganttRowHtml(labelHtml, barHtml){
+    return '<div class="gantt-row"><div class="gantt-row-label">' + labelHtml + '</div><div class="gantt-track">' + barHtml + '</div></div>';
+  }
+  // Renders a full chart (header + rows + arrow layer) into wrapEl from a {rows, actions, selfId}
+  // data set — shared by renderEntityGantt (project/action page) and renderGoalGanttChart (goal
+  // page), the only two call sites.
+  function renderGanttInto(wrapEl, data, emptyLabel){
+    if(!wrapEl) return;
+    if(!data.rows.length && !data.actions.length){
+      wrapEl.innerHTML = '<div class="gantt-empty">Nothing to plan yet — add actions under this ' + emptyLabel + ' and they’ll appear here.</div>';
       return;
     }
     var today = todayStr();
-    // Date range: every scheduled action + the project due date + today, padded, min 3 weeks wide.
+    // Date range: every scheduled action + every row's due date + today, padded, min 3 weeks wide.
     var dates = [today];
     data.actions.forEach(function(a){ if(a.date) dates.push(a.date); });
-    if(data.project && data.project.due) dates.push(data.project.due);
+    data.rows.forEach(function(r){ if(r.kind === "project" && r.obj.due) dates.push(r.obj.due); });
     dates.sort();
     var start = addDaysToDateStr(dates[0], -3);
     var end = addDaysToDateStr(dates[dates.length - 1], 7);
@@ -8096,52 +8217,33 @@
     head += '</div>';
 
     var rows = "";
-    function rowHtml(labelHtml, barHtml){
-      return '<div class="gantt-row"><div class="gantt-row-label">' + labelHtml + '</div><div class="gantt-track">' + barHtml + '</div></div>';
-    }
-    if(data.project){
-      var p = data.project;
-      // The project bar is derived, not directly editable here: it spans from its earliest
-      // scheduled action (or today) to its due date (or a week past its last action).
-      var childDates = data.actions.filter(function(a){ return a.date; }).map(function(a){ return a.date; }).sort();
-      var pStart = childDates[0] || today;
-      var pEnd = p.due || childDates[childDates.length - 1] || addDaysToDateStr(pStart, 7);
-      if(pEnd < pStart) pEnd = pStart;
-      var pi = Math.max(0, ganttDayIndex(start, pStart));
-      var pw = Math.max(1, ganttDayIndex(start, pEnd) - pi + 1);
-      var pCat = projectCategory(p);
-      rows += rowHtml('▤ ' + escapeHtml(p.title),
-        '<div class="gantt-bar gantt-bar-project' + (pCat ? " " + pCat : "") + (p.done ? " done" : "") + '" data-kind="project" data-id="' + p.id + '" style="left:' + (pi * GANTT_COL_W) + 'px;width:' + (pw * GANTT_COL_W - 4) + 'px;" title="' + escapeHtml(p.title) + (p.due ? " — due " + fmtDate(p.due) : "") + '">' + escapeHtml(p.title) + '</div>');
-    }
+    data.rows.forEach(function(r){
+      rows += ganttRowHtml(ganttRowLabelHtml(r.kind, r.obj), ganttDerivedBarHtml(r.kind, r.obj, start, r.span, today, data.selfId));
+    });
     data.actions.forEach(function(a){
-      var cat = actionCategory(a);
-      var undated = !a.date;
-      var idx = Math.max(0, ganttDayIndex(start, a.date || today));
-      var blocked = ganttActionBlocked(a);
-      rows += rowHtml(escapeHtml(a.title),
-        '<div class="gantt-bar' + (cat ? " " + cat : "") + (a.done ? " done" : "") + (undated ? " undated" : "") + (blocked ? " blocked" : "") + (a.id === data.selfId ? " gantt-bar-self" : "") + '" data-kind="action" data-id="' + a.id + '" data-gantt-action="' + a.id + '" style="left:' + (idx * GANTT_COL_W) + 'px;width:' + (GANTT_COL_W * 2 - 4) + 'px;" title="' + escapeHtml(a.title) + (undated ? " — no date yet (drag to schedule)" : " — " + fmtDate(a.date)) + (blocked ? " — blocked: a required action isn’t done yet" : "") + '">' +
-          escapeHtml(a.title) +
-          '<span class="gantt-link-handle" data-link-from="' + a.id + '" title="drag onto another action to create a dependency">◉</span>' +
-        '</div>');
+      rows += ganttRowHtml(escapeHtml(a.title), ganttActionBarHtml(a, start, today, data.selfId));
     });
 
-    wrap.innerHTML = '<div class="gantt-inner" style="min-width:' + (GANTT_LABEL_W + days * GANTT_COL_W) + 'px;" data-gantt-start="' + start + '">' +
-      head + rows + '<svg class="gantt-arrow-svg" id="ganttArrowSvg"></svg></div>';
-    renderGanttArrows();
+    wrapEl.innerHTML = '<div class="gantt-inner" style="min-width:' + (GANTT_LABEL_W + days * GANTT_COL_W) + 'px;" data-gantt-start="' + start + '">' +
+      head + rows + '<svg class="gantt-arrow-svg"></svg></div>';
+    renderGanttArrowsIn(wrapEl);
   }
   // Dependency arrows, drawn AFTER the bars exist since the endpoints are the bars' real on-screen
-  // rects (an S-curve from the prerequisite's right edge to the dependent's left edge).
-  function renderGanttArrows(){
-    var svg = document.getElementById("ganttArrowSvg");
-    var inner = svg && svg.parentElement;
+  // rects (an S-curve from the prerequisite's right edge to the dependent's left edge). Reads
+  // directly from whatever .gantt-bar[data-gantt-action] elements are actually in this wrap's DOM
+  // (rather than taking an explicit action list), so the same function works for either chart.
+  function renderGanttArrowsIn(wrapEl){
+    var inner = wrapEl && wrapEl.querySelector(".gantt-inner");
+    var svg = inner && inner.querySelector(".gantt-arrow-svg");
     if(!svg || !inner) return;
     var innerRect = inner.getBoundingClientRect();
     var paths = "";
-    ganttItemsFor().actions.forEach(function(a){
+    inner.querySelectorAll(".gantt-bar[data-gantt-action]").forEach(function(toEl){
+      var a = actionById(toEl.dataset.ganttAction);
+      if(!a) return;
       (a.dependencies || []).forEach(function(d){
         var fromEl = inner.querySelector('.gantt-bar[data-gantt-action="' + d.id + '"]');
-        var toEl = inner.querySelector('.gantt-bar[data-gantt-action="' + a.id + '"]');
-        if(!fromEl || !toEl) return;
+        if(!fromEl) return;
         var fr = fromEl.getBoundingClientRect(), tr = toEl.getBoundingClientRect();
         var x1 = fr.right - innerRect.left, y1 = fr.top + fr.height / 2 - innerRect.top;
         var x2 = tr.left - innerRect.left, y2 = tr.top + tr.height / 2 - innerRect.top;
@@ -8152,46 +8254,41 @@
     });
     svg.innerHTML = paths;
   }
-  async function saveActionDependencies(a){
-    var r = await safeUpdate("actions", a.id, { dependencies: a.dependencies });
-    if(r.error) console.error(r.error); else warnDroppedFields(r.droppedFields);
+  function renderEntityGantt(){
+    renderGanttInto(document.getElementById("entityGanttWrap"), ganttItemsForEntity(), entityPage.kind || "item");
   }
-  // Deep prerequisite check — does `id` (transitively) depend on `onId`? Used to refuse creating a
-  // cycle (A→B while B already →A, directly or through a chain).
-  function ganttDependsOn(id, onId, seen){
-    seen = seen || {};
-    if(seen[id]) return false;
-    seen[id] = true;
-    var a = actionById(id);
-    return !!a && (a.dependencies || []).some(function(d){ return d.id === onId || ganttDependsOn(d.id, onId, seen); });
+  function renderGoalGanttChart(){
+    renderGanttInto(document.getElementById("goalGanttWrap"), ganttItemsForGoal(goalDetailId), "goal");
   }
-  // ---- Gantt interactions: bar drag-to-reschedule + handle drag-to-link ----
-  (function wireGantt(){
-    var wrap = document.getElementById("entityGanttWrap");
-    var drag = null;   // {el, id, startX, origLeft, start, moved}
+  // ---- Gantt interactions: bar drag-to-reschedule + handle drag-to-link — one wiring function
+  // shared by every chart on the page (currently the entity page's and the goal page's), written
+  // generically over a wrap element and an onChange callback so each just re-renders its own host
+  // page after a mutation. ----
+  function wireGanttChart(wrapEl, onChange){
+    var drag = null;   // {el, id, startX, origLeft, moved}
     var link = null;   // {fromId, svg, inner, targetEl}
-    wrap.addEventListener("pointerdown", function(e){
+    wrapEl.addEventListener("pointerdown", function(e){
       var handle = e.target.closest("[data-link-from]");
       if(handle){
-        var inner = wrap.querySelector(".gantt-inner");
-        link = { fromId: handle.dataset.linkFrom, inner: inner, svg: document.getElementById("ganttArrowSvg"), targetEl: null };
+        var inner = wrapEl.querySelector(".gantt-inner");
+        link = { fromId: handle.dataset.linkFrom, inner: inner, svg: inner.querySelector(".gantt-arrow-svg"), targetEl: null };
         handle.setPointerCapture(e.pointerId);
         return;
       }
       var bar = e.target.closest('.gantt-bar[data-kind="action"]');
       if(!bar) return;
-      drag = { el: bar, id: bar.dataset.id, startX: e.clientX, origLeft: parseFloat(bar.style.left) || 0, start: wrap.querySelector(".gantt-inner").dataset.ganttStart, moved: false };
+      drag = { el: bar, id: bar.dataset.id, startX: e.clientX, origLeft: parseFloat(bar.style.left) || 0, moved: false };
       bar.setPointerCapture(e.pointerId);
       bar.classList.add("dragging");
     });
-    wrap.addEventListener("pointermove", function(e){
+    wrapEl.addEventListener("pointermove", function(e){
       if(drag){
         var dx = e.clientX - drag.startX;
         if(Math.abs(dx) > 3) drag.moved = true;
         var dayDelta = Math.round(dx / GANTT_COL_W);
         drag.el.style.left = Math.max(0, drag.origLeft + dayDelta * GANTT_COL_W) + "px";
         drag.el.dataset.pendingDelta = dayDelta;
-        renderGanttArrows(); // endpoints follow the bar live
+        renderGanttArrowsIn(wrapEl); // endpoints follow the bar live
         return;
       }
       if(link){
@@ -8214,7 +8311,7 @@
         link.targetEl = target;
       }
     });
-    wrap.addEventListener("pointerup", async function(){
+    wrapEl.addEventListener("pointerup", async function(){
       if(drag){
         var d = drag; drag = null;
         d.el.classList.remove("dragging");
@@ -8226,9 +8323,9 @@
         // Undated bars sit at today's column, so their first drag schedules them relative to it.
         var base = a.date || todayStr();
         var newDate = addDaysToDateStr(base, delta);
-        if(newDate === a.date) { renderEntityPage(); return; }
+        if(newDate === a.date) { onChange(); return; }
         a.date = newDate;
-        renderEntityPage();
+        onChange();
         var r = await safeUpdate("actions", d.id, { date: newDate });
         if(r.error) console.error(r.error); else warnDroppedFields(r.droppedFields);
         return;
@@ -8248,11 +8345,11 @@
         if(ganttDependsOn(l.fromId, toId)){ toast("That would create a circular dependency."); return; }
         var conditional = confirm('Make "' + dep.title + '" REQUIRE "' + pre.title + '" to be done first?\n\nOK = hard requirement (can’t start until it’s done, dashed arrow)\nCancel = simple ordering link (solid arrow)');
         dep.dependencies.push({ id: l.fromId, requiresDone: conditional });
-        renderEntityPage();
+        onChange();
         await saveActionDependencies(dep);
       }
     });
-    wrap.addEventListener("pointercancel", function(){
+    wrapEl.addEventListener("pointercancel", function(){
       if(drag){ drag.el.classList.remove("dragging"); drag = null; }
       if(link){
         var preview = link.svg && link.svg.querySelector(".gantt-link-preview");
@@ -8263,17 +8360,19 @@
     });
     // Clicking an arrow removes that dependency (after a confirm — it's a stored relationship,
     // not just a visual).
-    wrap.addEventListener("click", async function(e){
+    wrapEl.addEventListener("click", async function(e){
       var arrow = e.target.closest && e.target.closest(".gantt-arrow");
       if(!arrow) return;
       var dep = actionById(arrow.dataset.depTo), pre = actionById(arrow.dataset.depFrom);
       if(!dep) return;
       if(!confirm('Remove the dependency of "' + dep.title + '" on "' + (pre ? pre.title : "a deleted action") + '"?')) return;
       dep.dependencies = (dep.dependencies || []).filter(function(x){ return x.id !== arrow.dataset.depFrom; });
-      renderEntityPage();
+      onChange();
       await saveActionDependencies(dep);
     });
-  })();
+  }
+  wireGanttChart(document.getElementById("entityGanttWrap"), renderEntityPage);
+  wireGanttChart(document.getElementById("goalGanttWrap"), renderGoalDetail);
 
   /* ---------------- Areas ---------------- */
   function computeAreaData(cat){
