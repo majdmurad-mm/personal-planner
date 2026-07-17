@@ -647,20 +647,24 @@ function authorized(req: Request): boolean {
   return token === MCP_TOKEN;
 }
 
-const mcpApp = new Hono();
-
-mcpApp.get("/", (c) =>
-  c.json({ service: "personal-planner MCP", endpoint: "/planner-mcp/mcp", ownerConfigured: !!OWNER })
-);
-
-mcpApp.all("/mcp", async (c) => {
-  if (!authorized(c.req.raw)) return c.json({ error: "unauthorized" }, 401);
-  if (!OWNER) return c.json({ error: "server not configured: OWNER_USER_ID is unset" }, 500);
-  return await httpHandler(c.req.raw);
+// Path-agnostic routing. Depending on the Supabase runtime version, the Hono app
+// may see the request path WITH the function-name prefix (/planner-mcp/mcp) or
+// WITHOUT it (/mcp) — so instead of mounting under a fixed prefix, we match on the
+// path suffix. Any path ending in /mcp is the MCP endpoint (bearer-gated);
+// everything else is the unauthenticated health check.
+app.all("*", async (c) => {
+  const pathname = new URL(c.req.url).pathname;
+  if (pathname.endsWith("/mcp")) {
+    if (!authorized(c.req.raw)) return c.json({ error: "unauthorized" }, 401);
+    if (!OWNER) return c.json({ error: "server not configured: OWNER_USER_ID is unset" }, 500);
+    return await httpHandler(c.req.raw);
+  }
+  return c.json({
+    service: "personal-planner MCP",
+    endpoint: ".../functions/v1/planner-mcp/mcp",
+    ownerConfigured: !!OWNER,
+    tokenConfigured: !!MCP_TOKEN,
+  });
 });
-
-// Supabase serves this function under its own name segment, so the Hono app sees
-// paths beginning with /planner-mcp — mount there.
-app.route("/planner-mcp", mcpApp);
 
 export default app;
