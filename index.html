@@ -1662,6 +1662,7 @@
         <button class="side-link" data-section="journal" type="button"><span class="sl-glyph">✎</span>Notes</button>
         <button class="side-link" data-section="people" type="button"><span class="sl-glyph">☺</span>People</button>
         <button class="side-link" data-section="location" type="button"><span class="sl-glyph">⚲</span>Location</button>
+        <button class="side-link" data-section="knowledge" type="button"><span class="sl-glyph">▦</span>Knowledge</button>
       </nav>
 
       <div class="term-stats">
@@ -2436,6 +2437,80 @@
     </section>
 
     <!-- ===== LOCATION SECTION ===== -->
+    <!-- ===== KNOWLEDGE SECTION (scaffold — Google Drive interface, wired later) ===== -->
+    <section id="knowledgeSection" style="display:none;">
+      <div class="main-header">
+        <div>
+          <h1>knowledge</h1>
+          <p class="subhead">Your files and reference material — browsed straight from Google Drive, not stored in the app's database.</p>
+        </div>
+        <button class="btn btn-accent knowledge-connect" id="knowledgeConnectBtn" type="button">connect google drive</button>
+      </div>
+
+      <style>
+        .knowledge-tabs{display:flex;gap:6px;margin:4px 0 16px;flex-wrap:wrap;}
+        .knowledge-tab{font:inherit;cursor:pointer;padding:7px 15px;border-radius:999px;border:1px solid rgba(127,127,127,.3);background:transparent;color:inherit;opacity:.6;}
+        .knowledge-tab:hover{opacity:1;}
+        .knowledge-tab.active{opacity:1;border-color:var(--accent-dim);background:var(--bg-inset);}
+        .knowledge-panel[hidden]{display:none;}
+        .knowledge-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border);}
+        .knowledge-crumbs{font-family:var(--mono);font-size:12px;color:var(--text-dim);}
+        .knowledge-search{margin-left:auto;min-width:180px;padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg-inset);color:var(--text);font-family:var(--mono);font-size:12px;outline:none;}
+        .knowledge-search:disabled{opacity:.5;cursor:not-allowed;}
+        .knowledge-files{min-height:240px;}
+        /* Grid the Drive files will render into once connected (each a .knowledge-file tile). */
+        .knowledge-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;}
+        .knowledge-file{border:1px solid var(--border);border-radius:10px;padding:14px 12px;background:var(--bg-raised);display:flex;flex-direction:column;gap:8px;cursor:pointer;}
+        .knowledge-file:hover{border-color:var(--accent-dim);}
+        .knowledge-file-icon{font-size:26px;line-height:1;}
+        .knowledge-file-name{font-size:12px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+        .knowledge-empty{max-width:520px;margin:40px auto;text-align:center;color:var(--text-dim);}
+        .knowledge-empty-icon{font-size:40px;margin-bottom:10px;}
+        .knowledge-empty-title{font-size:15px;color:var(--text);margin:0 0 6px;}
+        .knowledge-empty p{margin:6px 0;line-height:1.55;}
+        .knowledge-empty .btn{margin-top:14px;}
+        .knowledge-types{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:26px;padding-top:18px;border-top:1px solid var(--border);}
+        .knowledge-type{font-family:var(--mono);font-size:11px;padding:4px 10px;border-radius:999px;border:1px solid var(--border);color:var(--text-dim);}
+      </style>
+
+      <div class="knowledge-tabs">
+        <button class="knowledge-tab active" data-kv="drive" type="button">Drive</button>
+        <button class="knowledge-tab" data-kv="overview" type="button">Overview</button>
+      </div>
+
+      <div class="knowledge-panel" data-kv="drive">
+        <div class="knowledge-toolbar">
+          <span class="knowledge-crumbs" id="knowledgeCrumbs">📁 My Drive</span>
+          <input class="knowledge-search" id="knowledgeSearch" type="search" placeholder="search files…" disabled title="Available once Google Drive is connected">
+        </div>
+        <div class="knowledge-files" id="knowledgeFiles">
+          <div class="knowledge-empty">
+            <div class="knowledge-empty-icon">🗂️</div>
+            <p class="knowledge-empty-title">Not connected yet</p>
+            <p>Connect Google Drive to browse your knowledge here — documents, spreadsheets, slides, PDFs, images and more, live from your Drive. Nothing is copied into the app's database.</p>
+            <button class="btn btn-accent knowledge-connect" type="button">connect google drive</button>
+          </div>
+        </div>
+        <div class="knowledge-types">
+          <span class="knowledge-type">📄 Docs</span>
+          <span class="knowledge-type">▦ Sheets</span>
+          <span class="knowledge-type">▭ Slides</span>
+          <span class="knowledge-type">📕 PDF</span>
+          <span class="knowledge-type">🖼 Images</span>
+          <span class="knowledge-type">📁 Folders</span>
+          <span class="knowledge-type">◦ Other</span>
+        </div>
+      </div>
+
+      <div class="knowledge-panel" data-kv="overview" hidden>
+        <div class="knowledge-empty">
+          <div class="knowledge-empty-icon">✦</div>
+          <p class="knowledge-empty-title">Second section — coming next</p>
+          <p>Placeholder for the additional Knowledge section. We'll define what lives here when we build it out.</p>
+        </div>
+      </div>
+    </section>
+
     <section id="locationSection" style="display:none;">
       <div class="main-header wb-compact-header">
         <div>
@@ -3645,7 +3720,7 @@
     });
   }
 
-  var ALL_SECTION_IDS = ["homeSection","todaySection","plannerSection","trackerSection","agentSection","timelineSection","journalSection","peopleSection","locationSection","goalDetailSection","areaDetailSection"];
+  var ALL_SECTION_IDS = ["homeSection","todaySection","plannerSection","trackerSection","agentSection","timelineSection","journalSection","peopleSection","locationSection","knowledgeSection","goalDetailSection","areaDetailSection"];
   function showSection(name){
     activeSection = name;
     document.querySelectorAll(".side-link").forEach(function(l){ l.classList.toggle("active", l.dataset.section === name); });
@@ -3679,6 +3754,31 @@
     // the freshly-switched page — a no-op on desktop, where this attribute is never set.
     document.documentElement.removeAttribute("data-mobile-menu-open");
   });
+
+  // ---- Knowledge page (scaffold): a Google Drive file interface, wired later. For now this only
+  // handles the Drive/Overview sub-tab switching and a connect stub. The real integration (Google
+  // Drive + Picker API via GIS) plugs in where noted below — see KNOWLEDGE_SETUP.md for the Google
+  // Cloud setup that has to happen first (enable Drive API, add the drive scope + this origin to the
+  // OAuth client, set GOOGLE_CLIENT_ID). Knowledge lives on Drive, never in Supabase. ----
+  (function wireKnowledge(){
+    var section = document.getElementById("knowledgeSection");
+    if(!section) return;
+    var tabs = Array.prototype.slice.call(section.querySelectorAll(".knowledge-tab"));
+    var panels = Array.prototype.slice.call(section.querySelectorAll(".knowledge-panel"));
+    tabs.forEach(function(tab){
+      tab.addEventListener("click", function(){
+        var target = tab.dataset.kv;
+        tabs.forEach(function(t){ t.classList.toggle("active", t === tab); });
+        panels.forEach(function(p){ p.hidden = (p.dataset.kv !== target); });
+      });
+    });
+    // Connect (both the header button and the empty-state one). TODO: real Drive OAuth + file listing.
+    section.querySelectorAll(".knowledge-connect").forEach(function(btn){
+      btn.addEventListener("click", function(){
+        toast("Google Drive isn't connected yet — this page is a scaffold. Setup steps are in KNOWLEDGE_SETUP.md.");
+      });
+    });
+  })();
 
   /* ---------------- Home (cockpit) dashboard ---------------- */
   // Which life areas are toggled OFF — a filter applied to BOTH the 3D graph (its nodes/edges) and
