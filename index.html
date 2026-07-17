@@ -2498,6 +2498,17 @@
         .knowledge-crumb.current{color:var(--text);cursor:default;text-decoration:none;}
         .knowledge-crumb-sep{opacity:.5;margin:0 2px;}
         .knowledge-file[data-folder="1"] .knowledge-file-icon{color:var(--accent);}
+        .knowledge-file{position:relative;}
+        .knowledge-pin-toggle{position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:6px;border:1px solid var(--border-bright);background:rgba(var(--bg-raised-rgb),0.85);color:var(--text-faint);font-size:12px;line-height:1;display:grid;place-items:center;cursor:pointer;padding:0;}
+        .knowledge-pin-toggle:hover{color:var(--text);}
+        .knowledge-pin-toggle.pinned{color:var(--accent);border-color:var(--accent-dim);}
+        .knowledge-pin-current-btn{font-family:var(--mono);font-size:11px;padding:5px 10px;border-radius:999px;border:1px solid var(--border-bright);background:transparent;color:var(--text-dim);cursor:pointer;}
+        .knowledge-pin-current-btn:hover{color:var(--text);border-color:var(--accent-dim);}
+        .knowledge-pin-current-btn.pinned{color:var(--accent);border-color:var(--accent-dim);background:var(--bg-inset);}
+        .knowledge-pinned-card{cursor:pointer;}
+        .knowledge-unpin-btn{position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:6px;border:1px solid var(--border-bright);background:rgba(var(--bg-raised-rgb),0.85);color:var(--text-faint);font-size:13px;line-height:1;display:grid;place-items:center;cursor:pointer;padding:0;}
+        .knowledge-unpin-btn:hover{color:var(--danger);border-color:var(--danger);}
+        .knowledge-pinned-hint{color:var(--text-dim);font-size:12.5px;margin:0 0 16px;max-width:64ch;}
         .knowledge-search{margin-left:auto;min-width:180px;padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg-inset);color:var(--text);font-family:var(--mono);font-size:12px;outline:none;}
         .knowledge-search:disabled{opacity:.5;cursor:not-allowed;}
         .knowledge-files{min-height:240px;}
@@ -2517,13 +2528,22 @@
       </style>
 
       <div class="knowledge-tabs">
-        <button class="knowledge-tab active" data-kv="drive" type="button">Drive</button>
+        <button class="knowledge-tab active" data-kv="pinned" type="button">Knowledge Base</button>
+        <button class="knowledge-tab" data-kv="drive" type="button">Drive Navigator</button>
         <button class="knowledge-tab" data-kv="overview" type="button">Overview</button>
       </div>
 
-      <div class="knowledge-panel" data-kv="drive">
+      <!-- Pinned folders are the actual "knowledge base" — the primary view. Drive Navigator (below)
+           is how you find and pin them; browsing the whole Drive is a secondary/discovery function. -->
+      <div class="knowledge-panel" data-kv="pinned">
+        <p class="knowledge-pinned-hint">The folders that matter — pinned from Drive Navigator. Everything else in your Drive stays out of the way until you go looking for it.</p>
+        <div class="knowledge-files" id="knowledgePinned"></div>
+      </div>
+
+      <div class="knowledge-panel" data-kv="drive" hidden>
         <div class="knowledge-toolbar">
           <span class="knowledge-crumbs" id="knowledgeCrumbs">📁 My Drive</span>
+          <button class="knowledge-pin-current-btn" id="knowledgePinCurrentBtn" type="button" hidden>☆ pin this folder</button>
           <input class="knowledge-search" id="knowledgeSearch" type="search" placeholder="search files…" disabled title="Available once Google Drive is connected">
         </div>
         <div class="knowledge-files" id="knowledgeFiles">
@@ -3898,6 +3918,23 @@
     }
   }
 
+  // Pinned folders are the actual "knowledge base" — small bookmarks (id/name only, no file
+  // content) kept in localStorage, same local-only footing as the Drive connection itself. Pinning
+  // is scoped to folders only (not individual files), per the page's own framing: pins are what you
+  // curate as important; free navigation is just how you find them.
+  var KNOWLEDGE_PINS_KEY = "pp_knowledge_pins";
+  function loadKnowledgePins(){ try{ return JSON.parse(safeGet(window.localStorage, KNOWLEDGE_PINS_KEY) || "[]") || []; }catch(e){ return []; } }
+  function saveKnowledgePins(pins){ safeSet(window.localStorage, KNOWLEDGE_PINS_KEY, JSON.stringify(pins)); }
+  function isFolderPinned(id){ return loadKnowledgePins().some(function(p){ return p.id === id; }); }
+  // Returns the new pinned state (true = now pinned) so callers can update a toggle button in place.
+  function toggleKnowledgePin(id, name){
+    var pins = loadKnowledgePins();
+    var idx = pins.findIndex(function(p){ return p.id === id; });
+    if(idx !== -1){ pins.splice(idx, 1); } else { pins.push({ id: id, name: name, pinnedAt: Date.now() }); }
+    saveKnowledgePins(pins);
+    return idx === -1;
+  }
+
   var KNOWLEDGE_MIME_ICONS = {
     "application/vnd.google-apps.folder": "📁",
     "application/vnd.google-apps.document": "📄",
@@ -3917,6 +3954,60 @@
       return '<span class="knowledge-crumb' + (last ? " current" : "") + '" data-idx="' + i + '">' +
         (i === 0 ? "📁 " : "") + escapeHtml(f.name) + '</span>' + (last ? "" : ' <span class="knowledge-crumb-sep">/</span> ');
     }).join("");
+    // The "pin this folder" toolbar button tracks whichever folder is currently open — hidden at
+    // root (pinning "everything" isn't meaningful), otherwise reflects that folder's pinned state.
+    var pinBtn = document.getElementById("knowledgePinCurrentBtn");
+    if(pinBtn){
+      var atRoot = driveFolderStack.length === 1;
+      pinBtn.hidden = atRoot;
+      if(!atRoot){
+        var current = driveFolderStack[driveFolderStack.length - 1];
+        var pinned = isFolderPinned(current.id);
+        pinBtn.classList.toggle("pinned", pinned);
+        pinBtn.textContent = pinned ? "★ pinned" : "☆ pin this folder";
+        pinBtn.dataset.pinId = current.id;
+        pinBtn.dataset.pinName = current.name;
+      }
+    }
+  }
+  function renderKnowledgePinned(){
+    var el = document.getElementById("knowledgePinned");
+    if(!el) return;
+    var pins = loadKnowledgePins();
+    if(!pins.length){
+      el.innerHTML = '<div class="knowledge-empty">' +
+        '<div class="knowledge-empty-icon">📌</div>' +
+        '<p class="knowledge-empty-title">No pinned folders yet</p>' +
+        '<p>Pin the folders that actually matter — open Drive Navigator and tap ☆ on any folder (or "pin this folder" once you\'re inside it) to add it here.</p>' +
+        '<button class="btn btn-accent" id="knowledgeGoToNavBtn" type="button">open drive navigator</button>' +
+      '</div>';
+      return;
+    }
+    var sorted = pins.slice().sort(function(a, b){ return a.name.localeCompare(b.name); });
+    el.innerHTML = '<div class="knowledge-grid">' + sorted.map(function(p){
+      return '<div class="knowledge-file knowledge-pinned-card" data-id="' + p.id + '" data-name="' + escapeHtml(p.name) + '" title="' + escapeHtml(p.name) + '">' +
+        '<button class="knowledge-unpin-btn" data-unpin-id="' + p.id + '" title="Unpin">×</button>' +
+        '<span class="knowledge-file-icon">📁</span>' +
+        '<span class="knowledge-file-name">' + escapeHtml(p.name) + '</span>' +
+      '</div>';
+    }).join("") + '</div>';
+  }
+  // Jumps Drive Navigator straight into a pinned folder. The true ancestor path isn't tracked (Drive
+  // doesn't give it for free), so this is a flat jump — My Drive / <folder> — not the real nested
+  // breadcrumb trail; clicking "My Drive" still gets you back to root from there.
+  function openPinnedFolder(id, name){
+    switchKnowledgeTab("drive");
+    driveFolderStack = [{ id: "root", name: "My Drive" }, { id: id, name: name }];
+    document.getElementById("knowledgeSearch").value = "";
+    if(!driveAccessToken){ renderKnowledgeCrumbs(); toast("Connect Google Drive to open this folder."); return; }
+    loadDriveFolder();
+  }
+  function switchKnowledgeTab(target){
+    var section = document.getElementById("knowledgeSection");
+    var tabs = Array.prototype.slice.call(section.querySelectorAll(".knowledge-tab"));
+    var panels = Array.prototype.slice.call(section.querySelectorAll(".knowledge-panel"));
+    tabs.forEach(function(t){ t.classList.toggle("active", t.dataset.kv === target); });
+    panels.forEach(function(p){ p.hidden = (p.dataset.kv !== target); });
   }
   function renderKnowledgeEmpty(){
     var el = document.getElementById("knowledgeFiles");
@@ -3942,7 +4033,10 @@
     });
     el.innerHTML = '<div class="knowledge-grid">' + sorted.map(function(f){
       var isFolder = f.mimeType === "application/vnd.google-apps.folder";
+      var pinned = isFolder && isFolderPinned(f.id);
+      var pinBtn = isFolder ? ('<button class="knowledge-pin-toggle' + (pinned ? " pinned" : "") + '" data-pin-id="' + f.id + '" data-pin-name="' + escapeHtml(f.name) + '" title="' + (pinned ? "Unpin" : "Pin to Knowledge Base") + '">' + (pinned ? "★" : "☆") + '</button>') : "";
       return '<div class="knowledge-file" data-id="' + f.id + '" data-name="' + escapeHtml(f.name) + '" data-folder="' + (isFolder ? "1" : "0") + '" data-link="' + escapeHtml(f.webViewLink || "") + '" title="' + escapeHtml(f.name) + '">' +
+        pinBtn +
         '<span class="knowledge-file-icon">' + knowledgeIconFor(f.mimeType) + '</span>' +
         '<span class="knowledge-file-name">' + escapeHtml(f.name) + '</span>' +
       '</div>';
@@ -3984,21 +4078,30 @@
     var section = document.getElementById("knowledgeSection");
     if(!section) return;
     var tabs = Array.prototype.slice.call(section.querySelectorAll(".knowledge-tab"));
-    var panels = Array.prototype.slice.call(section.querySelectorAll(".knowledge-panel"));
     tabs.forEach(function(tab){
-      tab.addEventListener("click", function(){
-        var target = tab.dataset.kv;
-        tabs.forEach(function(t){ t.classList.toggle("active", t === tab); });
-        panels.forEach(function(p){ p.hidden = (p.dataset.kv !== target); });
-      });
+      tab.addEventListener("click", function(){ switchKnowledgeTab(tab.dataset.kv); });
     });
     // Header connect/disconnect toggle button — label/behavior flips via renderKnowledgeConnectState.
     document.getElementById("knowledgeConnectBtn").addEventListener("click", function(){
       if(driveAccessToken) disconnectGoogleDrive(); else connectGoogleDrive();
     });
     // The empty state's own connect button is rebuilt on every render (renderKnowledgeEmpty), so it's
-    // wired via delegation on the files container rather than a one-time direct listener.
+    // wired via delegation on the files container rather than a one-time direct listener. The ☆/★
+    // pin toggle on a folder tile is handled first and returns early — it must never also trigger
+    // that tile's own "navigate into this folder" click.
     document.getElementById("knowledgeFiles").addEventListener("click", function(e){
+      var pinBtn = e.target.closest(".knowledge-pin-toggle");
+      if(pinBtn){
+        e.stopPropagation();
+        var nowPinned = toggleKnowledgePin(pinBtn.dataset.pinId, pinBtn.dataset.pinName);
+        pinBtn.classList.toggle("pinned", nowPinned);
+        pinBtn.textContent = nowPinned ? "★" : "☆";
+        pinBtn.title = nowPinned ? "Unpin" : "Pin to Knowledge Base";
+        renderKnowledgeCrumbs(); // keeps the toolbar's own pin button in sync if it's this same folder
+        renderKnowledgePinned();
+        toast((nowPinned ? "Pinned " : "Unpinned ") + '"' + pinBtn.dataset.pinName + '"' + (nowPinned ? " to Knowledge Base." : "."));
+        return;
+      }
       var connectBtn = e.target.closest(".knowledge-connect");
       if(connectBtn){ connectGoogleDrive(); return; }
       var tile = e.target.closest(".knowledge-file");
@@ -4018,6 +4121,13 @@
       document.getElementById("knowledgeSearch").value = "";
       loadDriveFolder();
     });
+    document.getElementById("knowledgePinCurrentBtn").addEventListener("click", function(){
+      var nowPinned = toggleKnowledgePin(this.dataset.pinId, this.dataset.pinName);
+      this.classList.toggle("pinned", nowPinned);
+      this.textContent = nowPinned ? "★ pinned" : "☆ pin this folder";
+      renderKnowledgePinned();
+      toast((nowPinned ? "Pinned " : "Unpinned ") + '"' + this.dataset.pinName + '"' + (nowPinned ? " to Knowledge Base." : "."));
+    });
     document.getElementById("knowledgeSearch").addEventListener("input", function(e){
       var term = e.target.value.trim();
       clearTimeout(driveSearchDebounceTimer);
@@ -4026,8 +4136,26 @@
         if(term) searchDrive(term); else loadDriveFolder();
       }, 350);
     });
+    // Pinned tab: open a card (jumps to Drive Navigator), unpin (×), or the empty-state's
+    // "open drive navigator" shortcut. Delegated since the grid is fully rebuilt on every render.
+    document.getElementById("knowledgePinned").addEventListener("click", function(e){
+      var goNav = e.target.closest("#knowledgeGoToNavBtn");
+      if(goNav){ switchKnowledgeTab("drive"); return; }
+      var unpin = e.target.closest(".knowledge-unpin-btn");
+      if(unpin){
+        e.stopPropagation();
+        saveKnowledgePins(loadKnowledgePins().filter(function(p){ return p.id !== unpin.dataset.unpinId; }));
+        renderKnowledgePinned();
+        renderKnowledgeCrumbs(); // toolbar pin button, if it's currently showing this same folder
+        return;
+      }
+      var card = e.target.closest(".knowledge-pinned-card");
+      if(!card) return;
+      openPinnedFolder(card.dataset.id, card.dataset.name);
+    });
     renderKnowledgeConnectState();
     renderKnowledgeEmpty();
+    renderKnowledgePinned();
   })();
 
   /* ---------------- Home (cockpit) dashboard ---------------- */
