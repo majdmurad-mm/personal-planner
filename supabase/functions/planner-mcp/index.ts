@@ -637,20 +637,24 @@ const httpHandler = transport.bind(mcp);
 
 const app = new Hono();
 
-// Token gate. The token may arrive one of two ways, and either is accepted:
-//   1. Authorization: Bearer <MCP_TOKEN>  — for clients that let you set a header.
-//   2. ?token=<MCP_TOKEN> in the URL       — for clients that only let you set a URL.
-// The claude.ai web "Add custom connector" form is the second kind — it takes a URL
-// (plus optional OAuth) but has no request-headers field — so the query-param form is
-// what lets it authenticate without standing up a full OAuth server. If MCP_TOKEN
-// somehow isn't set, fail closed rather than open.
+// Token gate. The token may arrive any of three ways, and any of them is accepted:
+//   1. Authorization: Bearer <MCP_TOKEN>            — clients that let you set a header.
+//   2. ?token=<MCP_TOKEN> in the URL query string   — clients that only take a URL.
+//   3. as the path segment right before /mcp:
+//        .../functions/v1/planner-mcp/<MCP_TOKEN>/mcp
+//      — the most robust option, because some clients (the claude.ai web connector
+//      appears to be one) drop the query string when they call the endpoint, but the
+//      URL PATH is always preserved. If MCP_TOKEN isn't set, fail closed.
 function authorized(req: Request): boolean {
   if (!MCP_TOKEN) return false;
+  const url = new URL(req.url);
   const header = req.headers.get("authorization") || "";
   const headerToken = header.replace(/^Bearer\s+/i, "").trim();
   if (headerToken && headerToken === MCP_TOKEN) return true;
-  const urlToken = new URL(req.url).searchParams.get("token");
-  if (urlToken && urlToken === MCP_TOKEN) return true;
+  const queryToken = url.searchParams.get("token");
+  if (queryToken && queryToken === MCP_TOKEN) return true;
+  const pathMatch = url.pathname.match(/\/([^/]+)\/mcp$/);
+  if (pathMatch && pathMatch[1] === MCP_TOKEN) return true;
   return false;
 }
 
@@ -660,7 +664,16 @@ function authorized(req: Request): boolean {
 // path suffix. Any path ending in /mcp is the MCP endpoint (bearer-gated);
 // everything else is the unauthenticated health check.
 app.all("*", async (c) => {
-  const pathname = new URL(c.req.url).pathname;
+  const reqUrl = new URL(c.req.url);
+  const pathname = reqUrl.pathname;
+  // Temporary connect-debugging log: shows what a client (e.g. Claude) actually sends —
+  // the path it hits, whether a token rode along, and how. Safe: logs only booleans, not
+  // the token value itself.
+  console.log("[planner-mcp]", c.req.method, pathname,
+    "| authHeader=", !!c.req.raw.headers.get("authorization"),
+    "queryToken=", !!reqUrl.searchParams.get("token"),
+    "pathToken=", /\/[^/]+\/mcp$/.test(pathname),
+    "authed=", authorized(c.req.raw));
   if (pathname.endsWith("/mcp")) {
     if (!authorized(c.req.raw)) return c.json({ error: "unauthorized" }, 401);
     if (!OWNER) return c.json({ error: "server not configured: OWNER_USER_ID is unset" }, 500);
