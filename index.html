@@ -2095,6 +2095,73 @@
       </div>
     </section>
 
+    <!-- Per-project / per-action page (openEntityPage): a Gantt planning chart on top, a Markdown
+         notes document below. One shared section reused for both kinds — entityPage.kind decides
+         which object it shows. -->
+    <section id="entityPageSection" style="display:none;">
+      <style>
+        .entity-page-title-row{display:flex;align-items:center;gap:10px;margin-top:10px;}
+        .entity-page-title-row h1{margin:0;}
+        .gantt-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:8px;background:var(--bg-raised);}
+        .gantt-inner{position:relative;}
+        .gantt-head{display:flex;border-bottom:1px solid var(--border);position:relative;}
+        .gantt-head-label{flex:0 0 170px;position:sticky;left:0;background:var(--bg-raised);z-index:3;border-right:1px solid var(--border);}
+        .gantt-day{flex:0 0 var(--gantt-col, 30px);width:var(--gantt-col, 30px);text-align:center;font-family:var(--mono);font-size:9px;color:var(--text-faint);padding:4px 0;border-left:1px dashed var(--border);}
+        .gantt-day.gantt-month-start{color:var(--text-dim);border-left:1px solid var(--border-bright);}
+        .gantt-day.gantt-today{color:var(--accent);}
+        .gantt-row{display:flex;align-items:stretch;height:34px;position:relative;}
+        .gantt-row + .gantt-row{border-top:1px dashed var(--border);}
+        .gantt-row-label{flex:0 0 170px;position:sticky;left:0;background:var(--bg-raised);z-index:3;border-right:1px solid var(--border);font-family:var(--mono);font-size:10.5px;color:var(--text-dim);display:flex;align-items:center;padding:0 8px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
+        .gantt-track{position:relative;flex:1;}
+        .gantt-bar{position:absolute;top:6px;height:22px;border-radius:4px;border:1px solid var(--border-bright);background:var(--bg-inset);font-family:var(--mono);font-size:9.5px;line-height:20px;padding:0 20px 0 6px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:grab;touch-action:none;z-index:1;}
+        .gantt-bar.dragging{cursor:grabbing;box-shadow:0 2px 10px rgba(0,0,0,0.4);z-index:5;}
+        .gantt-bar.done{opacity:0.45;}
+        .gantt-bar.undated{border-style:dashed;opacity:0.65;}
+        .gantt-bar.blocked{box-shadow:0 0 0 1.5px var(--danger, #e5484d);}
+        .gantt-bar.gantt-bar-project{cursor:default;border-width:2px;font-weight:600;padding-right:6px;}
+        .gantt-bar.gantt-bar-self{outline:2px solid var(--accent);}
+        .gantt-bar.Health{background:var(--cat-health-bg);border-color:var(--cat-health);}
+        .gantt-bar.Finance{background:var(--cat-finance-bg);border-color:var(--cat-finance);}
+        .gantt-bar.Career{background:var(--cat-career-bg);border-color:var(--cat-career);}
+        .gantt-bar.Maintenance{background:var(--cat-maintenance-bg);border-color:var(--cat-maintenance);}
+        .gantt-bar.Growth{background:var(--cat-growth-bg);border-color:var(--cat-growth);}
+        .gantt-bar.Relationships{background:var(--cat-relationships-bg);border-color:var(--cat-relationships);}
+        .gantt-bar.Sol{background:var(--cat-sol-bg);border-color:var(--cat-sol);}
+        .gantt-link-handle{position:absolute;right:2px;top:50%;transform:translateY(-50%);width:14px;height:14px;line-height:14px;text-align:center;font-size:10px;color:var(--text-faint);cursor:crosshair;border-radius:50%;}
+        .gantt-link-handle:hover{color:var(--accent);background:var(--bg);}
+        .gantt-bar.link-target{box-shadow:0 0 0 2px var(--accent);}
+        .gantt-arrow-svg{position:absolute;inset:0;pointer-events:none;overflow:visible;z-index:2;}
+        .gantt-arrow{fill:none;stroke:var(--text-dim);stroke-width:1.5;pointer-events:stroke;cursor:pointer;}
+        .gantt-arrow.conditional{stroke-dasharray:4,3;}
+        .gantt-arrow:hover{stroke:var(--danger, #e5484d);}
+        .gantt-link-preview{stroke:var(--accent);stroke-width:1.5;stroke-dasharray:3,3;fill:none;pointer-events:none;}
+        .gantt-empty{padding:18px;font-family:var(--mono);font-size:11px;color:var(--text-faint);}
+      </style>
+      <div class="main-header">
+        <div>
+          <button class="btn" id="entityPageBackBtn" type="button">‹ back</button>
+          <div id="entityPageTitleRow" class="entity-page-title-row"></div>
+        </div>
+      </div>
+      <div class="goal-integration-block">
+        <div class="integration-block-head"><h2>plan</h2></div>
+        <p class="panel-hint">Drag a bar left/right to reschedule it. Drag the ◉ handle from one action onto another to make the second depend on the first — you'll be asked whether it's a hard "must be done first" requirement (dashed arrow) or just an ordering link (solid arrow). Click an arrow to remove it.</p>
+        <div class="gantt-wrap" id="entityGanttWrap"></div>
+      </div>
+      <div class="goal-integration-block">
+        <div class="integration-block-head">
+          <h2>notes</h2>
+          <div class="sub-view-toggle" id="entityMdToggle">
+            <button class="sub-view-tab active" data-md-view="write" type="button">write</button>
+            <button class="sub-view-tab" data-md-view="preview" type="button">preview</button>
+          </div>
+        </div>
+        <textarea id="entityMdInput" class="journal-textarea" rows="14" placeholder="Write anything about this — plain text or Markdown (# headings, - lists, **bold**, ...)."></textarea>
+        <div id="entityMdPreview" class="journal-entry-text journal-entry-md" style="display:none;"></div>
+        <p class="panel-hint" id="entityMdStatus"></p>
+      </div>
+    </section>
+
     <!-- ===== AGENT SECTION ===== -->
     <section id="agentSection" style="display:none;">
       <div class="main-header">
@@ -3177,6 +3244,7 @@
 
 <!-- ===== GLOBAL RIGHT-CLICK MENU ===== -->
 <div class="ctx-menu" id="globalCtxMenu" hidden>
+  <button class="ctx-menu-item" data-ctx="open-page" type="button">open page</button>
   <button class="ctx-menu-item" data-ctx="edit" type="button">edit</button>
   <button class="ctx-menu-item" data-ctx="parent-habit" type="button">go to parent habit</button>
   <button class="ctx-menu-item" data-ctx="postpone" type="button">postpone…</button>
@@ -3647,7 +3715,8 @@
     relationship_status: "relationship status", social_group: "social group", personality_type: "personality type",
     location: "location", related_people: "related people", planets: "people group",
     home_lat: "home location", home_lng: "home location",
-    transcript: "recording transcript", duration_seconds: "recording length", waveform: "recording waveform"
+    transcript: "recording transcript", duration_seconds: "recording length", waveform: "recording waveform",
+    notes_md: "page notes", dependencies: "action dependencies"
   };
   function warnDroppedFields(dropped){
     if(!dropped || !dropped.length) return;
@@ -3878,13 +3947,13 @@
     // the migration runs and real position values exist.
     state.goals = (results[0].data || []).map(function(r){ return { id:r.id, title:r.title, priority:r.priority, category:r.category, secondaryCategories:r.secondary_categories || [], secondaryGoalIds:r.secondary_goal_ids || [], due:r.due, ongoing:r.ongoing, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null) }; });
     state.goals.sort(function(a,b){ return a.position - b.position; });
-    state.projects = (results[1].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), categories:r.categories||[] }; });
+    state.projects = (results[1].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), categories:r.categories||[], notesMd:r.notes_md||"" }; });
     state.projects.sort(function(a,b){ return a.position - b.position; });
     state.habits = (results[2].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || null, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [], extraDates:r.extra_dates || [], customIntervalDays:r.custom_interval_days||null, monthDay:r.month_day||null, icon:r.icon||null, instanceOverrides:r.instance_overrides || {},
       locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null) }; });
     state.habits.sort(function(a,b){ return a.position - b.position; });
     state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null,
-      locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null) }; });
+      locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), notesMd:r.notes_md||"", dependencies:r.dependencies||[] }; });
     state.actions.sort(function(a,b){ return a.position - b.position; });
     state.journal = (results[4].data || []).map(function(r){ return { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, categories:r.categories||[], recordingId:r.recording_id||null, linkedObjects:r.linked_objects||[], sentiment:r.sentiment||[], title:r.title||"", priority:r.priority||null, createdAt:r.created_at||null }; });
     state.people = (results[5].data || []).map(function(r){
@@ -3989,7 +4058,7 @@
     });
   }
 
-  var ALL_SECTION_IDS = ["homeSection","todaySection","plannerSection","trackerSection","agentSection","timelineSection","journalSection","peopleSection","locationSection","knowledgeSection","futureSection","toolsSection","goalDetailSection","areaDetailSection"];
+  var ALL_SECTION_IDS = ["homeSection","todaySection","plannerSection","trackerSection","agentSection","timelineSection","journalSection","peopleSection","locationSection","knowledgeSection","futureSection","toolsSection","goalDetailSection","areaDetailSection","entityPageSection"];
   // Sidebar dropdown groups — a parent nav item with no page of its own, bundling a set of section
   // names under one submenu. See showSection() (active/auto-open) and the sideNav click handler
   // (data-toggle-submenu, open/close).
@@ -7152,7 +7221,7 @@
   }
   function wbConnPayload(c){ return { id:c.id, from_type:c.fromType, from_id:c.fromId, to_type:c.toType, to_id:c.toId }; }
   function projectPayload(snapshot){
-    return { id:snapshot.id, goal_id:snapshot.goalId, secondary_goal_ids:snapshot.secondaryGoalIds, title:snapshot.title, priority:snapshot.priority, due:snapshot.due, hours:snapshot.hours, done:snapshot.done, position:snapshot.position, health_override:snapshot.healthOverride, health_pct_override:snapshot.healthPctOverride, icon:snapshot.icon, whiteboard_x:snapshot.wbX, whiteboard_y:snapshot.wbY, categories:snapshot.categories };
+    return { id:snapshot.id, goal_id:snapshot.goalId, secondary_goal_ids:snapshot.secondaryGoalIds, title:snapshot.title, priority:snapshot.priority, due:snapshot.due, hours:snapshot.hours, done:snapshot.done, position:snapshot.position, health_override:snapshot.healthOverride, health_pct_override:snapshot.healthPctOverride, icon:snapshot.icon, whiteboard_x:snapshot.wbX, whiteboard_y:snapshot.wbY, categories:snapshot.categories, notes_md:snapshot.notesMd };
   }
   async function deleteProject(id){
     var p = state.projects.find(function(x){ return x.id === id; });
@@ -7201,7 +7270,7 @@
   }
   function actionPayload(snapshot){
     return { id:snapshot.id, parent_type:snapshot.parentType, parent_id:snapshot.parentId, title:snapshot.title, type:snapshot.type, priority:snapshot.priority, date:snapshot.date, done:snapshot.done, position:snapshot.position, time_of_day:snapshot.timeOfDay, duration_minutes:snapshot.durationMinutes, category:snapshot.category,
-      location_address:snapshot.locationAddress, location_lat:snapshot.locationLat, location_lng:snapshot.locationLng };
+      location_address:snapshot.locationAddress, location_lat:snapshot.locationLat, location_lng:snapshot.locationLng, notes_md:snapshot.notesMd, dependencies:snapshot.dependencies };
   }
   async function deleteAction(id){
     var a = state.actions.find(function(x){ return x.id === id; });
@@ -7664,6 +7733,9 @@
   function openGlobalCtxMenu(x, y, kind, id, date){
     globalCtxTarget = { kind:kind, id:id, date:date, x:x, y:y };
     var menu = document.getElementById("globalCtxMenu");
+    // "open page" is the projects/actions detail page (openEntityPage) — only those two kinds have
+    // a page of their own (goals already have goalDetail, opened elsewhere).
+    menu.querySelector('[data-ctx="open-page"]').style.display = (kind === "project" || kind === "action") ? "" : "none";
     menu.querySelector('[data-ctx="edit"]').style.display = EDIT_HANDLERS[kind] ? "" : "none";
     // "go to parent habit" only applies to a habit occurrence — it opens the recurring habit's own
     // editor (editHabit), distinct from "edit", which for a habit-instance only tweaks that one day.
@@ -7691,7 +7763,9 @@
     if(!btn || !globalCtxTarget) return;
     var target = globalCtxTarget;
     closeGlobalCtxMenu();
-    if(btn.dataset.ctx === "delete"){
+    if(btn.dataset.ctx === "open-page"){
+      openEntityPage(target.kind, target.id);
+    } else if(btn.dataset.ctx === "delete"){
       var handler = DELETE_HANDLERS[target.kind];
       if(handler) await handler(target.id, target.date);
     } else if(btn.dataset.ctx === "edit"){
@@ -7871,6 +7945,335 @@
     }
   }
   document.getElementById("goalDetailBackBtn").addEventListener("click", closeGoalDetailPage);
+
+  /* ---------------- Project / Action detail pages (entityPage) ---------------- */
+  // One shared page for both kinds: a Gantt planning chart of the project + its actions on top, and
+  // a Markdown notes document (notes_md — see migration_entity_pages.sql) below. Opened from the
+  // global context menu's "open page" entry, so any project/action tile, row, or timeline block
+  // anywhere in the app can reach it.
+  var entityPage = { kind: null, id: null, returnSection: "planner" };
+  function entityPageObj(){
+    if(entityPage.kind === "project") return projectById(entityPage.id);
+    if(entityPage.kind === "action") return state.actions.find(function(a){ return a.id === entityPage.id; });
+    return null;
+  }
+  function openEntityPage(kind, id){
+    entityPage.kind = kind;
+    entityPage.id = id;
+    entityPage.returnSection = activeSection === "entityPage" ? entityPage.returnSection : activeSection;
+    showSection("entityPage");
+  }
+  function closeEntityPage(){
+    var back = entityPage.returnSection;
+    entityPage.kind = null; entityPage.id = null;
+    showSection(back);
+  }
+  document.getElementById("entityPageBackBtn").addEventListener("click", closeEntityPage);
+  function entityPageCategory(obj){
+    return entityPage.kind === "project" ? projectCategory(obj) : actionCategory(obj);
+  }
+  function renderEntityPage(){
+    if(activeSection !== "entityPage" || !entityPage.id) return;
+    var obj = entityPageObj();
+    if(!obj){ closeEntityPage(); return; }
+    var cat = entityPageCategory(obj);
+    document.getElementById("entityPageTitleRow").innerHTML =
+      '<span class="future-gallery-icon-wrap' + (cat ? " " + cat : "") + '" style="width:34px;max-width:34px;">' +
+        (obj.icon ? iconMaskHtml("future-gallery-icon-img", resolveEntityIconDataUri(obj.icon), cat) : futureGalleryInitialHtml(obj.title, cat)) +
+      '</span>' +
+      '<h1>' + escapeHtml(obj.title) + '</h1>' +
+      (cat ? '<span class="cat-badge ' + cat + '">' + CATEGORY_ICONS[cat] + ' ' + cat + '</span>' : '') +
+      '<span class="panel-hint" style="margin:0;">' + entityPage.kind +
+        (entityPage.kind === "project" && obj.due ? ' · due ' + escapeHtml(fmtDate(obj.due)) : '') +
+        (entityPage.kind === "action" && obj.date ? ' · ' + escapeHtml(fmtDate(obj.date)) : '') + '</span>';
+    // Never clobber the textarea mid-typing — renderAll() fires on every save (including this
+    // page's own autosave round-trips), and resetting .value would jump the caret.
+    var ta = document.getElementById("entityMdInput");
+    if(document.activeElement !== ta) ta.value = obj.notesMd || "";
+    if(document.getElementById("entityMdPreview").style.display !== "none"){
+      document.getElementById("entityMdPreview").innerHTML = renderNoteBodyHtml(obj.notesMd || "") || '<span class="panel-hint">Nothing written yet.</span>';
+    }
+    renderEntityGantt();
+  }
+  // ---- Markdown notes: debounced autosave straight to the row's notes_md column ----
+  var entityMdSaveTimer = null;
+  document.getElementById("entityMdInput").addEventListener("input", function(){
+    var kind = entityPage.kind, id = entityPage.id;
+    if(!id) return;
+    var value = this.value;
+    var obj = entityPageObj();
+    if(obj) obj.notesMd = value;
+    document.getElementById("entityMdStatus").textContent = "…";
+    clearTimeout(entityMdSaveTimer);
+    entityMdSaveTimer = setTimeout(async function(){
+      var r = await safeUpdate(kind === "project" ? "projects" : "actions", id, { notes_md: value });
+      if(r.error){ console.error(r.error); document.getElementById("entityMdStatus").textContent = "couldn't save — " + r.error.message; return; }
+      warnDroppedFields(r.droppedFields);
+      document.getElementById("entityMdStatus").textContent = "saved";
+    }, 800);
+  });
+  document.getElementById("entityMdToggle").addEventListener("click", function(e){
+    var tab = e.target.closest("[data-md-view]");
+    if(!tab) return;
+    this.querySelectorAll(".sub-view-tab").forEach(function(t){ t.classList.toggle("active", t === tab); });
+    var preview = tab.dataset.mdView === "preview";
+    document.getElementById("entityMdInput").style.display = preview ? "none" : "";
+    document.getElementById("entityMdPreview").style.display = preview ? "" : "none";
+    if(preview){
+      var obj = entityPageObj();
+      document.getElementById("entityMdPreview").innerHTML = renderNoteBodyHtml((obj && obj.notesMd) || "") || '<span class="panel-hint">Nothing written yet.</span>';
+    }
+  });
+
+  /* ---- Gantt chart: day-scale bars for the project + its actions, with draggable scheduling and
+     action-to-action dependency arrows. Dependencies live on the DEPENDENT action
+     (a.dependencies = [{id, requiresDone}]) — requiresDone marks the conditional "can only start
+     once the prerequisite is DONE" kind, drawn dashed; a plain ordering link is drawn solid. ---- */
+  var GANTT_COL_W = 30, GANTT_LABEL_W = 170;
+  // Which project + actions this page's chart covers: a project page shows itself + its child
+  // actions; an action page shows its parent project's whole chart (with itself highlighted) so the
+  // action is always seen in context, or — for a parentless/goal-parented action — itself plus
+  // anything dependency-linked to it in either direction.
+  function ganttItemsFor(){
+    var project = null, actions = [], selfId = null;
+    if(entityPage.kind === "project"){
+      project = projectById(entityPage.id);
+      actions = state.actions.filter(function(a){ return a.parentType === "project" && a.parentId === entityPage.id; });
+    } else {
+      var self = entityPageObj();
+      if(!self) return { project:null, actions:[], selfId:null };
+      selfId = self.id;
+      if(self.parentType === "project" && self.parentId && projectById(self.parentId)){
+        project = projectById(self.parentId);
+        actions = state.actions.filter(function(a){ return a.parentType === "project" && a.parentId === project.id; });
+      } else {
+        var ids = { }; ids[self.id] = true;
+        (self.dependencies || []).forEach(function(d){ ids[d.id] = true; });
+        state.actions.forEach(function(a){ if((a.dependencies || []).some(function(d){ return d.id === self.id; })) ids[a.id] = true; });
+        actions = state.actions.filter(function(a){ return ids[a.id]; });
+      }
+    }
+    return { project: project, actions: actions, selfId: selfId };
+  }
+  function ganttDayIndex(startStr, dateStr){
+    return Math.round((new Date(dateStr + "T00:00:00") - new Date(startStr + "T00:00:00")) / 86400000);
+  }
+  function actionById(id){ return state.actions.find(function(a){ return a.id === id; }); }
+  // An action is "blocked" when any of its conditional (requiresDone) prerequisites isn't done yet.
+  function ganttActionBlocked(a){
+    return (a.dependencies || []).some(function(d){
+      if(!d.requiresDone) return false;
+      var pre = actionById(d.id);
+      return pre && !pre.done;
+    });
+  }
+  function renderEntityGantt(){
+    var wrap = document.getElementById("entityGanttWrap");
+    if(!wrap) return;
+    var data = ganttItemsFor();
+    if(!data.project && !data.actions.length){
+      wrap.innerHTML = '<div class="gantt-empty">Nothing to plan yet — add actions under this ' + (entityPage.kind || "item") + ' and they’ll appear here.</div>';
+      return;
+    }
+    var today = todayStr();
+    // Date range: every scheduled action + the project due date + today, padded, min 3 weeks wide.
+    var dates = [today];
+    data.actions.forEach(function(a){ if(a.date) dates.push(a.date); });
+    if(data.project && data.project.due) dates.push(data.project.due);
+    dates.sort();
+    var start = addDaysToDateStr(dates[0], -3);
+    var end = addDaysToDateStr(dates[dates.length - 1], 7);
+    var days = ganttDayIndex(start, end) + 1;
+    if(days < 21){ end = addDaysToDateStr(start, 20); days = 21; }
+
+    var head = '<div class="gantt-head"><div class="gantt-head-label"></div>';
+    for(var i = 0; i < days; i++){
+      var dStr = addDaysToDateStr(start, i);
+      var d = new Date(dStr + "T00:00:00");
+      head += '<div class="gantt-day' + (d.getDate() === 1 || i === 0 ? " gantt-month-start" : "") + (dStr === today ? " gantt-today" : "") + '">' +
+        (d.getDate() === 1 || i === 0 ? d.toLocaleDateString(undefined, { month:"short" }) + " " : "") + d.getDate() + '</div>';
+    }
+    head += '</div>';
+
+    var rows = "";
+    function rowHtml(labelHtml, barHtml){
+      return '<div class="gantt-row"><div class="gantt-row-label">' + labelHtml + '</div><div class="gantt-track">' + barHtml + '</div></div>';
+    }
+    if(data.project){
+      var p = data.project;
+      // The project bar is derived, not directly editable here: it spans from its earliest
+      // scheduled action (or today) to its due date (or a week past its last action).
+      var childDates = data.actions.filter(function(a){ return a.date; }).map(function(a){ return a.date; }).sort();
+      var pStart = childDates[0] || today;
+      var pEnd = p.due || childDates[childDates.length - 1] || addDaysToDateStr(pStart, 7);
+      if(pEnd < pStart) pEnd = pStart;
+      var pi = Math.max(0, ganttDayIndex(start, pStart));
+      var pw = Math.max(1, ganttDayIndex(start, pEnd) - pi + 1);
+      var pCat = projectCategory(p);
+      rows += rowHtml('▤ ' + escapeHtml(p.title),
+        '<div class="gantt-bar gantt-bar-project' + (pCat ? " " + pCat : "") + (p.done ? " done" : "") + '" data-kind="project" data-id="' + p.id + '" style="left:' + (pi * GANTT_COL_W) + 'px;width:' + (pw * GANTT_COL_W - 4) + 'px;" title="' + escapeHtml(p.title) + (p.due ? " — due " + fmtDate(p.due) : "") + '">' + escapeHtml(p.title) + '</div>');
+    }
+    data.actions.forEach(function(a){
+      var cat = actionCategory(a);
+      var undated = !a.date;
+      var idx = Math.max(0, ganttDayIndex(start, a.date || today));
+      var blocked = ganttActionBlocked(a);
+      rows += rowHtml(escapeHtml(a.title),
+        '<div class="gantt-bar' + (cat ? " " + cat : "") + (a.done ? " done" : "") + (undated ? " undated" : "") + (blocked ? " blocked" : "") + (a.id === data.selfId ? " gantt-bar-self" : "") + '" data-kind="action" data-id="' + a.id + '" data-gantt-action="' + a.id + '" style="left:' + (idx * GANTT_COL_W) + 'px;width:' + (GANTT_COL_W * 2 - 4) + 'px;" title="' + escapeHtml(a.title) + (undated ? " — no date yet (drag to schedule)" : " — " + fmtDate(a.date)) + (blocked ? " — blocked: a required action isn’t done yet" : "") + '">' +
+          escapeHtml(a.title) +
+          '<span class="gantt-link-handle" data-link-from="' + a.id + '" title="drag onto another action to create a dependency">◉</span>' +
+        '</div>');
+    });
+
+    wrap.innerHTML = '<div class="gantt-inner" style="min-width:' + (GANTT_LABEL_W + days * GANTT_COL_W) + 'px;" data-gantt-start="' + start + '">' +
+      head + rows + '<svg class="gantt-arrow-svg" id="ganttArrowSvg"></svg></div>';
+    renderGanttArrows();
+  }
+  // Dependency arrows, drawn AFTER the bars exist since the endpoints are the bars' real on-screen
+  // rects (an S-curve from the prerequisite's right edge to the dependent's left edge).
+  function renderGanttArrows(){
+    var svg = document.getElementById("ganttArrowSvg");
+    var inner = svg && svg.parentElement;
+    if(!svg || !inner) return;
+    var innerRect = inner.getBoundingClientRect();
+    var paths = "";
+    ganttItemsFor().actions.forEach(function(a){
+      (a.dependencies || []).forEach(function(d){
+        var fromEl = inner.querySelector('.gantt-bar[data-gantt-action="' + d.id + '"]');
+        var toEl = inner.querySelector('.gantt-bar[data-gantt-action="' + a.id + '"]');
+        if(!fromEl || !toEl) return;
+        var fr = fromEl.getBoundingClientRect(), tr = toEl.getBoundingClientRect();
+        var x1 = fr.right - innerRect.left, y1 = fr.top + fr.height / 2 - innerRect.top;
+        var x2 = tr.left - innerRect.left, y2 = tr.top + tr.height / 2 - innerRect.top;
+        var mx = (x1 + x2) / 2;
+        paths += '<path class="gantt-arrow' + (d.requiresDone ? " conditional" : "") + '" data-dep-to="' + a.id + '" data-dep-from="' + d.id + '" d="M' + x1 + ' ' + y1 + ' C' + mx + ' ' + y1 + ' ' + mx + ' ' + y2 + ' ' + x2 + ' ' + y2 + '" title="click to remove"></path>' +
+          '<circle cx="' + x2 + '" cy="' + y2 + '" r="2.5" fill="currentColor" style="color:var(--text-dim);pointer-events:none;"></circle>';
+      });
+    });
+    svg.innerHTML = paths;
+  }
+  async function saveActionDependencies(a){
+    var r = await safeUpdate("actions", a.id, { dependencies: a.dependencies });
+    if(r.error) console.error(r.error); else warnDroppedFields(r.droppedFields);
+  }
+  // Deep prerequisite check — does `id` (transitively) depend on `onId`? Used to refuse creating a
+  // cycle (A→B while B already →A, directly or through a chain).
+  function ganttDependsOn(id, onId, seen){
+    seen = seen || {};
+    if(seen[id]) return false;
+    seen[id] = true;
+    var a = actionById(id);
+    return !!a && (a.dependencies || []).some(function(d){ return d.id === onId || ganttDependsOn(d.id, onId, seen); });
+  }
+  // ---- Gantt interactions: bar drag-to-reschedule + handle drag-to-link ----
+  (function wireGantt(){
+    var wrap = document.getElementById("entityGanttWrap");
+    var drag = null;   // {el, id, startX, origLeft, start, moved}
+    var link = null;   // {fromId, svg, inner, targetEl}
+    wrap.addEventListener("pointerdown", function(e){
+      var handle = e.target.closest("[data-link-from]");
+      if(handle){
+        var inner = wrap.querySelector(".gantt-inner");
+        link = { fromId: handle.dataset.linkFrom, inner: inner, svg: document.getElementById("ganttArrowSvg"), targetEl: null };
+        handle.setPointerCapture(e.pointerId);
+        return;
+      }
+      var bar = e.target.closest('.gantt-bar[data-kind="action"]');
+      if(!bar) return;
+      drag = { el: bar, id: bar.dataset.id, startX: e.clientX, origLeft: parseFloat(bar.style.left) || 0, start: wrap.querySelector(".gantt-inner").dataset.ganttStart, moved: false };
+      bar.setPointerCapture(e.pointerId);
+      bar.classList.add("dragging");
+    });
+    wrap.addEventListener("pointermove", function(e){
+      if(drag){
+        var dx = e.clientX - drag.startX;
+        if(Math.abs(dx) > 3) drag.moved = true;
+        var dayDelta = Math.round(dx / GANTT_COL_W);
+        drag.el.style.left = Math.max(0, drag.origLeft + dayDelta * GANTT_COL_W) + "px";
+        drag.el.dataset.pendingDelta = dayDelta;
+        renderGanttArrows(); // endpoints follow the bar live
+        return;
+      }
+      if(link){
+        var innerRect = link.inner.getBoundingClientRect();
+        var fromEl = link.inner.querySelector('.gantt-bar[data-gantt-action="' + link.fromId + '"]');
+        if(!fromEl) return;
+        var fr = fromEl.getBoundingClientRect();
+        var x1 = fr.right - innerRect.left, y1 = fr.top + fr.height / 2 - innerRect.top;
+        var x2 = e.clientX - innerRect.left, y2 = e.clientY - innerRect.top;
+        var preview = '<path class="gantt-link-preview" d="M' + x1 + ' ' + y1 + ' L' + x2 + ' ' + y2 + '"></path>';
+        var existing = link.svg.querySelector(".gantt-link-preview");
+        if(existing) existing.outerHTML = preview; else link.svg.insertAdjacentHTML("beforeend", preview);
+        // Highlight the action bar under the pointer as the drop target (the preview line itself
+        // never captures hits — pointer-events:none in CSS).
+        var under = document.elementFromPoint(e.clientX, e.clientY);
+        var target = under && under.closest && under.closest('.gantt-bar[data-gantt-action]');
+        if(target && target.dataset.ganttAction === link.fromId) target = null;
+        if(link.targetEl && link.targetEl !== target) link.targetEl.classList.remove("link-target");
+        if(target) target.classList.add("link-target");
+        link.targetEl = target;
+      }
+    });
+    wrap.addEventListener("pointerup", async function(){
+      if(drag){
+        var d = drag; drag = null;
+        d.el.classList.remove("dragging");
+        var delta = Number(d.el.dataset.pendingDelta || 0);
+        delete d.el.dataset.pendingDelta;
+        if(!d.moved) return;
+        var a = actionById(d.id);
+        if(!a) return;
+        // Undated bars sit at today's column, so their first drag schedules them relative to it.
+        var base = a.date || todayStr();
+        var newDate = addDaysToDateStr(base, delta);
+        if(newDate === a.date) { renderEntityPage(); return; }
+        a.date = newDate;
+        renderEntityPage();
+        var r = await safeUpdate("actions", d.id, { date: newDate });
+        if(r.error) console.error(r.error); else warnDroppedFields(r.droppedFields);
+        return;
+      }
+      if(link){
+        var l = link; link = null;
+        var preview = l.svg && l.svg.querySelector(".gantt-link-preview");
+        if(preview) preview.remove();
+        var target = l.targetEl;
+        if(target) target.classList.remove("link-target");
+        if(!target) return;
+        var toId = target.dataset.ganttAction;
+        var dep = actionById(toId), pre = actionById(l.fromId);
+        if(!dep || !pre || toId === l.fromId) return;
+        dep.dependencies = dep.dependencies || [];
+        if(dep.dependencies.some(function(x){ return x.id === l.fromId; })){ toast("Already linked."); return; }
+        if(ganttDependsOn(l.fromId, toId)){ toast("That would create a circular dependency."); return; }
+        var conditional = confirm('Make "' + dep.title + '" REQUIRE "' + pre.title + '" to be done first?\n\nOK = hard requirement (can’t start until it’s done, dashed arrow)\nCancel = simple ordering link (solid arrow)');
+        dep.dependencies.push({ id: l.fromId, requiresDone: conditional });
+        renderEntityPage();
+        await saveActionDependencies(dep);
+      }
+    });
+    wrap.addEventListener("pointercancel", function(){
+      if(drag){ drag.el.classList.remove("dragging"); drag = null; }
+      if(link){
+        var preview = link.svg && link.svg.querySelector(".gantt-link-preview");
+        if(preview) preview.remove();
+        if(link.targetEl) link.targetEl.classList.remove("link-target");
+        link = null;
+      }
+    });
+    // Clicking an arrow removes that dependency (after a confirm — it's a stored relationship,
+    // not just a visual).
+    wrap.addEventListener("click", async function(e){
+      var arrow = e.target.closest && e.target.closest(".gantt-arrow");
+      if(!arrow) return;
+      var dep = actionById(arrow.dataset.depTo), pre = actionById(arrow.dataset.depFrom);
+      if(!dep) return;
+      if(!confirm('Remove the dependency of "' + dep.title + '" on "' + (pre ? pre.title : "a deleted action") + '"?')) return;
+      dep.dependencies = (dep.dependencies || []).filter(function(x){ return x.id !== arrow.dataset.depFrom; });
+      renderEntityPage();
+      await saveActionDependencies(dep);
+    });
+  })();
 
   /* ---------------- Areas ---------------- */
   function computeAreaData(cat){
@@ -15704,7 +16107,8 @@
     // at page load, not on every renderAll() pass — nothing to re-render here.
     tools: [],
     goalDetail: [renderGoalDetail],
-    areaDetail: [renderAreaDetail]
+    areaDetail: [renderAreaDetail],
+    entityPage: [renderEntityPage]
   };
   function renderActiveSectionContent(){
     (SECTION_RENDERERS[activeSection] || []).forEach(function(fn){ fn(); });
