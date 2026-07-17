@@ -2643,6 +2643,24 @@
         .future-gallery-icon-img{width:58%;height:58%;}
         .future-gallery-icon-initial{font-family:var(--mono);font-size:13px;font-weight:700;}
         .future-gallery-item-label{font-family:var(--mono);font-size:9.5px;color:var(--text-dim);text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;background:var(--bg);padding:0 2px;border-radius:3px;}
+        .future-gantt-block{max-width:100%;margin-bottom:32px;}
+        .future-gantt-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:4px;}
+        .future-gantt-head .future-section-title{margin:0;}
+        /* Read-only occurrence marks for the habits tab (see renderFutureHabitsGantt) — a small dot
+           per day a habit actually occurs, area-colored the same way .gantt-bar.Health etc already
+           are, centered on that day's column (gantt-habit-track has no bars of its own to size it,
+           so it needs its own fixed row height). */
+        .gantt-habit-track{height:34px;}
+        .gantt-habit-tick{position:absolute;top:50%;width:9px;height:9px;margin-left:-4.5px;margin-top:-4.5px;border-radius:50%;background:var(--text-faint);cursor:default;}
+        .gantt-habit-tick.today{box-shadow:0 0 0 2px var(--accent-glow);}
+        .gantt-habit-tick.done{opacity:0.4;}
+        .gantt-habit-tick.Health{background:var(--cat-health);}
+        .gantt-habit-tick.Finance{background:var(--cat-finance);}
+        .gantt-habit-tick.Career{background:var(--cat-career);}
+        .gantt-habit-tick.Maintenance{background:var(--cat-maintenance);}
+        .gantt-habit-tick.Growth{background:var(--cat-growth);}
+        .gantt-habit-tick.Relationships{background:var(--cat-relationships);}
+        .gantt-habit-tick.Sol{background:var(--cat-sol);}
       </style>
 
       <!-- Horizontal month strip — same clickable day-picker as Present's own (.today-month-strip),
@@ -2681,6 +2699,27 @@
           <h2 class="future-section-title">actions</h2>
           <div id="futureActionsGallery"></div>
         </div>
+      </div>
+
+      <!-- System-wide plan: every goal/project/action on one draggable timeline (futureGanttWrap),
+           or — on the habits tab — a read-only occurrence view instead, since a recurring habit has
+           no single date to put on a draggable bar (see renderFutureSystemGantt/renderFutureHabitsGantt). -->
+      <div class="future-gantt-block">
+        <div class="future-gantt-head">
+          <h2 class="future-section-title">plan</h2>
+          <div class="sub-view-toggle" id="futurePlanViewToggle">
+            <button class="sub-view-tab active" data-plan-view="gantt" type="button">gantt</button>
+            <button class="sub-view-tab" data-plan-view="habits" type="button">habits</button>
+          </div>
+          <div class="gantt-head-actions" id="futureGanttControls">
+            <button class="btn" id="futureGanttAddActionBtn" type="button">+ action</button>
+            <button class="btn gantt-zoom-btn" id="futureGanttZoomOutBtn" type="button" title="Zoom out">−</button>
+            <button class="btn gantt-zoom-btn" id="futureGanttZoomInBtn" type="button" title="Zoom in">+</button>
+          </div>
+        </div>
+        <p class="panel-hint" id="futurePlanHint">Every goal, project, and action across the whole system on one timeline. Drag a bar to reschedule it, drag the ◉ handle between actions to link a dependency, click an arrow to remove one.</p>
+        <div class="gantt-wrap" id="futureGanttWrap"></div>
+        <div class="gantt-wrap" id="futureHabitsGanttWrap" style="display:none;"></div>
       </div>
 
       <div class="future-body" id="futureBody"></div>
@@ -8229,6 +8268,8 @@
     safeSet(window.localStorage, "pp_gantt_col_w", String(GANTT_COL_W));
     renderEntityGantt();
     renderGoalGanttChart();
+    renderFutureSystemGantt();
+    renderFutureHabitsGantt();
   }
   function ganttDayIndex(startStr, dateStr){
     return Math.round((new Date(dateStr + "T00:00:00") - new Date(startStr + "T00:00:00")) / 86400000);
@@ -8333,6 +8374,19 @@
   function ganttRowHtml(labelHtml, barHtml){
     return '<div class="gantt-row"><div class="gantt-row-label">' + labelHtml + '</div><div class="gantt-track">' + barHtml + '</div></div>';
   }
+  // The day-ruler header row — shared by every chart on a GANTT_COL_W day-scale, including the
+  // non-draggable habit-occurrence view on the Future page (see renderFutureHabitsGantt), which
+  // needs the exact same ruler but a completely different row body underneath it.
+  function ganttHeadHtml(start, days, today){
+    var head = '<div class="gantt-head"><div class="gantt-head-label"></div>';
+    for(var i = 0; i < days; i++){
+      var dStr = addDaysToDateStr(start, i);
+      var d = new Date(dStr + "T00:00:00");
+      head += '<div class="gantt-day' + (d.getDate() === 1 || i === 0 ? " gantt-month-start" : "") + (dStr === today ? " gantt-today" : "") + '">' +
+        (d.getDate() === 1 || i === 0 ? d.toLocaleDateString(undefined, { month:"short" }) + " " : "") + d.getDate() + '</div>';
+    }
+    return head + '</div>';
+  }
   // Renders a full chart (header + rows + arrow layer) into wrapEl from a {rows, actions, selfId}
   // data set — shared by renderEntityGantt (project/action page) and renderGoalGanttChart (goal
   // page), the only two call sites.
@@ -8353,14 +8407,7 @@
     var days = ganttDayIndex(start, end) + 1;
     if(days < 21){ end = addDaysToDateStr(start, 20); days = 21; }
 
-    var head = '<div class="gantt-head"><div class="gantt-head-label"></div>';
-    for(var i = 0; i < days; i++){
-      var dStr = addDaysToDateStr(start, i);
-      var d = new Date(dStr + "T00:00:00");
-      head += '<div class="gantt-day' + (d.getDate() === 1 || i === 0 ? " gantt-month-start" : "") + (dStr === today ? " gantt-today" : "") + '">' +
-        (d.getDate() === 1 || i === 0 ? d.toLocaleDateString(undefined, { month:"short" }) + " " : "") + d.getDate() + '</div>';
-    }
-    head += '</div>';
+    var head = ganttHeadHtml(start, days, today);
 
     var rows = "";
     data.rows.forEach(function(r){
@@ -8409,6 +8456,66 @@
   }
   function renderGoalGanttChart(){
     renderGanttInto(document.getElementById("goalGanttWrap"), ganttItemsForGoal(goalDetailId), "goal");
+  }
+  // The Future page's own chart: every goal and every project in the system (as derived rows,
+  // grouped by area — CATEGORIES order, same convention futureGalleryRowHtml already uses for the
+  // page's other galleries) plus every action (draggable, dependency-linkable) — unlike the
+  // per-entity/per-goal charts, there's no single "self" object this one is scoped to. A goal row's
+  // own span only counts actions parented DIRECTLY to that goal (not ones nested under its
+  // projects) — those already get their own accurate span on the project's own row right below it.
+  function ganttItemsForFuture(){
+    function byAreaOrder(list, catFn){
+      var byCat = {}; list.forEach(function(item){ var c = catFn(item) || "__none__"; (byCat[c] = byCat[c] || []).push(item); });
+      var ordered = [];
+      CATEGORIES.concat(["__none__"]).forEach(function(cat){ (byCat[cat] || []).forEach(function(item){ ordered.push(item); }); });
+      return ordered;
+    }
+    var goalActions = {}, projectActions = {};
+    state.actions.forEach(function(a){
+      if(a.parentType === "goal" && a.parentId) (goalActions[a.parentId] = goalActions[a.parentId] || []).push(a);
+      else if(a.parentType === "project" && a.parentId) (projectActions[a.parentId] = projectActions[a.parentId] || []).push(a);
+    });
+    var rows = byAreaOrder(state.goals, function(g){ return g.category; }).map(function(g){
+      return { kind:"goal", obj:g, span: goalActions[g.id] || [] };
+    }).concat(byAreaOrder(state.projects, function(p){ return projectCategory(p); }).map(function(p){
+      return { kind:"project", obj:p, span: projectActions[p.id] || [] };
+    }));
+    return { rows: rows, actions: state.actions.slice(), selfId: null };
+  }
+  function renderFutureSystemGantt(){
+    renderGanttInto(document.getElementById("futureGanttWrap"), ganttItemsForFuture(), "system");
+  }
+  // ---- Habit occurrence view — habits recur rather than living at one date, so unlike the
+  // draggable action bars above, each habit gets a read-only row of small ticks marking every day
+  // it actually occurs (habitOccursOnDate) within a fixed rolling window — dragging one occurrence
+  // is already handled elsewhere (the habit-instance popover on Today/Timeline), not here. Shares
+  // ganttHeadHtml for the same day-ruler and GANTT_COL_W for the same column width/zoom as the
+  // Gantt view, so switching between the two tabs doesn't shift the time scale underneath you.
+  var GANTT_HABITS_DAYS = 28, GANTT_HABITS_LEAD = 3;
+  function renderFutureHabitsGantt(){
+    var wrap = document.getElementById("futureHabitsGanttWrap");
+    if(!wrap) return;
+    if(!state.habits.length){
+      wrap.innerHTML = '<div class="gantt-empty">No habits yet.</div>';
+      return;
+    }
+    var today = todayStr();
+    var start = addDaysToDateStr(today, -GANTT_HABITS_LEAD);
+    var days = GANTT_HABITS_DAYS;
+    var head = ganttHeadHtml(start, days, today);
+    var rows = "";
+    state.habits.forEach(function(h){
+      var cat = habitCategory(h);
+      var ticks = "";
+      for(var i = 0; i < days; i++){
+        var dStr = addDaysToDateStr(start, i);
+        if(!habitOccursOnDate(h, dStr)) continue;
+        var done = habitDoneForDate(h, dStr);
+        ticks += '<span class="gantt-habit-tick' + (cat ? " " + cat : "") + (done ? " done" : "") + (dStr === today ? " today" : "") + '" style="left:' + (i * GANTT_COL_W + GANTT_COL_W / 2) + 'px;" title="' + escapeHtml(h.title) + " — " + escapeHtml(fmtDate(dStr)) + (done ? " (done)" : "") + '"></span>';
+      }
+      rows += '<div class="gantt-row"><div class="gantt-row-label">' + escapeHtml(h.title) + '</div><div class="gantt-track gantt-habit-track">' + ticks + '</div></div>';
+    });
+    wrap.innerHTML = '<div class="gantt-inner" style="min-width:' + (GANTT_LABEL_W + days * GANTT_COL_W) + 'px; --gantt-col:' + GANTT_COL_W + 'px;">' + head + rows + '</div>';
   }
   // ---- Gantt interactions: bar drag-to-reschedule + handle drag-to-link — one wiring function
   // shared by every chart on the page (currently the entity page's and the goal page's), written
@@ -8542,6 +8649,26 @@
   });
   document.getElementById("goalGanttAddActionBtn").addEventListener("click", function(){
     if(goalDetailId) openActionModalWithParent("goal", goalDetailId);
+  });
+  wireGanttChart(document.getElementById("futureGanttWrap"), renderFutureSystemGantt);
+  document.getElementById("futureGanttZoomOutBtn").addEventListener("click", function(){ ganttZoomStep(-1); });
+  document.getElementById("futureGanttZoomInBtn").addEventListener("click", function(){ ganttZoomStep(1); });
+  // No single project/goal context to preset here (it's the whole system) — opens blank, same as
+  // any other "add action" entry point that isn't already scoped to one parent.
+  document.getElementById("futureGanttAddActionBtn").addEventListener("click", function(){ openActionModal(null, null); });
+  // Gantt/Habits tabs share one timeline scale (GANTT_COL_W) and both stay rendered underneath
+  // (see renderFuture) — switching tabs is purely a display:none toggle, not a re-render.
+  document.getElementById("futurePlanViewToggle").addEventListener("click", function(e){
+    var tab = e.target.closest("[data-plan-view]");
+    if(!tab) return;
+    this.querySelectorAll(".sub-view-tab").forEach(function(t){ t.classList.toggle("active", t === tab); });
+    var habits = tab.dataset.planView === "habits";
+    document.getElementById("futureGanttWrap").style.display = habits ? "none" : "";
+    document.getElementById("futureHabitsGanttWrap").style.display = habits ? "" : "none";
+    document.getElementById("futureGanttControls").style.display = habits ? "none" : "";
+    document.getElementById("futurePlanHint").textContent = habits
+      ? "Every habit and the days it actually occurs, " + GANTT_HABITS_LEAD + " days back through the next " + (GANTT_HABITS_DAYS - GANTT_HABITS_LEAD) + " — read-only here; adjust a single occurrence from Today or the Timeline page."
+      : "Every goal, project, and action across the whole system on one timeline. Drag a bar to reschedule it, drag the ◉ handle between actions to link a dependency, click an arrow to remove one.";
   });
 
   /* ---------------- Areas ---------------- */
@@ -15327,6 +15454,11 @@
     // Positions depend on all four galleries' actual (post-layout) DOM rects, so this has to run
     // after they've all just been rebuilt above — see renderFutureHierarchyConnections.
     renderFutureHierarchyConnections();
+    // Both tabs are kept rendered even while one is display:none — same reasoning as the goal
+    // page's hidden sleep block — so switching tabs never shows a stale chart from before the last
+    // real data change.
+    renderFutureSystemGantt();
+    renderFutureHabitsGantt();
   }
   // One icon tile shared by all three galleries below — a circular icon (the item's own uploaded/
   // assigned icon if it has one, else its initial letter) plus a truncated label, colored by area via
