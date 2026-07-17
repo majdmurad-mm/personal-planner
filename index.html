@@ -2475,13 +2475,16 @@
         .future-section-title{font-size:15px;color:var(--text);margin:0 0 4px;}
         .future-area-group{margin-bottom:20px;}
         .future-area-label{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px;}
-        /* Goals/Projects/Habits galleries — one horizontal, non-scrolling row of icon tiles per area,
-           under the calendar strip. Each row's items shrink (flex, no min-width) rather than overflow
-           or wrap, so a whole area's worth of goals/projects/habits always stays on one line and on
-           screen — see renderFutureGoalsGallery et al. */
+        /* Goals/Projects/Habits galleries — ONE horizontal, non-scrolling, non-wrapping row per type
+           under the calendar strip (see futureGalleryRowHtml) — every item across every area shares
+           that single row, shrinking together (flex, no min-width) to fit the screen width rather than
+           overflowing, wrapping, or splitting into a taller per-area row. Items are still ordered by
+           area (CATEGORIES order), so same-area items sit next to each other; .cluster-start marks
+           where one area's cluster ends and the next begins, without adding any vertical height. */
         .future-gallery-section{max-width:100%;margin-bottom:24px;}
         .future-gallery-row{display:flex;gap:10px;width:100%;}
         .future-gallery-item{flex:1 1 0;min-width:0;max-width:72px;display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;}
+        .future-gallery-item.cluster-start{margin-left:8px;padding-left:8px;border-left:1px solid var(--border);}
         .future-gallery-icon-wrap{width:100%;max-width:36px;aspect-ratio:1;border-radius:50%;border:2px solid var(--border-bright);background:var(--bg-raised);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;}
         .future-gallery-item:hover .future-gallery-icon-wrap{box-shadow:0 0 0 2px var(--bg-inset);}
         .future-gallery-icon-img{width:58%;height:58%;}
@@ -14382,10 +14385,12 @@
   // One icon tile shared by all three galleries below — a circular icon (the item's own uploaded/
   // assigned icon if it has one, else its initial letter) plus a truncated label, colored by area via
   // the same categoryColorVar() every other area-colored icon in the app already uses. flex:1 1 0 with
-  // no min-width (see .future-gallery-item) is what keeps a whole area's row on one line instead of
-  // overflowing or wrapping, per the "make sure they all fit on screen" ask.
-  function futureGalleryItemHtml(kind, id, title, iconInner){
-    return '<div class="future-gallery-item" data-kind="' + kind + '" data-id="' + id + '" title="' + escapeHtml(title) + '">' +
+  // no min-width (see .future-gallery-item) is what lets every item in the ENTIRE row shrink together
+  // to fit the screen width, per "icons scale according to the total screen width". isBoundary marks
+  // the first item of a new area cluster (skipped for the very first item overall) so adjacent items
+  // from different areas still read as separate clusters without breaking onto their own line.
+  function futureGalleryItemHtml(kind, id, title, iconInner, isBoundary){
+    return '<div class="future-gallery-item' + (isBoundary ? " cluster-start" : "") + '" data-kind="' + kind + '" data-id="' + id + '" title="' + escapeHtml(title) + '">' +
       '<div class="future-gallery-icon-wrap">' + iconInner + '</div>' +
       '<span class="future-gallery-item-label">' + escapeHtml(title) + '</span>' +
     '</div>';
@@ -14394,29 +14399,39 @@
     var initial = title.trim().charAt(0).toUpperCase() || "?";
     return '<span class="future-gallery-icon-initial" style="color:' + categoryColorVar(cat) + ';">' + initial + '</span>';
   }
+  // Builds ONE flat horizontal row (no per-area sub-rows, no vertical extension) — items are still
+  // ordered/clustered by area (CATEGORIES order, "Unassigned" last, same order renderByCategorySections
+  // uses elsewhere), just laid out side by side in a single line instead of one row per area.
+  function futureGalleryRowHtml(list, catFn, itemFn){
+    var byCat = {};
+    list.forEach(function(item){ var c = catFn(item) || "__none__"; (byCat[c] = byCat[c] || []).push(item); });
+    var html = "", seenAny = false;
+    CATEGORIES.concat(["__none__"]).forEach(function(cat){
+      var items = byCat[cat];
+      if(!items || !items.length) return;
+      items.forEach(function(item, i){
+        html += itemFn(item, cat === "__none__" ? null : cat, seenAny && i === 0);
+        seenAny = true;
+      });
+    });
+    return '<div class="future-gallery-row">' + html + '</div>';
+  }
   function renderFutureGoalsGallery(){
     var el = document.getElementById("futureGoalsGallery");
     if(!el) return;
     if(!state.goals.length){ el.innerHTML = '<div class="future-empty">No goals yet.</div>'; return; }
-    el.innerHTML = renderByCategorySections(state.goals, function(g){ return g.category; }, function(cat, label, items){
-      var tiles = items.map(function(g){
-        var icon = g.icon ? iconMaskHtml("future-gallery-icon-img", resolveEntityIconDataUri(g.icon), g.category) : futureGalleryInitialHtml(g.title, g.category);
-        return futureGalleryItemHtml("goal", g.id, g.title, icon);
-      }).join("");
-      return '<div class="future-area-group"><div class="future-area-label">' + label + '</div><div class="future-gallery-row">' + tiles + '</div></div>';
+    el.innerHTML = futureGalleryRowHtml(state.goals, function(g){ return g.category; }, function(g, cat, isBoundary){
+      var icon = g.icon ? iconMaskHtml("future-gallery-icon-img", resolveEntityIconDataUri(g.icon), cat) : futureGalleryInitialHtml(g.title, cat);
+      return futureGalleryItemHtml("goal", g.id, g.title, icon, isBoundary);
     });
   }
   function renderFutureProjectsGallery(){
     var el = document.getElementById("futureProjectsGallery");
     if(!el) return;
     if(!state.projects.length){ el.innerHTML = '<div class="future-empty">No projects yet.</div>'; return; }
-    el.innerHTML = renderByCategorySections(state.projects, projectCategory, function(cat, label, items){
-      var tiles = items.map(function(p){
-        var pCat = projectCategory(p);
-        var icon = p.icon ? iconMaskHtml("future-gallery-icon-img", resolveEntityIconDataUri(p.icon), pCat) : futureGalleryInitialHtml(p.title, pCat);
-        return futureGalleryItemHtml("project", p.id, p.title, icon);
-      }).join("");
-      return '<div class="future-area-group"><div class="future-area-label">' + label + '</div><div class="future-gallery-row">' + tiles + '</div></div>';
+    el.innerHTML = futureGalleryRowHtml(state.projects, projectCategory, function(p, cat, isBoundary){
+      var icon = p.icon ? iconMaskHtml("future-gallery-icon-img", resolveEntityIconDataUri(p.icon), cat) : futureGalleryInitialHtml(p.title, cat);
+      return futureGalleryItemHtml("project", p.id, p.title, icon, isBoundary);
     });
   }
   // "Parent" habits — the habit definitions themselves (state.habits), not their day-by-day
@@ -14426,13 +14441,9 @@
     var el = document.getElementById("futureHabitsGallery");
     if(!el) return;
     if(!state.habits.length){ el.innerHTML = '<div class="future-empty">No habits yet.</div>'; return; }
-    el.innerHTML = renderByCategorySections(state.habits, habitCategory, function(cat, label, items){
-      var tiles = items.map(function(h){
-        var hCat = habitCategory(h);
-        var icon = h.icon ? iconMaskHtml("future-gallery-icon-img", habitIconDataUri(h.icon), hCat) : futureGalleryInitialHtml(h.title, hCat);
-        return futureGalleryItemHtml("habit", h.id, h.title, icon);
-      }).join("");
-      return '<div class="future-area-group"><div class="future-area-label">' + label + '</div><div class="future-gallery-row">' + tiles + '</div></div>';
+    el.innerHTML = futureGalleryRowHtml(state.habits, habitCategory, function(h, cat, isBoundary){
+      var icon = h.icon ? iconMaskHtml("future-gallery-icon-img", habitIconDataUri(h.icon), cat) : futureGalleryInitialHtml(h.title, cat);
+      return futureGalleryItemHtml("habit", h.id, h.title, icon, isBoundary);
     });
   }
   // Actions with no date at all — the other half of the "overview of my time and planned actions"
