@@ -1537,6 +1537,14 @@
      inline z-index (up to 1440) would otherwise be able to outrank this. */
   .home-tl-block.tl-holding{ box-shadow:0 0 0 1px var(--accent); z-index:2000 !important; }
   .home-tl-block.dragging{ box-shadow:0 2px 10px rgba(0,0,0,0.4); z-index:2000 !important; opacity:0.9; }
+  .home-tl-block.resizing{ z-index:2000 !important; box-shadow:0 2px 10px rgba(0,0,0,0.4); }
+  /* Edge handles that stretch/shrink a block's duration — same gesture as the Today timeline's
+     .timeline-block-resize (see wireHomeTimelineDockResize), just re-skinned to the dock's smaller
+     block height. Notes have no duration field so homeTlLaneHtml never gives them a handle. */
+  .home-tl-block-resize{ position:absolute; top:0; bottom:0; width:6px; cursor:ew-resize; touch-action:none; }
+  .home-tl-block-resize:hover{ background:rgba(255,255,255,0.18); }
+  .home-tl-block-resize-left{ left:0; }
+  .home-tl-block-resize-right{ right:0; }
   /* Full-bleed background wash, not just a bottom strip (see homeTlDayNightBg) — sits behind the
      lanes (which sit at z-index:1) via z-index:0, so the hour-grid + blocks paint on top of it. A
      single theme-matched hue fades in/out across the day rather than the two-tone day+night band
@@ -4901,6 +4909,10 @@
   // scoped to the areas rail, and shouldn't silently flip the 2D Planner graph's layer too.
   var homeShowActions = safeGet(window.localStorage, "pp_home_show_actions") === "1";
   var homeShowNotes = safeGet(window.localStorage, "pp_home_show_notes") === "1";
+  // How node radius is decided: "hierarchy" (fixed size per tier — area > goal > project/habit >
+  // action > note, see HOME_GRAPH_HIERARCHY_R) or "connections" (scaled by each node's own edge
+  // count, so the most-linked items in the system read as the biggest regardless of tier).
+  var homeGraphSizeMode = safeGet(window.localStorage, "pp_home_graph_size_mode") === "connections" ? "connections" : "hierarchy";
   // Areas legend rail — each area row is an on/off filter (not navigation): toggling an area hides
   // its nodes in the graph and its blocks in the timeline, and dims the row. Below the areas, two
   // more rows toggle whole node TYPES on/off (actions, notes) rather than filtering by area.
@@ -4910,6 +4922,10 @@
       var layer = layerRow.dataset.layer;
       if(layer === "actions"){ homeShowActions = !homeShowActions; safeSet(window.localStorage, "pp_home_show_actions", homeShowActions ? "1" : "0"); }
       else if(layer === "notes"){ homeShowNotes = !homeShowNotes; safeSet(window.localStorage, "pp_home_show_notes", homeShowNotes ? "1" : "0"); }
+      else if(layer === "size-hierarchy" || layer === "size-connections"){
+        homeGraphSizeMode = layer === "size-connections" ? "connections" : "hierarchy";
+        safeSet(window.localStorage, "pp_home_graph_size_mode", homeGraphSizeMode);
+      }
       renderHomeAreasRail();
       // homeSyncGraphData()'s signature includes these toggles, so the next 1s tick rebuilds the
       // scene with the new node set — same latency every other graph-affecting change already has.
@@ -5098,6 +5114,7 @@
     var armed = false, armTimer = null, moved = false, movedBeforeArm = false, downX = 0, downY = 0;
     function clearArmTimer(){ if(armTimer){ clearTimeout(armTimer); armTimer = null; } }
     dock.addEventListener("pointerdown", function(e){
+      if(e.target.closest("[data-resize-handle]")) return; // handled by wireHomeTimelineDockResize instead
       var block = e.target.closest(".home-tl-block");
       if(!block) return;
       dragEl = block; dragId = block.dataset.id; dragKind = block.dataset.kind; dragDate = block.dataset.date;
@@ -5160,6 +5177,102 @@
       dragEl = null; dragId = null; dragKind = null; dragDate = null; dragOvernight = false; armed = false;
     });
   })();
+
+  // Dragging a block's edge handle stretches/shrinks it, same gesture and math as the Today
+  // timeline's wireTimelineBlockResize (TIMELINE_RESIZE_MIN_PX/MIN, tlZIndexForDuration, etc. are
+  // all declared once and shared across both), just measured against the dock's own full-day
+  // #homeTlLanes width instead of a single area row.
+  (function wireHomeTimelineDockResize(){
+    var dock = document.getElementById("homeTimelineDock");
+    var lanes = document.getElementById("homeTlLanes");
+    var resizeEl = null, resizeId = null, resizeKind = null, resizeEdge = null;
+    var fixedEdgePx = 0, moved = false;
+    dock.addEventListener("pointerdown", function(e){
+      var handle = e.target.closest("[data-resize-handle]");
+      if(!handle) return;
+      var block = handle.closest(".home-tl-block");
+      if(!block) return;
+      var rect = lanes.getBoundingClientRect();
+      var leftPct = parseFloat(block.style.left) || 0;
+      var widthPct = parseFloat(block.style.width) || 0;
+      resizeEl = block; resizeId = block.dataset.id; resizeKind = block.dataset.kind;
+      resizeEdge = handle.dataset.resizeHandle; moved = false;
+      // The edge NOT being dragged stays put — capture its pixel position once, up front.
+      fixedEdgePx = resizeEdge === "left" ? (leftPct + widthPct) / 100 * rect.width : (leftPct / 100) * rect.width;
+      handle.setPointerCapture(e.pointerId);
+      block.classList.add("resizing");
+    });
+    dock.addEventListener("pointermove", function(e){
+      if(!resizeEl) return;
+      moved = true;
+      var rect = lanes.getBoundingClientRect();
+      var x = Math.min(rect.width, Math.max(0, e.clientX - rect.left));
+      var leftPx, widthPx;
+      if(resizeEdge === "left"){
+        leftPx = Math.max(0, Math.min(x, fixedEdgePx - TIMELINE_RESIZE_MIN_PX));
+        widthPx = fixedEdgePx - leftPx;
+      } else {
+        leftPx = fixedEdgePx;
+        widthPx = Math.max(TIMELINE_RESIZE_MIN_PX, x - fixedEdgePx);
+      }
+      var startMin = Math.round(((leftPx / rect.width) * 1440) / 5) * 5;
+      var durationMin = Math.max(TIMELINE_RESIZE_MIN_MIN, Math.round(((widthPx / rect.width) * 1440) / 5) * 5);
+      resizeEl.style.left = (leftPx / rect.width * 100) + "%";
+      resizeEl.style.width = Math.max(0.7, (widthPx / rect.width) * 100) + "%";
+      resizeEl.style.zIndex = tlZIndexForDuration(durationMin);
+      resizeEl.dataset.pendingDuration = durationMin;
+      if(resizeEdge === "left") resizeEl.dataset.pendingTime = minutesToTime(startMin);
+    });
+    dock.addEventListener("pointerup", async function(){
+      if(!resizeEl) return;
+      var el = resizeEl, id = resizeId, kind = resizeKind, edge = resizeEdge;
+      var isOvernight = el.dataset.overnight === "1", date = el.dataset.date;
+      var durationMin = el.dataset.pendingDuration, newTime = el.dataset.pendingTime;
+      resizeEl = null; resizeId = null; resizeKind = null; resizeEdge = null;
+      el.classList.remove("resizing");
+      delete el.dataset.pendingTime;
+      if(!moved || !durationMin) return;
+      durationMin = Number(durationMin);
+      if(kind === "habit-instance"){
+        var h = state.habits.find(function(x){ return x.id === id; });
+        if(!h) return;
+        var baseTime = habitInstanceFields(h, date).timeOfDay;
+        // The overnight tail's own width is only the spillover past midnight — its right edge is the
+        // wake/end time, so the real total duration is that spillover plus the (unchanged) stretch
+        // from the item's actual start time up to midnight.
+        var finalDurationH = durationMin;
+        if(isOvernight){
+          var startMinH = timeToFraction(baseTime) * 1440;
+          finalDurationH = Math.max(TIMELINE_RESIZE_MIN_MIN, Math.round((1440 - startMinH) + durationMin));
+        }
+        var patch = { durationMinutes: finalDurationH };
+        if(edge === "left" && newTime) patch.timeOfDay = newTime;
+        // This one day's occurrence only — see setHabitInstanceOverride — never the habit's own
+        // timeOfDay/durationMinutes, which every other day's occurrence still reads. It calls
+        // renderAll() itself, so no extra render call is needed here.
+        await setHabitInstanceOverride(id, date, patch);
+        return;
+      }
+      var a = state.actions.find(function(x){ return x.id === id; });
+      if(!a) return;
+      var finalDuration = durationMin;
+      if(isOvernight){
+        var startMin = timeToFraction(a.timeOfDay) * 1440;
+        finalDuration = Math.max(TIMELINE_RESIZE_MIN_MIN, Math.round((1440 - startMin) + durationMin));
+      }
+      var payload = { duration_minutes: finalDuration };
+      if(edge === "left" && newTime) payload.time_of_day = newTime;
+      a.durationMinutes = finalDuration;
+      if(payload.time_of_day) a.timeOfDay = payload.time_of_day;
+      var r = await safeUpdate("actions", id, payload);
+      if(r.error) console.error(r.error); else warnDroppedFields(r.droppedFields);
+      renderAll();
+    });
+    dock.addEventListener("pointercancel", function(){
+      if(resizeEl) resizeEl.classList.remove("resizing");
+      resizeEl = null; resizeId = null; resizeKind = null; resizeEdge = null;
+    });
+  })();
   // Today's activity per life area — feeds the legend rail's live counts (an action due today, a
   // habit occurring today, or a note saved today), so the rail reads as "where my day is actually
   // happening", not just a static color key.
@@ -5185,7 +5298,8 @@
     var actionsToday = state.actions.filter(function(a){ return a.date === today; }).length;
     var notesToday = state.journal.filter(function(n){ return n.date === today; }).length;
     var sig = pulse.map(function(a){ return a.cat + ":" + a.count + ":" + (homeHiddenAreas[a.cat] ? 1 : 0); }).join("|") +
-      "||actions:" + actionsToday + ":" + (homeShowActions ? 1 : 0) + "|notes:" + notesToday + ":" + (homeShowNotes ? 1 : 0);
+      "||actions:" + actionsToday + ":" + (homeShowActions ? 1 : 0) + "|notes:" + notesToday + ":" + (homeShowNotes ? 1 : 0) +
+      "|size:" + homeGraphSizeMode;
     if(el.dataset.sig === sig) return;
     el.dataset.sig = sig;
     el.innerHTML = '<div class="home-rail-title">areas</div>' + pulse.map(function(a){
@@ -5199,7 +5313,20 @@
     '<div class="home-rail-divider"></div>' +
     '<div class="home-rail-title">graph nodes</div>' +
     homeRailLayerRowHtml("actions", "⚡", "actions", homeShowActions, actionsToday) +
-    homeRailLayerRowHtml("notes", "✎", "notes", homeShowNotes, notesToday);
+    homeRailLayerRowHtml("notes", "✎", "notes", homeShowNotes, notesToday) +
+    '<div class="home-rail-divider"></div>' +
+    '<div class="home-rail-title">size by</div>' +
+    homeRailSizeModeRowHtml("size-hierarchy", "◆", "hierarchy", homeGraphSizeMode === "hierarchy") +
+    homeRailSizeModeRowHtml("size-connections", "◈", "connections", homeGraphSizeMode === "connections");
+  }
+  // Exclusive-choice sibling of homeRailLayerRowHtml — "on" here means "the current mode", not an
+  // independent toggle, so picking one always implicitly turns the other off.
+  function homeRailSizeModeRowHtml(layer, icon, label, on){
+    return '<button class="home-rail-row home-rail-layer' + (on ? " on" : "") + '" data-layer="' + layer + '" type="button" title="' +
+      (on ? "sizing nodes by " + label + " (current)" : "size nodes by " + label) + '">' +
+      '<span class="home-rail-icon">' + icon + '</span>' +
+      '<span>' + label + '</span>' +
+    '</button>';
   }
   // Below the areas: two rows that toggle a whole item TYPE on/off as graph nodes (not an area
   // filter) — actions and notes stay off the 3D graph by default (see homeShowActions/homeShowNotes),
@@ -5711,8 +5838,15 @@
   function homeTlLaneHtml(label, list){
     return '<span class="home-tl-lane-label">' + label + '</span>' + list.map(function(b){
       var z = tlZIndexForDuration(b.width * 1440);
+      // Notes have no duration field (see computeHomeTimelineBlocks) so they never get a handle. The
+      // overnight-spillover tail's left edge isn't a real start time (see wireHomeTimelineDock), so
+      // only its right (wake/end) edge is resizable — same convention as the Today timeline.
+      var resizable = b.kind !== "journal" ? (b.overnight ? "right" : true) : false;
+      var handles = "";
+      if(resizable === true) handles = '<span class="home-tl-block-resize home-tl-block-resize-left" data-resize-handle="left"></span>';
+      if(resizable) handles += '<span class="home-tl-block-resize home-tl-block-resize-right" data-resize-handle="right"></span>';
       return '<div class="home-tl-block' + (b.area ? " " + b.area : "") + (b.done ? " done" : "") + '" data-kind="' + b.kind + '" data-id="' + b.id + '" data-date="' + b.date + '"' + (b.overnight ? ' data-overnight="1"' : '') +
-        ' style="left:' + (b.start * 100) + '%; width:' + Math.max(b.width * 100, 0.7) + '%; z-index:' + z + ';" title="' + escapeHtml(b.title) + '">' + escapeHtml(b.title) + '</div>';
+        ' style="left:' + (b.start * 100) + '%; width:' + Math.max(b.width * 100, 0.7) + '%; z-index:' + z + ';" title="' + escapeHtml(b.title) + '">' + handles + escapeHtml(b.title) + '</div>';
     }).join("");
   }
   function renderHomeTimelineDock(){
@@ -5962,14 +6096,17 @@
   // linked), just a direct edge to every area they're tagged with — a note can belong to several.
   // Edges referencing a node that isn't in this set (e.g. action edges while actions are toggled off)
   // are dropped rather than dangling.
+  // Fixed per-tier radius for "hierarchy" size mode — area > goal > project/habit (same tier, same
+  // size, per "habit+project" being one combined hierarchy level) > action > note.
+  var HOME_GRAPH_HIERARCHY_R = { area:1.35, goal:1.0, project:0.72, habit:0.72, action:0.5, journal:0.45 };
   function buildSystemGraph(){
     var nodes = [];
-    CATEGORIES.forEach(function(cat){ nodes.push({ type:"area", id:cat, label:cat, area:cat, r:1.35 }); });
-    state.goals.forEach(function(g){ nodes.push({ type:"goal", id:g.id, label:g.title, area:g.category, r:1.0 }); });
-    state.projects.forEach(function(p){ nodes.push({ type:"project", id:p.id, label:p.title, area:projectCategory(p), r:0.75 }); });
-    state.habits.forEach(function(h){ nodes.push({ type:"habit", id:h.id, label:h.title, area:habitCategory(h), r:0.65 }); });
-    if(homeShowActions) state.actions.forEach(function(a){ nodes.push({ type:"action", id:a.id, label:a.title, area:actionCategory(a), r:0.5 }); });
-    if(homeShowNotes) state.journal.forEach(function(n){ nodes.push({ type:"journal", id:n.id, label:(n.title || n.text || "").slice(0,40) || "note", area:noteCategory(n), r:0.45 }); });
+    CATEGORIES.forEach(function(cat){ nodes.push({ type:"area", id:cat, label:cat, area:cat }); });
+    state.goals.forEach(function(g){ nodes.push({ type:"goal", id:g.id, label:g.title, area:g.category }); });
+    state.projects.forEach(function(p){ nodes.push({ type:"project", id:p.id, label:p.title, area:projectCategory(p) }); });
+    state.habits.forEach(function(h){ nodes.push({ type:"habit", id:h.id, label:h.title, area:habitCategory(h) }); });
+    if(homeShowActions) state.actions.forEach(function(a){ nodes.push({ type:"action", id:a.id, label:a.title, area:actionCategory(a) }); });
+    if(homeShowNotes) state.journal.forEach(function(n){ nodes.push({ type:"journal", id:n.id, label:(n.title || n.text || "").slice(0,40) || "note", area:noteCategory(n) }); });
     var index = {};
     nodes.forEach(function(n, i){ index[n.type + ":" + n.id] = i; });
     var edges = [];
@@ -5987,6 +6124,22 @@
         });
       });
     }
+    // Radius is assigned last, after edges exist, since "connections" mode needs each node's own
+    // degree (how many edges touch it) — the most-linked items in the system read as the biggest,
+    // regardless of which tier they're in.
+    if(homeGraphSizeMode === "connections"){
+      var degree = nodes.map(function(){ return 0; });
+      edges.forEach(function(e){ degree[e.a]++; degree[e.b]++; });
+      var maxDeg = degree.reduce(function(m, d){ return Math.max(m, d); }, 0);
+      var CONN_MIN = 0.35, CONN_MAX = 1.55;
+      // sqrt, not linear — degree is dominated by area/goal hub nodes, and a linear scale would
+      // crush every leaf node down near-invisible next to them.
+      nodes.forEach(function(n, i){
+        n.r = maxDeg > 0 ? CONN_MIN + (CONN_MAX - CONN_MIN) * Math.sqrt(degree[i] / maxDeg) : CONN_MIN;
+      });
+    } else {
+      nodes.forEach(function(n){ n.r = HOME_GRAPH_HIERARCHY_R[n.type] || 0.5; });
+    }
     return { nodes:nodes, edges:edges };
   }
   // Cheap change detector for the 1s home tick — ids + areas + titles catch adds, deletes and the
@@ -6000,7 +6153,8 @@
       state.habits.map(function(h){ return h.id + (habitCategory(h) || "") + h.title; }).join(","),
       (state.wbConnections || []).length,
       homeShowActions ? state.actions.map(function(a){ return a.id + (actionCategory(a) || "") + a.title; }).join(",") : "0",
-      homeShowNotes ? state.journal.map(function(n){ return n.id + (noteCategory(n) || ""); }).join(",") : "0"
+      homeShowNotes ? state.journal.map(function(n){ return n.id + (noteCategory(n) || ""); }).join(",") : "0",
+      homeGraphSizeMode
     ].join("|");
   }
   var homeGraphSig = null;
