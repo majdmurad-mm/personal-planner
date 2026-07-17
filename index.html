@@ -2909,6 +2909,7 @@
 <!-- ===== GLOBAL RIGHT-CLICK MENU ===== -->
 <div class="ctx-menu" id="globalCtxMenu" hidden>
   <button class="ctx-menu-item" data-ctx="edit" type="button">edit</button>
+  <button class="ctx-menu-item" data-ctx="parent-habit" type="button">go to parent habit</button>
   <button class="ctx-menu-item" data-ctx="postpone" type="button">postpone…</button>
   <button class="ctx-menu-item danger" data-ctx="delete" type="button">delete</button>
 </div>
@@ -4503,7 +4504,12 @@
     newBtn.addEventListener("click", function(){
       var arr = load();
       var n = arr.length;
-      var note = { id: "s" + Date.now().toString(36) + Math.random().toString(36).slice(2,6), text: "", area: null, x: 40 + (n % 6) * 26, y: 70 + (n % 6) * 26 };
+      // Spawn centered on the canvas; a small per-count cascade keeps stacked ones from perfectly
+      // overlapping while staying near the middle.
+      var casc = (n % 6) * 20;
+      var cx = Math.max(0, (wrap.clientWidth - 172) / 2) + casc;
+      var cy = Math.max(0, (wrap.clientHeight - 120) / 2) + casc;
+      var note = { id: "s" + Date.now().toString(36) + Math.random().toString(36).slice(2,6), text: "", area: null, x: cx, y: cy };
       arr.push(note); save(arr);
       var card = makeCard(note);
       var ta = card.querySelector("textarea"); if(ta) ta.focus();
@@ -6388,6 +6394,9 @@
     globalCtxTarget = { kind:kind, id:id, date:date, x:x, y:y };
     var menu = document.getElementById("globalCtxMenu");
     menu.querySelector('[data-ctx="edit"]').style.display = EDIT_HANDLERS[kind] ? "" : "none";
+    // "go to parent habit" only applies to a habit occurrence — it opens the recurring habit's own
+    // editor (editHabit), distinct from "edit", which for a habit-instance only tweaks that one day.
+    menu.querySelector('[data-ctx="parent-habit"]').style.display = (kind === "habit-instance") ? "" : "none";
     menu.querySelector('[data-ctx="postpone"]').style.display = POSTPONE_KINDS[kind] ? "" : "none";
     menu.hidden = false;
     positionFloatingEl(menu, x, y);
@@ -6423,6 +6432,9 @@
         var editHandler = EDIT_HANDLERS[target.kind];
         if(editHandler) editHandler(target.id);
       }
+    } else if(btn.dataset.ctx === "parent-habit"){
+      // A habit-instance's data-id is the recurring habit's id — open its full editor.
+      editHabit(target.id);
     } else if(btn.dataset.ctx === "postpone"){
       // Stop this same click from bubbling to document, where the "click outside closes it" listener
       // for the popover we're about to open would otherwise see this click as "outside" and instantly
