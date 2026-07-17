@@ -1498,10 +1498,11 @@
   .home-notes-resize{ position:absolute; right:0; bottom:0; width:16px; height:16px; cursor:nwse-resize; touch-action:none; }
   .home-notes-resize::before{ content:""; position:absolute; right:4px; bottom:4px; width:7px; height:7px; border-right:2px solid var(--border-bright); border-bottom:2px solid var(--border-bright); opacity:0.7; }
   .home-notes-resize:hover::before{ opacity:1; border-color:var(--accent-dim); }
-  /* Sticky notes — individual floating cards on the home cockpit, each colored by its area (they're
-     part of the Notes system: every sticky can be filed into Notes via ✓, inheriting its area). The
-     draft (text, area, x/y) lives in localStorage until saved or discarded. Color comes from inline
-     --sticky-c / --sticky-bg vars set per area (var(--cat-*) / var(--cat-*-bg)). See wireHomeStickies. */
+  /* Sticky notes — individual floating cards on the home cockpit, each colored by its (possibly
+     multiple) areas — they're part of the Notes system: every sticky can be filed into Notes via ✓,
+     inheriting its areas. The draft (text, areas, x/y) lives in localStorage until saved or
+     discarded. Card color comes from inline --sticky-c / --sticky-bg vars (var(--cat-*) /
+     var(--cat-*-bg)) set from the first selected area. See wireHomeStickies. */
   .home-sticky{ position:absolute; z-index:5; width:172px; border-radius:8px; border:1px solid var(--sticky-c, var(--border-bright)); background:var(--sticky-bg, var(--bg-raised)); box-shadow:0 3px 10px rgba(0,0,0,0.28); display:flex; flex-direction:column; overflow:hidden; backdrop-filter:blur(6px); }
   .home-sticky-grip{ height:15px; flex-shrink:0; cursor:grab; touch-action:none; background:var(--sticky-c, var(--border-bright)); opacity:0.5; }
   .home-sticky.dragging{ z-index:8; }
@@ -1509,8 +1510,13 @@
   .home-sticky textarea{ width:100%; border:none; background:none; resize:none; font-family:var(--mono); font-size:11px; line-height:1.45; color:var(--text); outline:none; padding:7px 8px; min-height:46px; overflow:hidden; }
   .home-sticky textarea::placeholder{ color:var(--text-faint); }
   .home-sticky-foot{ display:flex; align-items:center; gap:4px; padding:4px 5px; border-top:1px solid var(--border); }
-  .home-sticky-area{ flex:1; min-width:0; font-family:var(--mono); font-size:9.5px; color:var(--sticky-c, var(--text-dim)); background:none; border:1px solid var(--border); border-radius:5px; padding:2px 3px; cursor:pointer; outline:none; }
-  .home-sticky-area option{ color:var(--text); background:var(--bg-raised); }
+  /* Multi-select area picker: one small dot per area (--dot-c/--dot-bg set inline per dot, same
+     var(--cat-*) tokens everything else uses), toggled independently rather than a single-value
+     dropdown — a sticky can belong to more than one area, same as a project or note already can. */
+  .home-sticky-areas{ flex:1; min-width:0; display:flex; align-items:center; gap:3px; flex-wrap:wrap; }
+  .home-sticky-area-dot{ width:11px; height:11px; flex-shrink:0; padding:0; border-radius:50%; cursor:pointer; border:1.5px solid var(--border-bright); background:var(--dot-bg, transparent); }
+  .home-sticky-area-dot:hover{ filter:brightness(1.25); }
+  .home-sticky-area-dot.sel{ background:var(--dot-c, var(--text-dim)); border-color:var(--dot-c, var(--text)); box-shadow:0 0 0 1px var(--dot-c, var(--text)); }
   .home-sticky-foot button{ width:20px; height:20px; flex-shrink:0; border:1px solid var(--border-bright); background:none; color:var(--text-dim); font-size:11px; line-height:1; border-radius:5px; cursor:pointer; display:grid; place-items:center; padding:0; }
   .home-sticky-foot button:hover{ color:var(--text); background:var(--bg-inset); }
   .home-sticky-save:hover{ color:var(--accent); border-color:var(--accent-dim); }
@@ -5790,16 +5796,32 @@
     if(!wrap || !newBtn) return;
     var AREAS = (typeof CATEGORIES !== "undefined" && CATEGORIES) ? CATEGORIES : ["Health","Finance","Career","Maintenance","Growth","Relationships","Sol"];
 
-    function load(){ try{ return JSON.parse(safeGet(window.localStorage, "pp_home_stickies") || "[]") || []; }catch(e){ return []; } }
     function save(arr){ safeSet(window.localStorage, "pp_home_stickies", JSON.stringify(arr)); }
+    function load(){
+      var arr;
+      try{ arr = JSON.parse(safeGet(window.localStorage, "pp_home_stickies") || "[]") || []; }catch(e){ arr = []; }
+      // One-time migration for drafts saved before multi-area (note.area: string) — every note read
+      // from storage always has a real .areas array from here on, so nothing downstream ever needs
+      // to know the old single-value shape existed.
+      var migrated = false;
+      arr.forEach(function(n){ if(!n.areas){ n.areas = n.area ? [n.area] : []; migrated = true; } });
+      if(migrated) save(arr);
+      return arr;
+    }
     function update(id, patch){ var arr = load(); var i = arr.findIndex(function(x){ return x.id === id; }); if(i !== -1){ Object.assign(arr[i], patch); save(arr); } }
-    function areaStyle(area){ return area ? ("--sticky-c: var(--cat-" + area.toLowerCase() + "); --sticky-bg: var(--cat-" + area.toLowerCase() + "-bg);") : ""; }
+    // The card's own border/background color comes from its FIRST selected area (same "primary"
+    // convention projectCategory() uses for multi-area projects elsewhere) — a sticky with no areas
+    // stays neutral, same as before.
+    function areaStyle(areas){
+      var primary = areas && areas[0];
+      return primary ? ("--sticky-c: var(--cat-" + primary.toLowerCase() + "); --sticky-bg: var(--cat-" + primary.toLowerCase() + "-bg);") : "";
+    }
     // Once a card has been manually resized (note.h set), its height is fixed and the textarea
     // fills it (see .home-sticky.resized) instead of growing with content — auto-grow only applies
     // to cards still at their default size.
     function autoGrow(ta, note){ if(note && note.h) return; ta.style.height = "auto"; ta.style.height = ta.scrollHeight + "px"; }
     function applyStyle(card, note){
-      var style = areaStyle(note.area) + " left:" + (note.x||40) + "px; top:" + (note.y||60) + "px;";
+      var style = areaStyle(note.areas) + " left:" + (note.x||40) + "px; top:" + (note.y||60) + "px;";
       if(note.w) style += " width:" + note.w + "px;";
       if(note.h) style += " height:" + note.h + "px;";
       card.setAttribute("style", style);
@@ -5821,16 +5843,25 @@
       var foot = document.createElement("div");
       foot.className = "home-sticky-foot";
 
-      var sel = document.createElement("select");
-      sel.className = "home-sticky-area"; sel.title = "Area — sets the color";
-      var opt0 = document.createElement("option"); opt0.value = ""; opt0.textContent = "no area"; sel.appendChild(opt0);
-      AREAS.forEach(function(a){ var o = document.createElement("option"); o.value = a; o.textContent = a; if(note.area === a) o.selected = true; sel.appendChild(o); });
-      sel.addEventListener("change", function(){
-        note.area = sel.value || null;
-        update(note.id, { area: note.area });
-        note.x = parseFloat(card.style.left) || note.x || 40;
-        note.y = parseFloat(card.style.top) || note.y || 60;
-        applyStyle(card, note);
+      if(!note.areas) note.areas = [];
+      var areasRow = document.createElement("div");
+      areasRow.className = "home-sticky-areas";
+      AREAS.forEach(function(a){
+        var dot = document.createElement("button");
+        dot.type = "button"; dot.className = "home-sticky-area-dot"; dot.title = a;
+        dot.style.setProperty("--dot-c", "var(--cat-" + a.toLowerCase() + ")");
+        dot.style.setProperty("--dot-bg", "var(--cat-" + a.toLowerCase() + "-bg)");
+        dot.classList.toggle("sel", note.areas.indexOf(a) !== -1);
+        dot.addEventListener("click", function(){
+          var i = note.areas.indexOf(a);
+          if(i === -1) note.areas.push(a); else note.areas.splice(i, 1);
+          dot.classList.toggle("sel", note.areas.indexOf(a) !== -1);
+          update(note.id, { areas: note.areas });
+          note.x = parseFloat(card.style.left) || note.x || 40;
+          note.y = parseFloat(card.style.top) || note.y || 60;
+          applyStyle(card, note);
+        });
+        areasRow.appendChild(dot);
       });
 
       var saveBtn = document.createElement("button");
@@ -5839,12 +5870,12 @@
         var text = (ta.value || "").trim();
         if(!text){ toast("Write something on the sticky first."); return; }
         saveBtn.disabled = true;
-        var res = await saveJournalEntry({ date: todayStr(), text: text, categories: note.area ? [note.area] : [] });
+        var res = await saveJournalEntry({ date: todayStr(), text: text, categories: note.areas || [] });
         if(res && res.error){ saveBtn.disabled = false; toast("Couldn't save to notes: " + res.error.message); return; }
         save(load().filter(function(x){ return x.id !== note.id; }));
         card.remove();
         renderAll();
-        toast("Saved to notes" + (note.area ? " (" + note.area + ")" : "") + ".");
+        toast("Saved to notes" + (note.areas && note.areas.length ? " (" + note.areas.join(", ") + ")" : "") + ".");
       });
 
       var del = document.createElement("button");
@@ -5854,7 +5885,7 @@
       var resize = document.createElement("div");
       resize.className = "home-sticky-resize"; resize.title = "Drag to resize";
 
-      foot.appendChild(sel); foot.appendChild(saveBtn); foot.appendChild(del);
+      foot.appendChild(areasRow); foot.appendChild(saveBtn); foot.appendChild(del);
       card.appendChild(grip); card.appendChild(ta); card.appendChild(foot); card.appendChild(resize);
       wrap.appendChild(card);
       autoGrow(ta, note);
@@ -5933,7 +5964,7 @@
       var casc = (n % 6) * 20;
       var cx = Math.max(0, (wrap.clientWidth - 172) / 2) + casc;
       var cy = Math.max(0, (wrap.clientHeight - 120) / 2) + casc;
-      var note = { id: "s" + Date.now().toString(36) + Math.random().toString(36).slice(2,6), text: "", area: null, x: cx, y: cy };
+      var note = { id: "s" + Date.now().toString(36) + Math.random().toString(36).slice(2,6), text: "", areas: [], x: cx, y: cy };
       arr.push(note); save(arr);
       var card = makeCard(note);
       var ta = card.querySelector("textarea"); if(ta) ta.focus();
