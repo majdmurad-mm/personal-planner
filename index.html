@@ -2152,7 +2152,8 @@
         .gantt-row{display:flex;align-items:stretch;height:34px;position:relative;}
         .gantt-row + .gantt-row{border-top:1px dashed var(--border);}
         .gantt-row-label{flex:0 0 170px;position:sticky;left:0;background:var(--bg-raised);z-index:3;border-right:1px solid var(--border);font-family:var(--mono);font-size:10.5px;color:var(--text-dim);display:flex;align-items:center;padding:0 8px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
-        .gantt-track{position:relative;flex:1;}
+        .gantt-track{position:relative;flex:1;cursor:copy;}
+        .gantt-track:hover{background:var(--bg-hover, rgba(255,255,255,0.03));}
         .gantt-bar{position:absolute;top:6px;height:22px;border-radius:4px;border:1px solid var(--border-bright);background:var(--bg-inset);font-family:var(--mono);font-size:9.5px;line-height:20px;padding:0 20px 0 6px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;cursor:grab;touch-action:none;z-index:1;}
         .gantt-bar.dragging{cursor:grabbing;box-shadow:0 2px 10px rgba(0,0,0,0.4);z-index:5;}
         .gantt-bar.done{opacity:0.45;}
@@ -8337,6 +8338,16 @@
   function ganttDayIndex(startStr, dateStr){
     return Math.round((new Date(dateStr + "T00:00:00") - new Date(startStr + "T00:00:00")) / 86400000);
   }
+  // Reverse of ganttDayIndex — turns a click's clientX inside a specific .gantt-track (the day-scale
+  // area a bar's own "left" style is relative to) back into a date, so clicking empty space to add
+  // an action lands roughly where you clicked instead of always defaulting to today.
+  function ganttDateFromClientX(wrapEl, trackEl, clientX){
+    var inner = wrapEl.querySelector(".gantt-inner");
+    var start = inner && inner.dataset.ganttStart;
+    if(!start) return null;
+    var dayIdx = Math.max(0, Math.floor((clientX - trackEl.getBoundingClientRect().left) / GANTT_COL_W));
+    return addDaysToDateStr(start, dayIdx);
+  }
   function actionById(id){ return state.actions.find(function(a){ return a.id === id; }); }
   // An action is "blocked" when any of its conditional (requiresDone) prerequisites isn't done yet.
   function ganttActionBlocked(a){
@@ -8439,8 +8450,11 @@
       '<span class="gantt-link-handle" data-link-from="' + a.id + '" title="drag onto another action to create a dependency">◉</span>' +
     '</div>';
   }
-  function ganttRowHtml(labelHtml, barHtml){
-    return '<div class="gantt-row"><div class="gantt-row-label">' + labelHtml + '</div><div class="gantt-track">' + barHtml + '</div></div>';
+  // rowKind/rowId (when given) tag the row with which goal/project/action it represents — read back
+  // by the empty-space "click to add an action" handler in wireGanttChart to pre-parent the new
+  // action to whatever row you clicked in, rather than always opening blank.
+  function ganttRowHtml(labelHtml, barHtml, rowKind, rowId){
+    return '<div class="gantt-row"' + (rowKind ? ' data-row-kind="' + rowKind + '" data-row-id="' + rowId + '"' : '') + '><div class="gantt-row-label">' + labelHtml + '</div><div class="gantt-track">' + barHtml + '</div></div>';
   }
   // The day-ruler header row — shared by every chart on a GANTT_COL_W day-scale, including the
   // non-draggable habit-occurrence view on the Future page (see renderFutureHabitsGantt), which
@@ -8489,13 +8503,13 @@
       items.forEach(function(item){ rows += rowFn(item); });
     }
     group("goals", data.rows.filter(function(r){ return r.kind === "goal"; }), function(r){
-      return ganttRowHtml(ganttRowLabelHtml(r.kind, r.obj), ganttDerivedBarHtml(r.kind, r.obj, start, r.span, today, data.selfId));
+      return ganttRowHtml(ganttRowLabelHtml(r.kind, r.obj), ganttDerivedBarHtml(r.kind, r.obj, start, r.span, today, data.selfId), r.kind, r.obj.id);
     });
     group("projects", data.rows.filter(function(r){ return r.kind === "project"; }), function(r){
-      return ganttRowHtml(ganttRowLabelHtml(r.kind, r.obj), ganttDerivedBarHtml(r.kind, r.obj, start, r.span, today, data.selfId));
+      return ganttRowHtml(ganttRowLabelHtml(r.kind, r.obj), ganttDerivedBarHtml(r.kind, r.obj, start, r.span, today, data.selfId), r.kind, r.obj.id);
     });
     group("actions", data.actions, function(a){
-      return ganttRowHtml(escapeHtml(a.title), ganttActionBarHtml(a, start, today, data.selfId));
+      return ganttRowHtml(escapeHtml(a.title), ganttActionBarHtml(a, start, today, data.selfId), "action", a.id);
     });
 
     // --gantt-col drives .gantt-day's width in CSS — without setting it here, the header ruler's
@@ -8610,6 +8624,10 @@
   function wireGanttChart(wrapEl, onChange){
     var drag = null;   // {el, id, startX, origLeft, moved}
     var link = null;   // {fromId, svg, inner, targetEl}
+    // A bar-drag or link-drag ends with a pointerup that the browser follows with a native "click"
+    // at the release point — which can land on empty track space and get misread as an "add action
+    // here" click below. Set whenever either drag kind was in play so that one click is ignored.
+    var suppressNextClick = false;
     wrapEl.addEventListener("pointerdown", function(e){
       var handle = e.target.closest("[data-link-from]");
       if(handle){
@@ -8656,6 +8674,7 @@
     });
     wrapEl.addEventListener("pointerup", async function(){
       if(drag){
+        suppressNextClick = true;
         var d = drag; drag = null;
         d.el.classList.remove("dragging");
         var delta = Number(d.el.dataset.pendingDelta || 0);
@@ -8674,6 +8693,7 @@
         return;
       }
       if(link){
+        suppressNextClick = true;
         var l = link; link = null;
         var preview = l.svg && l.svg.querySelector(".gantt-link-preview");
         if(preview) preview.remove();
@@ -8702,16 +8722,33 @@
       }
     });
     // Clicking an arrow removes that dependency (after a confirm — it's a stored relationship,
-    // not just a visual).
+    // not just a visual). Clicking empty track space (no arrow, no bar) opens the add-action modal
+    // instead, presetting the date from where you clicked and the parent from whichever goal/project
+    // row you clicked in (ganttRowHtml's data-row-kind/data-row-id) — clicking in the bare "actions"
+    // band, or on a page with no row context, opens blank just like the "+ action" button.
     wrapEl.addEventListener("click", async function(e){
+      if(suppressNextClick){ suppressNextClick = false; return; }
       var arrow = e.target.closest && e.target.closest(".gantt-arrow");
-      if(!arrow) return;
-      var dep = actionById(arrow.dataset.depTo), pre = actionById(arrow.dataset.depFrom);
-      if(!dep) return;
-      if(!confirm('Remove the dependency of "' + dep.title + '" on "' + (pre ? pre.title : "a deleted action") + '"?')) return;
-      dep.dependencies = (dep.dependencies || []).filter(function(x){ return x.id !== arrow.dataset.depFrom; });
-      onChange();
-      await saveActionDependencies(dep);
+      if(arrow){
+        var dep = actionById(arrow.dataset.depTo), pre = actionById(arrow.dataset.depFrom);
+        if(!dep) return;
+        if(!confirm('Remove the dependency of "' + dep.title + '" on "' + (pre ? pre.title : "a deleted action") + '"?')) return;
+        dep.dependencies = (dep.dependencies || []).filter(function(x){ return x.id !== arrow.dataset.depFrom; });
+        onChange();
+        await saveActionDependencies(dep);
+        return;
+      }
+      if(e.target.closest(".gantt-bar")) return;
+      var track = e.target.closest(".gantt-track");
+      if(!track) return;
+      var date = ganttDateFromClientX(wrapEl, track, e.clientX);
+      if(!date) return;
+      var row = e.target.closest(".gantt-row");
+      var rowKind = row && row.dataset.rowKind;
+      var rowId = row && row.dataset.rowId;
+      if(rowKind === "project" || rowKind === "goal") openActionModalWithParent(rowKind, rowId);
+      else openActionModal(null, null);
+      document.getElementById("actionDateInput").value = date;
     });
   }
   wireGanttChart(document.getElementById("entityGanttWrap"), renderEntityPage);
