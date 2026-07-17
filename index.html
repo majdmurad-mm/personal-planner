@@ -2481,6 +2481,14 @@
            overflowing, wrapping, or splitting into a taller per-area row. Items are still ordered by
            area (CATEGORIES order), so same-area items sit next to each other; .cluster-start marks
            where one area's cluster ends and the next begins, without adding any vertical height. */
+        /* .future-hierarchy stacks its 3 gallery-section tiers in normal flow with #futureHierarchySvg
+           absolutely positioned behind them (reusing the same .wb-conn-svg base class the other
+           graphs' connection layers use) — explicit z-index on both sides since an absolutely
+           positioned z-index:auto element otherwise paints ABOVE static in-flow siblings by default,
+           which would put the connecting lines on top of the icons instead of behind them. */
+        .future-hierarchy{position:relative;}
+        .future-hierarchy > .wb-conn-svg{z-index:0;}
+        .future-hierarchy > .future-gallery-section{position:relative;z-index:1;}
         .future-gallery-section{max-width:100%;margin-bottom:24px;}
         .future-gallery-row{display:flex;gap:10px;width:100%;}
         .future-gallery-item{flex:1 1 0;min-width:0;max-width:72px;display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;}
@@ -2506,17 +2514,24 @@
         <div class="today-month-strip-days" id="futureCalGrid"></div>
       </div>
 
-      <div class="future-gallery-section">
-        <h2 class="future-section-title">goals</h2>
-        <div id="futureGoalsGallery"></div>
-      </div>
-      <div class="future-gallery-section">
-        <h2 class="future-section-title">projects</h2>
-        <div id="futureProjectsGallery"></div>
-      </div>
-      <div class="future-gallery-section">
-        <h2 class="future-section-title">habits</h2>
-        <div id="futureHabitsGallery"></div>
+      <!-- Areas -> Goals -> (Projects & Habits together) — a static 3-tier hierarchy, not a physics
+           graph: each tier is one of the flat gallery rows built by futureGalleryRowHtml, and
+           #futureHierarchySvg draws a line between every pair of items that are actually related
+           (goal's area, project/habit's parent goal) — see renderFutureHierarchyConnections. -->
+      <div class="future-hierarchy" id="futureHierarchy">
+        <svg class="wb-conn-svg" id="futureHierarchySvg"><g id="futureHierarchyConnLayer"></g></svg>
+        <div class="future-gallery-section">
+          <h2 class="future-section-title">areas</h2>
+          <div id="futureAreasGallery"></div>
+        </div>
+        <div class="future-gallery-section">
+          <h2 class="future-section-title">goals</h2>
+          <div id="futureGoalsGallery"></div>
+        </div>
+        <div class="future-gallery-section">
+          <h2 class="future-section-title">projects &amp; habits</h2>
+          <div id="futureChildrenGallery"></div>
+        </div>
       </div>
 
       <div class="future-body" id="futureBody"></div>
@@ -14377,10 +14392,13 @@
       body.innerHTML = html;
     }
     renderFutureCalGrid();
+    renderFutureAreasGallery();
     renderFutureGoalsGallery();
-    renderFutureProjectsGallery();
-    renderFutureHabitsGallery();
+    renderFutureChildrenGallery();
     renderFutureUnscheduled();
+    // Positions depend on the three galleries' actual (post-layout) DOM rects, so this has to run
+    // after all three have just been rebuilt above — see renderFutureHierarchyConnections.
+    renderFutureHierarchyConnections();
   }
   // One icon tile shared by all three galleries below — a circular icon (the item's own uploaded/
   // assigned icon if it has one, else its initial letter) plus a truncated label, colored by area via
@@ -14416,6 +14434,18 @@
     });
     return '<div class="future-gallery-row">' + html + '</div>';
   }
+  // Top tier of the hierarchy — the fixed set of areas (CATEGORIES), not derived from any list, so
+  // every area always shows here even with zero goals in it yet (matches the areas rail/legend
+  // convention used elsewhere — areas are a fixed vocabulary, not something you can be "missing").
+  function renderFutureAreasGallery(){
+    var el = document.getElementById("futureAreasGallery");
+    if(!el) return;
+    var tiles = CATEGORIES.map(function(cat, i){
+      var icon = '<span class="future-gallery-icon-initial" style="color:' + categoryColorVar(cat) + ';">' + (CATEGORY_ICONS[cat] || "?") + '</span>';
+      return futureGalleryItemHtml("area", cat, cat, icon, i > 0);
+    }).join("");
+    el.innerHTML = '<div class="future-gallery-row">' + tiles + '</div>';
+  }
   function renderFutureGoalsGallery(){
     var el = document.getElementById("futureGoalsGallery");
     if(!el) return;
@@ -14425,27 +14455,60 @@
       return futureGalleryItemHtml("goal", g.id, g.title, icon, isBoundary);
     });
   }
-  function renderFutureProjectsGallery(){
-    var el = document.getElementById("futureProjectsGallery");
+  // Bottom tier — projects and "parent" habits (the habit definitions themselves, not their
+  // day-by-day occurrences on the Today timeline — those aren't separate stored objects at all, see
+  // habitOccursOnDate) share ONE row, "alike", the same way the goals tier does. Each item is tagged
+  // with its own kind (project vs habit) internally so the right icon/lookup helpers get used, but
+  // area-clustering treats them as one combined list.
+  function renderFutureChildrenGallery(){
+    var el = document.getElementById("futureChildrenGallery");
     if(!el) return;
-    if(!state.projects.length){ el.innerHTML = '<div class="future-empty">No projects yet.</div>'; return; }
-    el.innerHTML = futureGalleryRowHtml(state.projects, projectCategory, function(p, cat, isBoundary){
-      var icon = p.icon ? iconMaskHtml("future-gallery-icon-img", resolveEntityIconDataUri(p.icon), cat) : futureGalleryInitialHtml(p.title, cat);
-      return futureGalleryItemHtml("project", p.id, p.title, icon, isBoundary);
-    });
+    var combined = state.projects.map(function(p){ return { kind:"project", obj:p }; })
+      .concat(state.habits.map(function(h){ return { kind:"habit", obj:h }; }));
+    if(!combined.length){ el.innerHTML = '<div class="future-empty">No projects or habits yet.</div>'; return; }
+    el.innerHTML = futureGalleryRowHtml(combined,
+      function(w){ return w.kind === "project" ? projectCategory(w.obj) : habitCategory(w.obj); },
+      function(w, cat, isBoundary){
+        if(w.kind === "project"){
+          var p = w.obj;
+          var icon = p.icon ? iconMaskHtml("future-gallery-icon-img", resolveEntityIconDataUri(p.icon), cat) : futureGalleryInitialHtml(p.title, cat);
+          return futureGalleryItemHtml("project", p.id, p.title, icon, isBoundary);
+        }
+        var h = w.obj;
+        var icon = h.icon ? iconMaskHtml("future-gallery-icon-img", habitIconDataUri(h.icon), cat) : futureGalleryInitialHtml(h.title, cat);
+        return futureGalleryItemHtml("habit", h.id, h.title, icon, isBoundary);
+      });
   }
-  // "Parent" habits — the habit definitions themselves (state.habits), not their day-by-day
-  // occurrences on the Today timeline (those aren't separate stored objects at all, see
-  // habitOccursOnDate), so this is simply every habit, same as the goals/projects galleries above.
-  function renderFutureHabitsGallery(){
-    var el = document.getElementById("futureHabitsGallery");
-    if(!el) return;
-    if(!state.habits.length){ el.innerHTML = '<div class="future-empty">No habits yet.</div>'; return; }
-    el.innerHTML = futureGalleryRowHtml(state.habits, habitCategory, function(h, cat, isBoundary){
-      var icon = h.icon ? iconMaskHtml("future-gallery-icon-img", habitIconDataUri(h.icon), cat) : futureGalleryInitialHtml(h.title, cat);
-      return futureGalleryItemHtml("habit", h.id, h.title, icon, isBoundary);
-    });
+  // Draws a line between every pair of hierarchy items that are actually related — area<->goal (by
+  // category) and goal<->project/habit (by goalId) — reading real DOM positions (getBoundingClientRect)
+  // rather than computing a layout of its own, since the 3 tiers above are already laid out by normal
+  // flexbox/flow. This is a static diagram, not a physics sim: no dragging, no re-simulation, just
+  // redrawn whenever the tiers re-render or the window resizes (see the resize listener below).
+  function renderFutureHierarchyConnections(){
+    var container = document.getElementById("futureHierarchy");
+    var svg = document.getElementById("futureHierarchySvg");
+    var layer = document.getElementById("futureHierarchyConnLayer");
+    if(!container || !svg || !layer) return;
+    var box = container.getBoundingClientRect();
+    function centerOf(kind, id){
+      var el = container.querySelector('.future-gallery-item[data-kind="' + kind + '"][data-id="' + id + '"] .future-gallery-icon-wrap');
+      if(!el) return null;
+      var r = el.getBoundingClientRect();
+      return { x: r.left + r.width / 2 - box.left, y: r.top + r.height / 2 - box.top };
+    }
+    var lines = [];
+    function addLine(kindA, idA, kindB, idB){
+      var a = centerOf(kindA, idA), b = centerOf(kindB, idB);
+      if(a && b) lines.push('<line class="wb-conn-line" x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '"></line>');
+    }
+    state.goals.forEach(function(g){ if(g.category) addLine("area", g.category, "goal", g.id); });
+    state.projects.forEach(function(p){ if(p.goalId) addLine("goal", p.goalId, "project", p.id); });
+    state.habits.forEach(function(h){ if(h.goalId) addLine("goal", h.goalId, "habit", h.id); });
+    layer.innerHTML = lines.join("");
   }
+  // Recomputed on resize (flex items reshuffle at different widths, so line endpoints move) — scoped
+  // to the Future tab being open, same as every other resize-sensitive view in the app.
+  window.addEventListener("resize", function(){ if(activeSection === "future") renderFutureHierarchyConnections(); });
   // Actions with no date at all — the other half of the "overview of my time and planned actions"
   // ask: what's decided but not yet placed on the calendar. Grouped by area with the same shared
   // helper the Planner's matrix views use (renderByCategorySections), not a bespoke grouping here.
