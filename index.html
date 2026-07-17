@@ -985,22 +985,8 @@
   .cal-entry.action .cal-dot{ background:var(--p1); }
   .cal-more{ font-family:var(--mono); font-size:9.5px; color:var(--text-faint); }
 
-  /* ===== AGENT ===== */
-  .agent-chat{ display:flex; flex-direction:column; gap:10px; margin-top:20px; max-height:56vh; overflow-y:auto; padding-right:4px; }
-  .agent-msg{ max-width:78%; padding:10px 13px; border-radius:8px; font-size:13px; line-height:1.5; white-space:pre-wrap; }
-  .agent-msg.user{ align-self:flex-end; background:var(--accent-glow); border:1px solid var(--accent-dim); color:var(--text); }
-  .agent-msg.assistant{ align-self:flex-start; background:var(--bg-raised); border:1px solid var(--border); color:var(--text); }
-  .agent-msg.pending{ color:var(--text-faint); font-style:italic; }
-  .agent-input-row{ display:flex; gap:8px; margin-top:14px; align-items:flex-end; }
-  .agent-input-row textarea{ flex:1; min-height:52px; }
-  .agent-empty{ color:var(--text-faint); font-size:12.5px; text-align:center; padding:30px 0; }
-  #agentVoiceToggleBtn.on{ background:var(--accent); color:var(--bg); border-color:var(--accent); }
-  /* Agent's mic (wireVoiceRecordButton) is a plain toggle button, so it pulses red while "on"
-     (actively recording). The Notes record button hands off to the full rec-panel below the moment
-     recording starts (hidden while that panel is open), so it only ever shows the dimmed
-     "transcribing" state, never the pulse. */
-  #agentMicBtn.on{ background:#DC2626; color:#fff; border-color:#DC2626; animation:agentMicPulse 1.2s ease-in-out infinite; }
-  #agentMicBtn.transcribing, #journalRecordBtn.transcribing{ opacity:0.6; cursor:wait; }
+  /* Record buttons (Notes composer) pulse red while recording via the agentMicPulse keyframes below. */
+  #journalRecordBtn.transcribing{ opacity:0.6; cursor:wait; }
   @keyframes agentMicPulse{ 0%, 100%{ box-shadow:0 0 0 0 rgba(220,38,38,0.5); } 50%{ box-shadow:0 0 0 6px rgba(220,38,38,0); } }
   /* Live recording panel (Notes composer) — decibel meter, timer, pause/stop/discard. */
   .rec-panel{ margin-top:8px; padding:10px 12px; border:1px solid var(--border-bright); border-radius:var(--radius); background:var(--bg-raised); }
@@ -1032,8 +1018,6 @@
   .rec-player-time{ font-family:var(--mono); font-size:11px; color:var(--text-dim); margin-left:auto; }
   #journalPlayerVolume{ width:74px; accent-color:var(--accent); }
   #journalPlayerSpeedBtn{ min-width:46px; }
-  .agent-msg-replay{ background:none; border:none; color:var(--text-faint); cursor:pointer; font-size:11px; padding:0; margin-left:8px; vertical-align:middle; }
-  .agent-msg-replay:hover{ color:var(--accent); }
 
   /* ===== JOURNAL ===== */
   .journal-composer{ background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-top:20px; margin-bottom:22px; }
@@ -1656,7 +1640,7 @@
         <button class="side-link" data-section="planner" type="button"><span class="sl-glyph">▤</span>Planner</button>
         <button class="side-link" data-section="tracker" type="button"><span class="sl-glyph">▥</span>Tracker</button>
         <button class="side-link" data-section="timeline" type="button"><span class="sl-glyph">↔</span>Timeline</button>
-        <button class="side-link" data-section="agent" type="button"><span class="sl-glyph">◈</span>Agent</button>
+        <button class="side-link" data-section="agent" type="button"><span class="sl-glyph">◈</span>Claude MCP</button>
         <button class="side-link" data-section="journal" type="button"><span class="sl-glyph">✎</span>Notes</button>
         <button class="side-link" data-section="people" type="button"><span class="sl-glyph">☺</span>People</button>
         <button class="side-link" data-section="location" type="button"><span class="sl-glyph">⚲</span>Location</button>
@@ -2069,19 +2053,70 @@
     <section id="agentSection" style="display:none;">
       <div class="main-header">
         <div>
-          <h1>agent</h1>
-          <p class="subhead">Tell it what happened — it captures goals, projects, habits, actions, journal entries and people for you. It can create and edit, but never delete.</p>
+          <h1>claude mcp</h1>
+          <p class="subhead">This planner talks to Claude through an MCP connector — ask Claude about your day or tell it to capture something, and it reads and updates the same data you see here.</p>
         </div>
-        <button class="btn" id="agentVoiceToggleBtn" type="button" title="Read the agent's replies aloud">🔇 voice off</button>
-        <button class="btn" id="agentKeyBtn" type="button">api key</button>
+        <button class="btn" id="agentKeyBtn" type="button" title="Gemini key — powers in-app note sentiment &amp; voice transcription. Separate from the Claude connector.">gemini key</button>
       </div>
 
-      <div class="agent-chat" id="agentChat"></div>
+      <style>
+        .mcp-doc{max-width:880px;line-height:1.6;font-size:.95rem;}
+        .mcp-doc h2{margin:1.8em 0 .5em;font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;opacity:.55;}
+        .mcp-doc p{margin:.55em 0;opacity:.9;}
+        .mcp-doc b{font-weight:600;}
+        .mcp-doc code{font-family:inherit;font-size:.88em;padding:1px 5px;border-radius:5px;background:rgba(127,127,127,.16);word-break:break-all;}
+        .mcp-card{border:1px solid rgba(127,127,127,.25);border-radius:14px;padding:14px 20px;margin:14px 0;}
+        .mcp-flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:10px;margin:8px 0 4px;}
+        .mcp-flow .node{border:1px solid rgba(127,127,127,.32);border-radius:10px;padding:8px 12px;font-size:.85rem;display:flex;flex-direction:column;justify-content:center;}
+        .mcp-flow .node b{font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;opacity:.55;margin-bottom:2px;}
+        .mcp-flow .arrow{align-self:center;opacity:.4;}
+        .mcp-tools{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:3px 18px;margin:.5em 0 .2em;}
+        .mcp-tools span{font-size:.86rem;opacity:.82;}
+        .mcp-pill{display:inline-block;font-size:.68rem;letter-spacing:.05em;text-transform:uppercase;padding:2px 9px;border-radius:999px;border:1px solid rgba(127,127,127,.4);opacity:.7;margin-left:6px;vertical-align:middle;}
+        .mcp-doc a{color:inherit;}
+      </style>
 
-      <div class="agent-input-row">
-        <textarea id="agentInput" class="journal-textarea" placeholder="e.g. Add a P1 action to call the dentist tomorrow, and log that today's run felt great" rows="2"></textarea>
-        <button class="btn" id="agentMicBtn" type="button" title="Record a voice message — click again to stop and transcribe">🎤</button>
-        <button class="btn btn-accent" id="agentSendBtn" type="button">send</button>
+      <div class="mcp-doc">
+        <div class="mcp-flow">
+          <span class="node"><b>you</b>talk to Claude</span>
+          <span class="arrow">→</span>
+          <span class="node"><b>Claude</b>Cowork · web · mobile</span>
+          <span class="arrow">→</span>
+          <span class="node"><b>planner-mcp</b>Supabase edge function</span>
+          <span class="arrow">→</span>
+          <span class="node"><b>your data</b>this planner's database</span>
+        </div>
+        <p>Claude never touches this database directly. It calls a small server — an <b>MCP connector</b> — that lives next to the data, checks a secret token, and runs only the specific actions below, always scoped to your account.</p>
+
+        <h2>What Claude can do</h2>
+        <p><b>Read</b><span class="mcp-pill">anytime</span></p>
+        <div class="mcp-tools">
+          <span>· today's agenda</span><span>· goals</span><span>· projects</span>
+          <span>· habits</span><span>· actions</span><span>· notes</span>
+          <span>· people</span><span>· tracker / mood</span>
+        </div>
+        <p style="margin-top:1em;"><b>Create &amp; edit</b><span class="mcp-pill">on request</span></p>
+        <div class="mcp-tools">
+          <span>· goals</span><span>· projects</span><span>· habits</span>
+          <span>· actions (tasks)</span><span>· notes</span><span>· people</span>
+          <span>· log a metric</span><span>· complete an action</span>
+        </div>
+        <p>It can <b>never delete</b> anything — deletions stay a manual action here in the app.</p>
+
+        <h2>How it's wired</h2>
+        <div class="mcp-card">
+          <p>The connector is a <b>Supabase edge function</b> (<code>planner-mcp</code>) deployed alongside this app's database. Claude authenticates with a secret token carried in the connector URL:</p>
+          <p><code>https://&lt;project&gt;.supabase.co/functions/v1/planner-mcp/&lt;token&gt;/mcp</code></p>
+          <p>The function reads and writes with a server-side key that never leaves the server, and every query is locked to your account. Source and setup steps live in the repo under <code>supabase/functions/planner-mcp</code>.</p>
+        </div>
+
+        <h2>Use it</h2>
+        <p>In Claude → <b>Settings → Connectors</b>, this is the <b>Personal Planner</b> connector. Turn it on in a chat, then just talk:</p>
+        <p><code>"what's on my plate today?"</code> · <code>"add a P1 task to call the dentist tomorrow"</code> · <code>"log my mood as 4"</code></p>
+        <p>Set standing instructions in <b>Settings → Cowork</b> so every chat starts already knowing to use it.</p>
+
+        <h2>Gemini key</h2>
+        <p>The <b>gemini key</b> button above is separate from the Claude connector — it powers this app's own note features (sentiment coloring and voice-note transcription). Leave it unset if you don't use those.</p>
       </div>
     </section>
 
@@ -12017,406 +12052,6 @@
     document.getElementById("actionDateInput").value = todaySelectedDate;
   });
 
-  /* ---------------- Agent ---------------- */
-  var AGENT_TOOLS = [
-    { name:"create_goal", description:"Create a new goal.", input_schema:{ type:"object", properties:{
-      title:{ type:"string" }, priority:{ type:"string", enum:PRIORITIES }, category:{ type:"string", enum:CATEGORIES },
-      due:{ type:"string", description:"YYYY-MM-DD, omit if ongoing or no due date" }, ongoing:{ type:"boolean" }
-    }, required:["title","priority","category"] } },
-    { name:"edit_goal", description:"Edit an existing goal by id.", input_schema:{ type:"object", properties:{
-      id:{ type:"string" }, title:{ type:"string" }, priority:{ type:"string", enum:PRIORITIES }, category:{ type:"string", enum:CATEGORIES },
-      due:{ type:"string" }, ongoing:{ type:"boolean" }
-    }, required:["id"] } },
-    { name:"create_project", description:"Create a new project, optionally attached to a goal.", input_schema:{ type:"object", properties:{
-      title:{ type:"string" }, goal_id:{ type:"string", description:"id of the parent goal, omit for no parent" },
-      priority:{ type:"string", enum:PRIORITIES }, due:{ type:"string" }, hours:{ type:"number" },
-      categories:{ type:"array", items:{ type:"string", enum:CATEGORIES }, description:"the project's own area(s) — a project can span more than one; omit to fall back to the parent goal's area" }
-    }, required:["title","priority"] } },
-    { name:"edit_project", description:"Edit an existing project by id.", input_schema:{ type:"object", properties:{
-      id:{ type:"string" }, title:{ type:"string" }, goal_id:{ type:"string" }, priority:{ type:"string", enum:PRIORITIES },
-      due:{ type:"string" }, hours:{ type:"number" }, done:{ type:"boolean" },
-      categories:{ type:"array", items:{ type:"string", enum:CATEGORIES } }
-    }, required:["id"] } },
-    { name:"create_habit", description:"Create a new recurring habit, optionally attached to a goal.", input_schema:{ type:"object", properties:{
-      title:{ type:"string" }, goal_id:{ type:"string" }, priority:{ type:"string", enum:PRIORITIES }, frequency:{ type:"string", enum:["daily","weekly","monthly","custom"] },
-      month_day:{ type:"number", description:"required when frequency is monthly — day of month, 1-31 (clamped to the last day in shorter months)" },
-      custom_interval_days:{ type:"number", description:"required when frequency is custom — repeat every N days from creation" }
-    }, required:["title","priority","frequency"] } },
-    { name:"edit_habit", description:"Edit an existing habit by id.", input_schema:{ type:"object", properties:{
-      id:{ type:"string" }, title:{ type:"string" }, goal_id:{ type:"string" }, priority:{ type:"string", enum:PRIORITIES }, frequency:{ type:"string", enum:["daily","weekly","monthly","custom"] },
-      month_day:{ type:"number" }, custom_interval_days:{ type:"number" }
-    }, required:["id"] } },
-    { name:"create_action", description:"Create a new quick, single-shot action, optionally attached to a goal or project.", input_schema:{ type:"object", properties:{
-      title:{ type:"string" }, type:{ type:"string", enum:ACTION_TYPES }, priority:{ type:"string", enum:PRIORITIES },
-      parent_type:{ type:"string", enum:["goal","project","none"] }, parent_id:{ type:"string", description:"id of the parent goal or project; omit if parent_type is none" },
-      date:{ type:"string" }
-    }, required:["title","type","priority","parent_type"] } },
-    { name:"edit_action", description:"Edit an existing action by id.", input_schema:{ type:"object", properties:{
-      id:{ type:"string" }, title:{ type:"string" }, type:{ type:"string", enum:ACTION_TYPES }, priority:{ type:"string", enum:PRIORITIES },
-      parent_type:{ type:"string", enum:["goal","project","none"] }, parent_id:{ type:"string" }, date:{ type:"string" }, done:{ type:"boolean" }
-    }, required:["id"] } },
-    { name:"add_journal_entry", description:"Add a new note.", input_schema:{ type:"object", properties:{
-      date:{ type:"string", description:"YYYY-MM-DD, defaults to today if omitted" }, text:{ type:"string" },
-      title:{ type:"string", description:"optional short title" }, priority:{ type:"string", enum:PRIORITIES, description:"optional priority" },
-      categories:{ type:"array", items:{ type:"string", enum:CATEGORIES }, description:"optional area(s) — a note can span more than one" }
-    }, required:["text"] } },
-    { name:"create_person", description:"Add a new person.", input_schema:{ type:"object", properties:{
-      name:{ type:"string" }, relationship:{ type:"string", enum:RELATIONSHIPS }, contact:{ type:"string" }, notes:{ type:"string" }
-    }, required:["name","relationship"] } },
-    { name:"edit_person", description:"Edit an existing person by id.", input_schema:{ type:"object", properties:{
-      id:{ type:"string" }, name:{ type:"string" }, relationship:{ type:"string", enum:RELATIONSHIPS }, contact:{ type:"string" }, notes:{ type:"string" }
-    }, required:["id"] } }
-  ];
-
-  function buildAgentSystemPrompt(){
-    var lines = [];
-    lines.push("You are the capture assistant inside a personal terminal-styled planner app called personal_system.");
-    lines.push("The user describes things in natural language (tasks, goals, projects, habits, notes, people) and you record them accurately using the tools provided.");
-    lines.push("Prefer calling a tool over just describing what you would do. You can create new items and edit existing ones, but you can NEVER delete anything — if asked to delete or remove something, tell the user to do it manually in the app instead.");
-    lines.push("Today's date is " + todayStr() + ".");
-    lines.push("");
-    lines.push("Current goals (id | title | priority | category | due | ongoing):");
-    state.goals.forEach(function(g){ lines.push("- " + g.id + " | " + g.title + " | " + g.priority + " | " + g.category + " | " + (g.due||"—") + " | " + (g.ongoing?"ongoing":"has end date")); });
-    lines.push("");
-    lines.push("Current projects (id | title | goalId | priority | due | hours | done | categories):");
-    state.projects.forEach(function(p){ lines.push("- " + p.id + " | " + p.title + " | " + (p.goalId||"none") + " | " + p.priority + " | " + (p.due||"—") + " | " + p.hours + "h | " + (p.done?"done":"open") + " | " + (p.categories && p.categories.length ? p.categories.join(",") : "none")); });
-    lines.push("");
-    lines.push("Current habits (id | title | goalId | priority | frequency):");
-    state.habits.forEach(function(h){ lines.push("- " + h.id + " | " + h.title + " | " + (h.goalId||"none") + " | " + h.priority + " | " + h.frequency + (h.frequency==="custom" ? " (every " + (h.customIntervalDays||1) + " days)" : "") + (h.frequency==="monthly" ? " (day " + (h.monthDay||1) + ")" : "")); });
-    lines.push("");
-    lines.push("Current actions (id | title | type | priority | parentType | parentId | date | done):");
-    state.actions.forEach(function(a){ lines.push("- " + a.id + " | " + a.title + " | " + a.type + " | " + a.priority + " | " + a.parentType + " | " + (a.parentId||"—") + " | " + (a.date||"—") + " | " + (a.done?"done":"open")); });
-    lines.push("");
-    lines.push("Current people (id | name | relationship):");
-    state.people.forEach(function(p){ lines.push("- " + p.id + " | " + p.name + " | " + p.relationship); });
-    return lines.join("\n");
-  }
-
-  async function executeAgentTool(name, input){
-    try{
-      if(name === "create_goal"){
-        var ongoing1 = !!input.ongoing;
-        var res = await safeInsert("goals", { title:input.title, priority:input.priority, category:input.category, due: ongoing1 ? null : (input.due || null), ongoing: ongoing1 }, state.goals);
-        if(res.error) return { error: res.error.message };
-        var r = res.data;
-        state.goals.push({ id:r.id, title:r.title, priority:r.priority, category:r.category, due:r.due, ongoing:r.ongoing, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:null, icon:null, wbX:null, wbY:null });
-        renderAll(); return { ok:true, id:r.id };
-      }
-      if(name === "edit_goal"){
-        var g = goalById(input.id);
-        if(!g) return { error:"no goal with that id" };
-        var gp = {};
-        ["title","priority","category","due","ongoing"].forEach(function(k){ if(input[k] !== undefined) gp[k] = input[k]; });
-        if(gp.ongoing === true) gp.due = null;
-        var res2 = await sb.from("goals").update(gp).eq("id", input.id).select().single();
-        if(res2.error) return { error: res2.error.message };
-        var r2 = res2.data;
-        var i2 = state.goals.findIndex(function(x){ return x.id === input.id; });
-        if(i2 !== -1){ state.goals[i2].title = r2.title; state.goals[i2].priority = r2.priority; state.goals[i2].category = r2.category; state.goals[i2].due = r2.due; state.goals[i2].ongoing = r2.ongoing; }
-        renderAll(); return { ok:true };
-      }
-      if(name === "create_project"){
-        if(input.goal_id && !goalById(input.goal_id)) return { error:"no goal with that id" };
-        var res3 = await safeInsert("projects", { goal_id: input.goal_id || null, title:input.title, priority:input.priority, due: input.due || null, hours: input.hours || 0, done:false, categories: input.categories || [] }, state.projects);
-        if(res3.error) return { error: res3.error.message };
-        var r3 = res3.data;
-        state.projects.push({ id:r3.id, goalId:r3.goal_id, title:r3.title, priority:r3.priority, due:r3.due, hours:Number(r3.hours), done:r3.done, position:r3.position||0, healthOverride:null, healthPctOverride:null, icon:null, wbX:null, wbY:null, categories:r3.categories||[] });
-        renderAll(); return { ok:true, id:r3.id };
-      }
-      if(name === "edit_project"){
-        var p = projectById(input.id);
-        if(!p) return { error:"no project with that id" };
-        if(input.goal_id && !goalById(input.goal_id)) return { error:"no goal with that id" };
-        var pp = {};
-        if(input.title !== undefined) pp.title = input.title;
-        if(input.goal_id !== undefined) pp.goal_id = input.goal_id || null;
-        if(input.priority !== undefined) pp.priority = input.priority;
-        if(input.due !== undefined) pp.due = input.due || null;
-        if(input.hours !== undefined) pp.hours = input.hours;
-        if(input.done !== undefined) pp.done = input.done;
-        if(input.categories !== undefined) pp.categories = input.categories;
-        var res4 = await sb.from("projects").update(pp).eq("id", input.id).select().single();
-        if(res4.error) return { error: res4.error.message };
-        var r4 = res4.data;
-        // Merge field-by-field onto the existing object rather than replacing it outright — a full
-        // replacement here would silently wipe position/health/icon/whiteboard-position/categories
-        // on every agent-driven edit (this was a pre-existing bug fixed while adding categories).
-        var i4 = state.projects.findIndex(function(x){ return x.id === input.id; });
-        if(i4 !== -1){
-          state.projects[i4].goalId = r4.goal_id; state.projects[i4].title = r4.title; state.projects[i4].priority = r4.priority;
-          state.projects[i4].due = r4.due; state.projects[i4].hours = Number(r4.hours); state.projects[i4].done = r4.done;
-          state.projects[i4].categories = r4.categories || [];
-        }
-        renderAll(); return { ok:true };
-      }
-      if(name === "create_habit"){
-        if(input.goal_id && !goalById(input.goal_id)) return { error:"no goal with that id" };
-        var habitVarRes = await safeInsert("tracker_variables", { name: input.title, type: "boolean" }, state.trackerVars);
-        var habitVarId = null;
-        if(!habitVarRes.error){
-          var hv = habitVarRes.data;
-          state.trackerVars.push({ id:hv.id, name:hv.name, type:hv.type, unit:hv.unit, scaleMax:hv.scale_max, categories:hv.categories||[], position:hv.position });
-          habitVarId = hv.id;
-        }
-        var iconKey5 = pickHabitIconKey(input.title, state.habits.map(function(x){ return x.icon; }).filter(Boolean));
-        var res5 = await safeInsert("habits", { goal_id: input.goal_id || null, title:input.title, priority:input.priority, frequency:input.frequency, tracker_variable_id: habitVarId, days:{}, month_day: input.frequency === "monthly" ? Math.max(1, Math.min(31, Math.round(input.month_day) || 1)) : null, custom_interval_days: input.frequency === "custom" ? Math.max(1, Math.round(input.custom_interval_days) || 1) : null, icon: iconKey5 }, state.habits);
-        if(res5.error) return { error: res5.error.message };
-        var r5 = res5.data;
-        state.habits.push({ id:r5.id, goalId:r5.goal_id, title:r5.title, priority:r5.priority, frequency:r5.frequency, weekdays:r5.weekdays || [], trackerVariableId:r5.tracker_variable_id || habitVarId, timeOfDay:r5.time_of_day ? r5.time_of_day.slice(0,5) : null, durationMinutes:r5.duration_minutes||null, days:r5.days || {}, position:r5.position||0, createdAt:r5.created_at ? r5.created_at.slice(0,10) : null, skipDates:r5.skip_dates || [], extraDates:r5.extra_dates || [], customIntervalDays:r5.custom_interval_days||null, monthDay:r5.month_day||null, icon:r5.icon||iconKey5 });
-        renderAll(); return { ok:true, id:r5.id };
-      }
-      if(name === "edit_habit"){
-        var h = state.habits.find(function(x){ return x.id === input.id; });
-        if(!h) return { error:"no habit with that id" };
-        if(input.goal_id && !goalById(input.goal_id)) return { error:"no goal with that id" };
-        var hp = {};
-        if(input.title !== undefined) hp.title = input.title;
-        if(input.goal_id !== undefined) hp.goal_id = input.goal_id || null;
-        if(input.priority !== undefined) hp.priority = input.priority;
-        if(input.frequency !== undefined) hp.frequency = input.frequency;
-        if(input.month_day !== undefined) hp.month_day = Math.max(1, Math.min(31, Math.round(input.month_day) || 1));
-        if(input.custom_interval_days !== undefined) hp.custom_interval_days = input.custom_interval_days;
-        var res6 = await sb.from("habits").update(hp).eq("id", input.id).select().single();
-        if(res6.error) return { error: res6.error.message };
-        var r6 = res6.data;
-        var i6 = state.habits.findIndex(function(x){ return x.id === input.id; });
-        if(i6 !== -1){ state.habits[i6].title = r6.title; state.habits[i6].goalId = r6.goal_id; state.habits[i6].priority = r6.priority; state.habits[i6].frequency = r6.frequency; state.habits[i6].customIntervalDays = r6.custom_interval_days||null; state.habits[i6].monthDay = r6.month_day||null; state.habits[i6].icon = r6.icon||null; }
-        if(input.title !== undefined && h.trackerVariableId){
-          var vUpd = await sb.from("tracker_variables").update({ name: input.title }).eq("id", h.trackerVariableId);
-          if(!vUpd.error){
-            var tv = state.trackerVars.find(function(x){ return x.id === h.trackerVariableId; });
-            if(tv) tv.name = input.title;
-          }
-        }
-        renderAll(); return { ok:true };
-      }
-      if(name === "create_action"){
-        var pt7 = input.parent_type || "none";
-        // actions.parent_id is polymorphic (goal or project depending on parent_type), so the DB has
-        // no foreign key to catch a bad id here the way goal_id/tracker links do elsewhere — an
-        // unvalidated id would silently create an action that never resolves to anything.
-        if(pt7 === "goal" && input.parent_id && !goalById(input.parent_id)) return { error:"no goal with that id" };
-        if(pt7 === "project" && input.parent_id && !projectById(input.parent_id)) return { error:"no project with that id" };
-        var res7 = await safeInsert("actions", { title:input.title, type:input.type, priority:input.priority, parent_type:pt7, parent_id: pt7 === "none" ? null : (input.parent_id || null), date: input.date || null, done:false }, state.actions);
-        if(res7.error) return { error: res7.error.message };
-        var r7 = res7.data;
-        state.actions.push({ id:r7.id, parentType:r7.parent_type, parentId:r7.parent_id, title:r7.title, type:r7.type, priority:r7.priority, date:r7.date, done:r7.done, position:r7.position||0, timeOfDay:r7.time_of_day ? r7.time_of_day.slice(0,5) : null, durationMinutes:r7.duration_minutes||null, category:r7.category||null });
-        renderAll(); return { ok:true, id:r7.id };
-      }
-      if(name === "edit_action"){
-        var a = state.actions.find(function(x){ return x.id === input.id; });
-        if(!a) return { error:"no action with that id" };
-        var effectivePt8 = input.parent_type !== undefined ? input.parent_type : a.parentType;
-        var effectivePid8 = input.parent_id !== undefined ? input.parent_id : a.parentId;
-        if(effectivePt8 === "goal" && effectivePid8 && !goalById(effectivePid8)) return { error:"no goal with that id" };
-        if(effectivePt8 === "project" && effectivePid8 && !projectById(effectivePid8)) return { error:"no project with that id" };
-        var ap = {};
-        if(input.title !== undefined) ap.title = input.title;
-        if(input.type !== undefined) ap.type = input.type;
-        if(input.priority !== undefined) ap.priority = input.priority;
-        if(input.parent_type !== undefined) ap.parent_type = input.parent_type;
-        if(input.parent_id !== undefined) ap.parent_id = input.parent_type === "none" ? null : (input.parent_id || null);
-        if(input.date !== undefined) ap.date = input.date || null;
-        if(input.done !== undefined) ap.done = input.done;
-        var res8 = await sb.from("actions").update(ap).eq("id", input.id).select().single();
-        if(res8.error) return { error: res8.error.message };
-        var r8 = res8.data;
-        var i8 = state.actions.findIndex(function(x){ return x.id === input.id; });
-        if(i8 !== -1){ state.actions[i8].parentType = r8.parent_type; state.actions[i8].parentId = r8.parent_id; state.actions[i8].title = r8.title; state.actions[i8].type = r8.type; state.actions[i8].priority = r8.priority; state.actions[i8].date = r8.date; state.actions[i8].done = r8.done; }
-        renderAll(); return { ok:true };
-      }
-      if(name === "add_journal_entry"){
-        var res9 = await safeWrite(function(p){ return sb.from("journal").insert(p).select().single(); }, { date: input.date || todayStr(), text: input.text, title: input.title || null, priority: input.priority || null, categories: input.categories || [] });
-        if(res9.error) return { error: res9.error.message };
-        var r9 = res9.data;
-        state.journal.push({ id:r9.id, date:r9.date, text:r9.text, title:r9.title||"", priority:r9.priority||null, categories:r9.categories||[], linkedObjects:extractNoteLinks(r9.text||""), sentiment:[], createdAt:r9.created_at||null });
-        renderAll();
-        maybeAutoAnalyzeSentiment(r9.id);
-        return { ok:true, id:r9.id };
-      }
-      if(name === "create_person"){
-        var res10 = await safeInsert("people", { name:input.name, relationship:input.relationship, contact:input.contact || "", notes:input.notes || "" }, state.people);
-        if(res10.error) return { error: res10.error.message };
-        var r10 = res10.data;
-        state.people.push({ id:r10.id, name:r10.name, relationship:r10.relationship, contact:r10.contact, notes:r10.notes, position:r10.position||0 });
-        renderAll(); return { ok:true, id:r10.id };
-      }
-      if(name === "edit_person"){
-        var pe = state.people.find(function(x){ return x.id === input.id; });
-        if(!pe) return { error:"no person with that id" };
-        var pep = {};
-        ["name","relationship","contact","notes"].forEach(function(k){ if(input[k] !== undefined) pep[k] = input[k]; });
-        var res11 = await sb.from("people").update(pep).eq("id", input.id).select().single();
-        if(res11.error) return { error: res11.error.message };
-        var r11 = res11.data;
-        var i11 = state.people.findIndex(function(x){ return x.id === input.id; });
-        if(i11 !== -1) state.people[i11] = { id:r11.id, name:r11.name, relationship:r11.relationship, contact:r11.contact, notes:r11.notes };
-        renderAll(); return { ok:true };
-      }
-      return { error: "unknown tool " + name };
-    }catch(e){
-      return { error: String(e) };
-    }
-  }
-
-  function toGeminiSchema(schema){
-    if(!schema || typeof schema !== "object") return schema;
-    var out = {};
-    for(var k in schema){
-      if(k === "type"){
-        out.type = String(schema[k]).toUpperCase();
-      } else if(k === "properties"){
-        out.properties = {};
-        for(var pk in schema.properties){ out.properties[pk] = toGeminiSchema(schema.properties[pk]); }
-      } else if(k === "items"){
-        out.items = toGeminiSchema(schema.items);
-      } else {
-        out[k] = schema[k];
-      }
-    }
-    return out;
-  }
-
-  var GEMINI_TOOLS = [{ functionDeclarations: AGENT_TOOLS.map(function(t){
-    return { name: t.name, description: t.description, parameters: toGeminiSchema(t.input_schema) };
-  }) }];
-
-  async function callGemini(contents){
-    var apiKey = safeGet(window.localStorage, "geminiApiKey");
-    if(!apiKey) throw new Error("no_api_key");
-    var model = "gemini-3.5-flash";
-    var resp = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + encodeURIComponent(apiKey), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: buildAgentSystemPrompt() }] },
-        contents: contents,
-        tools: GEMINI_TOOLS
-      })
-    });
-    if(!resp.ok){
-      var errBody = await resp.text();
-      throw new Error("Gemini API error " + resp.status + ": " + errBody.slice(0,300));
-    }
-    return await resp.json();
-  }
-
-  // Only warn once per session (not once per message) — a missing chat_messages migration would
-  // otherwise toast on every single send/reply in a conversation.
-  var chatPersistFailWarned = false;
-  async function persistChatMessage(role, content){
-    var r = await sb.from("chat_messages").insert({ role: role, content: content });
-    if(r.error){
-      console.error(r.error);
-      if(!chatPersistFailWarned){
-        chatPersistFailWarned = true;
-        toast("This chat isn't being saved (" + r.error.message + ") — it'll be lost on reload.");
-      }
-    }
-  }
-
-  function renderChatMessages(){
-    var el = document.getElementById("agentChat");
-    if(!el) return;
-    if(!chatMessages.length){
-      el.innerHTML = '<div class="agent-empty">Tell the agent what happened — it can add goals, projects, habits, actions, journal entries, and people.</div>';
-    } else {
-      el.innerHTML = chatMessages.map(function(m, i){
-        var replay = (m.role === "assistant" && !m.pending) ? '<button class="agent-msg-replay" data-idx="' + i + '" type="button" title="Read this reply aloud">▶ replay</button>' : '';
-        return '<div class="agent-msg ' + m.role + (m.pending ? ' pending' : '') + '">' + escapeHtml(m.content) + replay + '</div>';
-      }).join("");
-    }
-    el.scrollTop = el.scrollHeight;
-  }
-
-  async function sendAgentMessage(userText){
-    chatMessages.push({ role:"user", content:userText });
-    chatMessages.push({ role:"assistant", content:"…thinking", pending:true });
-    renderChatMessages();
-    await persistChatMessage("user", userText);
-
-    var working = chatMessages.filter(function(m){ return !m.pending; }).map(function(m){
-      return { role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.content }] };
-    });
-
-    var finalText = "";
-    var safety = 0;
-    while(safety < 6){
-      safety++;
-      var data;
-      try{
-        data = await callGemini(working);
-      }catch(e){
-        finalText = e.message === "no_api_key"
-          ? 'No Gemini API key set yet — click "api key" above to add one.'
-          : ("Something went wrong talking to Gemini: " + e.message);
-        break;
-      }
-      var candidate = (data.candidates && data.candidates[0]) || {};
-      var parts = (candidate.content && candidate.content.parts) || [];
-      var functionCalls = parts.filter(function(p){ return p.functionCall; });
-      if(functionCalls.length){
-        working.push({ role:"model", parts: parts });
-        var responseParts = [];
-        for(var i=0;i<functionCalls.length;i++){
-          var fc = functionCalls[i].functionCall;
-          var result = await executeAgentTool(fc.name, fc.args || {});
-          responseParts.push({ functionResponse: { name: fc.name, response: result } });
-        }
-        working.push({ role:"user", parts: responseParts });
-        continue;
-      }
-      var textParts = parts.filter(function(p){ return typeof p.text === "string"; });
-      finalText = textParts.map(function(p){ return p.text; }).join("\n").trim() || "Done.";
-      break;
-    }
-
-    var pendingIdx = chatMessages.findIndex(function(m){ return m.pending; });
-    if(pendingIdx !== -1) chatMessages[pendingIdx] = { role:"assistant", content: finalText };
-    renderChatMessages();
-    speakAgentText(finalText);
-    await persistChatMessage("assistant", finalText);
-  }
-
-  // ---------------- Agent voice — Web Speech API, browser-native (no extra API key, no added cost).
-  // Text-to-speech (speechSynthesis) is broadly supported; speech-to-text (SpeechRecognition) is
-  // Chromium-only with no reliable Firefox/Safari implementation, so that button is hidden entirely
-  // rather than offering a control that would silently fail there. ----------------
-  var agentVoiceEnabled = (function(){ try{ return window.localStorage.getItem("pp_agent_voice_v1") === "on"; } catch(e){ return false; } })();
-  function updateAgentVoiceBtn(){
-    var btn = document.getElementById("agentVoiceToggleBtn");
-    if(!btn) return;
-    btn.textContent = agentVoiceEnabled ? "🔊 voice on" : "🔇 voice off";
-    btn.classList.toggle("on", agentVoiceEnabled);
-  }
-  // cancel() first — without it, replies queue up and get read back-to-back instead of the newest
-  // one interrupting/replacing whatever's still playing.
-  function speakAgentTextRaw(text){
-    if(!("speechSynthesis" in window) || !text) return;
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
-  }
-  function speakAgentText(text){ if(agentVoiceEnabled) speakAgentTextRaw(text); }
-  var agentVoiceBtnEl = document.getElementById("agentVoiceToggleBtn");
-  if(!("speechSynthesis" in window)){
-    agentVoiceBtnEl.style.display = "none";
-  } else {
-    agentVoiceBtnEl.addEventListener("click", function(){
-      agentVoiceEnabled = !agentVoiceEnabled;
-      try{ window.localStorage.setItem("pp_agent_voice_v1", agentVoiceEnabled ? "on" : "off"); }catch(e){}
-      updateAgentVoiceBtn();
-      if(!agentVoiceEnabled) window.speechSynthesis.cancel();
-    });
-    updateAgentVoiceBtn();
-  }
-  // Per-message "replay" always speaks regardless of the voice-on/off toggle — it's an explicit
-  // manual action, distinct from the auto-speak-on-new-reply path that respects the toggle.
-  document.getElementById("agentChat").addEventListener("click", function(e){
-    var btn = e.target.closest(".agent-msg-replay");
-    if(!btn) return;
-    var m = chatMessages[Number(btn.dataset.idx)];
-    if(m) speakAgentTextRaw(m.content);
-  });
 
   // ---------------- Agent voice input — a real recorder (MediaRecorder), not live dictation.
   // Records to whatever the browser natively produces (Chrome/Edge: audio/webm; Firefox: audio/ogg).
@@ -12600,35 +12235,6 @@
     });
   }
 
-  wireVoiceRecordButton(document.getElementById("agentMicBtn"), async function(blob){
-    try{
-      var text = await transcribeAudioLocally(blob);
-      if(text){
-        var input = document.getElementById("agentInput");
-        input.value = (input.value.trim() ? input.value.trim() + " " : "") + text;
-      } else {
-        toast("Couldn't make out any speech in that recording.");
-      }
-    } catch(err){
-      toast("Transcription failed: " + err.message);
-    }
-  });
-
-  document.getElementById("agentSendBtn").addEventListener("click", async function(){
-    var input = document.getElementById("agentInput");
-    var text = input.value.trim();
-    if(!text) return;
-    input.value = "";
-    this.disabled = true;
-    await sendAgentMessage(text);
-    this.disabled = false;
-  });
-  document.getElementById("agentInput").addEventListener("keydown", function(e){
-    if(e.key === "Enter" && !e.shiftKey){
-      e.preventDefault();
-      document.getElementById("agentSendBtn").click();
-    }
-  });
   document.getElementById("agentKeyBtn").addEventListener("click", function(){
     document.getElementById("agentApiKeyInput").value = safeGet(window.localStorage, "geminiApiKey") || "";
     openModal("agentKeyModalOverlay");
@@ -13429,7 +13035,7 @@
   // separate render/physics loop, started by activateWhiteboard(), untouched by renderAll().
   var SECTION_RENDERERS = {
     home: [renderHomeDashboard],
-    agent: [renderChatMessages],
+    agent: [],
     today: [renderToday],
     // Areas and Calendar render alongside the four lists now that they're planner panels — cheap
     // innerHTML builds, same as the lists. The Graph panel is deliberately absent: its physics
