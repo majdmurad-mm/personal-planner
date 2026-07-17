@@ -2504,12 +2504,27 @@
            on the label itself is what actually keeps the line from visually poking through the gaps
            between letters. */
         .future-hierarchy-line{stroke-width:0.75;}
+        /* A secondary relation (see wbHierarchyEdges — a goal's secondaryCategories/secondaryGoalIds,
+           or a project/habit's secondaryGoalIds) renders dashed and fainter than a main structural
+           line, same convention as the 2D graph's .wb-hier-line-secondary — the inline stroke color
+           (set per-edge in JS, same "parent"/source area hue as a main line) always wins either way. */
+        .future-hierarchy-line-secondary{stroke-dasharray:4,3;opacity:0.45;}
         .future-gallery-section{max-width:100%;margin-bottom:24px;}
         .future-gallery-row{display:flex;justify-content:center;gap:10px;width:100%;}
         .future-gallery-item{flex:1 1 0;min-width:0;max-width:72px;display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;}
         .future-gallery-item.cluster-start{margin-left:8px;padding-left:8px;border-left:1px solid var(--border);}
         .future-gallery-icon-wrap{width:100%;max-width:36px;aspect-ratio:1;border-radius:50%;border:2px solid var(--border-bright);background:var(--bg-raised);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;}
         .future-gallery-item:hover .future-gallery-icon-wrap{box-shadow:0 0 0 2px var(--bg-inset);}
+        /* Filled with the item's own connected area — same background-tint + solid-border convention
+           as .matrix-tile.Health elsewhere in the app — instead of every icon sitting in a neutral
+           gray badge regardless of area. */
+        .future-gallery-icon-wrap.Health{background:var(--cat-health-bg);border-color:var(--cat-health);}
+        .future-gallery-icon-wrap.Finance{background:var(--cat-finance-bg);border-color:var(--cat-finance);}
+        .future-gallery-icon-wrap.Career{background:var(--cat-career-bg);border-color:var(--cat-career);}
+        .future-gallery-icon-wrap.Maintenance{background:var(--cat-maintenance-bg);border-color:var(--cat-maintenance);}
+        .future-gallery-icon-wrap.Growth{background:var(--cat-growth-bg);border-color:var(--cat-growth);}
+        .future-gallery-icon-wrap.Relationships{background:var(--cat-relationships-bg);border-color:var(--cat-relationships);}
+        .future-gallery-icon-wrap.Sol{background:var(--cat-sol-bg);border-color:var(--cat-sol);}
         .future-gallery-icon-img{width:58%;height:58%;}
         .future-gallery-icon-initial{font-family:var(--mono);font-size:13px;font-weight:700;}
         .future-gallery-item-label{font-family:var(--mono);font-size:9.5px;color:var(--text-dim);text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;background:var(--bg);padding:0 2px;border-radius:3px;}
@@ -14632,9 +14647,14 @@
   // to fit the screen width, per "icons scale according to the total screen width". isBoundary marks
   // the first item of a new area cluster (skipped for the very first item overall) so adjacent items
   // from different areas still read as separate clusters without breaking onto their own line.
-  function futureGalleryItemHtml(kind, id, title, iconInner, isBoundary, wrapStyle){
+  // cat fills the icon's own circular badge with its connected area's color (background tint +
+  // solid border — same convention as .matrix-tile.Health elsewhere) instead of a flat neutral
+  // badge for every item regardless of area; wrapStyle is an extra inline style layered on top
+  // (currently just the habit-commitment opacity — see futureHabitIconOpacity).
+  function futureGalleryItemHtml(kind, id, title, iconInner, isBoundary, cat, wrapStyle){
+    var wrapCls = "future-gallery-icon-wrap" + (cat ? " " + cat : "");
     return '<div class="future-gallery-item' + (isBoundary ? " cluster-start" : "") + '" data-kind="' + kind + '" data-id="' + id + '" title="' + escapeHtml(title) + '">' +
-      '<div class="future-gallery-icon-wrap"' + (wrapStyle ? ' style="' + wrapStyle + '"' : '') + '>' + iconInner + '</div>' +
+      '<div class="' + wrapCls + '"' + (wrapStyle ? ' style="' + wrapStyle + '"' : '') + '>' + iconInner + '</div>' +
       '<span class="future-gallery-item-label">' + escapeHtml(title) + '</span>' +
     '</div>';
   }
@@ -14667,7 +14687,7 @@
     if(!el) return;
     var tiles = CATEGORIES.map(function(cat, i){
       var icon = '<span class="future-gallery-icon-initial" style="color:' + categoryColorVar(cat) + ';">' + (CATEGORY_ICONS[cat] || "?") + '</span>';
-      return futureGalleryItemHtml("area", cat, cat, icon, i > 0);
+      return futureGalleryItemHtml("area", cat, cat, icon, i > 0, cat);
     }).join("");
     el.innerHTML = '<div class="future-gallery-row">' + tiles + '</div>';
   }
@@ -14677,7 +14697,7 @@
     if(!state.goals.length){ el.innerHTML = '<div class="future-empty">No goals yet.</div>'; return; }
     el.innerHTML = futureGalleryRowHtml(state.goals, function(g){ return g.category; }, function(g, cat, isBoundary){
       var icon = g.icon ? iconMaskHtml("future-gallery-icon-img", resolveEntityIconDataUri(g.icon), cat) : futureGalleryInitialHtml(g.title, cat);
-      return futureGalleryItemHtml("goal", g.id, g.title, icon, isBoundary);
+      return futureGalleryItemHtml("goal", g.id, g.title, icon, isBoundary, cat);
     });
   }
   // Bottom tier — projects and "parent" habits (the habit definitions themselves, not their
@@ -14697,11 +14717,11 @@
         if(w.kind === "project"){
           var p = w.obj;
           var icon = p.icon ? iconMaskHtml("future-gallery-icon-img", resolveEntityIconDataUri(p.icon), cat) : futureGalleryInitialHtml(p.title, cat);
-          return futureGalleryItemHtml("project", p.id, p.title, icon, isBoundary);
+          return futureGalleryItemHtml("project", p.id, p.title, icon, isBoundary, cat);
         }
         var h = w.obj;
         var icon = h.icon ? iconMaskHtml("future-gallery-icon-img", habitIconDataUri(h.icon), cat) : futureGalleryInitialHtml(h.title, cat);
-        return futureGalleryItemHtml("habit", h.id, h.title, icon, isBoundary, "opacity:" + futureHabitIconOpacity(h) + ";");
+        return futureGalleryItemHtml("habit", h.id, h.title, icon, isBoundary, cat, "opacity:" + futureHabitIconOpacity(h) + ";");
       });
   }
   // How many times a habit lands in a ~30-day month, estimated from its frequency rule rather than
@@ -14734,14 +14754,19 @@
     if(!el) return;
     if(!state.actions.length){ el.innerHTML = '<div class="future-empty">No actions yet.</div>'; return; }
     el.innerHTML = futureGalleryRowHtml(state.actions, actionCategory, function(a, cat, isBoundary){
-      return futureGalleryItemHtml("action", a.id, a.title, futureGalleryInitialHtml(a.title, cat), isBoundary);
+      return futureGalleryItemHtml("action", a.id, a.title, futureGalleryInitialHtml(a.title, cat), isBoundary, cat);
     });
   }
-  // Draws a line between every pair of hierarchy items that are actually related — area<->goal (by
-  // category) and goal<->project/habit (by goalId) — reading real DOM positions (getBoundingClientRect)
-  // rather than computing a layout of its own, since the 3 tiers above are already laid out by normal
-  // flexbox/flow. This is a static diagram, not a physics sim: no dragging, no re-simulation, just
-  // redrawn whenever the tiers re-render or the window resizes (see the resize listener below).
+  // Draws a line between every pair of hierarchy items that are actually related — reusing
+  // wbHierarchyEdges (the same edge list the 2D/3D Graph views build their own lines from) rather
+  // than re-deriving parent/child pairs by hand, so this automatically picks up BOTH relation types
+  // it already knows about: "main" structural links (area->goal by category, goal->project/habit by
+  // goalId, project/goal->action by parentType/parentId) and "secondary" ones (a goal's own
+  // secondaryCategories/secondaryGoalIds, a project/habit's secondaryGoalIds) — see wbHierarchyEdges
+  // for the full edge list. Reads real DOM positions (getBoundingClientRect) rather than computing a
+  // layout of its own, since every tier above is already laid out by normal flexbox/flow. This is a
+  // static diagram, not a physics sim: no dragging, no re-simulation, just redrawn whenever the tiers
+  // re-render or the window resizes (see the resize listener below).
   function renderFutureHierarchyConnections(){
     var container = document.getElementById("futureHierarchy");
     var svg = document.getElementById("futureHierarchySvg");
@@ -14754,33 +14779,23 @@
       var r = el.getBoundingClientRect();
       return { x: r.left + r.width / 2 - box.left, y: r.top + r.height / 2 - box.top };
     }
-    var lines = [];
-    // Tinted with the PARENT node's own area color (categoryColorVar — the same var(--cat-*) lookup
-    // every other area-colored thing in the app uses) — an area<->goal line, or a goal<->child line,
-    // reads as "belonging to" whichever end is higher in the hierarchy, not a flat neutral wire.
-    function addLine(kindA, idA, kindB, idB, parentCat){
-      var a = centerOf(kindA, idA), b = centerOf(kindB, idB);
-      if(a && b) lines.push('<line class="future-hierarchy-line" style="stroke:' + categoryColorVar(parentCat) + ';" x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '"></line>');
+    // Tinted with the edge's own SOURCE area (categoryColorVar — the same var(--cat-*) lookup every
+    // other area-colored thing in the app uses): for a main edge the source is always the parent, so
+    // this is the same "belongs to whichever end is higher in the hierarchy" read as before; for a
+    // secondary edge the source is whichever side the extra relation was declared from (a goal's
+    // secondaryCategories names the area directly, everything else resolves through a goal) — same
+    // convention renderWbHierarchyLines already uses for the 2D graph's own secondary links.
+    function edgeSourceCat(c){
+      if(c.fromType === "area") return c.fromId;
+      if(c.fromType === "goal"){ var g = goalById(c.fromId); return g ? g.category : null; }
+      if(c.fromType === "project"){ var p = projectById(c.fromId); return p ? projectCategory(p) : null; }
+      return null;
     }
-    state.goals.forEach(function(g){ if(g.category) addLine("area", g.category, "goal", g.id, g.category); });
-    state.projects.forEach(function(p){
-      if(!p.goalId) return;
-      var g = goalById(p.goalId);
-      addLine("goal", p.goalId, "project", p.id, g ? g.category : null);
-    });
-    state.habits.forEach(function(h){
-      if(!h.goalId) return;
-      var g = goalById(h.goalId);
-      addLine("goal", h.goalId, "habit", h.id, g ? g.category : null);
-    });
-    state.actions.forEach(function(a){
-      if(a.parentType === "project" && a.parentId){
-        var p = projectById(a.parentId);
-        if(p) addLine("project", a.parentId, "action", a.id, projectCategory(p));
-      } else if(a.parentType === "goal" && a.parentId){
-        var g = goalById(a.parentId);
-        if(g) addLine("goal", a.parentId, "action", a.id, g.category);
-      }
+    var lines = wbHierarchyEdges(true).map(function(c){
+      var a = centerOf(c.fromType, c.fromId), b = centerOf(c.toType, c.toId);
+      if(!a || !b) return "";
+      var cls = "future-hierarchy-line" + (c.secondary ? " future-hierarchy-line-secondary" : "");
+      return '<line class="' + cls + '" style="stroke:' + categoryColorVar(edgeSourceCat(c)) + ';" x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '"></line>';
     });
     layer.innerHTML = lines.join("");
   }
