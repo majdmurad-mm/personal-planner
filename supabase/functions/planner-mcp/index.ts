@@ -666,12 +666,24 @@ app.all("*", async (c) => {
     if (!OWNER) return c.json({ error: "server not configured: OWNER_USER_ID is unset" }, 500);
     return await httpHandler(c.req.raw);
   }
-  return c.json({
-    service: "personal-planner MCP",
-    endpoint: ".../functions/v1/planner-mcp/mcp",
-    ownerConfigured: !!OWNER,
-    tokenConfigured: !!MCP_TOKEN,
-  });
+  // Health check ONLY at the function root. Everything else — crucially the OAuth
+  // discovery probes an MCP client fires on connect (/.well-known/oauth-protected-
+  // resource, /.well-known/oauth-authorization-server, /register, /authorize,
+  // /token) — must 404. If those return 200, the client thinks this server offers
+  // an OAuth sign-in service, tries to register an OAuth client, and fails with
+  // "couldn't register with the sign-in service". A 404 tells it there is no OAuth
+  // here, so it connects using the ?token= URL instead.
+  const isRoot = pathname === "/" || pathname === "" ||
+    pathname.endsWith("/planner-mcp") || pathname.endsWith("/planner-mcp/");
+  if (isRoot) {
+    return c.json({
+      service: "personal-planner MCP",
+      endpoint: ".../functions/v1/planner-mcp/mcp",
+      ownerConfigured: !!OWNER,
+      tokenConfigured: !!MCP_TOKEN,
+    });
+  }
+  return c.json({ error: "not found" }, 404);
 });
 
 export default app;
