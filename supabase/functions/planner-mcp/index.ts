@@ -637,14 +637,21 @@ const httpHandler = transport.bind(mcp);
 
 const app = new Hono();
 
-// Bearer-token gate. Cowork sends "Authorization: Bearer <MCP_TOKEN>" (configured
-// in the connector's Request headers). Anything else is rejected before it can
-// reach a tool. If MCP_TOKEN somehow isn't set, fail closed rather than open.
+// Token gate. The token may arrive one of two ways, and either is accepted:
+//   1. Authorization: Bearer <MCP_TOKEN>  — for clients that let you set a header.
+//   2. ?token=<MCP_TOKEN> in the URL       — for clients that only let you set a URL.
+// The claude.ai web "Add custom connector" form is the second kind — it takes a URL
+// (plus optional OAuth) but has no request-headers field — so the query-param form is
+// what lets it authenticate without standing up a full OAuth server. If MCP_TOKEN
+// somehow isn't set, fail closed rather than open.
 function authorized(req: Request): boolean {
   if (!MCP_TOKEN) return false;
   const header = req.headers.get("authorization") || "";
-  const token = header.replace(/^Bearer\s+/i, "").trim();
-  return token === MCP_TOKEN;
+  const headerToken = header.replace(/^Bearer\s+/i, "").trim();
+  if (headerToken && headerToken === MCP_TOKEN) return true;
+  const urlToken = new URL(req.url).searchParams.get("token");
+  if (urlToken && urlToken === MCP_TOKEN) return true;
+  return false;
 }
 
 // Path-agnostic routing. Depending on the Supabase runtime version, the Hono app
