@@ -2709,8 +2709,9 @@
       </div>
       <style>
         .tools-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;}
-        .tool-card{border:1px solid var(--border);border-radius:var(--radius);padding:18px;background:var(--bg-raised);cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:8px;font:inherit;}
+        .tool-card{position:relative;border:1px solid var(--border);border-radius:var(--radius);padding:18px;background:var(--bg-raised);cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:8px;font:inherit;}
         .tool-card:hover{border-color:var(--accent-dim);}
+        .tool-card-jump{position:absolute;top:10px;right:12px;font-size:13px;color:var(--text-faint);}
         .tool-card-icon{font-size:26px;color:var(--accent);line-height:1;}
         .tool-card-name{font-size:14px;color:var(--text);font-weight:600;}
         .tool-card-blurb{font-size:12px;color:var(--text-dim);line-height:1.5;margin:0;}
@@ -15082,17 +15083,38 @@
   // ({modes, getCurrentModeIndex, jumpToMode, setRunning, dispose}), so adding a new tool later is
   // just: write one init(canvas, wrap) function shaped like initAxonGridTool and add it here —
   // nothing in openTool/closeTool/toolsSetActive needs to change. ----
+  // A tool card is either a real embedded view (init(canvas, wrap), see initAxonGridTool) or a
+  // quick-launch shortcut (navigateTo()) that jumps straight to an existing, fully-featured page
+  // instead of duplicating it inside the Tools canvas shell — the 2D/3D graphs and the day timeline
+  // are already complex, DOM-heavy pages of their own (toolbars, physics, drag interactions), so
+  // reusing them as-is here is far lower-risk than re-mounting their rendering code a second time.
   var TOOLS = [
     { id:"axon-grid", name:"Axon Grid", icon:"▦",
       blurb:"A monumental field of columns in axonometric projection that morphs between different readings of the same ground.",
-      init: initAxonGridTool }
+      init: initAxonGridTool },
+    { id:"graph-2d", name:"2D Graph", icon:"⌬",
+      blurb:"Your whole system as a force-directed graph — goals, projects, habits, actions, drag and zoom.",
+      navigateTo: function(){
+        showSection("planner");
+        var tab = document.querySelector('#plannerTabs .view-tab[data-tab="graph"]');
+        if(tab) tab.click();
+      } },
+    { id:"graph-3d", name:"3D Graph", icon:"✧",
+      blurb:"The same system as a 3D constellation, on the Home page.",
+      navigateTo: function(){ showSection("home"); } },
+    { id:"day-timeline", name:"Day Timeline", icon:"◷",
+      blurb:"Today's schedule laid out hour by hour, area by area.",
+      navigateTo: function(){ showSection("today"); } }
   ];
   var activeToolInstance = null;
   function renderToolsGrid(){
     var el = document.getElementById("toolsGrid");
     if(!el) return;
     el.innerHTML = TOOLS.map(function(t){
+      // navigateTo cards leave the Tools page (they jump to the real page instead of embedding a
+      // copy) — a small corner mark says so up front, rather than surprising you on click.
       return '<button class="tool-card" data-tool-id="' + t.id + '" type="button">' +
+        (t.navigateTo ? '<span class="tool-card-jump" title="Opens the actual page">↗</span>' : '') +
         '<span class="tool-card-icon">' + t.icon + '</span>' +
         '<span class="tool-card-name">' + escapeHtml(t.name) + '</span>' +
         '<p class="tool-card-blurb">' + escapeHtml(t.blurb) + '</p>' +
@@ -15138,7 +15160,10 @@
     renderToolsGrid();
     document.getElementById("toolsGrid").addEventListener("click", function(e){
       var card = e.target.closest(".tool-card");
-      if(card) openTool(card.dataset.toolId);
+      if(!card) return;
+      var tool = TOOLS.find(function(t){ return t.id === card.dataset.toolId; });
+      if(!tool) return;
+      if(tool.navigateTo) tool.navigateTo(); else openTool(tool.id);
     });
     document.getElementById("toolBackBtn").addEventListener("click", closeTool);
     document.getElementById("toolModeRow").addEventListener("click", function(e){
