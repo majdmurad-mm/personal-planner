@@ -8370,7 +8370,11 @@
       rows += ganttRowHtml(escapeHtml(a.title), ganttActionBarHtml(a, start, today, data.selfId));
     });
 
-    wrapEl.innerHTML = '<div class="gantt-inner" style="min-width:' + (GANTT_LABEL_W + days * GANTT_COL_W) + 'px;" data-gantt-start="' + start + '">' +
+    // --gantt-col drives .gantt-day's width in CSS — without setting it here, the header ruler's
+    // date cells stay stuck at that rule's 30px fallback regardless of zoom, drifting out of
+    // alignment with the bars below (which ARE positioned from the live GANTT_COL_W) the moment
+    // GANTT_COL_W differs from 30 (i.e. at any zoom level except the default).
+    wrapEl.innerHTML = '<div class="gantt-inner" style="min-width:' + (GANTT_LABEL_W + days * GANTT_COL_W) + 'px; --gantt-col:' + GANTT_COL_W + 'px;" data-gantt-start="' + start + '">' +
       head + rows + '<svg class="gantt-arrow-svg"></svg></div>';
     renderGanttArrowsIn(wrapEl);
   }
