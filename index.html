@@ -2698,8 +2698,12 @@
 
     <!-- ===== TOOLS SECTION — a small, self-contained "app within the app": a grid of tool cards,
          each backed by a TOOLS[] entry ({id, name, blurb, icon, init}); opening one hides the grid
-         and mounts that tool full-bleed into #toolViewCanvas. See initAxonGridTool for the first
-         tool and wireTools()/openTool()/closeTool() for the shell. ===== -->
+         and calls tool.init(wrap) with the empty #toolViewCanvasWrap container — each tool builds
+         (and on dispose, tears down) whatever DOM/canvas it needs inside that one div. Every tool
+         here is illustrative sample data, never the real state.* — a live-data version of the
+         2D/3D graph or timeline would just be the real Planner/Home/Present pages themselves.
+         See initAxonGridTool, makeGraphPreviewTool(is3D) (backs both the 2D and 3D graph cards),
+         initDayTimelinePreviewTool, and wireTools()/openTool()/closeTool() for the shell. ===== -->
     <section id="toolsSection" style="display:none;">
       <div class="main-header">
         <div>
@@ -2709,9 +2713,8 @@
       </div>
       <style>
         .tools-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;}
-        .tool-card{position:relative;border:1px solid var(--border);border-radius:var(--radius);padding:18px;background:var(--bg-raised);cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:8px;font:inherit;}
+        .tool-card{border:1px solid var(--border);border-radius:var(--radius);padding:18px;background:var(--bg-raised);cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:8px;font:inherit;}
         .tool-card:hover{border-color:var(--accent-dim);}
-        .tool-card-jump{position:absolute;top:10px;right:12px;font-size:13px;color:var(--text-faint);}
         .tool-card-icon{font-size:26px;color:var(--accent);line-height:1;}
         .tool-card-name{font-size:14px;color:var(--text);font-weight:600;}
         .tool-card-blurb{font-size:12px;color:var(--text-dim);line-height:1.5;margin:0;}
@@ -2725,6 +2728,15 @@
         .tool-mode-btn:hover{color:var(--text);}
         .tool-mode-btn.active{color:var(--accent);border-color:var(--accent-dim);background:var(--bg-inset);}
         .tool-reduced-motion-note{text-align:center;font-size:11.5px;color:var(--text-faint);margin-top:8px;}
+        /* Day Timeline preview — plain DOM/CSS (no Three.js needed; it's mostly readable text) inside
+           the same .tool-view-canvas-wrap every other tool uses. */
+        .tool-daytimeline-root{position:absolute;inset:0;overflow-y:auto;padding:36px 16px 16px;}
+        .tool-daytimeline-hours{position:relative;height:20px;margin:0 0 12px;border-bottom:1px solid var(--border);}
+        .tool-daytimeline-hours span{position:absolute;top:0;transform:translateX(-50%);font-family:var(--mono);font-size:10px;color:var(--text-faint);}
+        .tool-daytimeline-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+        .tool-daytimeline-row-label{width:56px;flex-shrink:0;font-family:var(--mono);font-size:11px;font-weight:600;}
+        .tool-daytimeline-track{position:relative;flex:1;height:34px;background:var(--bg-raised);border-radius:6px;}
+        .tool-daytimeline-block{position:absolute;top:3px;bottom:3px;border-left:3px solid;border-radius:4px;padding:4px 8px;font-size:10.5px;color:var(--text);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;}
       </style>
 
       <div class="tools-grid" id="toolsGrid"></div>
@@ -2734,9 +2746,7 @@
           <button class="btn" id="toolBackBtn" type="button">← back to tools</button>
           <h2 class="tool-view-title" id="toolViewTitle"></h2>
         </div>
-        <div class="tool-view-canvas-wrap" id="toolViewCanvasWrap">
-          <canvas id="toolViewCanvas"></canvas>
-        </div>
+        <div class="tool-view-canvas-wrap" id="toolViewCanvasWrap"></div>
         <div class="tool-mode-row" id="toolModeRow"></div>
       </div>
     </section>
@@ -15061,14 +15071,20 @@
   // Sync wrapper around the async scene builder — openTool() needs a handle back immediately (to
   // list mode names and to be able to dispose() even if closed before Three.js finishes loading),
   // so this returns a stub that queues setRunning/jumpToMode calls until the real scene resolves.
-  function initAxonGridTool(canvas, wrap){
+  function initAxonGridTool(wrap){
     var disposed = false, pendingRunning = true, real = null;
+    var canvas = document.createElement("canvas");
+    wrap.appendChild(canvas);
     var handle = {
       modes: AXON_MODE_BUILDERS.map(function(fn){ return { name: fn.modeName }; }),
       getCurrentModeIndex: function(){ return real ? real.getCurrentModeIndex() : 0; },
       jumpToMode: function(i){ if(real) real.jumpToMode(i); },
       setRunning: function(on){ pendingRunning = on; if(real) real.setRunning(on); },
-      dispose: function(){ disposed = true; if(real) real.dispose(); }
+      dispose: function(){
+        disposed = true;
+        if(real) real.dispose();
+        if(canvas.parentNode) canvas.parentNode.removeChild(canvas);
+      }
     };
     buildAxonGridScene(canvas, wrap).then(function(r){
       if(disposed){ r.dispose(); return; }
@@ -15078,43 +15094,308 @@
     return handle;
   }
 
-  // ---- Tools page shell — a plain grid of tool cards; opening one hides the grid and mounts that
-  // tool full-bleed into #toolViewCanvas. Every tool follows the same returned shape
-  // ({modes, getCurrentModeIndex, jumpToMode, setRunning, dispose}), so adding a new tool later is
-  // just: write one init(canvas, wrap) function shaped like initAxonGridTool and add it here —
-  // nothing in openTool/closeTool/toolsSetActive needs to change. ----
-  // A tool card is either a real embedded view (init(canvas, wrap), see initAxonGridTool) or a
-  // quick-launch shortcut (navigateTo()) that jumps straight to an existing, fully-featured page
-  // instead of duplicating it inside the Tools canvas shell — the 2D/3D graphs and the day timeline
-  // are already complex, DOM-heavy pages of their own (toolbars, physics, drag interactions), so
-  // reusing them as-is here is far lower-risk than re-mounting their rendering code a second time.
+  // ---- Tools page shell — a plain grid of tool cards; opening one hides the grid and calls
+  // tool.init(wrap), which owns everything inside that one container until dispose() is called.
+  // Every tool follows the same returned shape ({modes, getCurrentModeIndex, jumpToMode, setRunning,
+  // dispose}), so adding a new tool later is just: write one init(wrap) function shaped like
+  // initAxonGridTool and add it to TOOLS[] below — nothing in openTool/closeTool/toolsSetActive
+  // needs to change. Every tool here runs on small fabricated sample data, deliberately never
+  // state.* — these are illustrative previews of what a graph/timeline looks like, not a second way
+  // to view your real data (that's what the Planner/Home/Present pages themselves are for).
+  // A small, fixed illustrative "system" (3 areas -> goals -> projects/habits/actions) shared by the
+  // 2D and 3D graph previews below — deliberately fabricated, never state.*. These are demos of what
+  // the shape of a graph looks like, not a live view of your actual data (the real thing is the
+  // Planner's own Graph tab / the Home page).
+  function toolsSampleSystemData(){
+    var nodes = [
+      { id:"area:Health", type:"area", label:"Health", area:"Health", parent:null },
+      { id:"area:Career", type:"area", label:"Career", area:"Career", parent:null },
+      { id:"area:Growth", type:"area", label:"Growth", area:"Growth", parent:null },
+      { id:"goal:fit", type:"goal", label:"Get fit", area:"Health", parent:"area:Health" },
+      { id:"proj:marathon", type:"project", label:"Marathon training", area:"Health", parent:"goal:fit" },
+      { id:"habit:run", type:"habit", label:"Morning run", area:"Health", parent:"goal:fit" },
+      { id:"habit:meals", type:"habit", label:"Meal prep", area:"Health", parent:"goal:fit" },
+      { id:"goal:ship", type:"goal", label:"Ship the redesign", area:"Career", parent:"area:Career" },
+      { id:"proj:designsys", type:"project", label:"Design system", area:"Career", parent:"goal:ship" },
+      { id:"action:proposal", type:"action", label:"Write proposal", area:"Career", parent:"goal:ship" },
+      { id:"goal:guitar", type:"goal", label:"Learn guitar", area:"Growth", parent:"area:Growth" },
+      { id:"habit:scales", type:"habit", label:"Practice scales", area:"Growth", parent:"goal:guitar" }
+    ];
+    var edges = nodes.filter(function(n){ return n.parent; }).map(function(n){ return { from:n.parent, to:n.id }; });
+    return { nodes:nodes, edges:edges };
+  }
+  function toolsNodeScale(type){ return type === "area" ? 1.3 : type === "goal" ? 0.9 : 0.55; }
+  // Plain 2D repulsion + spring + center-pull layout, pre-settled synchronously (a fixed number of
+  // ticks at full alpha) before the scene is ever shown — a static preview doesn't need to visibly
+  // "explode outward and settle" the way a live physics view does, and pre-settling avoids the
+  // handful of frames of chaotic motion that would otherwise show on open.
+  function toolsLayoutSample(data, is3D){
+    var sim = {};
+    data.nodes.forEach(function(n, i){
+      var a = (i+1) / (data.nodes.length+1) * Math.PI*2;
+      sim[n.id] = { x:Math.cos(a)*10, y:is3D ? (Math.random()-0.5)*4 : 0, z:Math.sin(a)*10, vx:0, vy:0, vz:0 };
+    });
+    var REPEL=140, LINK_DIST=6, LINK_K=0.03, DAMP=0.85, CENTER_K=0.01;
+    function tick(){
+      var ids = Object.keys(sim);
+      for(var i=0;i<ids.length;i++){
+        for(var j=i+1;j<ids.length;j++){
+          var a=sim[ids[i]], b=sim[ids[j]];
+          var dx=b.x-a.x, dy=b.y-a.y, dz=b.z-a.z, d2=dx*dx+dy*dy+dz*dz||0.01, d=Math.sqrt(d2);
+          var f=REPEL/d2;
+          var fx=(dx/d)*f, fy=(dy/d)*f, fz=(dz/d)*f;
+          a.vx-=fx; a.vy-=fy; a.vz-=fz; b.vx+=fx; b.vy+=fy; b.vz+=fz;
+        }
+      }
+      data.edges.forEach(function(e){
+        var a=sim[e.from], b=sim[e.to];
+        if(!a||!b) return;
+        var dx=b.x-a.x, dy=b.y-a.y, dz=b.z-a.z, d=Math.sqrt(dx*dx+dy*dy+dz*dz)||0.01;
+        var f=(d-LINK_DIST)*LINK_K;
+        var fx=(dx/d)*f, fy=(dy/d)*f, fz=(dz/d)*f;
+        a.vx+=fx; a.vy+=fy; a.vz+=fz; b.vx-=fx; b.vy-=fy; b.vz-=fz;
+      });
+      ids.forEach(function(id){
+        var n = sim[id];
+        n.vx += -n.x*CENTER_K; n.vy += -n.y*CENTER_K; n.vz += -n.z*CENTER_K;
+        n.vx*=DAMP; n.vy*=DAMP; n.vz*=DAMP;
+        n.x+=n.vx; n.y+=n.vy; n.z+=n.vz;
+      });
+    }
+    for(var s=0; s<160; s++) tick();
+    return sim;
+  }
+  // Shared build for both graph previews — only the camera/geometry differ (top-down orthographic +
+  // flat circles for "2D", perspective + spheres + starfield for "3D"), so the sim/mesh-sync/drag
+  // plumbing lives once here rather than twice.
+  async function buildGraphPreviewScene(canvas, wrap, opts){
+    var THREE = await loadThree();
+    var data = toolsSampleSystemData();
+    var sim = toolsLayoutSample(data, opts.is3D);
+
+    var renderer = new THREE.WebGLRenderer({ canvas:canvas, alpha:true, antialias:true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    var scene = new THREE.Scene();
+
+    if(opts.is3D){
+      var starCount=180, starPos=new Float32Array(starCount*3);
+      for(var s=0;s<starCount;s++){ starPos[s*3]=(Math.random()-0.5)*160; starPos[s*3+1]=(Math.random()-0.5)*100; starPos[s*3+2]=(Math.random()-0.5)*160; }
+      var starGeo = new THREE.BufferGeometry();
+      starGeo.setAttribute("position", new THREE.BufferAttribute(starPos,3));
+      scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color:new THREE.Color(cssVarColor("--text-faint")), size:0.22, transparent:true, opacity:0.5 })));
+    }
+
+    var geo = opts.is3D ? new THREE.SphereGeometry(1,14,10) : new THREE.CircleGeometry(1,20);
+    var meshes = {};
+    data.nodes.forEach(function(n){
+      var col = n.area ? cssVarColor("--cat-" + n.area.toLowerCase()) : cssVarColor("--text-faint");
+      var mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color:new THREE.Color(col) }));
+      if(!opts.is3D) mesh.rotation.x = -Math.PI/2; // circles lie flat on the ground plane
+      mesh.scale.setScalar(toolsNodeScale(n.type));
+      scene.add(mesh);
+      meshes[n.id] = mesh;
+    });
+    var linePos = new Float32Array(data.edges.length*6);
+    var lineGeo = new THREE.BufferGeometry();
+    lineGeo.setAttribute("position", new THREE.BufferAttribute(linePos,3));
+    var lineMat = new THREE.LineBasicMaterial({ color:new THREE.Color(cssVarColor("--text-dim")), transparent:true, opacity:opts.is3D ? 0.35 : 0.5 });
+    var lines = new THREE.LineSegments(lineGeo, lineMat);
+    scene.add(lines);
+    function syncPositions(){
+      data.nodes.forEach(function(n){ var s=sim[n.id]; meshes[n.id].position.set(s.x, opts.is3D ? s.y : 0.01, s.z); });
+      data.edges.forEach(function(e, i){
+        var a=sim[e.from], b=sim[e.to];
+        linePos[i*6]=a.x; linePos[i*6+1]=opts.is3D?a.y:0.01; linePos[i*6+2]=a.z;
+        linePos[i*6+3]=b.x; linePos[i*6+4]=opts.is3D?b.y:0.01; linePos[i*6+5]=b.z;
+      });
+      lineGeo.attributes.position.needsUpdate = true;
+    }
+    syncPositions();
+
+    var reduced = prefersReducedMotion();
+    var camera, applyCamera, onWheel, frustumBase;
+    // 3D orbits (theta/phi/dist around the origin); 2D has no meaningful "orbit" for a straight
+    // top-down camera, so it pans instead (panX/panZ translate both the camera and its look-at
+    // point together, keeping the view flat).
+    var orbit = { theta:0.6, phi:1.1, dist:34, autoUntil:0 };
+    var panX = 0, panZ = 0;
+    if(opts.is3D){
+      camera = new THREE.PerspectiveCamera(50, 1, 0.1, 500);
+      applyCamera = function(){
+        var x = orbit.dist*Math.sin(orbit.phi)*Math.cos(orbit.theta);
+        var y = orbit.dist*Math.cos(orbit.phi);
+        var z = orbit.dist*Math.sin(orbit.phi)*Math.sin(orbit.theta);
+        camera.position.set(x,y,z);
+        camera.lookAt(0,0,0);
+      };
+      onWheel = function(e){ e.preventDefault(); orbit.dist = Math.max(14, Math.min(70, orbit.dist * (e.deltaY<0?0.92:1.08))); };
+    } else {
+      frustumBase = 24;
+      camera = new THREE.OrthographicCamera(-1,1,1,-1,0.1,300);
+      camera.up.set(0,0,-1);
+      applyCamera = function(){
+        camera.position.set(panX, 40, panZ + 0.001);
+        camera.lookAt(panX, 0, panZ);
+      };
+    }
+
+    var dragging=false, dragPointerId=null, dragStartX=0, dragStartY=0, dragStartTheta=0, dragStartPhi=0, dragStartPanX=0, dragStartPanZ=0;
+    function onPointerDown(e){
+      dragging=true; dragPointerId=e.pointerId; dragStartX=e.clientX; dragStartY=e.clientY;
+      dragStartTheta=orbit.theta; dragStartPhi=orbit.phi;
+      dragStartPanX=panX; dragStartPanZ=panZ;
+      wrap.classList.add("dragging");
+      canvas.setPointerCapture(e.pointerId);
+    }
+    function onPointerMove(e){
+      if(!dragging || e.pointerId!==dragPointerId) return;
+      if(opts.is3D){
+        orbit.theta = dragStartTheta - (e.clientX-dragStartX)*0.006;
+        orbit.phi = Math.max(0.3, Math.min(Math.PI-0.3, dragStartPhi - (e.clientY-dragStartY)*0.006));
+        orbit.autoUntil = performance.now()+4000;
+      } else {
+        panX = dragStartPanX - (e.clientX-dragStartX)*0.05;
+        panZ = dragStartPanZ - (e.clientY-dragStartY)*0.05;
+      }
+    }
+    function onPointerUp(){ dragging=false; dragPointerId=null; wrap.classList.remove("dragging"); }
+    canvas.addEventListener("pointerdown", onPointerDown);
+    canvas.addEventListener("pointermove", onPointerMove);
+    canvas.addEventListener("pointerup", onPointerUp);
+    canvas.addEventListener("pointercancel", onPointerUp);
+    if(onWheel) canvas.addEventListener("wheel", onWheel, { passive:false });
+
+    function frame(now){
+      if(opts.is3D && !reduced && !dragging && now > orbit.autoUntil) orbit.theta += 0.0016;
+      applyCamera();
+      renderer.render(scene, camera);
+    }
+    function doResize(){
+      var w = wrap.clientWidth||1, h = wrap.clientHeight||1;
+      renderer.setSize(w, h, false);
+      if(opts.is3D){ camera.aspect = w/h; }
+      else {
+        var aspect = w/h;
+        camera.left=-frustumBase*aspect; camera.right=frustumBase*aspect;
+        camera.top=frustumBase; camera.bottom=-frustumBase;
+      }
+      camera.updateProjectionMatrix();
+    }
+    doResize();
+    requestAnimationFrame(function(){ requestAnimationFrame(doResize); });
+    var resizeObserver = (typeof ResizeObserver !== "undefined") ? new ResizeObserver(doResize) : null;
+    if(resizeObserver) resizeObserver.observe(wrap);
+    window.addEventListener("resize", doResize);
+
+    return {
+      setRunning: function(on){ renderer.setAnimationLoop(on ? frame : null); },
+      dispose: function(){
+        renderer.setAnimationLoop(null);
+        if(resizeObserver) resizeObserver.disconnect();
+        window.removeEventListener("resize", doResize);
+        canvas.removeEventListener("pointerdown", onPointerDown);
+        canvas.removeEventListener("pointermove", onPointerMove);
+        canvas.removeEventListener("pointerup", onPointerUp);
+        canvas.removeEventListener("pointercancel", onPointerUp);
+        if(onWheel) canvas.removeEventListener("wheel", onWheel);
+        scene.traverse(function(o){
+          if(o.geometry) o.geometry.dispose();
+          if(o.material){ if(o.material.map) o.material.map.dispose(); o.material.dispose(); }
+        });
+        renderer.dispose();
+      }
+    };
+  }
+  function makeGraphPreviewTool(is3D){
+    return function(wrap){
+      var disposed = false, pendingRunning = true, real = null;
+      var canvas = document.createElement("canvas");
+      wrap.appendChild(canvas);
+      var handle = {
+        modes: [],
+        getCurrentModeIndex: function(){ return 0; },
+        jumpToMode: function(){},
+        setRunning: function(on){ pendingRunning = on; if(real) real.setRunning(on); },
+        dispose: function(){
+          disposed = true;
+          if(real) real.dispose();
+          if(canvas.parentNode) canvas.parentNode.removeChild(canvas);
+        }
+      };
+      buildGraphPreviewScene(canvas, wrap, { is3D: is3D }).then(function(r){
+        if(disposed){ r.dispose(); return; }
+        real = r;
+        real.setRunning(pendingRunning);
+      }).catch(function(err){ console.error("Graph preview failed to load", err); });
+      return handle;
+    };
+  }
+  function fmtToolHour(h){
+    var hour12 = h % 12 === 0 ? 12 : h % 12;
+    return hour12 + ((h < 12 || h === 24) ? "am" : "pm");
+  }
+  // Static DOM/CSS, no Three.js needed — it's mostly readable text (block titles), which a WebGL
+  // canvas would need offscreen-canvas texture tricks for; plain HTML is both simpler and crisper.
+  function initDayTimelinePreviewTool(wrap){
+    var SAMPLE_BLOCKS = [
+      { area:"Health", title:"Morning run", startHour:7, endHour:8 },
+      { area:"Career", title:"Team standup", startHour:9, endHour:9.5 },
+      { area:"Career", title:"Design system work", startHour:10, endHour:12.5 },
+      { area:"Health", title:"Lunch + walk", startHour:12.5, endHour:13.5 },
+      { area:"Career", title:"Write proposal", startHour:14, endHour:16 },
+      { area:"Growth", title:"Guitar practice", startHour:18, endHour:18.5 }
+    ];
+    var AREAS_SHOWN = ["Health","Career","Growth"];
+    var DAY_START=6, DAY_END=22;
+    function pctFor(hour){ return ((hour-DAY_START)/(DAY_END-DAY_START))*100; }
+    var hourLabels = [];
+    for(var h=DAY_START; h<=DAY_END; h+=3) hourLabels.push(h);
+    wrap.innerHTML = '<div class="tool-daytimeline-root">' +
+      '<div class="tool-daytimeline-hours">' + hourLabels.map(function(h){
+        return '<span style="left:' + pctFor(h) + '%;">' + fmtToolHour(h) + '</span>';
+      }).join("") + '</div>' +
+      AREAS_SHOWN.map(function(area){
+        var blocks = SAMPLE_BLOCKS.filter(function(b){ return b.area === area; });
+        return '<div class="tool-daytimeline-row">' +
+          '<span class="tool-daytimeline-row-label" style="color:var(--cat-' + area.toLowerCase() + ');">' + area + '</span>' +
+          '<div class="tool-daytimeline-track">' +
+            blocks.map(function(b){
+              var left = pctFor(b.startHour), width = pctFor(b.endHour) - pctFor(b.startHour);
+              return '<div class="tool-daytimeline-block" style="left:' + left + '%;width:' + width + '%;background:var(--cat-' + area.toLowerCase() + '-bg);border-color:var(--cat-' + area.toLowerCase() + ');">' + escapeHtml(b.title) + '</div>';
+            }).join("") +
+          '</div>' +
+        '</div>';
+      }).join("") +
+    '</div>';
+    return {
+      modes: [],
+      getCurrentModeIndex: function(){ return 0; },
+      jumpToMode: function(){},
+      setRunning: function(){}, // static markup, nothing to pause/resume
+      dispose: function(){ wrap.innerHTML = ""; }
+    };
+  }
+
   var TOOLS = [
     { id:"axon-grid", name:"Axon Grid", icon:"▦",
       blurb:"A monumental field of columns in axonometric projection that morphs between different readings of the same ground.",
       init: initAxonGridTool },
     { id:"graph-2d", name:"2D Graph", icon:"⌬",
-      blurb:"Your whole system as a force-directed graph — goals, projects, habits, actions, drag and zoom.",
-      navigateTo: function(){
-        showSection("planner");
-        var tab = document.querySelector('#plannerTabs .view-tab[data-tab="graph"]');
-        if(tab) tab.click();
-      } },
+      blurb:"A sample layout in the same style as your Planner's Graph tab — illustrative data, not your real goals/projects.",
+      init: makeGraphPreviewTool(false) },
     { id:"graph-3d", name:"3D Graph", icon:"✧",
-      blurb:"The same system as a 3D constellation, on the Home page.",
-      navigateTo: function(){ showSection("home"); } },
+      blurb:"A sample constellation in the same style as the Home page's 3D graph — illustrative data, not your real system.",
+      init: makeGraphPreviewTool(true) },
     { id:"day-timeline", name:"Day Timeline", icon:"◷",
-      blurb:"Today's schedule laid out hour by hour, area by area.",
-      navigateTo: function(){ showSection("today"); } }
+      blurb:"A sample day laid out hour by hour, area by area — illustrative blocks, not your real schedule.",
+      init: initDayTimelinePreviewTool }
   ];
   var activeToolInstance = null;
   function renderToolsGrid(){
     var el = document.getElementById("toolsGrid");
     if(!el) return;
     el.innerHTML = TOOLS.map(function(t){
-      // navigateTo cards leave the Tools page (they jump to the real page instead of embedding a
-      // copy) — a small corner mark says so up front, rather than surprising you on click.
       return '<button class="tool-card" data-tool-id="' + t.id + '" type="button">' +
-        (t.navigateTo ? '<span class="tool-card-jump" title="Opens the actual page">↗</span>' : '') +
         '<span class="tool-card-icon">' + t.icon + '</span>' +
         '<span class="tool-card-name">' + escapeHtml(t.name) + '</span>' +
         '<p class="tool-card-blurb">' + escapeHtml(t.blurb) + '</p>' +
@@ -15137,7 +15418,7 @@
     var view = document.getElementById("toolView");
     view.hidden = false;
     document.getElementById("toolViewTitle").textContent = tool.name;
-    activeToolInstance = tool.init(document.getElementById("toolViewCanvas"), document.getElementById("toolViewCanvasWrap"));
+    activeToolInstance = tool.init(document.getElementById("toolViewCanvasWrap"));
     renderToolModeRow();
     var existingNote = view.querySelector(".tool-reduced-motion-note");
     if(existingNote) existingNote.remove();
@@ -15160,10 +15441,7 @@
     renderToolsGrid();
     document.getElementById("toolsGrid").addEventListener("click", function(e){
       var card = e.target.closest(".tool-card");
-      if(!card) return;
-      var tool = TOOLS.find(function(t){ return t.id === card.dataset.toolId; });
-      if(!tool) return;
-      if(tool.navigateTo) tool.navigateTo(); else openTool(tool.id);
+      if(card) openTool(card.dataset.toolId);
     });
     document.getElementById("toolBackBtn").addEventListener("click", closeTool);
     document.getElementById("toolModeRow").addEventListener("click", function(e){
