@@ -2539,6 +2539,10 @@
           <h2 class="future-section-title">projects &amp; habits</h2>
           <div id="futureChildrenGallery"></div>
         </div>
+        <div class="future-gallery-section">
+          <h2 class="future-section-title">actions</h2>
+          <div id="futureActionsGallery"></div>
+        </div>
       </div>
 
       <div class="future-body" id="futureBody"></div>
@@ -14461,9 +14465,10 @@
     renderFutureAreasGallery();
     renderFutureGoalsGallery();
     renderFutureChildrenGallery();
+    renderFutureActionsGallery();
     renderFutureUnscheduled();
-    // Positions depend on the three galleries' actual (post-layout) DOM rects, so this has to run
-    // after all three have just been rebuilt above — see renderFutureHierarchyConnections.
+    // Positions depend on all four galleries' actual (post-layout) DOM rects, so this has to run
+    // after they've all just been rebuilt above — see renderFutureHierarchyConnections.
     renderFutureHierarchyConnections();
   }
   // One icon tile shared by all three galleries below — a circular icon (the item's own uploaded/
@@ -14473,9 +14478,9 @@
   // to fit the screen width, per "icons scale according to the total screen width". isBoundary marks
   // the first item of a new area cluster (skipped for the very first item overall) so adjacent items
   // from different areas still read as separate clusters without breaking onto their own line.
-  function futureGalleryItemHtml(kind, id, title, iconInner, isBoundary){
+  function futureGalleryItemHtml(kind, id, title, iconInner, isBoundary, wrapStyle){
     return '<div class="future-gallery-item' + (isBoundary ? " cluster-start" : "") + '" data-kind="' + kind + '" data-id="' + id + '" title="' + escapeHtml(title) + '">' +
-      '<div class="future-gallery-icon-wrap">' + iconInner + '</div>' +
+      '<div class="future-gallery-icon-wrap"' + (wrapStyle ? ' style="' + wrapStyle + '"' : '') + '>' + iconInner + '</div>' +
       '<span class="future-gallery-item-label">' + escapeHtml(title) + '</span>' +
     '</div>';
   }
@@ -14542,8 +14547,41 @@
         }
         var h = w.obj;
         var icon = h.icon ? iconMaskHtml("future-gallery-icon-img", habitIconDataUri(h.icon), cat) : futureGalleryInitialHtml(h.title, cat);
-        return futureGalleryItemHtml("habit", h.id, h.title, icon, isBoundary);
+        return futureGalleryItemHtml("habit", h.id, h.title, icon, isBoundary, "opacity:" + futureHabitIconOpacity(h) + ";");
       });
+  }
+  // How many times a habit lands in a ~30-day month, estimated from its frequency rule rather than
+  // walking a real calendar (habitOccursOnDate is exact but per-date; this only needs a ballpark for
+  // the opacity weighting below). Mirrors habitOccursOnDate's own frequency branches.
+  function futureHabitMonthlyOccurrences(h){
+    if(h.frequency === "weekly") return (h.weekdays || []).length * (30 / 7);
+    if(h.frequency === "monthly") return 1;
+    if(h.frequency === "custom") return 30 / (h.customIntervalDays || 1);
+    return 30; // "daily" and any unset/default frequency occurs every day
+  }
+  var FUTURE_HABIT_OPACITY_MIN = 0.32;
+  var FUTURE_HABIT_OPACITY_MAX = 1;
+  // A daily 60-minute habit (≈1800 = 30 occurrences * 60 min) is treated as the "fully opaque"
+  // reference commitment — everything else fades in relative to it. Weight is log-scaled (not linear)
+  // since raw occurrences*duration spans a huge range (a monthly 15-min habit is ~15, a daily 90-min
+  // habit is ~2700) and a linear scale would crush all but the heaviest habits down near invisible.
+  var FUTURE_HABIT_WEIGHT_REF = 1800;
+  function futureHabitIconOpacity(h){
+    var occurrences = futureHabitMonthlyOccurrences(h);
+    var duration = h.durationMinutes != null ? h.durationMinutes : 30;
+    var weight = occurrences * duration;
+    var t = Math.min(1, Math.log1p(weight) / Math.log1p(FUTURE_HABIT_WEIGHT_REF));
+    return (FUTURE_HABIT_OPACITY_MIN + (FUTURE_HABIT_OPACITY_MAX - FUTURE_HABIT_OPACITY_MIN) * t).toFixed(2);
+  }
+  // Fourth tier — every action, clustered by its own area same as the tiers above. Actions have no
+  // .icon field at all (unlike goals/projects/habits), so they always render as an initial letter.
+  function renderFutureActionsGallery(){
+    var el = document.getElementById("futureActionsGallery");
+    if(!el) return;
+    if(!state.actions.length){ el.innerHTML = '<div class="future-empty">No actions yet.</div>'; return; }
+    el.innerHTML = futureGalleryRowHtml(state.actions, actionCategory, function(a, cat, isBoundary){
+      return futureGalleryItemHtml("action", a.id, a.title, futureGalleryInitialHtml(a.title, cat), isBoundary);
+    });
   }
   // Draws a line between every pair of hierarchy items that are actually related — area<->goal (by
   // category) and goal<->project/habit (by goalId) — reading real DOM positions (getBoundingClientRect)
@@ -14580,6 +14618,15 @@
       if(!h.goalId) return;
       var g = goalById(h.goalId);
       addLine("goal", h.goalId, "habit", h.id, g ? g.category : null);
+    });
+    state.actions.forEach(function(a){
+      if(a.parentType === "project" && a.parentId){
+        var p = projectById(a.parentId);
+        if(p) addLine("project", a.parentId, "action", a.id, projectCategory(p));
+      } else if(a.parentType === "goal" && a.parentId){
+        var g = goalById(a.parentId);
+        if(g) addLine("goal", a.parentId, "action", a.id, g.category);
+      }
     });
     layer.innerHTML = lines.join("");
   }
