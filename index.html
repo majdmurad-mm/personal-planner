@@ -2079,6 +2079,9 @@
         .brains-flow .node{border:1px solid rgba(127,127,127,.32);border-radius:10px;padding:8px 12px;font-size:.85rem;display:flex;flex-direction:column;justify-content:center;}
         .brains-flow .node b{font-size:.68rem;letter-spacing:.06em;text-transform:uppercase;opacity:.55;margin-bottom:2px;}
         .brains-flow .arrow{align-self:center;opacity:.4;}
+        .brains-tools{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:3px 18px;margin:.5em 0 .2em;}
+        .brains-tools span{font-size:.86rem;opacity:.82;}
+        .brains-pill{display:inline-block;font-size:.68rem;letter-spacing:.05em;text-transform:uppercase;padding:2px 9px;border-radius:999px;border:1px solid rgba(127,127,127,.4);opacity:.7;margin-left:6px;vertical-align:middle;}
         .brains-doc a{color:inherit;}
       </style>
 
@@ -2099,9 +2102,20 @@
             <span class="node"><b>planner-mcp</b>Supabase edge function</span><span class="arrow">→</span>
             <span class="node"><b>your data</b>this planner</span>
           </div>
-          <h2>What it does</h2>
-          <p><b>Reads:</b> today's agenda, goals, projects, habits, actions, notes, people, tracker / mood.</p>
-          <p><b>Creates &amp; edits:</b> the same, on request. It can <b>never delete</b> — deletions stay a manual action here.</p>
+          <h2>What Claude can do</h2>
+          <p><b>Read</b><span class="brains-pill">anytime</span></p>
+          <div class="brains-tools">
+            <span>· today's agenda</span><span>· goals</span><span>· projects</span>
+            <span>· habits</span><span>· actions</span><span>· notes</span>
+            <span>· people</span><span>· tracker / mood</span>
+          </div>
+          <p style="margin-top:1em;"><b>Create &amp; edit</b><span class="brains-pill">on request</span></p>
+          <div class="brains-tools">
+            <span>· goals</span><span>· projects</span><span>· habits</span>
+            <span>· actions (tasks)</span><span>· notes</span><span>· people</span>
+            <span>· log a metric</span><span>· complete an action</span>
+          </div>
+          <p>It can <b>never delete</b> anything — deletions stay a manual action here in the app.</p>
           <h2>How it's wired</h2>
           <div class="brains-card">
             <p>A <b>Supabase edge function</b> (<code>planner-mcp</code>) deployed next to the database. Claude authenticates with a secret token carried in the connector URL:</p>
