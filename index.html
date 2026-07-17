@@ -2471,8 +2471,33 @@
         .future-item-title{flex:1;color:var(--text);font-size:13px;}
         .future-item-pri{font-family:var(--mono);font-size:10px;color:var(--text-dim);border:1px solid var(--border);border-radius:999px;padding:1px 7px;}
         .future-empty{color:var(--text-dim);padding:44px 0;text-align:center;line-height:1.6;}
+        .future-unscheduled{max-width:720px;margin-top:32px;padding-top:22px;border-top:1px solid var(--border);}
+        .future-section-title{font-size:15px;color:var(--text);margin:0 0 4px;}
+        .future-area-group{margin-bottom:20px;}
+        .future-area-label{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px;}
       </style>
+
+      <!-- Horizontal month strip — same clickable day-picker as Present's own (.today-month-strip),
+           reused here purely for a time overview/nav aid: clicking a day scrolls to that date's group
+           below if one exists (see wireFutureCalGrid), it doesn't filter or select anything. -->
+      <div class="today-month-strip">
+        <div class="cal-toolbar" style="margin-top:0;">
+          <div class="cal-nav-group">
+            <button class="cal-nav-btn" id="futureCalPrevBtn" type="button" aria-label="Previous month">‹</button>
+            <span class="cal-month-label" id="futureCalMonthLabel"></span>
+            <button class="cal-nav-btn" id="futureCalNextBtn" type="button" aria-label="Next month">›</button>
+          </div>
+        </div>
+        <div class="today-month-strip-days" id="futureCalGrid"></div>
+      </div>
+
       <div class="future-body" id="futureBody"></div>
+
+      <div class="future-unscheduled">
+        <h2 class="future-section-title">unscheduled</h2>
+        <p class="panel-hint">Actions with no date yet, grouped by area — give one a date to move it into the list above, or leave it here until you're ready.</p>
+        <div id="futureUnscheduledList"></div>
+      </div>
     </section>
 
     <!-- ===== KNOWLEDGE SECTION (scaffold — Google Drive interface, wired later) ===== -->
@@ -14302,26 +14327,103 @@
       });
     if(!upcoming.length){
       body.innerHTML = '<div class="future-empty">Nothing scheduled ahead yet.<br>Actions with a future date will appear here.</div>';
+    } else {
+      var groups = {};
+      upcoming.forEach(function(a){ (groups[a.date] = groups[a.date] || []).push(a); });
+      var html = "";
+      // data-date lets the calendar strip above scroll straight to this group when that day is
+      // clicked (see wireFutureCalGrid) — the strip is purely a nav/overview aid, not a filter.
+      Object.keys(groups).sort().forEach(function(date){
+        var label = new Date(date + "T00:00:00").toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" });
+        html += '<div class="future-day" data-date="' + date + '"><div class="future-day-label">' + escapeHtml(label) + '</div>';
+        groups[date].forEach(function(a){
+          var col = a.category ? ("var(--cat-" + a.category.toLowerCase() + ")") : "var(--border-bright)";
+          html += '<div class="future-item" style="--fut-c:' + col + ';">' +
+            '<span class="future-item-time">' + (a.timeOfDay ? escapeHtml(a.timeOfDay) : "—") + '</span>' +
+            '<span class="future-item-title">' + escapeHtml(a.title) + '</span>' +
+            (a.priority ? '<span class="future-item-pri">' + escapeHtml(a.priority) + '</span>' : '') +
+          '</div>';
+        });
+        html += '</div>';
+      });
+      body.innerHTML = html;
+    }
+    renderFutureCalGrid();
+    renderFutureUnscheduled();
+  }
+  // Actions with no date at all — the other half of the "overview of my time and planned actions"
+  // ask: what's decided but not yet placed on the calendar. Grouped by area with the same shared
+  // helper the Planner's matrix views use (renderByCategorySections), not a bespoke grouping here.
+  function renderFutureUnscheduled(){
+    var el = document.getElementById("futureUnscheduledList");
+    if(!el) return;
+    var list = state.actions.filter(function(a){ return !a.date && !a.done; });
+    if(!list.length){
+      el.innerHTML = '<div class="future-empty">Nothing unscheduled — every open action already has a date.</div>';
       return;
     }
-    var groups = {};
-    upcoming.forEach(function(a){ (groups[a.date] = groups[a.date] || []).push(a); });
-    var html = "";
-    Object.keys(groups).sort().forEach(function(date){
-      var label = new Date(date + "T00:00:00").toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" });
-      html += '<div class="future-day"><div class="future-day-label">' + escapeHtml(label) + '</div>';
-      groups[date].forEach(function(a){
-        var col = a.category ? ("var(--cat-" + a.category.toLowerCase() + ")") : "var(--border-bright)";
-        html += '<div class="future-item" style="--fut-c:' + col + ';">' +
-          '<span class="future-item-time">' + (a.timeOfDay ? escapeHtml(a.timeOfDay) : "—") + '</span>' +
+    el.innerHTML = renderByCategorySections(list, actionCategory, function(cat, label, items){
+      var rows = items.map(function(a){
+        var col = cat ? ("var(--cat-" + cat.toLowerCase() + ")") : "var(--border-bright)";
+        return '<div class="future-item" style="--fut-c:' + col + ';">' +
           '<span class="future-item-title">' + escapeHtml(a.title) + '</span>' +
           (a.priority ? '<span class="future-item-pri">' + escapeHtml(a.priority) + '</span>' : '') +
         '</div>';
-      });
-      html += '</div>';
+      }).join("");
+      return '<div class="future-area-group"><div class="future-area-label">' + label + '</div>' + rows + '</div>';
     });
-    body.innerHTML = html;
   }
+  // Same clickable month calendar as Present's own (renderTodayCalGrid) — kept as its own copy
+  // rather than shared, since Present's version also has to juggle todaySelectedDate and Google
+  // Calendar events, neither of which this page needs; here a day's "dot" just means an action is
+  // scheduled that day, and clicking scrolls to it rather than switching a selected day.
+  var futureCalMonth = (function(){ var d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d; })();
+  function renderFutureCalGrid(){
+    var monthLabelEl = document.getElementById("futureCalMonthLabel");
+    var gridEl = document.getElementById("futureCalGrid");
+    if(!monthLabelEl || !gridEl) return;
+    monthLabelEl.textContent = futureCalMonth.toLocaleDateString(undefined, { month:"long", year:"numeric" });
+    var year = futureCalMonth.getFullYear(), month = futureCalMonth.getMonth();
+    var daysInMonth = new Date(year, month + 1, 0).getDate();
+    var todayKey = todayStr();
+    var weekdayLabels = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+    var html = "";
+    for(var day=1; day<=daysInMonth; day++){
+      var cellDate = new Date(year, month, day);
+      var cellKey = year + "-" + String(month+1).padStart(2,"0") + "-" + String(day).padStart(2,"0");
+      var dow = cellDate.getDay();
+      var isWeekend = dow === 0 || dow === 6;
+      var hasStuff = state.actions.some(function(a){ return a.date === cellKey; });
+      html += '<div class="today-month-strip-day' + (isWeekend?' weekend':'') + (cellKey===todayKey?' today':'') + '" data-date="' + cellKey + '">' +
+        '<span class="today-month-strip-day-wd">' + weekdayLabels[dow] + '</span>' +
+        '<span class="today-month-strip-day-num">' + day + '</span>' +
+        (hasStuff ? '<span class="today-month-strip-day-dot"></span>' : '<span class="today-month-strip-day-dot-empty"></span>') +
+      '</div>';
+    }
+    gridEl.innerHTML = html;
+    var todayEl = gridEl.querySelector(".today-month-strip-day.today");
+    if(todayEl && todayEl.scrollIntoView) todayEl.scrollIntoView({ block:"nearest", inline:"center" });
+  }
+  function wireFutureCalGrid(){
+    var gridEl = document.getElementById("futureCalGrid");
+    if(!gridEl) return;
+    gridEl.addEventListener("click", function(e){
+      var cell = e.target.closest(".today-month-strip-day[data-date]");
+      if(!cell) return;
+      var group = document.querySelector('.future-day[data-date="' + cell.dataset.date + '"]');
+      if(group && group.scrollIntoView) group.scrollIntoView({ behavior:"smooth", block:"start" });
+      else toast("Nothing scheduled that day.");
+    });
+    document.getElementById("futureCalPrevBtn").addEventListener("click", function(){
+      futureCalMonth.setMonth(futureCalMonth.getMonth()-1);
+      renderFutureCalGrid();
+    });
+    document.getElementById("futureCalNextBtn").addEventListener("click", function(){
+      futureCalMonth.setMonth(futureCalMonth.getMonth()+1);
+      renderFutureCalGrid();
+    });
+  }
+  wireFutureCalGrid();
 
   var SECTION_RENDERERS = {
     home: [renderHomeDashboard],
