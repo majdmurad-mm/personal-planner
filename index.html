@@ -3897,15 +3897,42 @@
   // ---- Knowledge page: a live Google Drive file browser. Auth reuses the same GIS (Google Identity
   // Services) script Calendar already loads, but through its OWN token client scoped to
   // drive.readonly — a separate access token from Calendar's, so connecting one never implicitly
-  // grants or revokes the other. Session-only (in-memory token, same as googleAccessToken for
-  // Calendar) — reconnecting is required after a reload. Requires a real GOOGLE_CLIENT_ID with the
-  // Drive API enabled and this origin authorized; see KNOWLEDGE_SETUP.md. Files are browsed straight
+  // grants or revokes the other. The token is cached in this browser's localStorage (see
+  // saveDriveToken/restoreDriveToken below) so a reload doesn't force a fresh "connect" click —
+  // still never sent to Supabase or any server of ours, and it self-expires on Google's own ~1hr
+  // schedule regardless (Calendar's googleAccessToken is deliberately NOT persisted the same way;
+  // this is Knowledge/Drive's own choice, unrelated to that one). Requires a real GOOGLE_CLIENT_ID
+  // with the Drive API enabled and this origin authorized; see KNOWLEDGE_SETUP.md. Files are browsed straight
   // from Drive via the REST API — nothing is ever copied into Supabase. ----
   var driveTokenClient = null;
   var driveAccessToken = null;
   var DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.readonly";
   var driveFolderStack = [{ id: "root", name: "My Drive" }];
   var driveSearchDebounceTimer = null;
+  // Google's own token still expires on its own schedule (~1hr) and consent/session state still
+  // lives entirely with Google — this just keeps the SAME short-lived token alive across a reload
+  // instead of forcing a fresh "connect" click every time, by parking it in this browser's
+  // localStorage rather than only an in-memory var. Still never sent to Supabase or any server of
+  // ours — same "browser talks to Google directly" story as before, just persisted a bit further.
+  var DRIVE_TOKEN_STORAGE_KEY = "pp_drive_token";
+  function saveDriveToken(token, expiresInSeconds){
+    try{ safeSet(window.localStorage, DRIVE_TOKEN_STORAGE_KEY, JSON.stringify({ token: token, expiresAt: Date.now() + (expiresInSeconds || 3600) * 1000 })); }catch(e){}
+  }
+  function clearDriveToken(){
+    try{ window.localStorage.removeItem(DRIVE_TOKEN_STORAGE_KEY); }catch(e){}
+  }
+  // Skips (and clears) a token within 60s of its real expiry rather than handing out one that's
+  // about to fail its first API call anyway.
+  function restoreDriveToken(){
+    try{
+      var raw = safeGet(window.localStorage, DRIVE_TOKEN_STORAGE_KEY);
+      if(!raw) return;
+      var saved = JSON.parse(raw);
+      if(saved && saved.token && saved.expiresAt > Date.now() + 60000) driveAccessToken = saved.token;
+      else clearDriveToken();
+    }catch(e){ clearDriveToken(); }
+  }
+  restoreDriveToken();
 
   function initDriveClient(){
     if(!window.google || !google.accounts || !google.accounts.oauth2 || driveTokenClient) return;
@@ -3915,6 +3942,7 @@
       callback: function(resp){
         if(resp.error){ console.error(resp); toast("Google Drive sign-in failed: " + resp.error); return; }
         driveAccessToken = resp.access_token;
+        saveDriveToken(driveAccessToken, resp.expires_in);
         renderKnowledgeConnectState();
         driveFolderStack = [{ id: "root", name: "My Drive" }];
         loadDriveFolder();
@@ -3939,6 +3967,7 @@
       google.accounts.oauth2.revoke(driveAccessToken, function(){});
     }
     driveAccessToken = null;
+    clearDriveToken();
     driveFolderStack = [{ id: "root", name: "My Drive" }];
     renderKnowledgeConnectState();
     renderKnowledgeEmpty();
@@ -4093,7 +4122,7 @@
       "&orderBy=folder,name&pageSize=100";
     var resp = await fetch(url, { headers: { "Authorization": "Bearer " + driveAccessToken } });
     if(resp.status === 401){
-      driveAccessToken = null; renderKnowledgeConnectState(); renderKnowledgeEmpty();
+      driveAccessToken = null; clearDriveToken(); renderKnowledgeConnectState(); renderKnowledgeEmpty();
       toast("Google Drive session expired — reconnect to keep browsing.");
       return null;
     }
@@ -4617,7 +4646,10 @@
       openPinnedFolder(card.dataset.id, card.dataset.name);
     });
     renderKnowledgeConnectState();
-    renderKnowledgeEmpty();
+    // A restored token (see restoreDriveToken) means we're actually connected on this very load —
+    // show real folder content instead of the "not connected" placeholder renderKnowledgeEmpty()
+    // would otherwise put up unconditionally.
+    if(driveAccessToken) loadDriveFolder(); else renderKnowledgeEmpty();
     renderKnowledgePinned();
   })();
 
