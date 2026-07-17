@@ -14802,6 +14802,24 @@
   // Recomputed on resize (flex items reshuffle at different widths, so line endpoints move) — scoped
   // to the Future tab being open, same as every other resize-sensitive view in the app.
   window.addEventListener("resize", function(){ if(activeSection === "future") renderFutureHierarchyConnections(); });
+  // Clicking a hierarchy tile opens the same edit/delete menu every other kind-tagged item in the app
+  // opens on right-click (openGlobalCtxMenu, wired globally via data-kind/data-id) — these tiles are a
+  // read-only diagram otherwise (.future-gallery-item is cursor:pointer with nothing behind it until
+  // now), so a plain click is the natural way in rather than requiring a right-click nobody would
+  // expect on a gallery tile. Gated on DELETE_HANDLERS the same way the global right-click listener
+  // is, which naturally excludes "area" tiles — areas are a fixed vocabulary (CATEGORIES), not stored
+  // objects with their own id, so there's no menu to show for one.
+  document.getElementById("futureHierarchy").addEventListener("click", function(e){
+    var el = e.target.closest(".future-gallery-item[data-kind][data-id]");
+    if(!el || !DELETE_HANDLERS[el.dataset.kind]) return;
+    // Opening on "click" instead of "contextmenu" means this same click would otherwise keep
+    // bubbling up to document's own "click outside closes it" listener (see closeGlobalCtxMenu's
+    // wiring above), which — seeing the menu just opened and this click's target isn't inside it —
+    // would immediately close the menu it just opened. stopPropagation keeps this one click from
+    // reaching that listener at all (same fix the postpone popover already uses for the same reason).
+    e.stopPropagation();
+    openGlobalCtxMenu(e.clientX, e.clientY, el.dataset.kind, el.dataset.id);
+  });
   // Actions with no date at all — the other half of the "overview of my time and planned actions"
   // ask: what's decided but not yet placed on the calendar. Grouped by area with the same shared
   // helper the Planner's matrix views use (renderByCategorySections), not a bespoke grouping here.
