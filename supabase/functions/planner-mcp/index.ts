@@ -258,12 +258,13 @@ mcp.tool("list_notes", {
     return ok((data || []).map((n) => ({
       id: n.id, date: n.date, title: n.title, text: n.text, areas: n.categories || [],
       priority: n.priority, timeOfDay: n.time_of_day, sentiment: n.sentiment || [],
+      linkedObjects: n.linked_objects || [], recordingId: n.recording_id || null, createdAt: n.created_at || null,
     })));
   },
 });
 
 mcp.tool("list_people", {
-  description: "List people in the user's network. Optionally filter by relationship or a name/notes text search.",
+  description: "List people in the user's network, with their full profile fields. Optionally filter by relationship or a name search.",
   inputSchema: z.object({
     relationship: z.enum(RELATIONSHIPS).optional(),
     query: z.string().optional().describe("case-insensitive substring match on the person's name"),
@@ -277,8 +278,11 @@ mcp.tool("list_people", {
     const { data, error } = await q;
     if (error) return fail(error.message);
     return ok((data || []).map((p) => ({
-      id: p.id, name: p.name, relationship: p.relationship, contact: p.contact,
-      notes: p.notes, socialGroup: p.social_group, location: p.location,
+      id: p.id, name: p.name, relationship: p.relationship, contact: p.contact, notes: p.notes,
+      socialGroup: p.social_group, location: p.location, personalityType: p.personality_type,
+      relationshipStatus: p.relationship_status, verified: !!p.verified,
+      likeScore: p.like_score, contactScore: p.contact_score, yearMet: p.year_met,
+      relatedPeople: p.related_people, planets: p.planets, homeLat: p.home_lat, homeLng: p.home_lng,
     })));
   },
 });
@@ -568,6 +572,32 @@ mcp.tool("add_note", {
     }).select().single();
     if (error) return fail(error.message);
     return ok({ ok: true, id: data.id });
+  },
+});
+
+mcp.tool("edit_note", {
+  description: "Edit an existing note (journal entry) by id. Only the fields you pass are changed. (Sentiment tags and note-tag links are managed by the app and left untouched.)",
+  inputSchema: z.object({
+    id: z.string(),
+    text: z.string().optional(),
+    title: z.string().optional().describe("short heading; pass an empty string to clear it"),
+    priority: z.enum(PRIORITIES).optional(),
+    areas: z.array(z.enum(CATEGORIES)).optional().describe("the note's area(s); replaces the existing set"),
+    date: z.string().optional().describe("YYYY-MM-DD"),
+    timeOfDay: z.string().optional().describe("HH:MM 24h; pass an empty string to clear it"),
+  }),
+  handler: async (args: any) => {
+    const patch: Record<string, unknown> = {};
+    if (args.text !== undefined) patch.text = args.text;
+    if (args.title !== undefined) patch.title = args.title || null;
+    if (args.priority !== undefined) patch.priority = args.priority;
+    if (args.areas !== undefined) patch.categories = args.areas;
+    if (args.date !== undefined) patch.date = args.date;
+    if (args.timeOfDay !== undefined) patch.time_of_day = args.timeOfDay || null;
+    if (Object.keys(patch).length === 0) return fail("nothing to update — pass at least one field");
+    const { error } = await db.from("journal").update(patch).eq("id", args.id).eq("user_id", OWNER);
+    if (error) return fail(error.message);
+    return ok({ ok: true });
   },
 });
 
