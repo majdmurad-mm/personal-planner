@@ -664,16 +664,7 @@ function authorized(req: Request): boolean {
 // path suffix. Any path ending in /mcp is the MCP endpoint (bearer-gated);
 // everything else is the unauthenticated health check.
 app.all("*", async (c) => {
-  const reqUrl = new URL(c.req.url);
-  const pathname = reqUrl.pathname;
-  // Temporary connect-debugging log: shows what a client (e.g. Claude) actually sends —
-  // the path it hits, whether a token rode along, and how. Safe: logs only booleans, not
-  // the token value itself.
-  console.log("[planner-mcp]", c.req.method, pathname,
-    "| authHeader=", !!c.req.raw.headers.get("authorization"),
-    "queryToken=", !!reqUrl.searchParams.get("token"),
-    "pathToken=", /\/[^/]+\/mcp$/.test(pathname),
-    "authed=", authorized(c.req.raw));
+  const pathname = new URL(c.req.url).pathname;
   if (pathname.endsWith("/mcp")) {
     if (!authorized(c.req.raw)) return c.json({ error: "unauthorized" }, 401);
     if (!OWNER) return c.json({ error: "server not configured: OWNER_USER_ID is unset" }, 500);

@@ -98,16 +98,17 @@ confirm the tool list loads and `get_agenda` returns data.
 ## Add it to Claude
 
 The claude.ai web "Add custom connector" form only takes a **URL** (plus optional
-OAuth) — it has **no request-headers field** — so the token goes in the URL as a
-`?token=` query parameter. The server accepts the token either way (query param or
-`Authorization: Bearer` header), so a header-capable client can still use the header.
+OAuth) — it has **no request-headers field**, and it **drops the query string** when
+it calls the endpoint — so the token goes in the URL **path**, as the segment right
+before `/mcp`. (The server also still accepts the token as an `Authorization: Bearer`
+header or a `?token=` query param, for clients that support those.)
 
 1. In Claude, go to **Customize → Connectors**.
 2. Click **Add → Add custom connector**.
 3. **Name:** `Personal Planner`
-4. **Remote MCP server URL** — the endpoint with your token appended:
+4. **Remote MCP server URL** — token as a path segment before `/mcp`:
    ```
-   https://<your-project-ref>.supabase.co/functions/v1/planner-mcp/mcp?token=<your MCP_TOKEN>
+   https://<your-project-ref>.supabase.co/functions/v1/planner-mcp/<your MCP_TOKEN>/mcp
    ```
    (Leave the OAuth "Advanced settings" empty.)
 5. Click **Add**, then **Connect**, then enable the connector in a chat via the
@@ -116,6 +117,7 @@ OAuth) — it has **no request-headers field** — so the token goes in the URL 
 > Putting the token in the URL is fine for a personal, single-user connector, but it
 > does mean the token can appear in server request logs. Rotate it anytime with
 > `supabase secrets set MCP_TOKEN="<new>"` + redeploy, then update the connector URL.
+> If a client ever changes the connector's URL, remove and re-add it (there's no edit).
 
 ## Make Cowork "keep it in mind"
 
