@@ -1680,6 +1680,7 @@
         <button class="side-link" data-section="people" type="button"><span class="sl-glyph">☺</span>People</button>
         <button class="side-link" data-section="location" type="button"><span class="sl-glyph">⚲</span>Location</button>
         <button class="side-link" data-section="knowledge" type="button"><span class="sl-glyph">▦</span>Knowledge</button>
+        <button class="side-link" data-section="tools" type="button"><span class="sl-glyph">✦</span>Tools</button>
       </nav>
 
       <div class="term-stats">
@@ -2686,6 +2687,50 @@
           <p class="knowledge-empty-title">Second section — coming next</p>
           <p>Placeholder for the additional Knowledge section. We'll define what lives here when we build it out.</p>
         </div>
+      </div>
+    </section>
+
+    <!-- ===== TOOLS SECTION — a small, self-contained "app within the app": a grid of tool cards,
+         each backed by a TOOLS[] entry ({id, name, blurb, icon, init}); opening one hides the grid
+         and mounts that tool full-bleed into #toolViewCanvas. See initAxonGridTool for the first
+         tool and wireTools()/openTool()/closeTool() for the shell. ===== -->
+    <section id="toolsSection" style="display:none;">
+      <div class="main-header">
+        <div>
+          <h1>tools</h1>
+          <p class="subhead">Small standalone experiments, built into the app.</p>
+        </div>
+      </div>
+      <style>
+        .tools-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;}
+        .tool-card{border:1px solid var(--border);border-radius:var(--radius);padding:18px;background:var(--bg-raised);cursor:pointer;text-align:left;display:flex;flex-direction:column;gap:8px;font:inherit;}
+        .tool-card:hover{border-color:var(--accent-dim);}
+        .tool-card-icon{font-size:26px;color:var(--accent);line-height:1;}
+        .tool-card-name{font-size:14px;color:var(--text);font-weight:600;}
+        .tool-card-blurb{font-size:12px;color:var(--text-dim);line-height:1.5;margin:0;}
+        .tool-view-head{display:flex;align-items:center;gap:12px;margin-bottom:14px;}
+        .tool-view-title{margin:0;font-size:15px;color:var(--text);}
+        .tool-view-canvas-wrap{position:relative;height:min(70vh, 640px);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--bg-inset);touch-action:none;}
+        .tool-view-canvas-wrap canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab;}
+        .tool-view-canvas-wrap.dragging canvas{cursor:grabbing;}
+        .tool-mode-row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:14px;}
+        .tool-mode-btn{font-family:var(--mono);font-size:11px;padding:6px 14px;border-radius:999px;border:1px solid var(--border-bright);background:var(--bg-raised);color:var(--text-dim);cursor:pointer;}
+        .tool-mode-btn:hover{color:var(--text);}
+        .tool-mode-btn.active{color:var(--accent);border-color:var(--accent-dim);background:var(--bg-inset);}
+        .tool-reduced-motion-note{text-align:center;font-size:11.5px;color:var(--text-faint);margin-top:8px;}
+      </style>
+
+      <div class="tools-grid" id="toolsGrid"></div>
+
+      <div id="toolView" hidden>
+        <div class="tool-view-head">
+          <button class="btn" id="toolBackBtn" type="button">← back to tools</button>
+          <h2 class="tool-view-title" id="toolViewTitle"></h2>
+        </div>
+        <div class="tool-view-canvas-wrap" id="toolViewCanvasWrap">
+          <canvas id="toolViewCanvas"></canvas>
+        </div>
+        <div class="tool-mode-row" id="toolModeRow"></div>
       </div>
     </section>
 
@@ -3900,7 +3945,7 @@
     });
   }
 
-  var ALL_SECTION_IDS = ["homeSection","todaySection","plannerSection","trackerSection","agentSection","timelineSection","journalSection","peopleSection","locationSection","knowledgeSection","futureSection","goalDetailSection","areaDetailSection"];
+  var ALL_SECTION_IDS = ["homeSection","todaySection","plannerSection","trackerSection","agentSection","timelineSection","journalSection","peopleSection","locationSection","knowledgeSection","futureSection","toolsSection","goalDetailSection","areaDetailSection"];
   // Sidebar dropdown groups — a parent nav item with no page of its own, bundling a set of section
   // names under one submenu. See showSection() (active/auto-open) and the sideNav click handler
   // (data-toggle-submenu, open/close).
@@ -3945,6 +3990,10 @@
     else if(name === "planner" && activePlannerTab === "graph") activateWhiteboard();
     else if(name === "knowledge" && activeKnowledgeTab === "graph") activateKnowledgeGraph();
     else renderActiveSectionContent();
+    // A running tool (its render loop, drag listeners, etc.) is pure waste once its canvas isn't on
+    // screen — paused, not disposed, so coming straight back to Tools resumes instantly instead of
+    // rebuilding the whole scene.
+    toolsSetActive(name === "tools");
   }
   function syncPlannerFullscreenGraphClass(){
     document.getElementById("plannerSection").classList.toggle("planner-fullscreen-graph", activePlannerTab === "graph");
@@ -14583,6 +14632,509 @@
   }
   wireFutureCalGrid();
 
+  /* ================= TOOLS PAGE ================= */
+
+  // Small color-math helpers so mode-builder functions can lerp between the app's own CSS-var
+  // colors without needing Three.js loaded yet (mode DATA — plain typed arrays — has no GPU
+  // dependency at all; only the renderer that consumes it does, see buildAxonGridScene).
+  function axonHexToRgb01(hex){
+    hex = String(hex || "").trim().replace("#", "");
+    if(hex.length === 3) hex = hex.split("").map(function(ch){ return ch + ch; }).join("");
+    var num = parseInt(hex, 16);
+    if(isNaN(num)) num = 0;
+    return [ ((num>>16)&255)/255, ((num>>8)&255)/255, (num&255)/255 ];
+  }
+  function axonLerp3(a, b, t){ return [ a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+(b[2]-a[2])*t ]; }
+  // Pulled from the app's own design tokens (see :root / [data-theme="dark"]) at build time, so every
+  // mode automatically stays on-brand and reacts to a theme switch on its next reheat/reload — never
+  // arbitrary hardcoded hues. cssVarColor() (defined above, used by the home graph) already carries a
+  // safe fallback per var.
+  function axonPalette(){
+    return {
+      ink: cssVarColor("--text"),
+      accent: cssVarColor("--accent"),
+      accent2: cssVarColor("--violet"),
+      cream: cssVarColor("--bg-raised"),
+      bg: cssVarColor("--bg")
+    };
+  }
+
+  var AXON_COLS = 70, AXON_ROWS = 70;
+
+  // ---- Mode builders — each returns one static "reading" of the grid: a height field, an RGB
+  // color field, and a boolean "special cell" flag field the interaction layer can key off (see
+  // buildAxonGridScene's scan-line). Pure functions of (cols, rows, palette); called once per mode
+  // at tool-open time, never rebuilt on morph/mode-switch — switching modes just points at a
+  // different one of these already-built fields. Adding a 4th "scene" later means writing one more
+  // function shaped like these and adding it to AXON_MODE_BUILDERS below — nothing else changes.
+  function axonBuildTerrain(cols, rows, pal){
+    var n = cols * rows;
+    var heights = new Float32Array(n), colors = new Float32Array(n*3), special = new Uint8Array(n);
+    var ink = axonHexToRgb01(pal.ink), cream = axonHexToRgb01(pal.cream), accent = axonHexToRgb01(pal.accent);
+    for(var r=0; r<rows; r++){
+      for(var c=0; c<cols; c++){
+        var i = r*cols + c;
+        var nx = c/cols, nz = r/rows;
+        // Layered sine lattice — a cheap, dependency-free stand-in for value/Perlin noise, smooth
+        // enough to read as rolling terrain without pulling in an external noise library.
+        var v = Math.sin(nx*12.566 + nz*3.1) * 0.5
+          + Math.sin(nx*33.3 - nz*23.2 + 1.7) * 0.25
+          + Math.sin(nz*25.8 + 0.6) * 0.25;
+        var height = 0.4 + ((v+1)/2) * 3.2;
+        heights[i] = height;
+        var t = Math.min(1, height/3.6);
+        var col = t < 0.5 ? axonLerp3(ink, cream, t*2) : axonLerp3(cream, accent, (t-0.5)*2);
+        colors[i*3]=col[0]; colors[i*3+1]=col[1]; colors[i*3+2]=col[2];
+        special[i] = height > 3.25 ? 1 : 0; // ridgelines/peaks
+      }
+    }
+    return { name:"Terrain", heights:heights, colors:colors, special:special };
+  }
+  function axonBuildLedger(cols, rows, pal){
+    var n = cols * rows;
+    var heights = new Float32Array(n), colors = new Float32Array(n*3), special = new Uint8Array(n);
+    var ink = axonHexToRgb01(pal.ink), accent = axonHexToRgb01(pal.accent);
+    // A tiny seeded LCG so the layout is deterministic across reloads/theme switches rather than
+    // reshuffling every time Math.random() would give a different city.
+    var seed = 918273;
+    function rnd(){ seed = (seed*1103515245 + 12345) & 0x7fffffff; return (seed % 10000) / 10000; }
+    var clusters = [];
+    for(var k=0; k<9; k++) clusters.push({ cx: rnd()*cols, cz: rnd()*rows, h: 1.5 + rnd()*4, r: 4 + rnd()*7 });
+    var maxHeight = 0;
+    for(var r=0; r<rows; r++){
+      for(var c=0; c<cols; c++){
+        var i = r*cols + c;
+        var best = 0;
+        for(var ci=0; ci<clusters.length; ci++){
+          var cl = clusters[ci];
+          var d = Math.hypot(c-cl.cx, r-cl.cz);
+          var v = Math.max(0, cl.h * (1 - d/cl.r));
+          if(v > best) best = v;
+        }
+        var height = Math.max(0.15, Math.round(best*2)/2); // quantized -> blocky "buildings"
+        heights[i] = height;
+        if(height > maxHeight) maxHeight = height;
+        var col = axonLerp3(ink, accent, Math.min(1, height/6));
+        colors[i*3]=col[0]; colors[i*3+1]=col[1]; colors[i*3+2]=col[2];
+      }
+    }
+    // Landmarks are relative to THIS field's own tallest point, not a fixed absolute height — an
+    // absolute cutoff meant "guaranteed at least one landmark" in theory but wasn't in practice: at
+    // the real 70x70 grid size, this seed's 9 clusters never actually rolled a peak above the old
+    // 4.5 cutoff, so Ledger silently shipped with zero special cells — the scan-line's mode-aware
+    // highlight (see buildAxonGridScene) had nothing to ever showcase for this mode.
+    var landmarkThreshold = maxHeight * 0.88;
+    for(var i2=0; i2<n; i2++) special[i2] = (heights[i2] >= landmarkThreshold && heights[i2] > 0.5) ? 1 : 0;
+    return { name:"Ledger", heights:heights, colors:colors, special:special };
+  }
+  function axonBuildField(cols, rows, pal){
+    var n = cols * rows;
+    var heights = new Float32Array(n), colors = new Float32Array(n*3), special = new Uint8Array(n);
+    var ink = axonHexToRgb01(pal.ink), cream = axonHexToRgb01(pal.cream), accent2 = axonHexToRgb01(pal.accent2);
+    var base = axonLerp3(ink, cream, 0.55);
+    for(var i=0; i<n; i++){ heights[i]=0.12; colors[i*3]=base[0]; colors[i*3+1]=base[1]; colors[i*3+2]=base[2]; }
+    var seed = 471;
+    function rnd(){ seed = (seed*1103515245 + 12345) & 0x7fffffff; return (seed % 10000) / 10000; }
+    for(var k=0; k<46; k++){
+      var c = Math.floor(rnd()*cols), r = Math.floor(rnd()*rows);
+      var i2 = r*cols + c;
+      heights[i2] = 1.2 + rnd()*2.4;
+      colors[i2*3]=accent2[0]; colors[i2*3+1]=accent2[1]; colors[i2*3+2]=accent2[2];
+      special[i2] = 1; // "stars"
+    }
+    return { name:"Field", heights:heights, colors:colors, special:special };
+  }
+  // Attached so the tool shell can list mode names (see initAxonGridTool.modes) without having to
+  // call a builder — building a field is cheap, but there's no reason to do it before Three.js has
+  // even loaded just to read a label.
+  axonBuildTerrain.modeName = "Terrain";
+  axonBuildLedger.modeName = "Ledger";
+  axonBuildField.modeName = "Field";
+  var AXON_MODE_BUILDERS = [axonBuildTerrain, axonBuildLedger, axonBuildField];
+
+  function axonQuintic(t){ return t < 0.5 ? 16*t*t*t*t*t : 1 - Math.pow(-2*t+2, 5)/2; }
+
+  // The actual Three.js scene — everything from here down needs the async-loaded module, so this is
+  // only called (and only ever awaited) from initAxonGridTool below, never directly.
+  async function buildAxonGridScene(canvas, wrap){
+    var THREE = await loadThree();
+    var cols = AXON_COLS, rows = AXON_ROWS, count = cols*rows;
+    var pal = axonPalette();
+    var modeFields = AXON_MODE_BUILDERS.map(function(fn){ return fn(cols, rows, pal); });
+    var accentColor = axonHexToRgb01(pal.accent);
+    var specialColor = axonHexToRgb01(pal.accent2);
+    var inkColor = axonHexToRgb01(pal.ink);
+
+    var renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    var scene = new THREE.Scene();
+    var gridSpanX = cols, gridSpanZ = rows;
+    var frustumBase = Math.max(gridSpanX, gridSpanZ) * 0.62;
+    var camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 300);
+    camera.position.set(26, 22, 26);
+    camera.lookAt(0, 0, 0);
+
+    // Flat/cheap lighting just enough to separate a box's top face from its sides — reads as a
+    // technical axonometric drawing rather than a lit 3D scene, matching how sparingly the rest of
+    // this app uses Three.js lighting (the home graph and today timeline skin both stay unlit).
+    scene.add(new THREE.HemisphereLight(new THREE.Color(pal.cream), new THREE.Color(pal.ink), 1.1));
+    var sun = new THREE.DirectionalLight(new THREE.Color("#ffffff"), 0.55);
+    sun.position.set(18, 30, 12);
+    scene.add(sun);
+
+    var group = new THREE.Group(); // yawed as a whole by drag-to-rotate
+    scene.add(group);
+
+    var GAP_SCALE = 0.82; // footprint < 1 leaves a visible seam between columns, like a drawn grid
+    var boxGeo = new THREE.BoxGeometry(GAP_SCALE, 1, GAP_SCALE);
+    boxGeo.translate(0, 0.5, 0); // origin at the base, so scale.y grows the box upward from ground
+    var material = new THREE.MeshLambertMaterial({ vertexColors: true });
+    var mesh = new THREE.InstancedMesh(boxGeo, material, count);
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    group.add(mesh);
+
+    var baseX = new Float32Array(count), baseZ = new Float32Array(count), dist = new Float32Array(count);
+    var maxDist = 0;
+    for(var r=0; r<rows; r++){
+      for(var c=0; c<cols; c++){
+        var i = r*cols + c;
+        var x = c - cols/2 + 0.5, z = r - rows/2 + 0.5;
+        baseX[i]=x; baseZ[i]=z;
+        var d = Math.hypot(x, z);
+        dist[i]=d;
+        if(d > maxDist) maxDist = d;
+      }
+    }
+
+    // ---- morph state — curHeights/curColors are the authoritative "what this cell currently is",
+    // updated once per frame per cell toward modeFields[curModeIndex]; fromHeights/fromColors/t0 are
+    // only touched by morphTo() (a snapshot + a staggered per-cell start time), never read/written
+    // anywhere else. settled[i] is the per-cell "has this individual cell finished morphing" flag the
+    // scan-line's special-cell override depends on — deliberately NOT a single global timer, since
+    // cells near the center (shortest radial stagger) finish well before the edges. ----
+    var reduced = prefersReducedMotion();
+    var curHeights = new Float32Array(modeFields[0].heights);
+    var curColors = new Float32Array(modeFields[0].colors);
+    var fromHeights = new Float32Array(count), fromColors = new Float32Array(count*3);
+    var t0 = new Float32Array(count);
+    var settled = new Uint8Array(count); settled.fill(1);
+    var curModeIndex = 0;
+    var STAGGER_SPAN_MS = 1300, CELL_MORPH_MS = 900, HOLD_MS = 6500;
+
+    function morphTo(nextIndex, now){
+      for(var i=0; i<count; i++){
+        fromHeights[i] = curHeights[i];
+        fromColors[i*3]=curColors[i*3]; fromColors[i*3+1]=curColors[i*3+1]; fromColors[i*3+2]=curColors[i*3+2];
+        // Staggered by radial distance from the grid's own center — a "bloom" outward, not a
+        // corner-to-corner wipe. Reduced motion snaps every cell's start into the past at once, so
+        // the very next frame renders the target mode fully settled with no visible animation.
+        t0[i] = reduced ? (now - CELL_MORPH_MS - 1) : now + (dist[i]/(maxDist||1)) * STAGGER_SPAN_MS;
+        settled[i] = 0;
+      }
+      curModeIndex = nextIndex;
+    }
+
+    // ---- interaction state ----
+    var raycaster = new THREE.Raycaster();
+    var pointerNDC = new THREE.Vector2(-10, -10);
+    var groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    var ripples = []; // {x,z,startTime} — click pulses, self-pruned in the frame loop
+    var yaw = 0, targetYaw = 0, dragging = false, dragStartClientX = 0, dragStartYaw = 0, dragMoved = false, dragPointerId = null;
+    var lastPointerMoveAt = performance.now();
+    var IDLE_DRIFT_DELAY_MS = 2200;
+
+    function updatePointerNDC(e){
+      var rect = canvas.getBoundingClientRect();
+      pointerNDC.x = ((e.clientX-rect.left)/rect.width)*2 - 1;
+      pointerNDC.y = -(((e.clientY-rect.top)/rect.height)*2 - 1);
+    }
+    function raycastGround(){
+      raycaster.setFromCamera(pointerNDC, camera);
+      var hit = new THREE.Vector3();
+      if(!raycaster.ray.intersectPlane(groundPlane, hit)) return null;
+      var local = group.worldToLocal(hit); // undoes the drag-yaw so it maps back to baseX/baseZ
+      return { x: local.x, z: local.z };
+    }
+    function onPointerDown(e){
+      dragging = true; dragMoved = false; dragPointerId = e.pointerId;
+      dragStartClientX = e.clientX; dragStartYaw = targetYaw;
+      wrap.classList.add("dragging");
+      canvas.setPointerCapture(e.pointerId);
+    }
+    function onPointerMove(e){
+      updatePointerNDC(e);
+      lastPointerMoveAt = performance.now();
+      if(dragging && e.pointerId === dragPointerId){
+        var dx = e.clientX - dragStartClientX;
+        if(Math.abs(dx) > 3) dragMoved = true;
+        targetYaw = dragStartYaw + dx * 0.008;
+      }
+    }
+    function onPointerUp(e){
+      if(dragging && e.pointerId === dragPointerId && !dragMoved){
+        var world = raycastGround();
+        if(world) ripples.push({ x: world.x, z: world.z, startTime: performance.now() });
+      }
+      dragging = false; dragPointerId = null;
+      wrap.classList.remove("dragging");
+    }
+    function onPointerLeave(){ pointerNDC.set(-10, -10); }
+    canvas.addEventListener("pointerdown", onPointerDown);
+    canvas.addEventListener("pointermove", onPointerMove);
+    canvas.addEventListener("pointerup", onPointerUp);
+    canvas.addEventListener("pointercancel", onPointerUp);
+    canvas.addEventListener("pointerleave", onPointerLeave);
+
+    // Two small moving highlights for the Ledger mode's "traffic" — a fixed ping-pong path along
+    // each axis, computed once per frame (not per cell) and applied as a Gaussian falloff below.
+    var AGENTS = [ { phase:0, speed:0.00035, axis:"x" }, { phase:2.1, speed:0.00028, axis:"z" } ];
+    function agentPositions(now){
+      return AGENTS.map(function(a){
+        var t = (Math.sin(now*a.speed + a.phase) + 1) / 2;
+        return a.axis === "x" ? { x: -gridSpanX/2 + t*gridSpanX, z: 0 } : { x: 0, z: -gridSpanZ/2 + t*gridSpanZ };
+      });
+    }
+    var SCAN_PERIOD_MS = 7000, SCAN_BAND = 4.5;
+
+    var dummy = new THREE.Object3D();
+    var tmpColor = new THREE.Color();
+    var lastFrameAt = null, autoCycle = !reduced, nextCycleAt = performance.now() + HOLD_MS;
+
+    function frame(now){
+      var dt = lastFrameAt == null ? 16 : Math.min(50, now - lastFrameAt);
+      lastFrameAt = now;
+
+      if(!reduced && !dragging && now - lastPointerMoveAt > IDLE_DRIFT_DELAY_MS) targetYaw += 0.00035 * dt;
+      yaw += (targetYaw - yaw) * 0.08;
+      group.rotation.y = yaw;
+
+      if(autoCycle && !reduced && now >= nextCycleAt){
+        morphTo((curModeIndex+1) % modeFields.length, now);
+        nextCycleAt = now + HOLD_MS + STAGGER_SPAN_MS + CELL_MORPH_MS;
+      }
+
+      var target = modeFields[curModeIndex];
+      var hoverPt = raycastGround();
+      var agents = (curModeIndex === 1 && !reduced) ? agentPositions(now) : null;
+      var scanZ = -gridSpanZ/2 + ((now % SCAN_PERIOD_MS) / SCAN_PERIOD_MS) * gridSpanZ;
+      if(ripples.length) ripples = ripples.filter(function(rp){ return now - rp.startTime < 3500; });
+
+      for(var i=0; i<count; i++){
+        var elapsed = now - t0[i];
+        var p = elapsed <= 0 ? 0 : Math.min(1, elapsed/CELL_MORPH_MS);
+        var pe = axonQuintic(p);
+        curHeights[i] = fromHeights[i] + (target.heights[i]-fromHeights[i])*pe;
+        curColors[i*3]   = fromColors[i*3]   + (target.colors[i*3]  -fromColors[i*3])*pe;
+        curColors[i*3+1] = fromColors[i*3+1] + (target.colors[i*3+1]-fromColors[i*3+1])*pe;
+        curColors[i*3+2] = fromColors[i*3+2] + (target.colors[i*3+2]-fromColors[i*3+2])*pe;
+        settled[i] = elapsed >= CELL_MORPH_MS ? 1 : 0;
+
+        var x = baseX[i], z = baseZ[i];
+        var h = curHeights[i], cr = curColors[i*3], cg = curColors[i*3+1], cb = curColors[i*3+2];
+
+        // Mode-specific ambient live effect — keyed off the RAW current mode, not per-cell settled,
+        // so it starts/stops the instant a mode begins appearing rather than waiting for the bloom.
+        if(!reduced){
+          if(curModeIndex === 0){
+            h += Math.sin(now*0.0009 + x*0.35 + z*0.35) * 0.12;
+          } else if(curModeIndex === 1 && agents){
+            for(var ai=0; ai<agents.length; ai++){
+              var ad = Math.hypot(x-agents[ai].x, z-agents[ai].z);
+              var af = Math.exp(-ad*ad*0.35);
+              h += af*0.7;
+              cr += (accentColor[0]-cr)*af*0.5; cg += (accentColor[1]-cg)*af*0.5; cb += (accentColor[2]-cb)*af*0.5;
+            }
+          } else if(curModeIndex === 2 && target.special[i]){
+            var tw = 0.5 + 0.5*Math.sin(now*0.004 + i*13.37);
+            h += tw*0.3;
+          }
+        }
+
+        // Hover scan-lift
+        if(hoverPt){
+          var hd = Math.hypot(x-hoverPt.x, z-hoverPt.z);
+          var hf = Math.exp(-hd*hd*0.5);
+          h += hf*1.4;
+          cr += (accentColor[0]-cr)*hf*0.6; cg += (accentColor[1]-cg)*hf*0.6; cb += (accentColor[2]-cb)*hf*0.6;
+        }
+
+        // Click ripples — damped radial sine wave in both height and color
+        for(var rI=0; rI<ripples.length; rI++){
+          var rp = ripples[rI];
+          var rd = Math.hypot(x-rp.x, z-rp.z);
+          var age = (now-rp.startTime)/1000;
+          var wave = Math.sin(rd*1.8 - age*7) * Math.exp(-rd*0.22) * Math.exp(-age*0.9);
+          h += wave*1.1;
+          var wf = Math.max(0, wave);
+          cr += (accentColor[0]-cr)*wf*0.5; cg += (accentColor[1]-cg)*wf*0.5; cb += (accentColor[2]-cb)*wf*0.5;
+        }
+
+        // Continuous scan-line — mode-and-cell-aware: a settled cell the CURRENT mode flags special
+        // gets a distinct highlight instead of the generic sweep tint, so the sweep reads as
+        // actively revealing content specific to this scene rather than a uniform light bar.
+        if(!reduced){
+          var scanDist = Math.abs(z - scanZ);
+          if(scanDist < SCAN_BAND){
+            var sf = 1 - scanDist/SCAN_BAND;
+            if(target.special[i] && settled[i]){
+              h += sf*0.9;
+              cr += (specialColor[0]-cr)*sf*0.85; cg += (specialColor[1]-cg)*sf*0.85; cb += (specialColor[2]-cb)*sf*0.85;
+            } else {
+              h += sf*0.22;
+              cr += (inkColor[0]-cr)*sf*0.25; cg += (inkColor[1]-cg)*sf*0.25; cb += (inkColor[2]-cb)*sf*0.25;
+            }
+          }
+        }
+
+        dummy.position.set(x, 0, z);
+        dummy.scale.set(1, Math.max(0.06, h), 1);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i, dummy.matrix);
+        tmpColor.setRGB(cr, cg, cb);
+        mesh.setColorAt(i, tmpColor);
+      }
+      mesh.instanceMatrix.needsUpdate = true;
+      if(mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      renderer.render(scene, camera);
+    }
+
+    function doResize(){
+      var w = wrap.clientWidth || 1, h = wrap.clientHeight || 1;
+      renderer.setSize(w, h, false);
+      var aspect = w / h;
+      camera.left = -frustumBase*aspect; camera.right = frustumBase*aspect;
+      camera.top = frustumBase; camera.bottom = -frustumBase;
+      camera.updateProjectionMatrix();
+    }
+    doResize();
+    // Guards against the common 0x0-at-mount case (canvas measured before the flex/section layout
+    // has actually settled) — a second measurement one frame later catches it.
+    requestAnimationFrame(function(){ requestAnimationFrame(doResize); });
+    var resizeObserver = (typeof ResizeObserver !== "undefined") ? new ResizeObserver(doResize) : null;
+    if(resizeObserver) resizeObserver.observe(wrap);
+    window.addEventListener("resize", doResize);
+
+    return {
+      getCurrentModeIndex: function(){ return curModeIndex; },
+      jumpToMode: function(i){
+        if(i === curModeIndex || i < 0 || i >= modeFields.length) return;
+        morphTo(i, performance.now());
+        nextCycleAt = performance.now() + HOLD_MS + STAGGER_SPAN_MS + CELL_MORPH_MS;
+      },
+      setRunning: function(on){ renderer.setAnimationLoop(on ? frame : null); },
+      dispose: function(){
+        renderer.setAnimationLoop(null);
+        if(resizeObserver) resizeObserver.disconnect();
+        window.removeEventListener("resize", doResize);
+        canvas.removeEventListener("pointerdown", onPointerDown);
+        canvas.removeEventListener("pointermove", onPointerMove);
+        canvas.removeEventListener("pointerup", onPointerUp);
+        canvas.removeEventListener("pointercancel", onPointerUp);
+        canvas.removeEventListener("pointerleave", onPointerLeave);
+        scene.traverse(function(o){
+          if(o.geometry) o.geometry.dispose();
+          if(o.material){ if(o.material.map) o.material.map.dispose(); o.material.dispose(); }
+        });
+        renderer.dispose();
+      }
+    };
+  }
+
+  // Sync wrapper around the async scene builder — openTool() needs a handle back immediately (to
+  // list mode names and to be able to dispose() even if closed before Three.js finishes loading),
+  // so this returns a stub that queues setRunning/jumpToMode calls until the real scene resolves.
+  function initAxonGridTool(canvas, wrap){
+    var disposed = false, pendingRunning = true, real = null;
+    var handle = {
+      modes: AXON_MODE_BUILDERS.map(function(fn){ return { name: fn.modeName }; }),
+      getCurrentModeIndex: function(){ return real ? real.getCurrentModeIndex() : 0; },
+      jumpToMode: function(i){ if(real) real.jumpToMode(i); },
+      setRunning: function(on){ pendingRunning = on; if(real) real.setRunning(on); },
+      dispose: function(){ disposed = true; if(real) real.dispose(); }
+    };
+    buildAxonGridScene(canvas, wrap).then(function(r){
+      if(disposed){ r.dispose(); return; }
+      real = r;
+      real.setRunning(pendingRunning);
+    }).catch(function(err){ console.error("Axon Grid failed to load", err); });
+    return handle;
+  }
+
+  // ---- Tools page shell — a plain grid of tool cards; opening one hides the grid and mounts that
+  // tool full-bleed into #toolViewCanvas. Every tool follows the same returned shape
+  // ({modes, getCurrentModeIndex, jumpToMode, setRunning, dispose}), so adding a new tool later is
+  // just: write one init(canvas, wrap) function shaped like initAxonGridTool and add it here —
+  // nothing in openTool/closeTool/toolsSetActive needs to change. ----
+  var TOOLS = [
+    { id:"axon-grid", name:"Axon Grid", icon:"▦",
+      blurb:"A monumental field of columns in axonometric projection that morphs between different readings of the same ground.",
+      init: initAxonGridTool }
+  ];
+  var activeToolInstance = null;
+  function renderToolsGrid(){
+    var el = document.getElementById("toolsGrid");
+    if(!el) return;
+    el.innerHTML = TOOLS.map(function(t){
+      return '<button class="tool-card" data-tool-id="' + t.id + '" type="button">' +
+        '<span class="tool-card-icon">' + t.icon + '</span>' +
+        '<span class="tool-card-name">' + escapeHtml(t.name) + '</span>' +
+        '<p class="tool-card-blurb">' + escapeHtml(t.blurb) + '</p>' +
+      '</button>';
+    }).join("");
+  }
+  function renderToolModeRow(){
+    var row = document.getElementById("toolModeRow");
+    if(!row || !activeToolInstance) return;
+    var current = activeToolInstance.getCurrentModeIndex();
+    row.innerHTML = activeToolInstance.modes.map(function(m, i){
+      return '<button class="tool-mode-btn' + (i === current ? " active" : "") + '" data-mode-idx="' + i + '" type="button">' + escapeHtml(m.name) + '</button>';
+    }).join("");
+  }
+  function openTool(id){
+    var tool = TOOLS.find(function(t){ return t.id === id; });
+    if(!tool) return;
+    closeTool();
+    document.getElementById("toolsGrid").hidden = true;
+    var view = document.getElementById("toolView");
+    view.hidden = false;
+    document.getElementById("toolViewTitle").textContent = tool.name;
+    activeToolInstance = tool.init(document.getElementById("toolViewCanvas"), document.getElementById("toolViewCanvasWrap"));
+    renderToolModeRow();
+    var existingNote = view.querySelector(".tool-reduced-motion-note");
+    if(existingNote) existingNote.remove();
+    if(prefersReducedMotion()){
+      document.getElementById("toolModeRow").insertAdjacentHTML("afterend", '<p class="tool-reduced-motion-note">Reduced motion is on — this view holds one static mode; use the buttons above to switch.</p>');
+    }
+  }
+  function closeTool(){
+    if(activeToolInstance){ activeToolInstance.dispose(); activeToolInstance = null; }
+    var grid = document.getElementById("toolsGrid"), view = document.getElementById("toolView");
+    if(grid) grid.hidden = false;
+    if(view) view.hidden = true;
+  }
+  // Pauses (never disposes) a running tool whenever Tools isn't what's on screen — same "a running
+  // loop on an invisible canvas is pure battery drain" reasoning as homeSceneSetActive/todayGlSetActive.
+  function toolsSetActive(on){ if(activeToolInstance) activeToolInstance.setRunning(on); }
+  (function wireTools(){
+    var section = document.getElementById("toolsSection");
+    if(!section) return;
+    renderToolsGrid();
+    document.getElementById("toolsGrid").addEventListener("click", function(e){
+      var card = e.target.closest(".tool-card");
+      if(card) openTool(card.dataset.toolId);
+    });
+    document.getElementById("toolBackBtn").addEventListener("click", closeTool);
+    document.getElementById("toolModeRow").addEventListener("click", function(e){
+      var btn = e.target.closest(".tool-mode-btn");
+      if(!btn || !activeToolInstance) return;
+      activeToolInstance.jumpToMode(Number(btn.dataset.modeIdx));
+      renderToolModeRow();
+    });
+    document.addEventListener("visibilitychange", function(){
+      toolsSetActive(!document.hidden && activeSection === "tools");
+    });
+  })();
+
   var SECTION_RENDERERS = {
     home: [renderHomeDashboard],
     agent: [],
@@ -14596,6 +15148,9 @@
     timeline: [renderTimeline],
     journal: [renderJournal],
     people: [renderPeople],
+    // Tools' own grid is static (no live app-state to reflect) and is rendered once by wireTools()
+    // at page load, not on every renderAll() pass — nothing to re-render here.
+    tools: [],
     goalDetail: [renderGoalDetail],
     areaDetail: [renderAreaDetail]
   };
