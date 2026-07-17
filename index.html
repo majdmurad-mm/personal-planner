@@ -1545,7 +1545,7 @@
   .home-tl-day-toggle button{ appearance:none; border:none; background:none; color:var(--text-dim); font-family:var(--mono); font-size:11px; line-height:1; padding:1px 3px; cursor:pointer; border-radius:2px; }
   .home-tl-day-toggle button:hover:not(:disabled){ background:var(--bg-hover, rgba(255,255,255,0.08)); color:var(--text); }
   .home-tl-day-toggle button:disabled{ opacity:0.3; cursor:default; }
-  #homeTlDayLabel{ min-width:3.5em; text-align:center; }
+  #homeTlDayLabel{ min-width:5.5em; text-align:center; }
   .home-tl-lanes{ position:absolute; top:20px; bottom:16px; left:0; right:0; background:var(--tl-hour-grid); touch-action:none; z-index:1; }
   .home-tl-lane{ position:relative; height:33.333%; border-top:1px dashed var(--border); }
   .home-tl-lane:first-child{ border-top:none; }
@@ -5217,9 +5217,9 @@
     });
   })();
 
-  // today/tomorrow toggle — clamped both ways by renderHomeTimelineDock's own disabled-state logic
-  // (prevBtn/nextBtn), but guard here too since a rapid double-click could otherwise queue two
-  // deltas before the first render disables the button.
+  // Day toggle (yesterday..+2 days) — clamped both ways by renderHomeTimelineDock's own
+  // disabled-state logic (prevBtn/nextBtn), but guard here too since a rapid double-click could
+  // otherwise queue two deltas before the first render disables the button.
   (function wireHomeTimelineDayToggle(){
     var toggle = document.getElementById("homeTlDayToggle");
     if(!toggle) return;
@@ -5228,8 +5228,8 @@
       if(!btn || btn.disabled) return;
       var delta = Number(btn.dataset.tlDayDelta);
       var next = addDaysToDateStr(homeTlSelectedDate, delta);
-      var todayKey = todayStr();
-      if(next < todayKey || next > addDaysToDateStr(todayKey, 1)) return;
+      var range = homeTlDayRange(todayStr());
+      if(next < range.min || next > range.max) return;
       homeTlSelectedDate = next;
       renderHomeTimelineDock();
     });
@@ -5416,6 +5416,22 @@
       clearArmTimer();
       if(dragEl) dragEl.classList.remove("dragging", "tl-holding");
       dragEl = null; dragId = null; dragKind = null; dragDate = null; dragOvernight = false; armed = false;
+    });
+    // Clicking empty lane space (not a block or its resize handle) opens the add-action modal,
+    // presetting the date to whichever day the dock is currently showing and the time to wherever
+    // you clicked — same "click empty space to add" pattern as the Gantt chart. A block-originated
+    // drag's trailing click still targets the block itself (pointer capture keeps it there even if
+    // the release lands elsewhere), so the .home-tl-block exclusion below already covers that case
+    // without needing a separate suppress flag.
+    dock.addEventListener("click", function(e){
+      if(e.target.closest(".home-tl-block") || e.target.closest("[data-resize-handle]")) return;
+      var rect = lanes.getBoundingClientRect();
+      if(e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) return;
+      var x = Math.min(rect.width, Math.max(0, e.clientX - rect.left));
+      var totalMin = Math.round(((x / rect.width) * 1440) / 5) * 5;
+      openActionModal(null, null);
+      document.getElementById("actionDateInput").value = homeTlSelectedDate;
+      document.getElementById("actionTimeInput").value = minutesToTime(totalMin);
     });
   })();
 
@@ -6191,14 +6207,28 @@
         ' style="left:' + (b.start * 100) + '%; width:' + Math.max(b.width * 100, 0.7) + '%; z-index:' + z + ';' + colorStyle + '" title="' + escapeHtml(b.title) + '">' + handles + escapeHtml(b.title) + '</div>';
     }).join("");
   }
+  // The day-toggle's fixed window — yesterday through the day after tomorrow — relative to
+  // whatever todayKey actually is at render time (never a fixed pair of literal dates).
+  function homeTlDayRange(todayKey){
+    return { min: addDaysToDateStr(todayKey, -1), max: addDaysToDateStr(todayKey, 2) };
+  }
+  function homeTlDayLabel(day, todayKey){
+    if(day === todayKey) return "today";
+    if(day === addDaysToDateStr(todayKey, -1)) return "yesterday";
+    if(day === addDaysToDateStr(todayKey, 1)) return "tomorrow";
+    if(day === addDaysToDateStr(todayKey, 2)) return "in 2 days";
+    return fmtDate(day); // shouldn't happen — the selection is always clamped into the window above
+  }
   function renderHomeTimelineDock(){
     var laneHabits = document.getElementById("homeTlLaneHabits");
     if(!laneHabits) return;
-    // If the real calendar day has caught up to (or passed) the selection, snap back to today —
-    // otherwise leaving the dock open on "tomorrow" overnight would strand it a day behind once
-    // that date becomes today, or worse, in the past.
+    // The real calendar day moves forward under a dock left open for a while — reclamp the
+    // selection into the current {yesterday..+2} window rather than let it drift stale or out of
+    // range (e.g. a selection of "+2 days" left open overnight is still in-window as "tomorrow").
     var todayKey = todayStr();
-    if(homeTlSelectedDate < todayKey) homeTlSelectedDate = todayKey;
+    var range = homeTlDayRange(todayKey);
+    if(homeTlSelectedDate < range.min) homeTlSelectedDate = range.min;
+    if(homeTlSelectedDate > range.max) homeTlSelectedDate = range.max;
     var blocks = computeHomeTimelineBlocks();
     var sig = homeTlSelectedDate + "|" + ["habit","action","note"].map(function(k){
       return blocks[k].map(function(b){ return b.id + ":" + b.start + ":" + b.width + ":" + (b.done ? 1 : 0); }).join(",");
@@ -6227,11 +6257,11 @@
       }
     }
     var dayLabelEl = document.getElementById("homeTlDayLabel");
-    if(dayLabelEl) dayLabelEl.textContent = isToday ? "today" : "tomorrow";
+    if(dayLabelEl) dayLabelEl.textContent = homeTlDayLabel(homeTlSelectedDate, todayKey);
     var prevBtn = document.querySelector('#homeTlDayToggle [data-tl-day-delta="-1"]');
     var nextBtn = document.querySelector('#homeTlDayToggle [data-tl-day-delta="1"]');
-    if(prevBtn) prevBtn.disabled = isToday;
-    if(nextBtn) nextBtn.disabled = homeTlSelectedDate === addDaysToDateStr(todayKey, 1);
+    if(prevBtn) prevBtn.disabled = homeTlSelectedDate === range.min;
+    if(nextBtn) nextBtn.disabled = homeTlSelectedDate === range.max;
     // Full-bleed background wash (homeTlDayNightBg) — theme-matched single-hue fade, not the
     // two-tone band the Timeline page uses. Rebuilt when the SELECTED day changes OR the theme
     // toggles (a stale cache key here would leave the wrong day's colors showing after a flip).
