@@ -1668,10 +1668,15 @@
           <button class="side-link side-sublink" data-section="timeline" type="button"><span class="sl-glyph">↔</span>History</button>
           <button class="side-link side-sublink" data-section="future" type="button"><span class="sl-glyph">»</span>Future</button>
         </div>
-        <button class="side-link" data-section="planner" type="button"><span class="sl-glyph">▤</span>Planner</button>
-        <button class="side-link" data-section="tracker" type="button"><span class="sl-glyph">▥</span>Tracker</button>
+        <button class="side-link side-link-parent" id="sideLinkPersonalToggle" data-toggle-submenu="sideSubmenuPersonal" type="button" aria-expanded="false">
+          <span class="sl-glyph">◆</span>Personal<span class="side-link-caret">▾</span>
+        </button>
+        <div class="side-submenu" id="sideSubmenuPersonal">
+          <button class="side-link side-sublink" data-section="planner" type="button"><span class="sl-glyph">▤</span>Planner</button>
+          <button class="side-link side-sublink" data-section="tracker" type="button"><span class="sl-glyph">▥</span>Tracker</button>
+          <button class="side-link side-sublink" data-section="journal" type="button"><span class="sl-glyph">✎</span>Notes</button>
+        </div>
         <button class="side-link" data-section="agent" type="button"><span class="sl-glyph">◈</span>Brains</button>
-        <button class="side-link" data-section="journal" type="button"><span class="sl-glyph">✎</span>Notes</button>
         <button class="side-link" data-section="people" type="button"><span class="sl-glyph">☺</span>People</button>
         <button class="side-link" data-section="location" type="button"><span class="sl-glyph">⚲</span>Location</button>
         <button class="side-link" data-section="knowledge" type="button"><span class="sl-glyph">▦</span>Knowledge</button>
@@ -3755,24 +3760,34 @@
   }
 
   var ALL_SECTION_IDS = ["homeSection","todaySection","plannerSection","trackerSection","agentSection","timelineSection","journalSection","peopleSection","locationSection","knowledgeSection","futureSection","goalDetailSection","areaDetailSection"];
+  // Sidebar dropdown groups — a parent nav item with no page of its own, bundling a set of section
+  // names under one submenu. See showSection() (active/auto-open) and the sideNav click handler
+  // (data-toggle-submenu, open/close).
+  var NAV_GROUPS = [
+    { toggleId:"sideLinkTimeToggle", submenuId:"sideSubmenuTime", children:["today","timeline","future"] },
+    { toggleId:"sideLinkPersonalToggle", submenuId:"sideSubmenuPersonal", children:["planner","tracker","journal"] }
+  ];
   function showSection(name){
     activeSection = name;
     document.querySelectorAll(".side-link").forEach(function(l){ l.classList.toggle("active", l.dataset.section === name); });
     ALL_SECTION_IDS.forEach(function(id){
       document.getElementById(id).style.display = (id === name + "Section") ? "" : "none";
     });
-    // The "Time" nav dropdown (Present/History/Future) has no page of its own — its parent toggle
-    // picks up the same .active treatment as any other current-page link whenever one of its three
-    // children is showing, and the submenu auto-expands so the active child stays visible. Toggling
-    // it closed manually (see the sideNav click handler) is still respected on every other section.
-    var timeToggle = document.getElementById("sideLinkTimeToggle");
-    var isTimeChild = name === "today" || name === "timeline" || name === "future";
-    timeToggle.classList.toggle("active", isTimeChild);
-    timeToggle.setAttribute("aria-expanded", String(isTimeChild || timeToggle.classList.contains("open")));
-    if(isTimeChild){
-      timeToggle.classList.add("open");
-      document.getElementById("sideSubmenuTime").classList.add("open");
-    }
+    // Nav dropdown groups (Time -> Present/History/Future; Personal -> Planner/Tracker/Notes) have no
+    // page of their own — each parent toggle picks up the same .active treatment as any other
+    // current-page link whenever one of its children is showing, and its submenu auto-expands so the
+    // active child stays visible. Toggling a submenu closed manually (see the sideNav click handler)
+    // is still respected while browsing any OTHER section — it only forces back open for its own kids.
+    NAV_GROUPS.forEach(function(group){
+      var toggle = document.getElementById(group.toggleId);
+      var isChild = group.children.indexOf(name) !== -1;
+      toggle.classList.toggle("active", isChild);
+      toggle.setAttribute("aria-expanded", String(isChild || toggle.classList.contains("open")));
+      if(isChild){
+        toggle.classList.add("open");
+        document.getElementById(group.submenuId).classList.add("open");
+      }
+    });
     homeSceneSetActive(name === "home");
     todayGlSetActive(name === "today");
     // The graph lives inside the Planner now — entering the planner needs the same full-viewport
