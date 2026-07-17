@@ -1490,6 +1490,27 @@
   .home-notes-resize{ position:absolute; right:0; bottom:0; width:16px; height:16px; cursor:nwse-resize; touch-action:none; }
   .home-notes-resize::before{ content:""; position:absolute; right:4px; bottom:4px; width:7px; height:7px; border-right:2px solid var(--border-bright); border-bottom:2px solid var(--border-bright); opacity:0.7; }
   .home-notes-resize:hover::before{ opacity:1; border-color:var(--accent-dim); }
+  /* Sticky-notes pad, upper-left (below the clock) — a movable/resizable board of quick jottings.
+     Local-only (localStorage), separate from the synced Notes: throwaway scratch that lives in this
+     browser. Same drag/resize pattern as the notes + to-do widgets (wireHomeStickies). */
+  .home-sticky-widget{ position:absolute; top:100px; left:14px; z-index:5; width:230px; height:250px; min-width:170px; min-height:120px; border-radius:10px; border:1px solid var(--border); background:rgba(var(--bg-raised-rgb), 0.55); backdrop-filter:blur(8px); display:flex; flex-direction:column; overflow:hidden; }
+  .home-sticky-head{ display:flex; align-items:center; gap:6px; padding:0 6px 0 10px; height:34px; flex-shrink:0; cursor:grab; touch-action:none; border-bottom:1px solid var(--border); }
+  .home-sticky-widget.dragging .home-sticky-head{ cursor:grabbing; }
+  .home-sticky-title{ font-family:var(--mono); font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--text-dim); }
+  .home-sticky-add{ margin-left:auto; width:24px; height:24px; border-radius:6px; border:1px solid var(--border-bright); background:none; color:var(--text-dim); font-size:15px; line-height:1; display:grid; place-items:center; cursor:pointer; padding:0; }
+  .home-sticky-add:hover{ color:var(--text); background:var(--bg-inset); }
+  .home-sticky-body{ flex:1; min-height:0; overflow-y:auto; padding:8px; display:flex; flex-direction:column; gap:8px; }
+  .home-sticky-empty{ margin:auto; color:var(--text-faint); font-size:11px; text-align:center; padding:0 10px; }
+  /* Sticky tiles are classic colored paper with dark ink regardless of app theme. */
+  .home-sticky{ position:relative; border-radius:6px; padding:8px 9px; background:var(--sticky-c, #fde68a); box-shadow:0 1px 4px rgba(0,0,0,0.25); }
+  .home-sticky textarea{ width:100%; border:none; background:none; resize:none; font-family:var(--mono); font-size:11px; line-height:1.4; color:#1a1a1a; outline:none; overflow:hidden; min-height:20px; }
+  .home-sticky textarea::placeholder{ color:rgba(0,0,0,0.4); }
+  .home-sticky-del{ position:absolute; top:2px; right:2px; width:16px; height:16px; border:none; background:none; color:rgba(0,0,0,0.4); font-size:12px; line-height:1; cursor:pointer; border-radius:4px; opacity:0; padding:0; }
+  .home-sticky:hover .home-sticky-del{ opacity:1; }
+  .home-sticky-del:hover{ color:#000; background:rgba(0,0,0,0.1); }
+  .home-sticky-resize{ position:absolute; right:0; bottom:0; width:16px; height:16px; cursor:nwse-resize; touch-action:none; }
+  .home-sticky-resize::before{ content:""; position:absolute; right:4px; bottom:4px; width:7px; height:7px; border-right:2px solid var(--border-bright); border-bottom:2px solid var(--border-bright); opacity:0.7; }
+  .home-sticky-resize:hover::before{ opacity:1; border-color:var(--accent-dim); }
   /* Mobile-only toggle for the timeline drawer (see @media max-width:820px) — hidden entirely on
      desktop, where the timeline is always docked. z-index above the drawer itself so it stays
      clickable (to close again) even once the drawer is open and covering that corner. */
@@ -1714,6 +1735,14 @@
           </div>
           <div class="home-notes-detail" id="homeNotesDetail" hidden></div>
           <div class="home-notes-resize" id="homeNotesResize" title="Drag to resize"></div>
+        </div>
+        <div class="home-sticky-widget" id="homeStickyWidget">
+          <div class="home-sticky-head" id="homeStickyHead" title="Drag to move">
+            <span class="home-sticky-title">sticky notes</span>
+            <button class="home-sticky-add" id="homeStickyAddBtn" type="button" title="Add a sticky note">＋</button>
+          </div>
+          <div class="home-sticky-body" id="homeStickyBody"></div>
+          <div class="home-sticky-resize" id="homeStickyResize" title="Drag to resize"></div>
         </div>
         <!-- Mobile only (see @media max-width:820px): on a phone the graph fills the whole screen as
              a view-only background and the timeline becomes an on-demand drawer instead of a fixed
@@ -4280,6 +4309,133 @@
     }
     handle.addEventListener("pointerup", end);
     handle.addEventListener("pointercancel", end);
+  })();
+
+  // ---- Sticky notes: a movable/resizable pad of quick jottings on the home cockpit. Local-only
+  // (localStorage) — throwaway scratch that lives in this browser, separate from the synced Notes.
+  // Each sticky is { id, text, color }. Editing autosaves inline WITHOUT a re-render (so the caret
+  // never jumps mid-type); only add/delete rebuild the board. ----
+  (function wireHomeStickies(){
+    var widget = document.getElementById("homeStickyWidget");
+    var head = document.getElementById("homeStickyHead");
+    var body = document.getElementById("homeStickyBody");
+    var addBtn = document.getElementById("homeStickyAddBtn");
+    var resizeH = document.getElementById("homeStickyResize");
+    var wrap = document.querySelector(".home-graph-wrap");
+    if(!widget || !wrap) return;
+    var COLORS = ["#fde68a","#fca5a5","#a7f3d0","#bfdbfe","#ddd6fe","#fbcfe8"];
+
+    function load(){ try{ return JSON.parse(safeGet(window.localStorage, "pp_home_stickies") || "[]") || []; }catch(e){ return []; } }
+    function save(arr){ safeSet(window.localStorage, "pp_home_stickies", JSON.stringify(arr)); }
+    function autoGrow(ta){ ta.style.height = "auto"; ta.style.height = ta.scrollHeight + "px"; }
+
+    function render(){
+      var arr = load();
+      body.innerHTML = "";
+      if(!arr.length){
+        var empty = document.createElement("div");
+        empty.className = "home-sticky-empty";
+        empty.textContent = "No stickies yet — tap ＋ to add one.";
+        body.appendChild(empty);
+        return;
+      }
+      arr.forEach(function(note){
+        var card = document.createElement("div");
+        card.className = "home-sticky";
+        card.style.setProperty("--sticky-c", note.color || "#fde68a");
+        var ta = document.createElement("textarea");
+        ta.value = note.text || "";
+        ta.rows = 1;
+        ta.placeholder = "…";
+        ta.addEventListener("input", function(){
+          autoGrow(ta);
+          var cur = load();
+          var i = cur.findIndex(function(x){ return x.id === note.id; });
+          if(i !== -1){ cur[i].text = ta.value; save(cur); }
+        });
+        var del = document.createElement("button");
+        del.className = "home-sticky-del";
+        del.type = "button";
+        del.title = "Delete this sticky";
+        del.textContent = "×";
+        del.addEventListener("click", function(){
+          save(load().filter(function(x){ return x.id !== note.id; }));
+          render();
+        });
+        card.appendChild(ta);
+        card.appendChild(del);
+        body.appendChild(card);
+        autoGrow(ta);
+      });
+    }
+
+    addBtn.addEventListener("click", function(){
+      var arr = load();
+      arr.push({ id: "s" + Date.now().toString(36) + Math.random().toString(36).slice(2,6), text: "", color: COLORS[arr.length % COLORS.length] });
+      save(arr);
+      render();
+      var last = body.querySelector(".home-sticky:last-child textarea");
+      if(last) last.focus();
+    });
+
+    // Position + size persistence — same pattern as the notes/to-do widgets.
+    var pos = null;
+    try{ pos = JSON.parse(safeGet(window.localStorage, "pp_home_sticky_pos") || "null"); }catch(e){}
+    if(pos && typeof pos.left === "number"){ widget.style.left = pos.left + "px"; widget.style.top = pos.top + "px"; widget.style.right = "auto"; widget.style.bottom = "auto"; }
+    var size = null;
+    try{ size = JSON.parse(safeGet(window.localStorage, "pp_home_sticky_size") || "null"); }catch(e){}
+    if(size && size.w) widget.style.width = size.w + "px";
+    if(size && size.h) widget.style.height = size.h + "px";
+
+    var dragging = false, offX = 0, offY = 0, moved = false;
+    head.addEventListener("pointerdown", function(e){
+      if(e.target.closest(".home-sticky-add")) return;
+      dragging = true; moved = false;
+      var r = widget.getBoundingClientRect();
+      offX = e.clientX - r.left; offY = e.clientY - r.top;
+      head.setPointerCapture(e.pointerId);
+      widget.classList.add("dragging");
+      e.preventDefault();
+    });
+    head.addEventListener("pointermove", function(e){
+      if(!dragging) return;
+      moved = true;
+      var wr = wrap.getBoundingClientRect();
+      var left = Math.max(0, Math.min(wr.width - widget.offsetWidth, e.clientX - wr.left - offX));
+      var top = Math.max(0, Math.min(wr.height - widget.offsetHeight, e.clientY - wr.top - offY));
+      widget.style.left = left + "px"; widget.style.top = top + "px"; widget.style.right = "auto"; widget.style.bottom = "auto";
+    });
+    function endDrag(){
+      if(!dragging) return;
+      dragging = false;
+      widget.classList.remove("dragging");
+      if(moved) safeSet(window.localStorage, "pp_home_sticky_pos", JSON.stringify({ left: parseFloat(widget.style.left) || 0, top: parseFloat(widget.style.top) || 0 }));
+    }
+    head.addEventListener("pointerup", endDrag);
+    head.addEventListener("pointercancel", endDrag);
+
+    var rz = false, sX = 0, sY = 0, sW = 0, sH = 0, maxW = 9999, maxH = 9999;
+    resizeH.addEventListener("pointerdown", function(e){
+      rz = true; sX = e.clientX; sY = e.clientY; sW = widget.offsetWidth; sH = widget.offsetHeight;
+      var r = widget.getBoundingClientRect(), wr = wrap.getBoundingClientRect();
+      maxW = wr.right - r.left - 6; maxH = wr.bottom - r.top - 6;
+      resizeH.setPointerCapture(e.pointerId);
+      e.stopPropagation(); e.preventDefault();
+    });
+    resizeH.addEventListener("pointermove", function(e){
+      if(!rz) return;
+      widget.style.width = Math.max(170, Math.min(maxW, sW + (e.clientX - sX))) + "px";
+      widget.style.height = Math.max(120, Math.min(maxH, sH + (e.clientY - sY))) + "px";
+    });
+    function endRz(){
+      if(!rz) return;
+      rz = false;
+      safeSet(window.localStorage, "pp_home_sticky_size", JSON.stringify({ w: widget.offsetWidth, h: widget.offsetHeight }));
+    }
+    resizeH.addEventListener("pointerup", endRz);
+    resizeH.addEventListener("pointercancel", endRz);
+
+    render();
   })();
 
   // ---- Weather for *your* location (HUD widget). Coordinates come from the browser's geolocation
