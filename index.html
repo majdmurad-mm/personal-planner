@@ -2175,6 +2175,11 @@
         .gantt-arrow:hover{stroke:var(--danger, #e5484d);}
         .gantt-link-preview{stroke:var(--accent);stroke-width:1.5;stroke-dasharray:3,3;fill:none;pointer-events:none;}
         .gantt-empty{padding:18px;font-family:var(--mono);font-size:11px;color:var(--text-faint);}
+        /* Divides the chart into its 3 hierarchy levels (see renderGanttInto's group() calls) — a
+           level with zero rows contributes no header, so e.g. a plain project page just shows
+           "projects" + "actions", never an empty "goals" band. */
+        .gantt-group-header{padding:3px 8px;font-family:var(--mono);font-size:8.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-faint);background:var(--bg-inset);border-top:1px solid var(--border);border-bottom:1px solid var(--border);}
+        .gantt-group-header:first-child{border-top:none;}
         .gantt-head-actions{display:flex;align-items:center;gap:6px;margin-left:auto;}
         .gantt-zoom-btn{width:28px;padding:0;text-align:center;font-weight:700;}
       </style>
@@ -8409,12 +8414,25 @@
 
     var head = ganttHeadHtml(start, days, today);
 
+    // Rows are grouped by hierarchy level — goals, then projects, then actions — each under its own
+    // small divider label, instead of one undifferentiated stack (this mixes bars from every level
+    // together on a project/goal-scoped page too, not just the Future page's whole-system chart, so
+    // the grouping is done once here rather than per call site). A level with nothing in it (e.g. no
+    // goal row on a plain project page) contributes no header at all.
     var rows = "";
-    data.rows.forEach(function(r){
-      rows += ganttRowHtml(ganttRowLabelHtml(r.kind, r.obj), ganttDerivedBarHtml(r.kind, r.obj, start, r.span, today, data.selfId));
+    function group(label, items, rowFn){
+      if(!items.length) return;
+      rows += '<div class="gantt-group-header">' + label + '</div>';
+      items.forEach(function(item){ rows += rowFn(item); });
+    }
+    group("goals", data.rows.filter(function(r){ return r.kind === "goal"; }), function(r){
+      return ganttRowHtml(ganttRowLabelHtml(r.kind, r.obj), ganttDerivedBarHtml(r.kind, r.obj, start, r.span, today, data.selfId));
     });
-    data.actions.forEach(function(a){
-      rows += ganttRowHtml(escapeHtml(a.title), ganttActionBarHtml(a, start, today, data.selfId));
+    group("projects", data.rows.filter(function(r){ return r.kind === "project"; }), function(r){
+      return ganttRowHtml(ganttRowLabelHtml(r.kind, r.obj), ganttDerivedBarHtml(r.kind, r.obj, start, r.span, today, data.selfId));
+    });
+    group("actions", data.actions, function(a){
+      return ganttRowHtml(escapeHtml(a.title), ganttActionBarHtml(a, start, today, data.selfId));
     });
 
     // --gantt-col drives .gantt-day's width in CSS — without setting it here, the header ruler's
