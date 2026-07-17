@@ -2490,6 +2490,12 @@
         .future-hierarchy{position:relative;}
         .future-hierarchy > .wb-conn-svg{z-index:0;}
         .future-hierarchy > .future-gallery-section{position:relative;z-index:1;}
+        /* A line from a tier's own icon can pass directly behind that SAME tier's label (it exits the
+           icon center headed toward the next tier down, right through the label sitting just below) —
+           the section-level z-index above already paints the label over the line, but a solid backdrop
+           on the label itself is what actually keeps the line from visually poking through the gaps
+           between letters. */
+        .future-hierarchy-line{stroke-width:0.75;}
         .future-gallery-section{max-width:100%;margin-bottom:24px;}
         .future-gallery-row{display:flex;justify-content:center;gap:10px;width:100%;}
         .future-gallery-item{flex:1 1 0;min-width:0;max-width:72px;display:flex;flex-direction:column;align-items:center;gap:5px;cursor:pointer;}
@@ -2498,7 +2504,7 @@
         .future-gallery-item:hover .future-gallery-icon-wrap{box-shadow:0 0 0 2px var(--bg-inset);}
         .future-gallery-icon-img{width:58%;height:58%;}
         .future-gallery-icon-initial{font-family:var(--mono);font-size:13px;font-weight:700;}
-        .future-gallery-item-label{font-family:var(--mono);font-size:9.5px;color:var(--text-dim);text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;}
+        .future-gallery-item-label{font-family:var(--mono);font-size:9.5px;color:var(--text-dim);text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;background:var(--bg);padding:0 2px;border-radius:3px;}
       </style>
 
       <!-- Horizontal month strip — same clickable day-picker as Present's own (.today-month-strip),
@@ -14546,13 +14552,24 @@
       return { x: r.left + r.width / 2 - box.left, y: r.top + r.height / 2 - box.top };
     }
     var lines = [];
-    function addLine(kindA, idA, kindB, idB){
+    // Tinted with the PARENT node's own area color (categoryColorVar — the same var(--cat-*) lookup
+    // every other area-colored thing in the app uses) — an area<->goal line, or a goal<->child line,
+    // reads as "belonging to" whichever end is higher in the hierarchy, not a flat neutral wire.
+    function addLine(kindA, idA, kindB, idB, parentCat){
       var a = centerOf(kindA, idA), b = centerOf(kindB, idB);
-      if(a && b) lines.push('<line class="wb-conn-line" x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '"></line>');
+      if(a && b) lines.push('<line class="future-hierarchy-line" style="stroke:' + categoryColorVar(parentCat) + ';" x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '"></line>');
     }
-    state.goals.forEach(function(g){ if(g.category) addLine("area", g.category, "goal", g.id); });
-    state.projects.forEach(function(p){ if(p.goalId) addLine("goal", p.goalId, "project", p.id); });
-    state.habits.forEach(function(h){ if(h.goalId) addLine("goal", h.goalId, "habit", h.id); });
+    state.goals.forEach(function(g){ if(g.category) addLine("area", g.category, "goal", g.id, g.category); });
+    state.projects.forEach(function(p){
+      if(!p.goalId) return;
+      var g = goalById(p.goalId);
+      addLine("goal", p.goalId, "project", p.id, g ? g.category : null);
+    });
+    state.habits.forEach(function(h){
+      if(!h.goalId) return;
+      var g = goalById(h.goalId);
+      addLine("goal", h.goalId, "habit", h.id, g ? g.category : null);
+    });
     layer.innerHTML = lines.join("");
   }
   // Recomputed on resize (flex items reshuffle at different widths, so line endpoints move) — scoped
