@@ -3479,6 +3479,35 @@
   var CATEGORY_ICONS = { Health:"✚", Finance:"$", Career:"▲", Maintenance:"⚙", Growth:"↑", Relationships:"♥", Sol:"◐" };
   var CATEGORY_COLOR_VAR = { Health:"--cat-health", Finance:"--cat-finance", Career:"--cat-career", Maintenance:"--cat-maintenance", Growth:"--cat-growth", Relationships:"--cat-relationships", Sol:"--cat-sol" };
   function categoryColorVar(cat){ return "var(" + (CATEGORY_COLOR_VAR[cat] || "--text-dim") + ")"; }
+  function hexToRgb(hex){
+    var h = (hex || "").replace("#", "");
+    if(h.length === 3) h = h.split("").map(function(c){ return c + c; }).join("");
+    var n = parseInt(h, 16) || 0;
+    return { r:(n >> 16) & 255, g:(n >> 8) & 255, b:n & 255 };
+  }
+  // The single shared "merge" behind every multi-area item's own accent color (project cards/tiles/
+  // graph nodes, note cards, Gantt bars, sticky notes, ...): a plain RGB channel average across every
+  // area it belongs to, using cssVarColor to resolve each --cat-* token to its real theme-correct hex
+  // first. One area is a no-op (its own color); zero areas returns null so callers fall back to
+  // whatever neutral default that surface already had before this existed.
+  function mergedAreaColorRgb(areas){
+    var list = (areas || []).filter(Boolean);
+    if(!list.length) return null;
+    var sum = { r:0, g:0, b:0 };
+    list.forEach(function(a){
+      var rgb = hexToRgb(cssVarColor("--cat-" + a.toLowerCase()));
+      sum.r += rgb.r; sum.g += rgb.g; sum.b += rgb.b;
+    });
+    return { r: Math.round(sum.r / list.length), g: Math.round(sum.g / list.length), b: Math.round(sum.b / list.length) };
+  }
+  // The two CSS-ready strings almost every call site actually wants — a solid accent (borders, SVG
+  // stroke/fill, Three.js materials) and a soft ~13%-alpha wash (backgrounds), matching the existing
+  // var(--cat-*) / var(--cat-*-bg) pairing convention everywhere else in the app.
+  function mergedAreaColorCss(areas){
+    var rgb = mergedAreaColorRgb(areas);
+    if(!rgb) return null;
+    return { c: "rgb(" + rgb.r + "," + rgb.g + "," + rgb.b + ")", bg: "rgba(" + rgb.r + "," + rgb.g + "," + rgb.b + ",0.13)" };
+  }
   // .status-dot/.matrix-tile-status convey status through color (+ a glow on "behind") alone — no
   // text anywhere else on the tile/card says it. A title gives that same info to anyone who can't
   // rely on color (or is just hovering to check without reading the rest of the card).
@@ -3489,13 +3518,17 @@
   // project's area color — the icon recolors itself if the category ever changes, no re-upload
   // needed. Requires the icon to have real alpha transparency (see readImageAsIcon, which now
   // exports PNG instead of JPEG for exactly this reason).
-  function iconMaskHtml(cls, dataUri, category){
+  // colorOverride is a raw CSS color (e.g. a mergedAreaColorCss blend) that wins over the
+  // category-derived var(--cat-*) lookup — used by multi-area items (projects) whose fill should be
+  // the blend across all their areas, not just one; every other caller leaves it unset and keeps the
+  // original single-category behavior unchanged.
+  function iconMaskHtml(cls, dataUri, category, colorOverride){
     // The url() value is single-quoted — encodeURIComponent leaves "(" and ")" unescaped (they're in
     // its unreserved set), and an *unquoted* CSS url() must not contain a literal paren. A handful of
     // the built-in habit icons use transform="rotate(...)", which broke the mask (and so the icon
     // never rendered) before this was quoted. Uploaded goal/project icons are unaffected either way
     // since their base64 data URIs never contain parens.
-    return '<span class="' + cls + '" style="-webkit-mask-image:url(\'' + dataUri + '\');mask-image:url(\'' + dataUri + '\');background-color:' + categoryColorVar(category) + ';"></span>';
+    return '<span class="' + cls + '" style="-webkit-mask-image:url(\'' + dataUri + '\');mask-image:url(\'' + dataUri + '\');background-color:' + (colorOverride || categoryColorVar(category)) + ';"></span>';
   }
   // Built-in vector icon library for habits — auto-assigned per habit (never uploaded), so every
   // habit gets a distinct glyph with no manual work. Thin-outline style matching the weather icons,
@@ -5666,7 +5699,8 @@
     var preview = (n.text || "").trim();
     if(preview.length > 70) preview = preview.slice(0, 70) + "…";
     var cat = noteCategory(n);
-    return '<div class="home-notes-detail-item' + (cat ? " " + cat : "") + '" data-id="' + n.id + '" title="' + escapeHtml(preview || n.title || "(empty)") + '">' +
+    var merged = mergedAreaColorCss(noteCategories(n));
+    return '<div class="home-notes-detail-item' + (cat ? " " + cat : "") + '"' + (merged ? ' style="color:' + merged.c + ';"' : '') + ' data-id="' + n.id + '" title="' + escapeHtml(preview || n.title || "(empty)") + '">' +
       (n.timeOfDay ? '<span class="home-notes-detail-time">' + escapeHtml(fmtTimeOfDay(n.timeOfDay)) + '</span>' : '') +
       '<span class="home-notes-detail-text">' + escapeHtml(preview || n.title || "(empty)") + '</span></div>';
   }
@@ -5854,26 +5888,12 @@
       return arr;
     }
     function update(id, patch){ var arr = load(); var i = arr.findIndex(function(x){ return x.id === id; }); if(i !== -1){ Object.assign(arr[i], patch); save(arr); } }
-    function hexToRgb(hex){
-      var h = hex.replace("#", "");
-      if(h.length === 3) h = h.split("").map(function(c){ return c + c; }).join("");
-      var n = parseInt(h, 16);
-      return { r:(n >> 16) & 255, g:(n >> 8) & 255, b:n & 255 };
-    }
-    // The card's own border/background color is an actual RGB blend across EVERY selected area
-    // (plain channel average, via cssVarColor — which already resolves the current theme's real hex
-    // for a --cat-* token), not just the first one picked — two areas produces a genuinely new
-    // in-between color, not either area's own color. A sticky with no areas stays neutral.
+    // The card's own border/background color is the shared mergedAreaColorCss blend across every
+    // selected area — two areas produces a genuinely new in-between color, not either area's own
+    // color. A sticky with no areas stays neutral (mergedAreaColorCss returns null).
     function areaStyle(areas){
-      var list = areas || [];
-      if(!list.length) return "";
-      var sum = { r:0, g:0, b:0 };
-      list.forEach(function(a){
-        var rgb = hexToRgb(cssVarColor("--cat-" + a.toLowerCase()));
-        sum.r += rgb.r; sum.g += rgb.g; sum.b += rgb.b;
-      });
-      var r = Math.round(sum.r / list.length), g = Math.round(sum.g / list.length), b = Math.round(sum.b / list.length);
-      return "--sticky-c: rgb(" + r + "," + g + "," + b + "); --sticky-bg: rgba(" + r + "," + g + "," + b + ",0.13);";
+      var merged = mergedAreaColorCss(areas);
+      return merged ? ("--sticky-c: " + merged.c + "; --sticky-bg: " + merged.bg + ";") : "";
     }
     // Once a card has been manually resized (note.h set), its height is fixed and the textarea
     // fills it (see .home-sticky.resized) instead of growing with content — auto-grow only applies
@@ -6113,7 +6133,9 @@
     });
     state.journal.filter(function(n){ return n.date === today && n.timeOfDay; }).forEach(function(n){
       var preview = (n.title || n.text || "").slice(0, 40);
-      blocks.note.push({ kind:"journal", id:n.id, date:today, title:"✎ " + preview, start:timeToFraction(n.timeOfDay), width:0.008, area:noteCategory(n), done:false, overnight:false });
+      // area stays the single primary category (still what homeAreaVisible below filters by) —
+      // colorRgb is the additive blend across every area, used only for the block's own color.
+      blocks.note.push({ kind:"journal", id:n.id, date:today, title:"✎ " + preview, start:timeToFraction(n.timeOfDay), width:0.008, area:noteCategory(n), colorRgb:mergedAreaColorRgb(noteCategories(n)), done:false, overnight:false });
     });
     // Areas toggled off in the legend rail hide their blocks here too (a null-area item is never
     // filtered — there's no area to hide it under).
@@ -6130,8 +6152,9 @@
       var handles = "";
       if(resizable === true) handles = '<span class="home-tl-block-resize home-tl-block-resize-left" data-resize-handle="left"></span>';
       if(resizable) handles += '<span class="home-tl-block-resize home-tl-block-resize-right" data-resize-handle="right"></span>';
+      var colorStyle = b.colorRgb ? ("background:rgb(" + b.colorRgb.r + "," + b.colorRgb.g + "," + b.colorRgb.b + " / 0.12);border-color:rgb(" + b.colorRgb.r + "," + b.colorRgb.g + "," + b.colorRgb.b + ");") : "";
       return '<div class="home-tl-block' + (b.area ? " " + b.area : "") + (b.done ? " done" : "") + '" data-kind="' + b.kind + '" data-id="' + b.id + '" data-date="' + b.date + '"' + (b.overnight ? ' data-overnight="1"' : '') +
-        ' style="left:' + (b.start * 100) + '%; width:' + Math.max(b.width * 100, 0.7) + '%; z-index:' + z + ';" title="' + escapeHtml(b.title) + '">' + handles + escapeHtml(b.title) + '</div>';
+        ' style="left:' + (b.start * 100) + '%; width:' + Math.max(b.width * 100, 0.7) + '%; z-index:' + z + ';' + colorStyle + '" title="' + escapeHtml(b.title) + '">' + handles + escapeHtml(b.title) + '</div>';
     }).join("");
   }
   function renderHomeTimelineDock(){
@@ -6388,10 +6411,14 @@
     var nodes = [];
     CATEGORIES.forEach(function(cat){ nodes.push({ type:"area", id:cat, label:cat, area:cat }); });
     state.goals.forEach(function(g){ nodes.push({ type:"goal", id:g.id, label:g.title, area:g.category }); });
-    state.projects.forEach(function(p){ nodes.push({ type:"project", id:p.id, label:p.title, area:projectCategory(p) }); });
+    // area stays the single PRIMARY category (still drives seed position, repulsion clustering, and
+    // the areas-rail visibility toggle — all of which need one real category name) — colorRgb is a
+    // separate, additive field carrying the true blend across every area, used ONLY for the node's
+    // own material color (see rebuildGraph) when the item has more than one.
+    state.projects.forEach(function(p){ nodes.push({ type:"project", id:p.id, label:p.title, area:projectCategory(p), colorRgb:mergedAreaColorRgb(projectCategories(p)) }); });
     state.habits.forEach(function(h){ nodes.push({ type:"habit", id:h.id, label:h.title, area:habitCategory(h) }); });
     if(homeShowActions) state.actions.forEach(function(a){ nodes.push({ type:"action", id:a.id, label:a.title, area:actionCategory(a) }); });
-    if(homeShowNotes) state.journal.forEach(function(n){ nodes.push({ type:"journal", id:n.id, label:(n.title || n.text || "").slice(0,40) || "note", area:noteCategory(n) }); });
+    if(homeShowNotes) state.journal.forEach(function(n){ nodes.push({ type:"journal", id:n.id, label:(n.title || n.text || "").slice(0,40) || "note", area:noteCategory(n), colorRgb:mergedAreaColorRgb(noteCategories(n)) }); });
     var index = {};
     nodes.forEach(function(n, i){ index[n.type + ":" + n.id] = i; });
     var edges = [];
@@ -6434,11 +6461,13 @@
   function systemGraphSignature(){
     return [
       state.goals.map(function(g){ return g.id + (g.category || "") + g.title; }).join(","),
-      state.projects.map(function(p){ return p.id + (projectCategory(p) || "") + p.title; }).join(","),
+      // Full categories array (not just the primary one) — a change to a SECONDARY area now moves
+      // the node's blended color too, so it has to be able to invalidate this signature on its own.
+      state.projects.map(function(p){ return p.id + projectCategories(p).join("+") + p.title; }).join(","),
       state.habits.map(function(h){ return h.id + (habitCategory(h) || "") + h.title; }).join(","),
       (state.wbConnections || []).length,
       homeShowActions ? state.actions.map(function(a){ return a.id + (actionCategory(a) || "") + a.title; }).join(",") : "0",
-      homeShowNotes ? state.journal.map(function(n){ return n.id + (noteCategory(n) || ""); }).join(",") : "0",
+      homeShowNotes ? state.journal.map(function(n){ return n.id + noteCategories(n).join("+"); }).join(",") : "0",
       homeGraphSizeMode
     ].join("|");
   }
@@ -6497,6 +6526,14 @@
       if(!matByColor[hex]) matByColor[hex] = new THREE.MeshBasicMaterial({ color: new THREE.Color(hex) });
       return matByColor[hex];
     }
+    // Same cache idea as materialFor, keyed by the blended r,g,b directly instead of a --cat-* var
+    // name — for multi-area project/note nodes (n.colorRgb, see buildSystemGraph), which have no
+    // single CSS custom property to look up in the first place.
+    function materialForRgb(rgb){
+      var key = rgb.r + "," + rgb.g + "," + rgb.b;
+      if(!matByColor[key]) matByColor[key] = new THREE.MeshBasicMaterial({ color: new THREE.Color(rgb.r / 255, rgb.g / 255, rgb.b / 255) });
+      return matByColor[key];
+    }
     var edgeMat = new THREE.LineBasicMaterial({ color: new THREE.Color(cssVarColor("--text-dim")), transparent: true, opacity: 0.3 });
     function areaLabelSprite(cat){
       var cv = document.createElement("canvas");
@@ -6532,7 +6569,7 @@
         n.y = (Math.random() - 0.5) * 10;
         n.z = Math.sin(baseA) * 14 + (Math.random() - 0.5) * 8;
         n.vx = 0; n.vy = 0; n.vz = 0;
-        var mesh = new THREE.Mesh(sphereGeo, (n.area && AREA_VAR[n.area]) ? materialFor(AREA_VAR[n.area]) : materialFor("--text-faint"));
+        var mesh = new THREE.Mesh(sphereGeo, n.colorRgb ? materialForRgb(n.colorRgb) : ((n.area && AREA_VAR[n.area]) ? materialFor(AREA_VAR[n.area]) : materialFor("--text-faint")));
         mesh.scale.setScalar(n.r);
         mesh.userData.nodeIndex = i;
         scene.add(mesh);
@@ -8123,7 +8160,9 @@
     return '<div class="goal-integration-block"><div class="integration-block-head"><h2>related notes</h2></div>' +
       notes.map(function(n){
         var d = new Date(n.date + "T00:00:00");
-        return '<div class="journal-entry' + (noteCategory(n) ? " " + noteCategory(n) : "") + '" data-kind="journal" data-id="' + n.id + '">' +
+        var merged = mergedAreaColorCss(noteCategories(n));
+        var style = merged ? ' style="border-left-color:' + merged.c + ';background:' + merged.bg + ';"' : '';
+        return '<div class="journal-entry' + (noteCategory(n) ? " " + noteCategory(n) : "") + '"' + style + ' data-kind="journal" data-id="' + n.id + '">' +
           renderNoteTagsHtml(n) +
           '<div class="journal-entry-top"><span class="journal-entry-date">' + d.toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" }) + (n.timeOfDay ? " · " + fmtTimeOfDay(n.timeOfDay) : "") + '</span>' +
           '<div class="entity-actions"><button class="icon-btn edit" data-action="edit-journal" data-id="' + n.id + '" aria-label="Edit note">✎</button></div></div>' +
@@ -8216,9 +8255,13 @@
     var obj = entityPageObj();
     if(!obj){ closeEntityPage(); return; }
     var cat = entityPageCategory(obj);
+    // A project can have more than one area — its header icon gets the true blend across all of
+    // them (an action has just one, so this is a no-op there).
+    var merged = entityPage.kind === "project" ? mergedAreaColorCss(projectCategories(obj)) : null;
+    var iconStyle = "width:34px;max-width:34px;" + (merged ? "background:" + merged.bg + ";border-color:" + merged.c + ";" : "");
     document.getElementById("entityPageTitleRow").innerHTML =
-      '<span class="future-gallery-icon-wrap' + (cat ? " " + cat : "") + '" style="width:34px;max-width:34px;">' +
-        (obj.icon ? iconMaskHtml("future-gallery-icon-img", resolveEntityIconDataUri(obj.icon), cat) : futureGalleryInitialHtml(obj.title, cat)) +
+      '<span class="future-gallery-icon-wrap' + (cat ? " " + cat : "") + '" style="' + iconStyle + '">' +
+        (obj.icon ? iconMaskHtml("future-gallery-icon-img", resolveEntityIconDataUri(obj.icon), cat, merged && merged.c) : futureGalleryInitialHtml(obj.title, cat)) +
       '</span>' +
       '<h1>' + escapeHtml(obj.title) + '</h1>' +
       (cat ? '<span class="cat-badge ' + cat + '">' + CATEGORY_ICONS[cat] + ' ' + cat + '</span>' : '') +
@@ -8379,7 +8422,12 @@
     var idx = Math.max(0, ganttDayIndex(start, spanStart));
     var w = Math.max(1, ganttDayIndex(start, spanEnd) - idx + 1);
     var cat = kind === "goal" ? obj.category : projectCategory(obj);
-    return '<div class="gantt-bar gantt-bar-project' + (cat ? " " + cat : "") + (obj.done ? " done" : "") + (obj.id === selfId ? " gantt-bar-self" : "") + '" data-kind="' + kind + '" data-id="' + obj.id + '" style="left:' + (idx * GANTT_COL_W) + 'px;width:' + (w * GANTT_COL_W - 4) + 'px;" title="' + escapeHtml(obj.title) + (due ? " — due " + fmtDate(due) : "") + '">' + escapeHtml(obj.title) + '</div>';
+    // Goals have one category (blending a single-item list is a no-op, same color as before);
+    // projects blend across every area they belong to, same "class stays, inline color wins" split
+    // used everywhere else this session.
+    var merged = mergedAreaColorCss(kind === "goal" ? [obj.category] : projectCategories(obj));
+    var colorStyle = merged ? ("background:" + merged.bg + ";border-color:" + merged.c + ";") : "";
+    return '<div class="gantt-bar gantt-bar-project' + (cat ? " " + cat : "") + (obj.done ? " done" : "") + (obj.id === selfId ? " gantt-bar-self" : "") + '" data-kind="' + kind + '" data-id="' + obj.id + '" style="left:' + (idx * GANTT_COL_W) + 'px;width:' + (w * GANTT_COL_W - 4) + 'px;' + colorStyle + '" title="' + escapeHtml(obj.title) + (due ? " — due " + fmtDate(due) : "") + '">' + escapeHtml(obj.title) + '</div>';
   }
   function ganttActionBarHtml(a, start, today, selfId){
     var cat = actionCategory(a);
@@ -8911,7 +8959,12 @@
   function projectTileHtml(p){
     var overdue = !p.done && p.due && p.due < todayStr();
     var tCat = projectCategory(p);
-    return '<div class="ms-tile' + (tCat ? ' ' + tCat : '') + '" data-kind="project" data-id="' + p.id + '">' +
+    // The class stays (harmless if it now only names the first of several areas — kept for any
+    // other selector that might key off it), but the actual color is the RGB blend across every
+    // area the project has, via an inline style that wins over the class's own CSS rule.
+    var tMerged = mergedAreaColorCss(projectCategories(p));
+    var tStyle = tMerged ? ' style="border-left-color:' + tMerged.c + ';background:' + tMerged.bg + ';"' : '';
+    return '<div class="ms-tile' + (tCat ? ' ' + tCat : '') + '"' + tStyle + ' data-kind="project" data-id="' + p.id + '">' +
       '<div class="ms-tile-top">' +
         '<button class="ms-check' + (p.done?' done':'') + '" data-action="toggle-proj" data-id="' + p.id + '" aria-label="Toggle done"></button>' +
         '<span class="ms-tile-title' + (p.done?' done':'') + '">' + escapeHtml(p.title) + '</span>' +
@@ -8953,7 +9006,12 @@
       var overdue = !p.done && p.due && p.due < todayStr();
       var health = projectHealth(p);
       var cat = projectCategory(p);
-      return '<div class="goal-card' + (cat ? ' ' + cat : '') + '" data-kind="project" data-id="' + p.id + '" draggable="true">' +
+      // Same "class stays, inline style carries the real (possibly blended) color" split as
+      // projectTileHtml — a project with 2+ areas gets a genuine merged color here instead of just
+      // whichever area happened to be first.
+      var pMerged = mergedAreaColorCss(projectCategories(p));
+      var pStyle = pMerged ? ' style="border-left-color:' + pMerged.c + ';background:linear-gradient(135deg, ' + pMerged.bg + ', var(--bg-raised) 55%);"' : '';
+      return '<div class="goal-card' + (cat ? ' ' + cat : '') + '"' + pStyle + ' data-kind="project" data-id="' + p.id + '" draggable="true">' +
         '<div class="card-tab">' +
           '<span class="prio-badge ' + p.priority + '">' + p.priority + '</span><span class="sep">·</span>' +
           '<span class="parent-tag">' + (g ? 'goal: <b>' + escapeHtml(g.title) + '</b>' : 'standalone') + '</span>' +
@@ -8962,7 +9020,7 @@
         '</div>' +
         '<div class="card-body">' +
           '<div class="goal-body-head">' +
-            (p.icon ? iconMaskHtml("entity-icon-img", resolveEntityIconDataUri(p.icon), cat) : '') +
+            (p.icon ? iconMaskHtml("entity-icon-img", resolveEntityIconDataUri(p.icon), cat, pMerged && pMerged.c) : '') +
             '<h3 class="goal-title' + (p.done?' completed':'') + '" style="' + (p.done?'color:var(--text-faint);text-decoration:line-through;':'') + '">' + escapeHtml(p.title) + '</h3>' +
             '<div class="entity-actions">' +
               '<button class="icon-btn toggle" data-action="toggle-proj" data-id="' + p.id + '" aria-label="Toggle done">' + (p.done?'↺':'✓') + '</button>' +
@@ -9594,7 +9652,10 @@
     if(type === "goal") return resolveEntityIconDataUri(item.icon);
     return null;
   }
-  function wbNodeHtml(type, item, category){
+  // colorOverride is a mergedAreaColorCss {c, bg} result — used for multi-area projects so the node
+  // shows their true blended color instead of just their first area; every other node type leaves it
+  // unset and keeps the plain category-class-driven color.
+  function wbNodeHtml(type, item, category, colorOverride){
     var sim = wbFindSimNode(type, item.id);
     var x = sim ? sim.x : WB_CENTER_X, y = sim ? sim.y : WB_CENTER_Y;
     var icon = "", hasIcon = false;
@@ -9602,9 +9663,13 @@
       icon = '<span class="wb-goal-node-icon">' + (CATEGORY_ICONS[item.id] || "") + '</span>';
     } else {
       var dataUri = wbNodeIconDataUri(type, item);
-      if(dataUri){ icon = iconMaskHtml("wb-goal-node-symbol", dataUri, category); hasIcon = true; }
+      if(dataUri){ icon = iconMaskHtml("wb-goal-node-symbol", dataUri, category, colorOverride && colorOverride.c); hasIcon = true; }
     }
-    return '<div class="wb-goal-node' + (category ? " " + category : "") + (type === "project" ? " is-project" : "") + (hasIcon ? " has-icon" : "") + '" data-type="' + type + '" data-id="' + item.id + '" style="left:' + x + 'px; top:' + y + 'px;" title="' + escapeHtml(item.title) + '">' +
+    // .wb-goal-node(.has-icon).Health sets background to either the solid --cat-health (no icon) or
+    // the softer --cat-health-bg (has-icon, so a saturated icon reads clearly on top) — the inline
+    // override picks the matching one of the blend's own two shades for the same reason.
+    var colorStyle = colorOverride ? ("background:" + (hasIcon ? colorOverride.bg : colorOverride.c) + ";") : "";
+    return '<div class="wb-goal-node' + (category ? " " + category : "") + (type === "project" ? " is-project" : "") + (hasIcon ? " has-icon" : "") + '" data-type="' + type + '" data-id="' + item.id + '" style="left:' + x + 'px; top:' + y + 'px;' + colorStyle + '" title="' + escapeHtml(item.title) + '">' +
       icon +
       '<span class="wb-goal-node-label">' + (type === "project" ? "▸ " : "") + escapeHtml(item.title) + '</span>' +
     '</div>';
@@ -9632,7 +9697,7 @@
       return;
     }
     html += state.goals.map(function(g){ return wbNodeHtml("goal", g, g.category); }).join("");
-    html += state.projects.map(function(p){ return wbNodeHtml("project", p, projectCategory(p)); }).join("");
+    html += state.projects.map(function(p){ return wbNodeHtml("project", p, projectCategory(p), mergedAreaColorCss(projectCategories(p))); }).join("");
     html += state.habits.map(function(h){ return wbNodeHtml("habit", h, habitCategory(h)); }).join("");
     if(wbShowActions) html += state.actions.map(function(a){ return wbNodeHtml("action", a, actionCategory(a)); }).join("");
     overlay.innerHTML = html;
@@ -11870,7 +11935,9 @@
       var head = "";
       if(!monthsSeen[monthKey]){ monthsSeen[monthKey] = true; head = '<div class="journal-month-head">' + monthKey + '</div>'; }
       var catClass = noteCategory(entry) ? " " + noteCategory(entry) : "";
-      return head + '<div class="journal-entry' + catClass + '" data-kind="journal" data-id="' + entry.id + '">' +
+      var merged = mergedAreaColorCss(noteCategories(entry));
+      var style = merged ? ' style="border-left-color:' + merged.c + ';background:' + merged.bg + ';"' : '';
+      return head + '<div class="journal-entry' + catClass + '"' + style + ' data-kind="journal" data-id="' + entry.id + '">' +
         renderNoteTagsHtml(entry) +
         '<div class="journal-entry-top"><span class="journal-entry-date">' + d.toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" }) + (entry.timeOfDay ? " · " + fmtTimeOfDay(entry.timeOfDay) : "") + '</span>' +
         '<div class="entity-actions">' +
@@ -14072,7 +14139,12 @@
         // Notes have no real duration field — treated as a near-instant point in time (a small
         // virtual duration), so they naturally sit near the top of the stacking order.
         var z = tlZIndexForDuration(5);
-        html += '<div class="timeline-block' + catClass + '" data-kind="journal" data-id="' + n.id + '" data-day-index="' + i + '" style="left:' + leftPx + 'px; width:' + widthPx + 'px; z-index:' + z + ';" title="' + escapeHtml(preview) + ' — ' + fmtTimeOfDay(n.timeOfDay) + '">' +
+        // .timeline-block.<Cat> uses a much stronger ~0.28 wash than the standard ~0.13 -bg token
+        // (see the CSS comment on that rule — deliberately bolder for this dense day-track view) —
+        // matched here so a multi-area note's blend reads at the same strength, not washed-out.
+        var rgb = mergedAreaColorRgb(noteCategories(n));
+        var colorStyle = rgb ? ("border-left-color:rgb(" + rgb.r + "," + rgb.g + "," + rgb.b + ");background:rgba(" + rgb.r + "," + rgb.g + "," + rgb.b + ",0.28);") : "";
+        html += '<div class="timeline-block' + catClass + '" data-kind="journal" data-id="' + n.id + '" data-day-index="' + i + '" style="left:' + leftPx + 'px; width:' + widthPx + 'px; z-index:' + z + ';' + colorStyle + '" title="' + escapeHtml(preview) + ' — ' + fmtTimeOfDay(n.timeOfDay) + '">' +
           '<span class="timeline-block-title">✎ ' + escapeHtml(preview) + '</span></div>';
       });
     }
@@ -14346,8 +14418,10 @@
     document.getElementById("todayNotesEmpty").style.display = notesToday.length ? "none" : "";
     document.getElementById("todayNotesList").innerHTML = notesToday.map(function(n){
       var nCatClass = noteCategory(n) ? " " + noteCategory(n) : "";
+      var nMerged = mergedAreaColorCss(noteCategories(n));
+      var nStyle = nMerged ? ' style="border-left-color:' + nMerged.c + ';"' : '';
       var preview = n.text.length > 80 ? n.text.slice(0, 80) + "…" : n.text;
-      return '<div class="today-row' + nCatClass + '" data-kind="journal" data-id="' + n.id + '">' +
+      return '<div class="today-row' + nCatClass + '"' + nStyle + ' data-kind="journal" data-id="' + n.id + '">' +
         '<span class="today-row-title">' + escapeHtml(preview) + '</span>' +
         (n.timeOfDay ? '<span class="today-row-meta">' + fmtTimeOfDay(n.timeOfDay) + '</span>' : '') +
         '<button class="icon-btn edit" data-action="edit-journal" data-id="' + n.id + '" aria-label="Edit note">✎</button>' +
@@ -15574,8 +15648,12 @@
       function(w, cat, isBoundary){
         if(w.kind === "project"){
           var p = w.obj;
-          var icon = p.icon ? iconMaskHtml("future-gallery-icon-img", resolveEntityIconDataUri(p.icon), cat) : futureGalleryInitialHtml(p.title, cat);
-          return futureGalleryItemHtml("project", p.id, p.title, icon, isBoundary, cat, "opacity:" + futureProjectIconOpacity(p) + ";");
+          var pMerged = mergedAreaColorCss(projectCategories(p));
+          var icon = p.icon ? iconMaskHtml("future-gallery-icon-img", resolveEntityIconDataUri(p.icon), cat, pMerged && pMerged.c) : futureGalleryInitialHtml(p.title, cat);
+          // background/border-color override the .future-gallery-icon-wrap.<Cat> class rule with the
+          // true blend across every area this project has, on top of the existing opacity treatment.
+          var pColorStyle = pMerged ? ("background:" + pMerged.bg + ";border-color:" + pMerged.c + ";") : "";
+          return futureGalleryItemHtml("project", p.id, p.title, icon, isBoundary, cat, pColorStyle + "opacity:" + futureProjectIconOpacity(p) + ";");
         }
         var h = w.obj;
         var icon = h.icon ? iconMaskHtml("future-gallery-icon-img", habitIconDataUri(h.icon), cat) : futureGalleryInitialHtml(h.title, cat);
@@ -15641,17 +15719,24 @@
     // secondary edge the source is whichever side the extra relation was declared from (a goal's
     // secondaryCategories names the area directly, everything else resolves through a goal) — same
     // convention renderWbHierarchyLines already uses for the 2D graph's own secondary links.
-    function edgeSourceCat(c){
-      if(c.fromType === "area") return c.fromId;
-      if(c.fromType === "goal"){ var g = goalById(c.fromId); return g ? g.category : null; }
-      if(c.fromType === "project"){ var p = projectById(c.fromId); return p ? projectCategory(p) : null; }
-      return null;
+    // Returns a ready CSS color for the edge's source — categoryColorVar for a single-category
+    // source (area/goal), or the true RGB blend across every area for a project source, since a
+    // project can belong to more than one.
+    function edgeSourceColor(c){
+      if(c.fromType === "area") return categoryColorVar(c.fromId);
+      if(c.fromType === "goal"){ var g = goalById(c.fromId); return categoryColorVar(g ? g.category : null); }
+      if(c.fromType === "project"){
+        var p = projectById(c.fromId);
+        var merged = p ? mergedAreaColorCss(projectCategories(p)) : null;
+        return merged ? merged.c : categoryColorVar(null);
+      }
+      return categoryColorVar(null);
     }
     var lines = wbHierarchyEdges(true).map(function(c){
       var a = centerOf(c.fromType, c.fromId), b = centerOf(c.toType, c.toId);
       if(!a || !b) return "";
       var cls = "future-hierarchy-line" + (c.secondary ? " future-hierarchy-line-secondary" : "");
-      return '<line class="' + cls + '" style="stroke:' + categoryColorVar(edgeSourceCat(c)) + ';" x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '"></line>';
+      return '<line class="' + cls + '" style="stroke:' + edgeSourceColor(c) + ';" x1="' + a.x + '" y1="' + a.y + '" x2="' + b.x + '" y2="' + b.y + '"></line>';
     });
     layer.innerHTML = lines.join("");
   }
