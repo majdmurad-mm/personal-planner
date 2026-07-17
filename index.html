@@ -8566,7 +8566,7 @@
     }).concat(byAreaOrder(state.projects, function(p){ return projectCategory(p); }).map(function(p){
       return { kind:"project", obj:p, span: projectActions[p.id] || [] };
     }));
-    return { rows: rows, actions: state.actions.slice(), selfId: null };
+    return { rows: rows, actions: byAreaOrder(state.actions, actionCategory), selfId: null };
   }
   function renderFutureSystemGantt(){
     renderGanttInto(document.getElementById("futureGanttWrap"), ganttItemsForFuture(), "system");
