@@ -2530,6 +2530,11 @@
            Those base classes assume a flex:1 parent for sizing; this page has none, so give the wrap
            an explicit height directly. */
         .kg-canvas-wrap{height:min(70vh, 640px);}
+        /* Layer toggle menu — which pinned folders currently show on the graph. Reuses the home
+           cockpit's .home-rail-row/.home-rail-icon/.home-rail-title styling (see homeAreasRail) rather
+           than redefining row chrome, just its own floating position below the toolbar. */
+        .kg-layers-panel{position:absolute;top:58px;left:12px;z-index:99;min-width:180px;max-width:240px;max-height:min(50vh, 400px);overflow-y:auto;padding:8px 10px;border-radius:var(--radius);border:1px solid var(--border-bright);background:var(--bg-raised);box-shadow:0 6px 20px rgba(0,0,0,0.35);}
+        .kg-layers-panel[hidden]{display:none;}
         .kg-node{position:absolute;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;user-select:none;}
         .kg-node-circle{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-size:18px;border:2px solid var(--border-bright);background:var(--bg-raised);box-shadow:var(--elev-1);}
         .kg-node.root .kg-node-circle{width:60px;height:60px;font-size:24px;border-color:var(--accent);background:var(--bg-inset);color:var(--accent);}
@@ -2580,7 +2585,7 @@
       </div>
 
       <div class="knowledge-panel" data-kv="graph" hidden>
-        <p class="knowledge-pinned-hint">Folder structure of your pinned folders — expand a folder to see its subfolders and the types of files inside. Click a file-type node to open that folder in Drive Navigator.</p>
+        <p class="knowledge-pinned-hint">Folder structure of your pinned folders, expanded automatically. Use "layers" to show just one folder by itself or bring others in. Click any folder to collapse or re-expand it by hand; click a file-type node to open that folder in Drive Navigator.</p>
         <div class="wb-canvas-wrap kg-canvas-wrap" id="kgCanvasWrap">
           <div class="wb-toolbar wb-toolbar-float" id="kgToolbarFloat">
             <div class="wb-zoom-group">
@@ -2589,9 +2594,11 @@
               <button class="cal-nav-btn" id="kgZoomInBtn" type="button" aria-label="Zoom in">+</button>
               <button class="btn" id="kgCenterBtn" type="button">reset view</button>
             </div>
+            <button class="btn" id="kgLayersBtn" type="button" title="Choose which pinned folders show on the graph">🗂 layers</button>
             <button class="btn" id="kgRefreshBtn" type="button" title="Re-fetch folder contents from Drive">⟳ refresh</button>
           </div>
-          <p class="panel-hint wb-hint-float wb-pan-hint">Pan: drag empty space. Zoom: scroll, or the +/− buttons. Click a folder to expand or collapse it; click a file-type node to open that folder in Drive Navigator.</p>
+          <div class="kg-layers-panel" id="kgLayersPanel" hidden></div>
+          <p class="panel-hint wb-hint-float wb-pan-hint">Pan: drag empty space. Zoom: scroll, or the +/− buttons. Click a folder to collapse or re-expand it; click a file-type node to open that folder in Drive Navigator.</p>
           <div class="wb-world kg-world" id="kgWorld">
             <svg class="wb-conn-svg" id="kgConnSvg"><g id="kgConnLayer"></g></svg>
             <div id="kgOverlay"></div>
@@ -4151,17 +4158,32 @@
   var KG_CENTER_PULL_K = 0.0015, KG_ROOT_PULL_K = 0.01;
   var kgAlpha = 0, kgSimRunning = false;
   var kgNodeElCache = {};
+  // Which pinned folders currently show on the graph — a per-pin visibility toggle (the "layers"
+  // menu, see kgRenderLayersPanel), same on/off-set-in-localStorage pattern as the home cockpit's
+  // area rail (homeHiddenAreas). Stores HIDDEN pin ids, so a newly-pinned folder defaults to visible
+  // without needing an explicit opt-in. Hiding every folder but one gives the "just this folder, by
+  // itself" view; the layers menu is how you add others back in.
+  var KG_HIDDEN_ROOTS_KEY = "pp_kg_hidden_roots";
+  var kgHiddenRoots = (function(){
+    try{ var a = JSON.parse(safeGet(window.localStorage, KG_HIDDEN_ROOTS_KEY) || "[]"); var m = {}; (a||[]).forEach(function(id){ m[id] = true; }); return m; }
+    catch(e){ return {}; }
+  })();
+  function kgRootVisible(driveId){ return !kgHiddenRoots[driveId]; }
+  function persistKgHiddenRoots(){
+    safeSet(window.localStorage, KG_HIDDEN_ROOTS_KEY, JSON.stringify(Object.keys(kgHiddenRoots).filter(function(id){ return kgHiddenRoots[id]; })));
+  }
 
   function kgFindNode(id){
     for(var i=0;i<kgNodes.length;i++){ if(kgNodes[i].id === id) return kgNodes[i]; }
     return null;
   }
-  // Builds one root node per pinned folder, spread out horizontally with its own anchor point. Called
-  // fresh on every activation so a newly pinned/unpinned folder is always reflected; existing
-  // expanded subtrees for folders that are still pinned are left untouched (only roots whose folder
-  // got unpinned, and everything under them, are dropped).
+  // Builds one root node per pinned folder that's currently toggled visible (kgRootVisible), spread
+  // out horizontally with its own anchor point. Called fresh on every activation so a newly
+  // pinned/unpinned/hidden folder is always reflected; existing expanded subtrees for folders that
+  // are still pinned AND visible are left untouched (a root that got unpinned OR hidden via the
+  // layers menu, and everything under it, is dropped the same way).
   function buildKnowledgeGraphRoots(){
-    var pins = loadKnowledgePins();
+    var pins = loadKnowledgePins().filter(function(p){ return kgRootVisible(p.id); });
     var wantedRootIds = {};
     pins.forEach(function(p){ wantedRootIds["root:" + p.id] = true; });
     function rootIdOf(n){
@@ -4180,6 +4202,23 @@
     });
     kgEdges = kgEdges.filter(function(e){ return kgFindNode(e.fromId) && kgFindNode(e.toId); });
   }
+  function kgRenderLayersPanel(){
+    var panel = document.getElementById("kgLayersPanel");
+    if(!panel) return;
+    var pins = loadKnowledgePins();
+    if(!pins.length){
+      panel.innerHTML = '<div class="home-rail-title">layers</div><p class="panel-hint" style="margin:4px 2px 2px;">Pin a folder from Drive Navigator to add a layer here.</p>';
+      return;
+    }
+    panel.innerHTML = '<div class="home-rail-title">layers</div>' + pins.map(function(p){
+      var on = kgRootVisible(p.id);
+      return '<button class="home-rail-row home-rail-layer' + (on ? " on" : "") + '" data-pin-id="' + p.id + '" type="button" title="' +
+        (on ? "showing on the graph (click to hide)" : "click to show on the graph") + '">' +
+        '<span class="home-rail-icon">📁</span>' +
+        '<span>' + escapeHtml(p.name) + '</span>' +
+      '</button>';
+    }).join("");
+  }
   // Collapsing removes the folder's whole subtree (recursively, via parentNodeId), not just its
   // immediate children — re-expanding refetches from kgLoadedChildren's cache, so nothing is lost.
   function kgCollapseFolder(node){
@@ -4193,24 +4232,35 @@
     kgEdges = kgEdges.filter(function(e){ return !toRemove[e.fromId] && !toRemove[e.toId]; });
     kgExpanded[node.id] = false;
   }
-  async function kgExpandFolder(node){
-    if(kgExpanded[node.id]){ kgCollapseFolder(node); kgRenderNodes(); kgReheat(1); return; }
-    if(!driveAccessToken){ toast("Connect Google Drive to expand this folder."); return; }
-    var children = kgLoadedChildren[node.driveId];
-    if(!children){
-      var files = await driveApiList("'" + node.driveId + "' in parents and trashed=false");
-      if(!files) return;
-      var folders = files.filter(function(f){ return f.mimeType === "application/vnd.google-apps.folder"; })
-        .map(function(f){ return { id: f.id, name: f.name }; });
-      var counts = {};
-      files.forEach(function(f){
-        if(f.mimeType === "application/vnd.google-apps.folder") return;
-        counts[f.mimeType] = (counts[f.mimeType] || 0) + 1;
-      });
-      var typeBuckets = Object.keys(counts).map(function(mt){ return { mimeType: mt, count: counts[mt] }; });
-      children = { folders: folders, typeBuckets: typeBuckets };
-      kgLoadedChildren[node.driveId] = children;
-    }
+  // Fetches (or reuses the kgLoadedChildren cache for) a folder's direct children from Drive, split
+  // into subfolders and file-type count buckets. Pure data — no node/edge mutation, no rendering —
+  // shared by both the single-folder manual expand (kgDoExpand) and the recursive auto-expand-all
+  // walk (kgAutoExpandAll), neither of which should refetch what the other already loaded.
+  async function kgFetchChildren(node){
+    var cached = kgLoadedChildren[node.driveId];
+    if(cached) return cached;
+    if(!driveAccessToken) return null;
+    var files = await driveApiList("'" + node.driveId + "' in parents and trashed=false");
+    if(!files) return null;
+    var folders = files.filter(function(f){ return f.mimeType === "application/vnd.google-apps.folder"; })
+      .map(function(f){ return { id: f.id, name: f.name }; });
+    var counts = {};
+    files.forEach(function(f){
+      if(f.mimeType === "application/vnd.google-apps.folder") return;
+      counts[f.mimeType] = (counts[f.mimeType] || 0) + 1;
+    });
+    var typeBuckets = Object.keys(counts).map(function(mt){ return { mimeType: mt, count: counts[mt] }; });
+    var children = { folders: folders, typeBuckets: typeBuckets };
+    kgLoadedChildren[node.driveId] = children;
+    return children;
+  }
+  // Builds a folder's child nodes/edges from an already-fetched children object (kgFetchChildren) and
+  // marks it expanded. Returns the number of children added (0 means genuinely empty) or -1 if the
+  // fetch failed/was skipped (no token) — callers decide what to do with either case, this never
+  // renders or toasts on its own so it's safe to call in a tight recursive loop.
+  async function kgDoExpand(node){
+    var children = await kgFetchChildren(node);
+    if(!children) return -1;
     kgExpanded[node.id] = true;
     var total = children.folders.length + children.typeBuckets.length;
     var angleBase = Math.random() * Math.PI * 2, i = 0;
@@ -4235,9 +4285,31 @@
       }
       i++;
     });
-    if(!total) toast('"' + node.name + '" is empty.');
+    return total;
+  }
+  // Manual click on a root/folder node: toggles between expanded and collapsed. Unlike the initial
+  // auto-expand-all walk (kgAutoExpandAll), this only ever touches ONE level — collapsing a folder
+  // still drops its whole subtree (kgCollapseFolder), but re-expanding it by hand rebuilds just its
+  // direct children, leaving it to the user whether to drill further from there.
+  async function kgExpandFolder(node){
+    if(kgExpanded[node.id]){ kgCollapseFolder(node); kgRenderNodes(); kgReheat(1); return; }
+    if(!driveAccessToken){ toast("Connect Google Drive to expand this folder."); return; }
+    var total = await kgDoExpand(node);
+    if(total === -1) return; // fetch failed — driveApiList already surfaced a toast
+    if(total === 0) toast('"' + node.name + '" is empty.');
     kgRenderNodes();
     kgReheat(1);
+  }
+  // Recursively expands a node and every folder beneath it, so the whole pinned tree is open by
+  // default without clicking through it level by level — called on every visible root right after
+  // activation/build. Silent (no "empty" toasts) since walking a large tree can hit plenty of leaf
+  // folders with nothing to expand; that's expected, not worth interrupting with a toast per folder.
+  // Already-expanded folders (kgLoadedChildren cache hit) cost nothing extra on repeat activations.
+  async function kgAutoExpandAll(node){
+    if(!driveAccessToken) return;
+    if(!kgExpanded[node.id]) await kgDoExpand(node);
+    var children = kgNodes.filter(function(n){ return n.parentNodeId === node.id && n.kind === "folder"; });
+    for(var i=0;i<children.length;i++){ await kgAutoExpandAll(children[i]); }
   }
   function kgNodeIcon(n){
     if(n.kind === "root") return "📌";
@@ -4424,14 +4496,45 @@
         kgExpandFolder(n);
       }
     });
+    // Layers menu: a floating checklist of every pinned folder, toggled open by the toolbar button.
+    // Clicking a row flips that folder's visibility (kgHiddenRoots) and rebuilds the graph — hiding
+    // every folder but one is how you get the "just this folder, by itself" view the layers menu
+    // exists for.
+    var layersPanel = document.getElementById("kgLayersPanel");
+    document.getElementById("kgLayersBtn").addEventListener("click", function(){
+      layersPanel.hidden = !layersPanel.hidden;
+      if(!layersPanel.hidden) kgRenderLayersPanel();
+    });
+    layersPanel.addEventListener("click", function(e){
+      var row = e.target.closest("[data-pin-id]");
+      if(!row) return;
+      var id = row.dataset.pinId;
+      if(kgHiddenRoots[id]) delete kgHiddenRoots[id]; else kgHiddenRoots[id] = true;
+      persistKgHiddenRoots();
+      kgRenderLayersPanel();
+      activateKnowledgeGraph();
+    });
     applyKgTransform();
   }
-  function activateKnowledgeGraph(){
+  // Rebuilds the visible roots, then recursively auto-expands each one's whole subtree (kgAutoExpandAll)
+  // so the graph opens fully expanded rather than requiring a click through every level — a manual
+  // click on any node still collapses/re-expands it afterward. Renders progressively, once per root,
+  // rather than one render at the very end, so a large tree reveals itself as it loads instead of
+  // appearing to hang.
+  async function activateKnowledgeGraph(){
     if(!kgInitialized){ kgInitialized = true; initKnowledgeGraphWrap(); }
     buildKnowledgeGraphRoots();
     kgRenderNodes();
     kgReheat(1);
     if(!kgCenteredOnce){ kgCenteredOnce = true; kgCenterView(); }
+    if(driveAccessToken){
+      var roots = kgNodes.filter(function(n){ return n.kind === "root"; });
+      for(var i=0;i<roots.length;i++){
+        await kgAutoExpandAll(roots[i]);
+        kgRenderNodes();
+        kgReheat(1);
+      }
+    }
   }
 
   (function wireKnowledge(){
