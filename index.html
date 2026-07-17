@@ -2505,9 +2505,14 @@
         .knowledge-pin-current-btn{font-family:var(--mono);font-size:11px;padding:5px 10px;border-radius:999px;border:1px solid var(--border-bright);background:transparent;color:var(--text-dim);cursor:pointer;}
         .knowledge-pin-current-btn:hover{color:var(--text);border-color:var(--accent-dim);}
         .knowledge-pin-current-btn.pinned{color:var(--accent);border-color:var(--accent-dim);background:var(--bg-inset);}
-        .knowledge-pinned-card{cursor:pointer;}
+        .knowledge-pinned-card{cursor:pointer;border-color:var(--pin-c, var(--border));}
+        .knowledge-pinned-card .knowledge-file-icon{color:var(--pin-c, var(--accent));}
         .knowledge-unpin-btn{position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:6px;border:1px solid var(--border-bright);background:rgba(var(--bg-raised-rgb),0.85);color:var(--text-faint);font-size:13px;line-height:1;display:grid;place-items:center;cursor:pointer;padding:0;}
         .knowledge-unpin-btn:hover{color:var(--danger);border-color:var(--danger);}
+        /* Per-pin area picker — sets --pin-c (read by the card border/icon above) the same way the
+           home cockpit's sticky notes set --sticky-c from their own area select. */
+        .knowledge-pin-area-select{font-family:var(--mono);font-size:10.5px;color:var(--pin-c, var(--text-dim));background:none;border:1px solid var(--border);border-radius:5px;padding:3px 4px;cursor:pointer;outline:none;}
+        .knowledge-pin-area-select option{color:var(--text);background:var(--bg-raised);}
         .knowledge-pinned-hint{color:var(--text-dim);font-size:12.5px;margin:0 0 16px;max-width:64ch;}
         .knowledge-search{margin-left:auto;min-width:180px;padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg-inset);color:var(--text);font-family:var(--mono);font-size:12px;outline:none;}
         .knowledge-search:disabled{opacity:.5;cursor:not-allowed;}
@@ -2535,9 +2540,10 @@
            than redefining row chrome, just its own floating position below the toolbar. */
         .kg-layers-panel{position:absolute;top:58px;left:12px;z-index:99;min-width:180px;max-width:240px;max-height:min(50vh, 400px);overflow-y:auto;padding:8px 10px;border-radius:var(--radius);border:1px solid var(--border-bright);background:var(--bg-raised);box-shadow:0 6px 20px rgba(0,0,0,0.35);}
         .kg-layers-panel[hidden]{display:none;}
-        .kg-node{position:absolute;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;user-select:none;}
+        .kg-node{position:absolute;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:4px;cursor:grab;user-select:none;touch-action:none;pointer-events:auto;}
+        .kg-node.dragging{cursor:grabbing;z-index:50;}
         .kg-node-circle{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;font-size:18px;border:2px solid var(--border-bright);background:var(--bg-raised);box-shadow:var(--elev-1);}
-        .kg-node.root .kg-node-circle{width:60px;height:60px;font-size:24px;border-color:var(--accent);background:var(--bg-inset);color:var(--accent);}
+        .kg-node.root .kg-node-circle{width:60px;height:60px;font-size:24px;border-color:var(--kg-root-c, var(--accent));background:var(--bg-inset);color:var(--kg-root-c, var(--accent));}
         .kg-node.folder .kg-node-circle{border-color:var(--accent-dim);}
         .kg-node.folder.expanded .kg-node-circle{border-color:var(--accent);background:var(--bg-inset);}
         .kg-node.filetype .kg-node-circle{width:36px;height:36px;font-size:15px;opacity:.9;}
@@ -4006,6 +4012,17 @@
     saveKnowledgePins(pins);
     return idx === -1;
   }
+  // A pinned folder's area — purely a local tag on the bookmark (like everything else about pins,
+  // never touches Supabase or Drive itself), used to color-code the pinned card and its root node in
+  // the Graph view the same way every other area-colored thing in the app is (var(--cat-*)). No-op if
+  // the folder isn't actually pinned (e.g. a stale card from a race with unpinning).
+  function setPinArea(id, area){
+    var pins = loadKnowledgePins();
+    var p = pins.find(function(x){ return x.id === id; });
+    if(!p) return;
+    p.area = area || null;
+    saveKnowledgePins(pins);
+  }
 
   var KNOWLEDGE_MIME_ICONS = {
     "application/vnd.google-apps.folder": "📁",
@@ -4057,10 +4074,15 @@
     }
     var sorted = pins.slice().sort(function(a, b){ return a.name.localeCompare(b.name); });
     el.innerHTML = '<div class="knowledge-grid">' + sorted.map(function(p){
-      return '<div class="knowledge-file knowledge-pinned-card" data-id="' + p.id + '" data-name="' + escapeHtml(p.name) + '" title="' + escapeHtml(p.name) + '">' +
+      var style = p.area ? (' style="--pin-c: var(--cat-' + p.area.toLowerCase() + ');"') : "";
+      return '<div class="knowledge-file knowledge-pinned-card" data-id="' + p.id + '" data-name="' + escapeHtml(p.name) + '" title="' + escapeHtml(p.name) + '"' + style + '>' +
         '<button class="knowledge-unpin-btn" data-unpin-id="' + p.id + '" title="Unpin">×</button>' +
         '<span class="knowledge-file-icon">📁</span>' +
         '<span class="knowledge-file-name">' + escapeHtml(p.name) + '</span>' +
+        '<select class="knowledge-pin-area-select" data-area-id="' + p.id + '" title="Area — sets the color">' +
+          '<option value="">no area</option>' +
+          CATEGORIES.map(function(c){ return '<option value="' + c + '"' + (p.area === c ? " selected" : "") + '>' + c + '</option>'; }).join("") +
+        '</select>' +
       '</div>';
     }).join("") + '</div>';
   }
@@ -4225,8 +4247,8 @@
       var id = "root:" + p.id;
       var anchorX = 260 + i * 420, anchorY = 300;
       var existing = kgFindNode(id);
-      if(existing){ existing.anchorX = anchorX; existing.anchorY = anchorY; existing.name = p.name; }
-      else kgNodes.push({ id: id, driveId: p.id, kind: "root", name: p.name, parentNodeId: null,
+      if(existing){ existing.anchorX = anchorX; existing.anchorY = anchorY; existing.name = p.name; existing.area = p.area || null; }
+      else kgNodes.push({ id: id, driveId: p.id, kind: "root", name: p.name, area: p.area || null, parentNodeId: null,
         x: anchorX, y: anchorY, vx: 0, vy: 0, anchorX: anchorX, anchorY: anchorY });
     });
     kgEdges = kgEdges.filter(function(e){ return kgFindNode(e.fromId) && kgFindNode(e.toId); });
@@ -4347,7 +4369,11 @@
   }
   function kgNodeHtml(n){
     var cls = "kg-node " + n.kind + (n.kind !== "filetype" && kgExpanded[n.id] ? " expanded" : "");
-    return '<div class="' + cls + '" data-id="' + n.id + '" style="left:' + n.x + 'px; top:' + n.y + 'px;" title="' + escapeHtml(n.name) + '">' +
+    // Root nodes pick up their pinned folder's assigned area color (--kg-root-c, see setPinArea /
+    // renderKnowledgePinned's matching card border) — falls back to the plain accent color via CSS
+    // when no area is set (.kg-node.root .kg-node-circle's var(--kg-root-c, var(--accent))).
+    var areaVar = (n.kind === "root" && n.area) ? (" --kg-root-c: var(--cat-" + n.area.toLowerCase() + ");") : "";
+    return '<div class="' + cls + '" data-id="' + n.id + '" style="left:' + n.x + 'px; top:' + n.y + 'px;' + areaVar + '" title="' + escapeHtml(n.name) + '">' +
       '<span class="kg-node-circle">' + kgNodeIcon(n) + '</span>' +
       '<span class="kg-node-label">' + escapeHtml(n.name) + '</span>' +
     '</div>';
@@ -4407,6 +4433,10 @@
       b.vx -= fx; b.vy -= fy;
     });
     nodes.forEach(function(n){
+      // A node being dragged (see kgWireNodeDrag) is pinned to the pointer directly — physics still
+      // computes forces on it above (so its neighbors react to it moving) but must not also move it
+      // itself, or the drag and the sim would fight over its position.
+      if(n.fixed){ n.vx = 0; n.vy = 0; return; }
       if(n.kind === "root"){
         n.vx += (n.anchorX - n.x) * KG_ROOT_PULL_K * kgAlpha;
         n.vy += (n.anchorY - n.y) * KG_ROOT_PULL_K * kgAlpha;
@@ -4455,6 +4485,63 @@
     kgPanX = w / 2 - KG_CENTER_X * kgZoom;
     kgPanY = h / 2 - KG_CENTER_Y * kgZoom;
     applyKgTransform();
+  }
+  // Drag a node to reposition it by hand (same fixed-flag + click-vs-drag-threshold pattern as
+  // wireWhiteboardDrag/wirePeopleGraphDrag above): pointerdown pins the node in place so physics stops
+  // moving it while the pointer holds it, pointermove drags it directly, and pointerup either releases
+  // it back to the sim (if it moved) or falls through to the normal click behavior (expand/collapse a
+  // folder, or jump to a file-type node's folder in Drive Navigator) if it didn't move at all.
+  function kgWireNodeDrag(){
+    var overlay = document.getElementById("kgOverlay");
+    var dragEl = null, dragNode = null, dragPointerId = null, startClientX, startClientY, startX, startY, moved;
+    overlay.addEventListener("pointerdown", function(e){
+      var el = e.target.closest(".kg-node");
+      if(!el) return;
+      var n = kgFindNode(el.dataset.id);
+      if(!n) return;
+      dragEl = el; dragNode = n; dragPointerId = e.pointerId; moved = false;
+      startClientX = e.clientX; startClientY = e.clientY;
+      startX = n.x; startY = n.y;
+      n.fixed = true; n.vx = 0; n.vy = 0;
+      el.setPointerCapture(e.pointerId);
+      el.classList.add("dragging");
+      kgReheat(1);
+    });
+    var kgDragRafPending = false;
+    overlay.addEventListener("pointermove", function(e){
+      if(!dragNode || e.pointerId !== dragPointerId) return;
+      var dx = (e.clientX - startClientX) / kgZoom, dy = (e.clientY - startClientY) / kgZoom;
+      if(Math.abs(dx) > 3 || Math.abs(dy) > 3) moved = true;
+      dragNode.x = startX + dx; dragNode.y = startY + dy;
+      dragEl.style.left = dragNode.x + "px";
+      dragEl.style.top = dragNode.y + "px";
+      if(!kgDragRafPending){
+        kgDragRafPending = true;
+        requestAnimationFrame(function(){ kgDragRafPending = false; kgRenderEdges(); });
+      }
+    });
+    overlay.addEventListener("pointerup", function(e){
+      if(!dragNode || e.pointerId !== dragPointerId) return;
+      var n = dragNode, el = dragEl;
+      dragEl = null; dragNode = null; dragPointerId = null;
+      el.classList.remove("dragging");
+      n.fixed = false;
+      if(!moved){
+        if(n.kind === "filetype"){
+          var parent = kgFindNode(n.parentNodeId);
+          if(parent) openPinnedFolder(parent.driveId, parent.name);
+        } else {
+          kgExpandFolder(n);
+        }
+        return;
+      }
+      kgReheat(1);
+    });
+    overlay.addEventListener("pointercancel", function(){
+      if(dragNode) dragNode.fixed = false;
+      if(dragEl) dragEl.classList.remove("dragging");
+      dragEl = null; dragNode = null; dragPointerId = null;
+    });
   }
   var kgInitialized = false, kgCenteredOnce = false;
   function initKnowledgeGraphWrap(){
@@ -4513,18 +4600,7 @@
       activateKnowledgeGraph();
       toast("Refreshed from Drive.");
     });
-    document.getElementById("kgOverlay").addEventListener("click", function(e){
-      var el = e.target.closest(".kg-node");
-      if(!el) return;
-      var n = kgFindNode(el.dataset.id);
-      if(!n) return;
-      if(n.kind === "filetype"){
-        var parent = kgFindNode(n.parentNodeId);
-        if(parent) openPinnedFolder(parent.driveId, parent.name);
-      } else {
-        kgExpandFolder(n);
-      }
-    });
+    kgWireNodeDrag();
     // Layers menu: a floating checklist of every pinned folder, toggled open by the toolbar button.
     // Clicking a row flips that folder's visibility (kgHiddenRoots) and rebuilds the graph — hiding
     // every folder but one is how you get the "just this folder, by itself" view the layers menu
@@ -4641,9 +4717,23 @@
         renderKnowledgeCrumbs(); // toolbar pin button, if it's currently showing this same folder
         return;
       }
+      // Clicking the area <select> itself must never also trigger the card's own "open this folder"
+      // navigation below (a native click on a <select> bubbles just like any other element click).
+      if(e.target.closest(".knowledge-pin-area-select")) return;
       var card = e.target.closest(".knowledge-pinned-card");
       if(!card) return;
       openPinnedFolder(card.dataset.id, card.dataset.name);
+    });
+    // Changing a pinned card's area re-renders the pinned grid (new border/icon color) and, if the
+    // Graph view has already been built, updates that folder's root node color too — kept in sync
+    // immediately rather than only on the graph's next activation.
+    document.getElementById("knowledgePinned").addEventListener("change", function(e){
+      var sel = e.target.closest(".knowledge-pin-area-select");
+      if(!sel) return;
+      setPinArea(sel.dataset.areaId, sel.value || null);
+      renderKnowledgePinned();
+      buildKnowledgeGraphRoots();
+      kgRenderNodes();
     });
     renderKnowledgeConnectState();
     // A restored token (see restoreDriveToken) means we're actually connected on this very load —
