@@ -1514,6 +1514,14 @@
   .home-sticky-foot button{ width:20px; height:20px; flex-shrink:0; border:1px solid var(--border-bright); background:none; color:var(--text-dim); font-size:11px; line-height:1; border-radius:5px; cursor:pointer; display:grid; place-items:center; padding:0; }
   .home-sticky-foot button:hover{ color:var(--text); background:var(--bg-inset); }
   .home-sticky-save:hover{ color:var(--accent); border-color:var(--accent-dim); }
+  /* Corner grip to resize a sticky (see wireStickyResize) — same visual as .home-notes-resize /
+     .home-todo-resize elsewhere on the cockpit, just area-tinted like the rest of the sticky. Once
+     resized, the card's height is fixed (not auto-grown by typing — see autoGrow's note.h guard) so
+     the textarea instead flexes to fill it and scrolls internally for overflow. */
+  .home-sticky-resize{ position:absolute; right:0; bottom:0; width:13px; height:13px; cursor:nwse-resize; touch-action:none; z-index:1; }
+  .home-sticky-resize::before{ content:""; position:absolute; right:3px; bottom:3px; width:6px; height:6px; border-right:2px solid var(--sticky-c, var(--border-bright)); border-bottom:2px solid var(--sticky-c, var(--border-bright)); opacity:0.6; }
+  .home-sticky-resize:hover::before{ opacity:1; }
+  .home-sticky.resized textarea{ flex:1; min-height:0; overflow-y:auto; }
   /* Mobile-only toggle for the timeline drawer (see @media max-width:820px) — hidden entirely on
      desktop, where the timeline is always docked. z-index above the drawer itself so it stays
      clickable (to close again) even once the drawer is open and covering that corner. */
@@ -2065,7 +2073,14 @@
       <div id="goalDetailBody"></div>
 
       <div class="goal-integration-block">
-        <div class="integration-block-head"><h2>plan</h2></div>
+        <div class="integration-block-head">
+          <h2>plan</h2>
+          <div class="gantt-head-actions">
+            <button class="btn" id="goalGanttAddActionBtn" type="button">+ action</button>
+            <button class="btn gantt-zoom-btn" id="goalGanttZoomOutBtn" type="button" title="Zoom out">−</button>
+            <button class="btn gantt-zoom-btn" id="goalGanttZoomInBtn" type="button" title="Zoom in">+</button>
+          </div>
+        </div>
         <p class="panel-hint">The whole plan under this goal — its projects and every action, direct or nested under a project. Drag a bar left/right to reschedule it. Drag the ◉ handle from one action onto another to make the second depend on the first — you'll be asked whether it's a hard "must be done first" requirement (dashed arrow) or just an ordering link (solid arrow). Click an arrow to remove it.</p>
         <div class="gantt-wrap" id="goalGanttWrap"></div>
       </div>
@@ -2154,6 +2169,8 @@
         .gantt-arrow:hover{stroke:var(--danger, #e5484d);}
         .gantt-link-preview{stroke:var(--accent);stroke-width:1.5;stroke-dasharray:3,3;fill:none;pointer-events:none;}
         .gantt-empty{padding:18px;font-family:var(--mono);font-size:11px;color:var(--text-faint);}
+        .gantt-head-actions{display:flex;align-items:center;gap:6px;margin-left:auto;}
+        .gantt-zoom-btn{width:28px;padding:0;text-align:center;font-weight:700;}
       </style>
       <div class="main-header">
         <div>
@@ -2162,7 +2179,14 @@
         </div>
       </div>
       <div class="goal-integration-block">
-        <div class="integration-block-head"><h2>plan</h2></div>
+        <div class="integration-block-head">
+          <h2>plan</h2>
+          <div class="gantt-head-actions">
+            <button class="btn" id="entityGanttAddActionBtn" type="button">+ action</button>
+            <button class="btn gantt-zoom-btn" id="entityGanttZoomOutBtn" type="button" title="Zoom out">−</button>
+            <button class="btn gantt-zoom-btn" id="entityGanttZoomInBtn" type="button" title="Zoom in">+</button>
+          </div>
+        </div>
         <p class="panel-hint">Drag a bar left/right to reschedule it. Drag the ◉ handle from one action onto another to make the second depend on the first — you'll be asked whether it's a hard "must be done first" requirement (dashed arrow) or just an ordering link (solid arrow). Click an arrow to remove it.</p>
         <div class="gantt-wrap" id="entityGanttWrap"></div>
       </div>
@@ -5505,6 +5529,26 @@
       '<span class="home-todo-item-dot' + (it.done ? " done" : "") + '"></span>' +
       '<span class="home-todo-item-text">' + escapeHtml(it.title) + '</span></div>';
   }
+  // A wash for the widget's own header bar, driven by today's actual workload — hue from the
+  // highest-priority tier that still has undone items (P0 first), intensity from how many undone
+  // items there are in total. Always computed from the priority pivot regardless of which tab
+  // (priority/worklife) is currently showing — both are the same underlying items, just grouped
+  // differently, so this reflects "today" as a whole, not just the visible quadrant split.
+  function homeTodoHeadColor(){
+    var quads = homeTodoPriorityQuadrants();
+    var vars = ["--p0", "--p1", "--p2", "--p3"];
+    var undoneCounts = quads.map(function(list){ return list.filter(function(it){ return !it.done; }).length; });
+    var totalUndone = undoneCounts.reduce(function(a, b){ return a + b; }, 0);
+    if(!totalUndone) return null;
+    var highest = undoneCounts.findIndex(function(c){ return c > 0; });
+    var hex = cssVarColor(vars[highest]).replace("#", "");
+    if(hex.length === 3) hex = hex.split("").map(function(c){ return c + c; }).join("");
+    var num = parseInt(hex, 16);
+    var r = (num >> 16) & 255, g = (num >> 8) & 255, b = num & 255;
+    // More undone items -> a stronger wash, capped so the title/tabs stay legible over it.
+    var alpha = Math.min(0.4, 0.12 + totalUndone * 0.035);
+    return "rgba(" + r + "," + g + "," + b + "," + alpha + ")";
+  }
   function renderHomeTodoMatrix(){
     var grid = document.getElementById("homeTodoGrid");
     if(!grid) return;
@@ -5517,6 +5561,8 @@
     }).join("|");
     if(grid.dataset.sig === sig) return;
     grid.dataset.sig = sig;
+    var head = document.getElementById("homeTodoHead");
+    if(head) head.style.background = homeTodoHeadColor() || "";
     grid.innerHTML = quads.map(function(list, i){
       var quadClass = homeTodoMode === "priority" ? (" " + labels[i]) : "";
       return '<div class="home-todo-quad' + quadClass + '">' +
@@ -5748,8 +5794,17 @@
     function save(arr){ safeSet(window.localStorage, "pp_home_stickies", JSON.stringify(arr)); }
     function update(id, patch){ var arr = load(); var i = arr.findIndex(function(x){ return x.id === id; }); if(i !== -1){ Object.assign(arr[i], patch); save(arr); } }
     function areaStyle(area){ return area ? ("--sticky-c: var(--cat-" + area.toLowerCase() + "); --sticky-bg: var(--cat-" + area.toLowerCase() + "-bg);") : ""; }
-    function autoGrow(ta){ ta.style.height = "auto"; ta.style.height = ta.scrollHeight + "px"; }
-    function applyStyle(card, note){ card.setAttribute("style", areaStyle(note.area) + " left:" + (note.x||40) + "px; top:" + (note.y||60) + "px;"); }
+    // Once a card has been manually resized (note.h set), its height is fixed and the textarea
+    // fills it (see .home-sticky.resized) instead of growing with content — auto-grow only applies
+    // to cards still at their default size.
+    function autoGrow(ta, note){ if(note && note.h) return; ta.style.height = "auto"; ta.style.height = ta.scrollHeight + "px"; }
+    function applyStyle(card, note){
+      var style = areaStyle(note.area) + " left:" + (note.x||40) + "px; top:" + (note.y||60) + "px;";
+      if(note.w) style += " width:" + note.w + "px;";
+      if(note.h) style += " height:" + note.h + "px;";
+      card.setAttribute("style", style);
+      card.classList.toggle("resized", !!note.h);
+    }
 
     function makeCard(note){
       var card = document.createElement("div");
@@ -5761,7 +5816,7 @@
 
       var ta = document.createElement("textarea");
       ta.value = note.text || ""; ta.rows = 1; ta.placeholder = "quick note…";
-      ta.addEventListener("input", function(){ autoGrow(ta); update(note.id, { text: ta.value }); });
+      ta.addEventListener("input", function(){ autoGrow(ta, note); update(note.id, { text: ta.value }); });
 
       var foot = document.createElement("div");
       foot.className = "home-sticky-foot";
@@ -5796,11 +5851,15 @@
       del.className = "home-sticky-del"; del.type = "button"; del.title = "Discard (without saving)"; del.textContent = "×";
       del.addEventListener("click", function(){ save(load().filter(function(x){ return x.id !== note.id; })); card.remove(); });
 
+      var resize = document.createElement("div");
+      resize.className = "home-sticky-resize"; resize.title = "Drag to resize";
+
       foot.appendChild(sel); foot.appendChild(saveBtn); foot.appendChild(del);
-      card.appendChild(grip); card.appendChild(ta); card.appendChild(foot);
+      card.appendChild(grip); card.appendChild(ta); card.appendChild(foot); card.appendChild(resize);
       wrap.appendChild(card);
-      autoGrow(ta);
+      autoGrow(ta, note);
       wireDrag(card, grip, note);
+      wireResize(card, resize, note);
       return card;
     }
 
@@ -5830,6 +5889,40 @@
       }
       grip.addEventListener("pointerup", end);
       grip.addEventListener("pointercancel", end);
+    }
+
+    // Corner-grip resize, same math as wireHomeTodoResize elsewhere on the cockpit: drag delta
+    // clamped so the card can't grow past the wrap's own edge, min size keeps the header/footer/
+    // handle from being squeezed out. Persists w/h on the note (see applyStyle/autoGrow's guards).
+    var STICKY_MIN_W = 130, STICKY_MIN_H = 90;
+    function wireResize(card, handle, note){
+      var active = false, startX = 0, startY = 0, startW = 0, startH = 0, maxW = 9999, maxH = 9999;
+      handle.addEventListener("pointerdown", function(e){
+        active = true;
+        startX = e.clientX; startY = e.clientY;
+        startW = card.offsetWidth; startH = card.offsetHeight;
+        var r = card.getBoundingClientRect(), wr = wrap.getBoundingClientRect();
+        maxW = wr.right - r.left - 4; maxH = wr.bottom - r.top - 4;
+        handle.setPointerCapture(e.pointerId);
+        e.stopPropagation();
+        e.preventDefault();
+      });
+      handle.addEventListener("pointermove", function(e){
+        if(!active) return;
+        var w = Math.max(STICKY_MIN_W, Math.min(maxW, startW + (e.clientX - startX)));
+        var h = Math.max(STICKY_MIN_H, Math.min(maxH, startH + (e.clientY - startY)));
+        card.style.width = w + "px";
+        card.style.height = h + "px";
+        card.classList.add("resized");
+      });
+      function end(){
+        if(!active) return;
+        active = false;
+        note.w = card.offsetWidth; note.h = card.offsetHeight;
+        update(note.id, { w: note.w, h: note.h });
+      }
+      handle.addEventListener("pointerup", end);
+      handle.addEventListener("pointercancel", end);
     }
 
     newBtn.addEventListener("click", function(){
@@ -8088,7 +8181,24 @@
      each other. Dependencies live on the DEPENDENT action (a.dependencies = [{id, requiresDone}]) —
      requiresDone marks the conditional "can only start once the prerequisite is DONE" kind, drawn
      dashed; a plain ordering link is drawn solid. ---- */
-  var GANTT_COL_W = 30, GANTT_LABEL_W = 170;
+  var GANTT_LABEL_W = 170;
+  // Zoom is one shared level across every Gantt chart on the page (not per-chart) — simpler, and a
+  // user who zoomed in to plan a busy project almost certainly wants the same scale looking at a
+  // goal's overview next. Persisted so it survives a reload.
+  var GANTT_ZOOM_LEVELS = [14, 18, 22, 30, 40, 52, 68];
+  var GANTT_COL_W = (function(){
+    var saved = Number(safeGet(window.localStorage, "pp_gantt_col_w"));
+    return GANTT_ZOOM_LEVELS.indexOf(saved) !== -1 ? saved : 30;
+  })();
+  function ganttZoomStep(dir){
+    var idx = GANTT_ZOOM_LEVELS.indexOf(GANTT_COL_W);
+    if(idx === -1) idx = GANTT_ZOOM_LEVELS.indexOf(30);
+    idx = Math.max(0, Math.min(GANTT_ZOOM_LEVELS.length - 1, idx + dir));
+    GANTT_COL_W = GANTT_ZOOM_LEVELS[idx];
+    safeSet(window.localStorage, "pp_gantt_col_w", String(GANTT_COL_W));
+    renderEntityGantt();
+    renderGoalGanttChart();
+  }
   function ganttDayIndex(startStr, dateStr){
     return Math.round((new Date(dateStr + "T00:00:00") - new Date(startStr + "T00:00:00")) / 86400000);
   }
@@ -8114,10 +8224,11 @@
     var a = actionById(id);
     return !!a && (a.dependencies || []).some(function(d){ return d.id === onId || ganttDependsOn(d.id, onId, seen); });
   }
-  // Which project + actions the project/action page's chart covers: a project page shows itself +
-  // its child actions; an action page shows its parent project's whole chart (with itself
-  // highlighted) so the action is always seen in context, or — for a parentless/goal-parented action
-  // — itself plus anything dependency-linked to it in either direction.
+  // Which project/goal + actions the project/action page's chart covers: a project page shows
+  // itself + its child actions; an action page shows its DIRECT parent (project or goal — whichever
+  // it actually has) plus every sibling action under that same parent, with itself highlighted, so
+  // the action is always seen in the context of the plan it belongs to. A parentless action falls
+  // back to itself plus anything dependency-linked to it in either direction.
   function ganttItemsForEntity(){
     var rows = [], actions = [], selfId = null;
     if(entityPage.kind === "project"){
@@ -8132,6 +8243,10 @@
         var proj = projectById(self.parentId);
         actions = state.actions.filter(function(a){ return a.parentType === "project" && a.parentId === proj.id; });
         rows.push({ kind:"project", obj:proj, span:actions });
+      } else if(self.parentType === "goal" && self.parentId && goalById(self.parentId)){
+        var g = goalById(self.parentId);
+        actions = state.actions.filter(function(a){ return a.parentType === "goal" && a.parentId === g.id; });
+        rows.push({ kind:"goal", obj:g, span:actions });
       } else {
         var ids = { }; ids[self.id] = true;
         (self.dependencies || []).forEach(function(d){ ids[d.id] = true; });
@@ -8373,6 +8488,26 @@
   }
   wireGanttChart(document.getElementById("entityGanttWrap"), renderEntityPage);
   wireGanttChart(document.getElementById("goalGanttWrap"), renderGoalDetail);
+  document.getElementById("entityGanttZoomOutBtn").addEventListener("click", function(){ ganttZoomStep(-1); });
+  document.getElementById("entityGanttZoomInBtn").addEventListener("click", function(){ ganttZoomStep(1); });
+  document.getElementById("goalGanttZoomOutBtn").addEventListener("click", function(){ ganttZoomStep(-1); });
+  document.getElementById("goalGanttZoomInBtn").addEventListener("click", function(){ ganttZoomStep(1); });
+  // "+ action" pre-parents the new action to whatever this chart's own top-level context is: the
+  // project itself (on a project page), this action's own direct parent (on an action page — same
+  // parent/goal ganttItemsForEntity() is already showing), or the goal (on a goal page).
+  document.getElementById("entityGanttAddActionBtn").addEventListener("click", function(){
+    if(entityPage.kind === "project"){
+      openActionModalWithParent("project", entityPage.id);
+      return;
+    }
+    var self = entityPageObj();
+    if(self && self.parentType === "project" && self.parentId) openActionModalWithParent("project", self.parentId);
+    else if(self && self.parentType === "goal" && self.parentId) openActionModalWithParent("goal", self.parentId);
+    else openActionModal(null, null);
+  });
+  document.getElementById("goalGanttAddActionBtn").addEventListener("click", function(){
+    if(goalDetailId) openActionModalWithParent("goal", goalDetailId);
+  });
 
   /* ---------------- Areas ---------------- */
   function computeAreaData(cat){
@@ -14836,6 +14971,22 @@
     document.getElementById("actionTimePickPanel").hidden = true;
     openModal("actionModalOverlay");
     document.getElementById("actionTitleInput").focus();
+  }
+  // openActionModal's own presetGoalId only ever pre-parents to a GOAL — the Gantt "+ action"
+  // buttons need to pre-parent to a specific PROJECT too (a project's own page, or an action whose
+  // direct parent is a project), so this opens blank and overrides the parent chip/select after.
+  function openActionModalWithParent(parentType, parentId){
+    if(parentType === "goal"){
+      openActionModal(parentId, null);
+      return;
+    }
+    openActionModal(null, null);
+    setChip(document.getElementById("actionParentTypeSelect"), "pt", "project");
+    var p = projectById(parentId);
+    var area = p ? projectCategory(p) : null;
+    if(area) setChip(document.getElementById("actionAreaSelect"), "ar", area);
+    fillActionParentSelect();
+    document.getElementById("actionParentSelect").value = parentId;
   }
   document.getElementById("cancelActionModalBtn").addEventListener("click", function(){ closeModal("actionModalOverlay"); });
   document.getElementById("saveActionBtn").addEventListener("click", async function(){
