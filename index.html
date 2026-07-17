@@ -264,6 +264,14 @@
   .side-link.active{ background:var(--bg-raised); border-color:var(--border-bright); color:var(--accent); box-shadow:var(--elev-1); }
   .side-link.active::before{ height:60%; }
   .side-link.active .sl-glyph{ color:var(--accent); }
+  /* "Time" nav dropdown — bundles Present/History/Future under one parent item. The parent picks up
+     the standard .side-link.active look (via the shared showSection() logic) whenever one of its
+     children is the current page, and its submenu auto-expands then too — see showSection(). */
+  .side-link-caret{ margin-left:auto; font-size:9px; color:var(--text-faint); transition:transform var(--dur-fast) var(--ease-out); }
+  .side-link-parent.open .side-link-caret{ transform:rotate(180deg); }
+  .side-submenu{ display:flex; flex-direction:column; gap:2px; max-height:0; overflow:hidden; transition:max-height var(--dur-med) var(--ease-out); }
+  .side-submenu.open{ max-height:160px; }
+  .side-sublink{ padding-left:34px; font-size:12.5px; }
 
   .term-stats{ border-top:1px solid var(--border); margin-top:20px; padding-top:16px; display:flex; flex-direction:column; gap:9px; }
   .stat-line{ display:flex; justify-content:space-between; font-family:var(--mono); font-size:11.5px; }
@@ -1652,11 +1660,16 @@
 
       <nav class="side-nav" id="sideNav">
         <button class="side-link active" data-section="home" type="button"><span class="sl-glyph">⌂</span>Home</button>
-        <button class="side-link" data-section="today" type="button"><span class="sl-glyph">◷</span>Present</button>
+        <button class="side-link side-link-parent" id="sideLinkTimeToggle" data-toggle-submenu="sideSubmenuTime" type="button" aria-expanded="false">
+          <span class="sl-glyph">◔</span>Time<span class="side-link-caret">▾</span>
+        </button>
+        <div class="side-submenu" id="sideSubmenuTime">
+          <button class="side-link side-sublink" data-section="today" type="button"><span class="sl-glyph">◷</span>Present</button>
+          <button class="side-link side-sublink" data-section="timeline" type="button"><span class="sl-glyph">↔</span>History</button>
+          <button class="side-link side-sublink" data-section="future" type="button"><span class="sl-glyph">»</span>Future</button>
+        </div>
         <button class="side-link" data-section="planner" type="button"><span class="sl-glyph">▤</span>Planner</button>
         <button class="side-link" data-section="tracker" type="button"><span class="sl-glyph">▥</span>Tracker</button>
-        <button class="side-link" data-section="timeline" type="button"><span class="sl-glyph">↔</span>History</button>
-        <button class="side-link" data-section="future" type="button"><span class="sl-glyph">»</span>Future</button>
         <button class="side-link" data-section="agent" type="button"><span class="sl-glyph">◈</span>Brains</button>
         <button class="side-link" data-section="journal" type="button"><span class="sl-glyph">✎</span>Notes</button>
         <button class="side-link" data-section="people" type="button"><span class="sl-glyph">☺</span>People</button>
@@ -3748,6 +3761,18 @@
     ALL_SECTION_IDS.forEach(function(id){
       document.getElementById(id).style.display = (id === name + "Section") ? "" : "none";
     });
+    // The "Time" nav dropdown (Present/History/Future) has no page of its own — its parent toggle
+    // picks up the same .active treatment as any other current-page link whenever one of its three
+    // children is showing, and the submenu auto-expands so the active child stays visible. Toggling
+    // it closed manually (see the sideNav click handler) is still respected on every other section.
+    var timeToggle = document.getElementById("sideLinkTimeToggle");
+    var isTimeChild = name === "today" || name === "timeline" || name === "future";
+    timeToggle.classList.toggle("active", isTimeChild);
+    timeToggle.setAttribute("aria-expanded", String(isTimeChild || timeToggle.classList.contains("open")));
+    if(isTimeChild){
+      timeToggle.classList.add("open");
+      document.getElementById("sideSubmenuTime").classList.add("open");
+    }
     homeSceneSetActive(name === "home");
     todayGlSetActive(name === "today");
     // The graph lives inside the Planner now — entering the planner needs the same full-viewport
@@ -3770,6 +3795,16 @@
   document.getElementById("sideNav").addEventListener("click", function(e){
     var btn = e.target.closest(".side-link");
     if(!btn) return;
+    // A parent like "Time" toggles its submenu open/closed instead of navigating — it has no page
+    // (no data-section) of its own, only its children (Present/History/Future) do.
+    if(btn.dataset.toggleSubmenu){
+      var submenu = document.getElementById(btn.dataset.toggleSubmenu);
+      var open = !submenu.classList.contains("open");
+      submenu.classList.toggle("open", open);
+      btn.classList.toggle("open", open);
+      btn.setAttribute("aria-expanded", String(open));
+      return;
+    }
     showSection(btn.dataset.section);
     // Picking a page while the mobile drawer is open should reveal it, not leave the drawer covering
     // the freshly-switched page — a no-op on desktop, where this attribute is never set.
