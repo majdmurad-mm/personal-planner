@@ -2493,6 +2493,11 @@
         .knowledge-panel[hidden]{display:none;}
         .knowledge-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border);}
         .knowledge-crumbs{font-family:var(--mono);font-size:12px;color:var(--text-dim);}
+        .knowledge-crumb{cursor:pointer;}
+        .knowledge-crumb:hover{color:var(--text);text-decoration:underline;}
+        .knowledge-crumb.current{color:var(--text);cursor:default;text-decoration:none;}
+        .knowledge-crumb-sep{opacity:.5;margin:0 2px;}
+        .knowledge-file[data-folder="1"] .knowledge-file-icon{color:var(--accent);}
         .knowledge-search{margin-left:auto;min-width:180px;padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg-inset);color:var(--text);font-family:var(--mono);font-size:12px;outline:none;}
         .knowledge-search:disabled{opacity:.5;cursor:not-allowed;}
         .knowledge-files{min-height:240px;}
@@ -3826,11 +3831,155 @@
     document.documentElement.removeAttribute("data-mobile-menu-open");
   });
 
-  // ---- Knowledge page (scaffold): a Google Drive file interface, wired later. For now this only
-  // handles the Drive/Overview sub-tab switching and a connect stub. The real integration (Google
-  // Drive + Picker API via GIS) plugs in where noted below — see KNOWLEDGE_SETUP.md for the Google
-  // Cloud setup that has to happen first (enable Drive API, add the drive scope + this origin to the
-  // OAuth client, set GOOGLE_CLIENT_ID). Knowledge lives on Drive, never in Supabase. ----
+  // ---- Knowledge page: a live Google Drive file browser. Auth reuses the same GIS (Google Identity
+  // Services) script Calendar already loads, but through its OWN token client scoped to
+  // drive.readonly — a separate access token from Calendar's, so connecting one never implicitly
+  // grants or revokes the other. Session-only (in-memory token, same as googleAccessToken for
+  // Calendar) — reconnecting is required after a reload. Requires a real GOOGLE_CLIENT_ID with the
+  // Drive API enabled and this origin authorized; see KNOWLEDGE_SETUP.md. Files are browsed straight
+  // from Drive via the REST API — nothing is ever copied into Supabase. ----
+  var driveTokenClient = null;
+  var driveAccessToken = null;
+  var DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.readonly";
+  var driveFolderStack = [{ id: "root", name: "My Drive" }];
+  var driveSearchDebounceTimer = null;
+
+  function initDriveClient(){
+    if(!window.google || !google.accounts || !google.accounts.oauth2 || driveTokenClient) return;
+    driveTokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: DRIVE_SCOPE,
+      callback: function(resp){
+        if(resp.error){ console.error(resp); toast("Google Drive sign-in failed: " + resp.error); return; }
+        driveAccessToken = resp.access_token;
+        renderKnowledgeConnectState();
+        driveFolderStack = [{ id: "root", name: "My Drive" }];
+        loadDriveFolder();
+      }
+    });
+  }
+  (function pollForDriveClient(){
+    var tries = 0;
+    var iv = setInterval(function(){
+      tries++;
+      if(window.google && google.accounts && google.accounts.oauth2){ initDriveClient(); clearInterval(iv); }
+      else if(tries > 20){ clearInterval(iv); }
+    }, 300);
+  })();
+
+  function connectGoogleDrive(){
+    if(!driveTokenClient){ toast("Google sign-in isn't ready yet — try again in a moment."); return; }
+    driveTokenClient.requestAccessToken({ prompt: driveAccessToken ? "" : "consent" });
+  }
+  function disconnectGoogleDrive(){
+    if(driveAccessToken && window.google && google.accounts && google.accounts.oauth2){
+      google.accounts.oauth2.revoke(driveAccessToken, function(){});
+    }
+    driveAccessToken = null;
+    driveFolderStack = [{ id: "root", name: "My Drive" }];
+    renderKnowledgeConnectState();
+    renderKnowledgeEmpty();
+  }
+  function renderKnowledgeConnectState(){
+    var headerBtn = document.getElementById("knowledgeConnectBtn");
+    var search = document.getElementById("knowledgeSearch");
+    if(!headerBtn) return;
+    if(driveAccessToken){
+      headerBtn.textContent = "disconnect google drive";
+      headerBtn.classList.remove("btn-accent");
+      search.disabled = false;
+      search.title = "";
+    } else {
+      headerBtn.textContent = "connect google drive";
+      headerBtn.classList.add("btn-accent");
+      search.disabled = true;
+      search.title = "Available once Google Drive is connected";
+      search.value = "";
+    }
+  }
+
+  var KNOWLEDGE_MIME_ICONS = {
+    "application/vnd.google-apps.folder": "📁",
+    "application/vnd.google-apps.document": "📄",
+    "application/vnd.google-apps.spreadsheet": "▦",
+    "application/vnd.google-apps.presentation": "▭",
+    "application/pdf": "📕"
+  };
+  function knowledgeIconFor(mimeType){
+    if(KNOWLEDGE_MIME_ICONS[mimeType]) return KNOWLEDGE_MIME_ICONS[mimeType];
+    if(mimeType && mimeType.indexOf("image/") === 0) return "🖼";
+    return "◦";
+  }
+  function renderKnowledgeCrumbs(){
+    var el = document.getElementById("knowledgeCrumbs");
+    el.innerHTML = driveFolderStack.map(function(f, i){
+      var last = i === driveFolderStack.length - 1;
+      return '<span class="knowledge-crumb' + (last ? " current" : "") + '" data-idx="' + i + '">' +
+        (i === 0 ? "📁 " : "") + escapeHtml(f.name) + '</span>' + (last ? "" : ' <span class="knowledge-crumb-sep">/</span> ');
+    }).join("");
+  }
+  function renderKnowledgeEmpty(){
+    var el = document.getElementById("knowledgeFiles");
+    el.innerHTML = '<div class="knowledge-empty">' +
+      '<div class="knowledge-empty-icon">🗂️</div>' +
+      '<p class="knowledge-empty-title">Not connected yet</p>' +
+      '<p>Connect Google Drive to browse your knowledge here — documents, spreadsheets, slides, PDFs, images and more, live from your Drive. Nothing is copied into the app\'s database.</p>' +
+      '<button class="btn btn-accent knowledge-connect" type="button">connect google drive</button>' +
+    '</div>';
+    renderKnowledgeCrumbs();
+  }
+  function renderKnowledgeFiles(files){
+    var el = document.getElementById("knowledgeFiles");
+    if(!files.length){
+      el.innerHTML = '<div class="knowledge-empty"><p class="knowledge-empty-title">Empty</p><p>Nothing here.</p></div>';
+      return;
+    }
+    // Folders first, then files, each alphabetical — matches how Drive's own UI sorts by default.
+    var sorted = files.slice().sort(function(a, b){
+      var af = a.mimeType === "application/vnd.google-apps.folder", bf = b.mimeType === "application/vnd.google-apps.folder";
+      if(af !== bf) return af ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+    el.innerHTML = '<div class="knowledge-grid">' + sorted.map(function(f){
+      var isFolder = f.mimeType === "application/vnd.google-apps.folder";
+      return '<div class="knowledge-file" data-id="' + f.id + '" data-name="' + escapeHtml(f.name) + '" data-folder="' + (isFolder ? "1" : "0") + '" data-link="' + escapeHtml(f.webViewLink || "") + '" title="' + escapeHtml(f.name) + '">' +
+        '<span class="knowledge-file-icon">' + knowledgeIconFor(f.mimeType) + '</span>' +
+        '<span class="knowledge-file-name">' + escapeHtml(f.name) + '</span>' +
+      '</div>';
+    }).join("") + '</div>';
+  }
+  async function driveApiList(query){
+    var url = "https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent(query) +
+      "&fields=" + encodeURIComponent("files(id,name,mimeType,webViewLink)") +
+      "&orderBy=folder,name&pageSize=100";
+    var resp = await fetch(url, { headers: { "Authorization": "Bearer " + driveAccessToken } });
+    if(resp.status === 401){
+      driveAccessToken = null; renderKnowledgeConnectState(); renderKnowledgeEmpty();
+      toast("Google Drive session expired — reconnect to keep browsing.");
+      return null;
+    }
+    if(!resp.ok){ toast("Drive request failed (" + resp.status + ")"); return null; }
+    var data = await resp.json();
+    return data.files || [];
+  }
+  async function loadDriveFolder(){
+    if(!driveAccessToken) return;
+    renderKnowledgeCrumbs();
+    var el = document.getElementById("knowledgeFiles");
+    el.innerHTML = '<div class="knowledge-empty"><p class="knowledge-empty-title">Loading…</p></div>';
+    var current = driveFolderStack[driveFolderStack.length - 1];
+    var files = await driveApiList("'" + current.id + "' in parents and trashed=false");
+    if(files) renderKnowledgeFiles(files);
+  }
+  async function searchDrive(term){
+    renderKnowledgeCrumbs();
+    var el = document.getElementById("knowledgeFiles");
+    el.innerHTML = '<div class="knowledge-empty"><p class="knowledge-empty-title">Searching…</p></div>';
+    var safe = term.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    var files = await driveApiList("name contains '" + safe + "' and trashed=false");
+    if(files) renderKnowledgeFiles(files);
+  }
+
   (function wireKnowledge(){
     var section = document.getElementById("knowledgeSection");
     if(!section) return;
@@ -3843,12 +3992,42 @@
         panels.forEach(function(p){ p.hidden = (p.dataset.kv !== target); });
       });
     });
-    // Connect (both the header button and the empty-state one). TODO: real Drive OAuth + file listing.
-    section.querySelectorAll(".knowledge-connect").forEach(function(btn){
-      btn.addEventListener("click", function(){
-        toast("Google Drive isn't connected yet — this page is a scaffold. Setup steps are in KNOWLEDGE_SETUP.md.");
-      });
+    // Header connect/disconnect toggle button — label/behavior flips via renderKnowledgeConnectState.
+    document.getElementById("knowledgeConnectBtn").addEventListener("click", function(){
+      if(driveAccessToken) disconnectGoogleDrive(); else connectGoogleDrive();
     });
+    // The empty state's own connect button is rebuilt on every render (renderKnowledgeEmpty), so it's
+    // wired via delegation on the files container rather than a one-time direct listener.
+    document.getElementById("knowledgeFiles").addEventListener("click", function(e){
+      var connectBtn = e.target.closest(".knowledge-connect");
+      if(connectBtn){ connectGoogleDrive(); return; }
+      var tile = e.target.closest(".knowledge-file");
+      if(!tile) return;
+      if(tile.dataset.folder === "1"){
+        driveFolderStack.push({ id: tile.dataset.id, name: tile.dataset.name });
+        document.getElementById("knowledgeSearch").value = "";
+        loadDriveFolder();
+      } else if(tile.dataset.link){
+        window.open(tile.dataset.link, "_blank", "noopener");
+      }
+    });
+    document.getElementById("knowledgeCrumbs").addEventListener("click", function(e){
+      var crumb = e.target.closest(".knowledge-crumb");
+      if(!crumb || crumb.classList.contains("current")) return;
+      driveFolderStack = driveFolderStack.slice(0, Number(crumb.dataset.idx) + 1);
+      document.getElementById("knowledgeSearch").value = "";
+      loadDriveFolder();
+    });
+    document.getElementById("knowledgeSearch").addEventListener("input", function(e){
+      var term = e.target.value.trim();
+      clearTimeout(driveSearchDebounceTimer);
+      driveSearchDebounceTimer = setTimeout(function(){
+        if(!driveAccessToken) return;
+        if(term) searchDrive(term); else loadDriveFolder();
+      }, 350);
+    });
+    renderKnowledgeConnectState();
+    renderKnowledgeEmpty();
   })();
 
   /* ---------------- Home (cockpit) dashboard ---------------- */
