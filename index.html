@@ -8422,11 +8422,12 @@
   }
   function ganttRowLabelHtml(kind, obj){ return (kind === "goal" ? "◆ " : "▤ ") + escapeHtml(obj.title); }
   // A goal/project's bar is derived, not directly draggable here — it spans from its earliest
-  // relevant scheduled action (or today) to its own due date (goals have none, so a goal row always
-  // runs to its latest child action) or a week past its last action.
+  // relevant scheduled action (or today) to its own due date, when it has one (an ongoing/infinite
+  // goal never does — see g.ongoing), or otherwise to its latest child action or a week past its
+  // last action.
   function ganttDerivedBarHtml(kind, obj, start, span, today, selfId){
     var childDates = span.filter(function(a){ return a.date; }).map(function(a){ return a.date; }).sort();
-    var due = kind === "project" ? obj.due : null;
+    var due = obj.due || null;
     var spanStart = childDates[0] || today;
     var spanEnd = due || childDates[childDates.length - 1] || addDaysToDateStr(spanStart, 7);
     if(spanEnd < spanStart) spanEnd = spanStart;
