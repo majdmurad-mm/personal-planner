@@ -1539,6 +1539,13 @@
   .home-timeline-dock{ position:relative; flex-shrink:0; height:var(--home-dock-h, 150px); min-height:70px; background:var(--bg-raised); }
   .home-tl-hours{ position:absolute; top:4px; left:0; right:0; height:12px; }
   .home-tl-hours span{ position:absolute; transform:translateX(-50%); font-family:var(--mono); font-size:9px; color:var(--text-faint); }
+  /* today/tomorrow toggle — sits in the top-right corner, past the last hour tick ("21" lands at
+     87.5% of the ruler's width, leaving this clear) so it never collides with .home-tl-hours. */
+  .home-tl-day-toggle{ position:absolute; top:2px; right:4px; z-index:4; display:flex; align-items:center; gap:3px; font-family:var(--mono); font-size:9px; letter-spacing:0.04em; color:var(--text-faint); text-transform:uppercase; }
+  .home-tl-day-toggle button{ appearance:none; border:none; background:none; color:var(--text-dim); font-family:var(--mono); font-size:11px; line-height:1; padding:1px 3px; cursor:pointer; border-radius:2px; }
+  .home-tl-day-toggle button:hover:not(:disabled){ background:var(--bg-hover, rgba(255,255,255,0.08)); color:var(--text); }
+  .home-tl-day-toggle button:disabled{ opacity:0.3; cursor:default; }
+  #homeTlDayLabel{ min-width:3.5em; text-align:center; }
   .home-tl-lanes{ position:absolute; top:20px; bottom:16px; left:0; right:0; background:var(--tl-hour-grid); touch-action:none; z-index:1; }
   .home-tl-lane{ position:relative; height:33.333%; border-top:1px dashed var(--border); }
   .home-tl-lane:first-child{ border-top:none; }
@@ -1783,6 +1790,11 @@
       </div>
       <div class="home-split-handle" id="homeSplitHandle" title="Drag to resize the graph and timeline"></div>
       <div class="home-timeline-dock" id="homeTimelineDock">
+        <div class="home-tl-day-toggle" id="homeTlDayToggle">
+          <button type="button" data-tl-day-delta="-1" title="previous day">‹</button>
+          <span id="homeTlDayLabel">today</span>
+          <button type="button" data-tl-day-delta="1" title="next day">›</button>
+        </div>
         <div class="home-tl-hours" id="homeTlHours"></div>
         <div class="home-tl-lanes" id="homeTlLanes">
           <div class="home-tl-lane" id="homeTlLaneHabits"></div>
@@ -5205,6 +5217,24 @@
     });
   })();
 
+  // today/tomorrow toggle — clamped both ways by renderHomeTimelineDock's own disabled-state logic
+  // (prevBtn/nextBtn), but guard here too since a rapid double-click could otherwise queue two
+  // deltas before the first render disables the button.
+  (function wireHomeTimelineDayToggle(){
+    var toggle = document.getElementById("homeTlDayToggle");
+    if(!toggle) return;
+    toggle.addEventListener("click", function(e){
+      var btn = e.target.closest("[data-tl-day-delta]");
+      if(!btn || btn.disabled) return;
+      var delta = Number(btn.dataset.tlDayDelta);
+      var next = addDaysToDateStr(homeTlSelectedDate, delta);
+      var todayKey = todayStr();
+      if(next < todayKey || next > addDaysToDateStr(todayKey, 1)) return;
+      homeTlSelectedDate = next;
+      renderHomeTimelineDock();
+    });
+  })();
+
   // Floating clock/weather widget — draggable within the graph area, position persisted. Grabs on
   // its own surface; the graph canvas underneath still gets any pointer event that doesn't start here.
   (function wireHomeClockDrag(){
@@ -6107,36 +6137,39 @@
     }
   }
 
-  // ---- Today's timeline dock: every timed habit/action/note for today on one 24h strip, in three
-  // thin lanes (one per kind) so overlapping items never need collision layout. Uses the same
-  // per-day resolution rules the Today page does — habitInstanceFields for per-day time/duration
-  // overrides, plus the overnight spillover of yesterday's late blocks (sleep past midnight).
-  // Blocks carry data-kind/data-id/data-date, so the global right-click menu (edit / postpone /
-  // skip) works on them exactly like it does on the Today page's own blocks.
+  // ---- Today's timeline dock: every timed habit/action/note for the selected day on one 24h
+  // strip, in three thin lanes (one per kind) so overlapping items never need collision layout.
+  // Uses the same per-day resolution rules the Today page does — habitInstanceFields for per-day
+  // time/duration overrides, plus the overnight spillover of the PRIOR day's late blocks (sleep
+  // past midnight). Blocks carry data-kind/data-id/data-date, so the global right-click menu
+  // (edit / postpone / skip) works on them exactly like it does on the Today page's own blocks.
+  // homeTlSelectedDate is clamped to {today, tomorrow} by the day-toggle wiring below — the dock
+  // shows exactly one of those two days at a time, not an open-ended date picker.
+  var homeTlSelectedDate = todayStr();
   function computeHomeTimelineBlocks(){
-    var today = todayStr();
-    var yesterday = addDaysToDateStr(today, -1);
+    var day = homeTlSelectedDate;
+    var prevDay = addDaysToDateStr(day, -1);
     var blocks = { habit:[], action:[], note:[] };
-    state.habits.filter(function(h){ return habitOccursOnDate(h, today); }).forEach(function(h){
-      var f = habitInstanceFields(h, today);
+    state.habits.filter(function(h){ return habitOccursOnDate(h, day); }).forEach(function(h){
+      var f = habitInstanceFields(h, day);
       if(!f.timeOfDay) return;
-      blocks.habit.push({ kind:"habit-instance", id:h.id, date:today, title:h.title, start:timeToFraction(f.timeOfDay), width:Math.max((f.durationMinutes || 15) / 1440, 0.006), area:habitCategory(h), done:habitDoneForDate(h, today), overnight:false });
+      blocks.habit.push({ kind:"habit-instance", id:h.id, date:day, title:h.title, start:timeToFraction(f.timeOfDay), width:Math.max((f.durationMinutes || 15) / 1440, 0.006), area:habitCategory(h), done:habitDoneForDate(h, day), overnight:false });
     });
-    state.habits.filter(function(h){ return habitOccursOnDate(h, yesterday); }).forEach(function(h){
-      var f = habitInstanceFields(h, yesterday);
+    state.habits.filter(function(h){ return habitOccursOnDate(h, prevDay); }).forEach(function(h){
+      var f = habitInstanceFields(h, prevDay);
       if(!f.timeOfDay) return;
       var spill = overnightSpilloverMinutes(f.timeOfDay, f.durationMinutes);
       if(!spill) return;
-      blocks.habit.push({ kind:"habit-instance", id:h.id, date:yesterday, title:"‹ " + h.title, start:0, width:spill / 1440, area:habitCategory(h), done:habitDoneForDate(h, yesterday), overnight:true });
+      blocks.habit.push({ kind:"habit-instance", id:h.id, date:prevDay, title:"‹ " + h.title, start:0, width:spill / 1440, area:habitCategory(h), done:habitDoneForDate(h, prevDay), overnight:true });
     });
-    state.actions.filter(function(a){ return a.date === today && a.timeOfDay; }).forEach(function(a){
-      blocks.action.push({ kind:"action", id:a.id, date:today, title:a.title, start:timeToFraction(a.timeOfDay), width:Math.max((a.durationMinutes || 15) / 1440, 0.006), area:actionCategory(a), done:!!a.done, overnight:false });
+    state.actions.filter(function(a){ return a.date === day && a.timeOfDay; }).forEach(function(a){
+      blocks.action.push({ kind:"action", id:a.id, date:day, title:a.title, start:timeToFraction(a.timeOfDay), width:Math.max((a.durationMinutes || 15) / 1440, 0.006), area:actionCategory(a), done:!!a.done, overnight:false });
     });
-    state.journal.filter(function(n){ return n.date === today && n.timeOfDay; }).forEach(function(n){
+    state.journal.filter(function(n){ return n.date === day && n.timeOfDay; }).forEach(function(n){
       var preview = (n.title || n.text || "").slice(0, 40);
       // area stays the single primary category (still what homeAreaVisible below filters by) —
       // colorRgb is the additive blend across every area, used only for the block's own color.
-      blocks.note.push({ kind:"journal", id:n.id, date:today, title:"✎ " + preview, start:timeToFraction(n.timeOfDay), width:0.008, area:noteCategory(n), colorRgb:mergedAreaColorRgb(noteCategories(n)), done:false, overnight:false });
+      blocks.note.push({ kind:"journal", id:n.id, date:day, title:"✎ " + preview, start:timeToFraction(n.timeOfDay), width:0.008, area:noteCategory(n), colorRgb:mergedAreaColorRgb(noteCategories(n)), done:false, overnight:false });
     });
     // Areas toggled off in the legend rail hide their blocks here too (a null-area item is never
     // filtered — there's no area to hide it under).
@@ -6161,8 +6194,13 @@
   function renderHomeTimelineDock(){
     var laneHabits = document.getElementById("homeTlLaneHabits");
     if(!laneHabits) return;
+    // If the real calendar day has caught up to (or passed) the selection, snap back to today —
+    // otherwise leaving the dock open on "tomorrow" overnight would strand it a day behind once
+    // that date becomes today, or worse, in the past.
+    var todayKey = todayStr();
+    if(homeTlSelectedDate < todayKey) homeTlSelectedDate = todayKey;
     var blocks = computeHomeTimelineBlocks();
-    var sig = ["habit","action","note"].map(function(k){
+    var sig = homeTlSelectedDate + "|" + ["habit","action","note"].map(function(k){
       return blocks[k].map(function(b){ return b.id + ":" + b.start + ":" + b.width + ":" + (b.done ? 1 : 0); }).join(",");
     }).join("|");
     var dock = document.getElementById("homeTimelineDock");
@@ -6178,17 +6216,32 @@
         hoursEl.innerHTML = hh;
       }
     }
-    var now = new Date();
-    document.getElementById("homeTlNow").style.left = ((now.getHours() * 60 + now.getMinutes()) / 1440 * 100) + "%";
+    var isToday = homeTlSelectedDate === todayKey;
+    // The "now" marker only means something on today's own strip — tomorrow has no "now" yet.
+    var nowEl = document.getElementById("homeTlNow");
+    if(nowEl){
+      nowEl.style.display = isToday ? "" : "none";
+      if(isToday){
+        var now = new Date();
+        nowEl.style.left = ((now.getHours() * 60 + now.getMinutes()) / 1440 * 100) + "%";
+      }
+    }
+    var dayLabelEl = document.getElementById("homeTlDayLabel");
+    if(dayLabelEl) dayLabelEl.textContent = isToday ? "today" : "tomorrow";
+    var prevBtn = document.querySelector('#homeTlDayToggle [data-tl-day-delta="-1"]');
+    var nextBtn = document.querySelector('#homeTlDayToggle [data-tl-day-delta="1"]');
+    if(prevBtn) prevBtn.disabled = isToday;
+    if(nextBtn) nextBtn.disabled = homeTlSelectedDate === addDaysToDateStr(todayKey, 1);
     // Full-bleed background wash (homeTlDayNightBg) — theme-matched single-hue fade, not the
-    // two-tone band the Timeline page uses. Rebuilt when the calendar day changes OR the theme
-    // toggles (a stale cache key here would leave yesterday's colors showing after a theme flip).
+    // two-tone band the Timeline page uses. Rebuilt when the SELECTED day changes OR the theme
+    // toggles (a stale cache key here would leave the wrong day's colors showing after a flip).
     var dn = document.getElementById("homeTlDayNight");
-    var todayKey = todayStr(), themeKey = currentTheme();
-    if(dn && (dn.dataset.day !== todayKey || dn.dataset.theme !== themeKey)){
-      dn.dataset.day = todayKey;
+    var themeKey = currentTheme();
+    if(dn && (dn.dataset.day !== homeTlSelectedDate || dn.dataset.theme !== themeKey)){
+      dn.dataset.day = homeTlSelectedDate;
       dn.dataset.theme = themeKey;
-      dn.style.background = homeTlDayNightBg(now.getFullYear(), now.getMonth() + 1, now.getDate(), themeKey === "dark");
+      var selD = new Date(homeTlSelectedDate + "T00:00:00");
+      dn.style.background = homeTlDayNightBg(selD.getFullYear(), selD.getMonth() + 1, selD.getDate(), themeKey === "dark");
     }
   }
 
