@@ -1652,10 +1652,11 @@
 
       <nav class="side-nav" id="sideNav">
         <button class="side-link active" data-section="home" type="button"><span class="sl-glyph">⌂</span>Home</button>
-        <button class="side-link" data-section="today" type="button"><span class="sl-glyph">◷</span>Today</button>
+        <button class="side-link" data-section="today" type="button"><span class="sl-glyph">◷</span>Present</button>
         <button class="side-link" data-section="planner" type="button"><span class="sl-glyph">▤</span>Planner</button>
         <button class="side-link" data-section="tracker" type="button"><span class="sl-glyph">▥</span>Tracker</button>
-        <button class="side-link" data-section="timeline" type="button"><span class="sl-glyph">↔</span>Timeline</button>
+        <button class="side-link" data-section="timeline" type="button"><span class="sl-glyph">↔</span>History</button>
+        <button class="side-link" data-section="future" type="button"><span class="sl-glyph">»</span>Future</button>
         <button class="side-link" data-section="agent" type="button"><span class="sl-glyph">◈</span>Brains</button>
         <button class="side-link" data-section="journal" type="button"><span class="sl-glyph">✎</span>Notes</button>
         <button class="side-link" data-section="people" type="button"><span class="sl-glyph">☺</span>People</button>
@@ -1755,7 +1756,7 @@
     <section id="todaySection" style="display:none;">
       <div class="main-header">
         <div>
-          <h1>today</h1>
+          <h1>present</h1>
         </div>
       </div>
 
@@ -2177,7 +2178,7 @@
     <section id="timelineSection" style="display:none;">
       <div class="main-header">
         <div>
-          <h1>timeline</h1>
+          <h1>history</h1>
           <p class="subhead">Every scheduled habit, action, and note — laid out on one zoomable, scrollable clock.</p>
         </div>
       </div>
@@ -2435,6 +2436,27 @@
     </section>
 
     <!-- ===== LOCATION SECTION ===== -->
+    <!-- ===== FUTURE SECTION — what's ahead: upcoming scheduled actions ===== -->
+    <section id="futureSection" style="display:none;">
+      <div class="main-header">
+        <div>
+          <h1>future</h1>
+          <p class="subhead">What's ahead — your upcoming scheduled actions, soonest first.</p>
+        </div>
+      </div>
+      <style>
+        .future-body{max-width:720px;}
+        .future-day{margin-bottom:20px;}
+        .future-day-label{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);margin-bottom:8px;}
+        .future-item{display:flex;align-items:baseline;gap:12px;padding:9px 12px;margin-bottom:6px;border:1px solid var(--border);border-left:3px solid var(--fut-c, var(--border-bright));border-radius:8px;background:var(--bg-raised);}
+        .future-item-time{font-family:var(--mono);font-size:11px;color:var(--text-faint);min-width:44px;}
+        .future-item-title{flex:1;color:var(--text);font-size:13px;}
+        .future-item-pri{font-family:var(--mono);font-size:10px;color:var(--text-dim);border:1px solid var(--border);border-radius:999px;padding:1px 7px;}
+        .future-empty{color:var(--text-dim);padding:44px 0;text-align:center;line-height:1.6;}
+      </style>
+      <div class="future-body" id="futureBody"></div>
+    </section>
+
     <!-- ===== KNOWLEDGE SECTION (scaffold — Google Drive interface, wired later) ===== -->
     <section id="knowledgeSection" style="display:none;">
       <div class="main-header">
@@ -3719,7 +3741,7 @@
     });
   }
 
-  var ALL_SECTION_IDS = ["homeSection","todaySection","plannerSection","trackerSection","agentSection","timelineSection","journalSection","peopleSection","locationSection","knowledgeSection","goalDetailSection","areaDetailSection"];
+  var ALL_SECTION_IDS = ["homeSection","todaySection","plannerSection","trackerSection","agentSection","timelineSection","journalSection","peopleSection","locationSection","knowledgeSection","futureSection","goalDetailSection","areaDetailSection"];
   function showSection(name){
     activeSection = name;
     document.querySelectorAll(".side-link").forEach(function(l){ l.classList.toggle("active", l.dataset.section === name); });
@@ -13323,10 +13345,45 @@
   // be kept fresh; every other section gets rendered lazily, the moment showSection() switches to it
   // (see the renderActiveSectionContent() call there). Whiteboard has no entry here — it has its own
   // separate render/physics loop, started by activateWhiteboard(), untouched by renderAll().
+  // The Future page: upcoming scheduled actions (dated after today, not done), grouped by day and
+  // colored by area — a forward-looking companion to Present (today) and History (the timeline).
+  function renderFuture(){
+    var body = document.getElementById("futureBody");
+    if(!body) return;
+    var today = todayStr();
+    var upcoming = state.actions.filter(function(a){ return a.date && a.date > today && !a.done; })
+      .sort(function(a, b){
+        if(a.date !== b.date) return a.date < b.date ? -1 : 1;
+        return (a.timeOfDay || "99:99") < (b.timeOfDay || "99:99") ? -1 : 1;
+      });
+    if(!upcoming.length){
+      body.innerHTML = '<div class="future-empty">Nothing scheduled ahead yet.<br>Actions with a future date will appear here.</div>';
+      return;
+    }
+    var groups = {};
+    upcoming.forEach(function(a){ (groups[a.date] = groups[a.date] || []).push(a); });
+    var html = "";
+    Object.keys(groups).sort().forEach(function(date){
+      var label = new Date(date + "T00:00:00").toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" });
+      html += '<div class="future-day"><div class="future-day-label">' + escapeHtml(label) + '</div>';
+      groups[date].forEach(function(a){
+        var col = a.category ? ("var(--cat-" + a.category.toLowerCase() + ")") : "var(--border-bright)";
+        html += '<div class="future-item" style="--fut-c:' + col + ';">' +
+          '<span class="future-item-time">' + (a.timeOfDay ? escapeHtml(a.timeOfDay) : "—") + '</span>' +
+          '<span class="future-item-title">' + escapeHtml(a.title) + '</span>' +
+          (a.priority ? '<span class="future-item-pri">' + escapeHtml(a.priority) + '</span>' : '') +
+        '</div>';
+      });
+      html += '</div>';
+    });
+    body.innerHTML = html;
+  }
+
   var SECTION_RENDERERS = {
     home: [renderHomeDashboard],
     agent: [],
     today: [renderToday],
+    future: [renderFuture],
     // Areas and Calendar render alongside the four lists now that they're planner panels — cheap
     // innerHTML builds, same as the lists. The Graph panel is deliberately absent: its physics
     // activation is handled on tab entry / showSection, not by blanket re-renders.
