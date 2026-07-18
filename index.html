@@ -3043,6 +3043,12 @@
         </div>
         <p class="panel-hint">Related goals worth connecting on the Graph — not a parent/child link.</p>
       </div>
+      <div class="field"><label>linked people (optional)</label>
+        <div class="dropdown-multi" id="goalLinkedPeopleDropdown">
+          <button type="button" class="dropdown-multi-btn" id="goalLinkedPeopleBtn">none selected ▾</button>
+          <div class="dropdown-multi-panel chip-select" id="goalLinkedPeopleSelect" hidden></div>
+        </div>
+      </div>
       <div class="field"><label>health (optional override)</label>
         <div class="field-row">
           <div class="field"><div class="chip-select" id="goalHealthLevelSelect">
@@ -3086,6 +3092,12 @@
         </div>
         <p class="panel-hint">Link this project to other goals too — its parent goal above is unaffected.</p>
       </div>
+      <div class="field"><label>linked people (optional)</label>
+        <div class="dropdown-multi" id="projectLinkedPeopleDropdown">
+          <button type="button" class="dropdown-multi-btn" id="projectLinkedPeopleBtn">none selected ▾</button>
+          <div class="dropdown-multi-panel chip-select" id="projectLinkedPeopleSelect" hidden></div>
+        </div>
+      </div>
       <div class="field-row">
         <div class="field"><label>priority</label><div class="chip-select" id="projectPrioSelect">
           <div class="chip-opt" role="button" tabindex="0" data-p="P0">P0</div><div class="chip-opt" role="button" tabindex="0" data-p="P1">P1</div><div class="chip-opt sel" role="button" tabindex="0" data-p="P2">P2</div><div class="chip-opt" role="button" tabindex="0" data-p="P3">P3</div>
@@ -3125,6 +3137,12 @@
           <div class="dropdown-multi-panel chip-select" id="habitSecondaryGoalsSelect" hidden></div>
         </div>
         <p class="panel-hint">Link this habit to other goals too — its area still comes from the parent goal above.</p>
+      </div>
+      <div class="field"><label>linked people (optional)</label>
+        <div class="dropdown-multi" id="habitLinkedPeopleDropdown">
+          <button type="button" class="dropdown-multi-btn" id="habitLinkedPeopleBtn">none selected ▾</button>
+          <div class="dropdown-multi-panel chip-select" id="habitLinkedPeopleSelect" hidden></div>
+        </div>
       </div>
       <div class="field"><label>icon</label><div class="icon-gallery" id="habitIconGallery"></div></div>
       <div class="field-row">
@@ -3205,6 +3223,12 @@
         </div>
         <div class="loc-geocode-status" id="actionLocationStatus"></div>
       </div>
+      <div class="field"><label>linked people (optional)</label>
+        <div class="dropdown-multi" id="actionLinkedPeopleDropdown">
+          <button type="button" class="dropdown-multi-btn" id="actionLinkedPeopleBtn">none selected ▾</button>
+          <div class="dropdown-multi-panel chip-select" id="actionLinkedPeopleSelect" hidden></div>
+        </div>
+      </div>
       <div class="modal-actions"><button class="btn" id="cancelActionModalBtn" type="button">cancel</button><button class="btn btn-accent" id="saveActionBtn" type="button">save action</button></div>
     </div>
   </div>
@@ -3266,6 +3290,12 @@
     <div class="modal-inner">
       <div class="field"><label for="poiNameInput">name</label><input type="text" id="poiNameInput" placeholder="e.g. Favorite coffee shop"></div>
       <div class="field"><label for="poiNotesInput">notes (optional)</label><textarea id="poiNotesInput" rows="3" placeholder="Anything worth remembering…"></textarea></div>
+      <div class="field"><label>linked people (optional)</label>
+        <div class="dropdown-multi" id="poiLinkedPeopleDropdown">
+          <button type="button" class="dropdown-multi-btn" id="poiLinkedPeopleBtn">none selected ▾</button>
+          <div class="dropdown-multi-panel chip-select" id="poiLinkedPeopleSelect" hidden></div>
+        </div>
+      </div>
       <div class="modal-actions"><button class="btn" id="cancelPoiModalBtn" type="button">cancel</button><button class="btn btn-accent" id="savePoiBtn" type="button">save point</button></div>
     </div>
   </div>
@@ -4195,15 +4225,15 @@
     // position defaults to 0 (via ||0) when the migration_positions.sql column doesn't exist yet —
     // Array.sort is stable, so that's a no-op and rows keep the server's created_at order until
     // the migration runs and real position values exist.
-    state.goals = (results[0].data || []).map(function(r){ return { id:r.id, title:r.title, priority:r.priority, category:r.category, secondaryCategories:r.secondary_categories || [], secondaryGoalIds:r.secondary_goal_ids || [], due:r.due, ongoing:r.ongoing, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), notesMd:r.notes_md||"" }; });
+    state.goals = (results[0].data || []).map(function(r){ return { id:r.id, title:r.title, priority:r.priority, category:r.category, secondaryCategories:r.secondary_categories || [], secondaryGoalIds:r.secondary_goal_ids || [], due:r.due, ongoing:r.ongoing, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), notesMd:r.notes_md||"", linkedPeopleIds:r.linked_people_ids||[] }; });
     state.goals.sort(function(a,b){ return a.position - b.position; });
-    state.projects = (results[1].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), categories:r.categories||[], notesMd:r.notes_md||"" }; });
+    state.projects = (results[1].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), categories:r.categories||[], notesMd:r.notes_md||"", linkedPeopleIds:r.linked_people_ids||[] }; });
     state.projects.sort(function(a,b){ return a.position - b.position; });
     state.habits = (results[2].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || null, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [], extraDates:r.extra_dates || [], customIntervalDays:r.custom_interval_days||null, monthDay:r.month_day||null, icon:r.icon||null, instanceOverrides:r.instance_overrides || {},
-      locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null) }; });
+      locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), linkedPeopleIds:r.linked_people_ids||[] }; });
     state.habits.sort(function(a,b){ return a.position - b.position; });
     state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null,
-      locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), notesMd:r.notes_md||"", dependencies:r.dependencies||[] }; });
+      locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), notesMd:r.notes_md||"", dependencies:r.dependencies||[], linkedPeopleIds:r.linked_people_ids||[] }; });
     state.actions.sort(function(a,b){ return a.position - b.position; });
     state.journal = (results[4].data || []).map(function(r){ return { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, categories:r.categories||[], recordingId:r.recording_id||null, linkedObjects:r.linked_objects||[], sentiment:r.sentiment||[], title:r.title||"", priority:r.priority||null, createdAt:r.created_at||null }; });
     state.people = (results[5].data || []).map(function(r){
@@ -4228,7 +4258,7 @@
     // the Location page's history layer just has nothing to draw until then.
     state.gpsPings = (results[12].data || []).map(locMapGpsRow);
     // Empty until migration_action_habit_poi_location.sql has been run.
-    state.pois = (results[13].data || []).map(function(r){ return { id:r.id, name:r.name, lat:r.lat, lng:r.lng, notes:r.notes||"" }; });
+    state.pois = (results[13].data || []).map(function(r){ return { id:r.id, name:r.name, lat:r.lat, lng:r.lng, notes:r.notes||"", linkedPeopleIds:r.linked_people_ids||[] }; });
     state.recordings = (results[14].data || []).map(function(r){ return { id:r.id, storagePath:r.storage_path, durationSeconds:r.duration_seconds, waveform:r.waveform||[], createdAt:r.created_at, transcript:r.transcript||"" }; });
     await backfillLegacyHabitTrackers();
     await backfillHabitIcons();
@@ -8488,6 +8518,31 @@
         '</div>';
       }).join("") + '</div>';
   }
+  // ---- Linked people — a lightweight, one-directional "who's connected to this" tag, distinct
+  // from the People graph's own person-to-person relatedPeople/connections. Any goal/project/action/
+  // habit/point-of-interest can carry a linkedPeopleIds array (person ids); this is the shared
+  // options-list renderer every one of those modals' "linked people" dropdown-multi uses (see
+  // wireDropdownMulti — same generic multi-select the secondary-goals pickers already use), and the
+  // reverse lookup that surfaces it on the People page itself.
+  function renderPeopleChipOptions(containerEl, preSelectedIds){
+    var options = state.people.slice().sort(function(a, b){ return (a.name || "").localeCompare(b.name || ""); });
+    containerEl.innerHTML = options.length
+      ? options.map(function(p){ return '<div class="chip-opt" role="button" tabindex="0" data-pid="' + p.id + '">' + escapeHtml(p.name || "Unnamed") + '</div>'; }).join("")
+      : '<span class="panel-hint" style="margin:0;">No people yet.</span>';
+    setMultiChip(containerEl, "pid", preSelectedIds || []);
+  }
+  var LINKED_PEOPLE_KIND_LABEL = { goal:"goal", project:"project", action:"action", habit:"habit", poi:"place" };
+  // Every goal/project/action/habit/POI that lists this person in its own linkedPeopleIds — id-based,
+  // same reasoning as notesLinkedTo above (keeps working through renames).
+  function entitiesLinkedToPerson(personId){
+    var out = [];
+    state.goals.forEach(function(g){ if((g.linkedPeopleIds || []).indexOf(personId) !== -1) out.push({ kind:"goal", id:g.id, title:g.title }); });
+    state.projects.forEach(function(p){ if((p.linkedPeopleIds || []).indexOf(personId) !== -1) out.push({ kind:"project", id:p.id, title:p.title }); });
+    state.actions.forEach(function(a){ if((a.linkedPeopleIds || []).indexOf(personId) !== -1) out.push({ kind:"action", id:a.id, title:a.title }); });
+    state.habits.forEach(function(h){ if((h.linkedPeopleIds || []).indexOf(personId) !== -1) out.push({ kind:"habit", id:h.id, title:h.title }); });
+    state.pois.forEach(function(poi){ if((poi.linkedPeopleIds || []).indexOf(personId) !== -1) out.push({ kind:"poi", id:poi.id, title:poi.name }); });
+    return out;
+  }
   function renderGoalDetail(){
     if(activeSection !== "goalDetail" || !goalDetailId) return;
     var g = goalById(goalDetailId);
@@ -11546,10 +11601,17 @@
     if(r.error) console.error(r.error);
   }
   var poiPendingLat = null, poiPendingLng = null;
+  var updatePoiLinkedPeopleBtn = wireDropdownMulti("poiLinkedPeopleBtn", "poiLinkedPeopleSelect", "poiLinkedPeopleDropdown", "pid");
+  function renderPoiLinkedPeopleChips(){
+    renderPeopleChipOptions(document.getElementById("poiLinkedPeopleSelect"), []);
+    updatePoiLinkedPeopleBtn();
+  }
   function openPoiModal(lat, lng){
     poiPendingLat = lat; poiPendingLng = lng;
     document.getElementById("poiNameInput").value = "";
     document.getElementById("poiNotesInput").value = "";
+    renderPoiLinkedPeopleChips();
+    document.getElementById("poiLinkedPeopleSelect").hidden = true;
     openModal("poiModalOverlay");
     document.getElementById("poiNameInput").focus();
   }
@@ -11557,13 +11619,14 @@
   document.getElementById("savePoiBtn").addEventListener("click", async function(){
     var name = document.getElementById("poiNameInput").value.trim();
     if(!name) return;
-    var payload = { name: name, lat: poiPendingLat, lng: poiPendingLng, notes: document.getElementById("poiNotesInput").value.trim() || null };
+    var payload = { name: name, lat: poiPendingLat, lng: poiPendingLng, notes: document.getElementById("poiNotesInput").value.trim() || null,
+      linked_people_ids: multiChipValues(document.getElementById("poiLinkedPeopleSelect"), "pid") };
     this.disabled = true;
     var res = await sb.from("points_of_interest").insert(payload).select().single();
     this.disabled = false;
     if(res.error){ alert(res.error.message); return; }
     var r = res.data;
-    state.pois.push({ id:r.id, name:r.name, lat:r.lat, lng:r.lng, notes:r.notes||"" });
+    state.pois.push({ id:r.id, name:r.name, lat:r.lat, lng:r.lng, notes:r.notes||"", linkedPeopleIds:r.linked_people_ids||[] });
     locRenderPoiLayer();
     closeModal("poiModalOverlay");
   });
@@ -12725,6 +12788,8 @@
       if(p.likeScore != null) metaParts.push("like " + p.likeScore + "/4");
       var metaLine = metaParts.map(escapeHtml).join(" · ");
       var extraLine = [p.planets, p.relatedPeople].filter(Boolean).map(escapeHtml).join(" · ");
+      var linked = entitiesLinkedToPerson(p.id);
+      var linkedLine = linked.length ? "linked: " + linked.map(function(l){ return escapeHtml(l.title) + " (" + LINKED_PEOPLE_KIND_LABEL[l.kind] + ")"; }).join(", ") : "";
       return '<div class="person-card" data-kind="person" data-id="' + p.id + '" draggable="true">' +
         '<div class="person-top"><div><div class="person-name">' + escapeHtml(p.name) + (p.verified ? ' <span class="person-verified" title="Verified">✓</span>' : '') + '</div>' +
         '<span class="person-relation">' + p.relationship + '</span></div>' +
@@ -12736,6 +12801,7 @@
         (extraLine ? '<div class="person-meta">' + extraLine + '</div>' : '') +
         (p.contact ? '<div class="person-contact">' + escapeHtml(p.contact) + '</div>' : '') +
         (p.notes ? '<div class="person-notes">' + escapeHtml(p.notes) + '</div>' : '') +
+        (linkedLine ? '<div class="person-meta">' + linkedLine + '</div>' : '') +
       '</div>';
     }).join("");
     document.getElementById("peopleEmptyState").style.display = list.length ? "none" : "";
@@ -15147,6 +15213,11 @@
     setMultiChip(container, "gid", preSelectedIds || []);
     updateGoalSecondaryGoalsBtn();
   }
+  var updateGoalLinkedPeopleBtn = wireDropdownMulti("goalLinkedPeopleBtn", "goalLinkedPeopleSelect", "goalLinkedPeopleDropdown", "pid");
+  function renderGoalLinkedPeopleChips(preSelectedIds){
+    renderPeopleChipOptions(document.getElementById("goalLinkedPeopleSelect"), preSelectedIds);
+    updateGoalLinkedPeopleBtn();
+  }
   function openGoalModal(editGoalObj, presetCategory){
     editingGoalId = editGoalObj ? editGoalObj.id : null;
     document.getElementById("goalModalTitle").textContent = editGoalObj ? "edit_goal.json" : "new_goal.json";
@@ -15158,8 +15229,10 @@
     setChip(document.getElementById("goalCatSelect"), "c", editGoalObj ? editGoalObj.category : (presetCategory || "Career"));
     renderGoalSecondaryCatChips(editGoalObj ? (editGoalObj.secondaryCategories || []) : []);
     renderGoalSecondaryGoalsChips(editGoalObj ? (editGoalObj.secondaryGoalIds || []) : []);
+    renderGoalLinkedPeopleChips(editGoalObj ? (editGoalObj.linkedPeopleIds || []) : []);
     document.getElementById("goalSecondaryCatSelect").hidden = true;
     document.getElementById("goalSecondaryGoalsSelect").hidden = true;
+    document.getElementById("goalLinkedPeopleSelect").hidden = true;
     setChip(document.getElementById("goalHealthLevelSelect"), "hl", editGoalObj ? (editGoalObj.healthOverride || "") : "");
     document.getElementById("goalHealthPctInput").value = editGoalObj && editGoalObj.healthPctOverride != null ? editGoalObj.healthPctOverride : "";
     goalIconDraft = editGoalObj ? (editGoalObj.icon || null) : null;
@@ -15187,6 +15260,7 @@
       category: chipValue(document.getElementById("goalCatSelect"), "c"),
       secondary_categories: multiChipValues(document.getElementById("goalSecondaryCatSelect"), "c"),
       secondary_goal_ids: multiChipValues(document.getElementById("goalSecondaryGoalsSelect"), "gid"),
+      linked_people_ids: multiChipValues(document.getElementById("goalLinkedPeopleSelect"), "pid"),
       due: ongoing ? null : (document.getElementById("goalDueInput").value || null),
       ongoing: ongoing,
       health_override: chipValue(document.getElementById("goalHealthLevelSelect"), "hl") || null,
@@ -15201,7 +15275,7 @@
     this.disabled = false;
     if(res.error){ alert(res.error.message); return; }
     var r = res.data;
-    var mapped = { id:r.id, title:r.title, priority:r.priority, category:r.category, secondaryCategories:r.secondary_categories || [], secondaryGoalIds:r.secondary_goal_ids || [], due:r.due, ongoing:r.ongoing, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null) };
+    var mapped = { id:r.id, title:r.title, priority:r.priority, category:r.category, secondaryCategories:r.secondary_categories || [], secondaryGoalIds:r.secondary_goal_ids || [], due:r.due, ongoing:r.ongoing, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), linkedPeopleIds:r.linked_people_ids||[] };
     if(isEdit){
       var idx = state.goals.findIndex(function(x){ return x.id === editingGoalId; });
       if(idx !== -1) state.goals[idx] = mapped;
@@ -15254,6 +15328,11 @@
   document.getElementById("projectGoalSelect").addEventListener("change", function(){
     renderProjectSecondaryGoalsChips(multiChipValues(document.getElementById("projectSecondaryGoalsSelect"), "gid"));
   });
+  var updateProjectLinkedPeopleBtn = wireDropdownMulti("projectLinkedPeopleBtn", "projectLinkedPeopleSelect", "projectLinkedPeopleDropdown", "pid");
+  function renderProjectLinkedPeopleChips(preSelectedIds){
+    renderPeopleChipOptions(document.getElementById("projectLinkedPeopleSelect"), preSelectedIds);
+    updateProjectLinkedPeopleBtn();
+  }
   function openProjectModal(presetGoalId, editProjectObj){
     editingProjectId = editProjectObj ? editProjectObj.id : null;
     document.getElementById("projectModalTitle").textContent = editProjectObj ? "edit_project.json" : "new_project.json";
@@ -15271,7 +15350,9 @@
     fillProjectGoalSelect();
     document.getElementById("projectGoalSelect").value = goalToSelect;
     renderProjectSecondaryGoalsChips(editProjectObj ? (editProjectObj.secondaryGoalIds || []) : []);
+    renderProjectLinkedPeopleChips(editProjectObj ? (editProjectObj.linkedPeopleIds || []) : []);
     document.getElementById("projectSecondaryGoalsSelect").hidden = true;
+    document.getElementById("projectLinkedPeopleSelect").hidden = true;
     setChip(document.getElementById("projectPrioSelect"), "p", editProjectObj ? editProjectObj.priority : "P2");
     projectIconDraft = editProjectObj ? (editProjectObj.icon || null) : null;
     setProjectIconPreview(resolveEntityIconDataUri(projectIconDraft));
@@ -15286,6 +15367,7 @@
     var payload = {
       goal_id: document.getElementById("projectGoalSelect").value || null,
       secondary_goal_ids: multiChipValues(document.getElementById("projectSecondaryGoalsSelect"), "gid"),
+      linked_people_ids: multiChipValues(document.getElementById("projectLinkedPeopleSelect"), "pid"),
       title: title, priority: chipValue(document.getElementById("projectPrioSelect"), "p"),
       due: document.getElementById("projectDueInput").value || null,
       hours: parseFloat(document.getElementById("projectHoursInput").value) || 0,
@@ -15304,7 +15386,7 @@
     this.disabled = false;
     if(res.error){ alert(res.error.message); return; }
     var r = res.data;
-    var mapped = { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), categories:r.categories||[] };
+    var mapped = { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), categories:r.categories||[], linkedPeopleIds:r.linked_people_ids||[] };
     if(isEdit){
       var idx = state.projects.findIndex(function(x){ return x.id === editingProjectId; });
       if(idx !== -1) state.projects[idx] = mapped;
@@ -15358,6 +15440,11 @@
   document.getElementById("habitGoalSelect").addEventListener("change", function(){
     renderHabitSecondaryGoalsChips(multiChipValues(document.getElementById("habitSecondaryGoalsSelect"), "gid"));
   });
+  var updateHabitLinkedPeopleBtn = wireDropdownMulti("habitLinkedPeopleBtn", "habitLinkedPeopleSelect", "habitLinkedPeopleDropdown", "pid");
+  function renderHabitLinkedPeopleChips(preSelectedIds){
+    renderPeopleChipOptions(document.getElementById("habitLinkedPeopleSelect"), preSelectedIds);
+    updateHabitLinkedPeopleBtn();
+  }
   // Icon gallery: every HABIT_ICON_LIBRARY entry, highlighting whichever key is currently drafted.
   // habitIconDraft/habitIconManuallySet are updated by the title-input live-suggest and the gallery
   // click handler below (see openHabitModal and the habitTitleInput listener for how they interact).
@@ -15433,7 +15520,9 @@
     fillHabitGoalSelect();
     document.getElementById("habitGoalSelect").value = goalToSelect;
     renderHabitSecondaryGoalsChips(editHabitObj ? (editHabitObj.secondaryGoalIds || []) : []);
+    renderHabitLinkedPeopleChips(editHabitObj ? (editHabitObj.linkedPeopleIds || []) : []);
     document.getElementById("habitSecondaryGoalsSelect").hidden = true;
+    document.getElementById("habitLinkedPeopleSelect").hidden = true;
     // Editing an existing habit keeps its already-assigned icon fixed (habitIconManuallySet=true)
     // so retyping the title doesn't silently swap it out from under the user; a brand-new habit
     // starts unset and live-suggests as they type (see the habitTitleInput listener above).
@@ -15497,6 +15586,7 @@
     var payload = {
       goal_id: document.getElementById("habitGoalSelect").value || null,
       secondary_goal_ids: multiChipValues(document.getElementById("habitSecondaryGoalsSelect"), "gid"),
+      linked_people_ids: multiChipValues(document.getElementById("habitLinkedPeopleSelect"), "pid"),
       title: title, priority: chipValue(document.getElementById("habitPrioSelect"), "p"),
       frequency: freq,
       weekdays: freq === "weekly" ? multiChipValues(document.getElementById("habitWeekdaysSelect"), "wd") : [],
@@ -15522,7 +15612,7 @@
     if(res.error){ alert(res.error.message); return; }
     var r = res.data;
     var mapped = { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || mappedVar.id, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [], extraDates:r.extra_dates || [], customIntervalDays:r.custom_interval_days||null, monthDay:r.month_day||null, icon:r.icon||payload.icon||null, instanceOverrides:r.instance_overrides || (existingHabit ? existingHabit.instanceOverrides : null) || {},
-      locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null) };
+      locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), linkedPeopleIds:r.linked_people_ids||[] };
     if(isEdit){
       var idx = state.habits.findIndex(function(x){ return x.id === editingHabitId; });
       if(idx !== -1) state.habits[idx] = mapped;
@@ -15571,6 +15661,11 @@
     onPick: function(lat, lng){ editingActionLat = lat; editingActionLng = lng; },
     onClear: function(){ editingActionLat = null; editingActionLng = null; }
   });
+  var updateActionLinkedPeopleBtn = wireDropdownMulti("actionLinkedPeopleBtn", "actionLinkedPeopleSelect", "actionLinkedPeopleDropdown", "pid");
+  function renderActionLinkedPeopleChips(preSelectedIds){
+    renderPeopleChipOptions(document.getElementById("actionLinkedPeopleSelect"), preSelectedIds);
+    updateActionLinkedPeopleBtn();
+  }
   function openActionModal(presetGoalId, editActionObj){
     editingActionId = editActionObj ? editActionObj.id : null;
     editingActionLat = (editActionObj && editActionObj.locationLat != null) ? editActionObj.locationLat : null;
@@ -15600,6 +15695,8 @@
     document.getElementById("actionTimeInput").value = editActionObj ? (editActionObj.timeOfDay || "") : "";
     document.getElementById("actionDurationInput").value = editActionObj && editActionObj.durationMinutes != null ? editActionObj.durationMinutes : "";
     document.getElementById("actionTimePickPanel").hidden = true;
+    renderActionLinkedPeopleChips(editActionObj ? (editActionObj.linkedPeopleIds || []) : []);
+    document.getElementById("actionLinkedPeopleSelect").hidden = true;
     openModal("actionModalOverlay");
     document.getElementById("actionTitleInput").focus();
   }
@@ -15636,7 +15733,8 @@
       duration_minutes: document.getElementById("actionDurationInput").value ? Math.max(0, Math.round(Number(document.getElementById("actionDurationInput").value))) : null,
       category: chipValue(document.getElementById("actionAreaSelect"), "ar") || null,
       location_address: document.getElementById("actionLocationInput").value.trim() || null,
-      location_lat: editingActionLat, location_lng: editingActionLng
+      location_lat: editingActionLat, location_lng: editingActionLng,
+      linked_people_ids: multiChipValues(document.getElementById("actionLinkedPeopleSelect"), "pid")
     };
     this.disabled = true;
     var isEdit = !!editingActionId;
@@ -15651,7 +15749,7 @@
     if(res.error){ alert(res.error.message); return; }
     var r = res.data;
     var mapped = { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null,
-      locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null) };
+      locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), linkedPeopleIds:r.linked_people_ids||[] };
     if(isEdit){
       var idx = state.actions.findIndex(function(x){ return x.id === editingActionId; });
       if(idx !== -1) state.actions[idx] = mapped;
