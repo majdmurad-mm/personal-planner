@@ -792,6 +792,7 @@
   .cal-nav-btn{ background:var(--bg-raised); border:1px solid var(--border-bright); color:var(--text-dim); width:30px; height:30px; border-radius:5px; cursor:pointer; font-family:var(--mono); font-size:14px; display:flex; align-items:center; justify-content:center; }
   .cal-nav-btn:hover{ border-color:var(--accent-dim); color:var(--accent); }
   .cal-month-label{ font-family:var(--mono); font-size:14px; font-weight:700; letter-spacing:0.02em; min-width:160px; text-align:center; }
+  .cal-view-toggle{ margin:0; }
   .cal-legend{ display:flex; gap:14px; margin:14px 0 4px; flex-wrap:wrap; }
   .cal-legend-item{ display:flex; align-items:center; gap:6px; font-family:var(--mono); font-size:10.5px; color:var(--text-dim); }
   .cal-legend-dot{ width:7px; height:7px; border-radius:2px; flex-shrink:0; }
@@ -1835,6 +1836,11 @@
             <span class="cal-month-label" id="todayCalMonthLabel"></span>
             <button class="cal-nav-btn" id="todayCalNextBtn" type="button" aria-label="Next month">›</button>
           </div>
+          <div class="sub-view-toggle cal-view-toggle" id="todayCalViewToggle">
+            <button class="sub-view-tab active" data-sub="plain" type="button">plain</button>
+            <button class="sub-view-tab" data-sub="intensity" type="button">intensity</button>
+            <button class="sub-view-tab" data-sub="quality" type="button">day quality</button>
+          </div>
         </div>
         <div class="today-month-strip-days" id="todayCalGrid"></div>
       </div>
@@ -2706,6 +2712,11 @@
             <span class="cal-month-label" id="futureCalMonthLabel"></span>
             <button class="cal-nav-btn" id="futureCalNextBtn" type="button" aria-label="Next month">›</button>
           </div>
+          <div class="sub-view-toggle cal-view-toggle" id="futureCalViewToggle">
+            <button class="sub-view-tab active" data-sub="plain" type="button">plain</button>
+            <button class="sub-view-tab" data-sub="intensity" type="button">intensity</button>
+            <button class="sub-view-tab" data-sub="quality" type="button">day quality</button>
+          </div>
         </div>
         <div class="today-month-strip-days" id="futureCalGrid"></div>
       </div>
@@ -3535,6 +3546,91 @@
     if(!rgb) return null;
     return { c: "rgb(" + rgb.r + "," + rgb.g + "," + rgb.b + ")", bg: "rgba(" + rgb.r + "," + rgb.g + "," + rgb.b + ",0.13)" };
   }
+  // ---- Calendar-strip color views (Present + Future's shared .today-month-strip day-picker, see
+  // views.calStrip / renderTodayCalGrid / renderFutureCalGrid) — "intensity" and "day quality" both
+  // read the same underlying per-day item list, just aggregate it differently.
+  var CAL_PRIORITY_WEIGHT = { P0:4, P1:3, P2:2, P3:1 };
+  // Every action + habit instance scheduled on a given date, each carrying its duration/priority/
+  // area — habitInstanceFields/habitOccursOnDate resolve per-day overrides the same way the Today
+  // timeline dock (computeHomeTimelineBlocks) already does.
+  function calDayItems(dateStr){
+    var items = [];
+    state.actions.forEach(function(a){
+      if(a.date !== dateStr) return;
+      items.push({ durationMinutes: a.durationMinutes || 15, priority: a.priority, area: actionCategory(a) });
+    });
+    state.habits.forEach(function(h){
+      if(!habitOccursOnDate(h, dateStr)) return;
+      var f = habitInstanceFields(h, dateStr);
+      items.push({ durationMinutes: f.durationMinutes || 15, priority: h.priority, area: habitCategory(h) });
+    });
+    return items;
+  }
+  // Raw (un-normalized) intensity for one day: every item's duration × its priority weight, summed —
+  // "amount of items" falls out naturally (more items just sum more terms) without a separate count
+  // factor that would double-count it.
+  function calDayIntensityRaw(dateStr){
+    return calDayItems(dateStr).reduce(function(sum, it){
+      return sum + (it.durationMinutes || 0) * (CAL_PRIORITY_WEIGHT[it.priority] || CAL_PRIORITY_WEIGHT.P2);
+    }, 0);
+  }
+  // Min-max normalizes a set of dates' raw intensities against EACH OTHER (not a fixed global scale —
+  // "hot" and "cold" are relative to what's actually on the calendar) into a blue(cool)->red(hot) hue,
+  // returning solid/wash CSS strings per date. Days with zero items are left out entirely rather than
+  // reading as "coldest" — they have nothing to compare, so coloring them would be misleading; callers
+  // fall back to the plain uncolored cell for those.
+  function calIntensityColorsForDates(dateKeys){
+    var raw = {};
+    dateKeys.forEach(function(k){ var v = calDayIntensityRaw(k); if(v > 0) raw[k] = v; });
+    var values = Object.keys(raw).map(function(k){ return raw[k]; });
+    var colors = {};
+    if(!values.length) return colors;
+    var min = Math.min.apply(null, values), max = Math.max.apply(null, values);
+    Object.keys(raw).forEach(function(k){
+      var norm = max > min ? (raw[k] - min) / (max - min) : 1; // a single active day reads as hottest
+      var hue = 210 - norm * 210; // 210=blue (cool/low) -> 0=red (hot/high)
+      colors[k] = { c: "hsl(" + hue + ",70%,50%)", bg: "hsla(" + hue + ",70%,50%,0.28)" };
+    });
+    return colors;
+  }
+  // Duration-weighted area blend for one day — the same channel-average idea mergedAreaColorRgb uses
+  // for a multi-area item, but weighted by how much time was actually spent in each area that day
+  // rather than counting every area equally, so one long Health block outweighs a 15-minute Finance
+  // task instead of averaging them 50/50.
+  function calDayQualityRgb(dateStr){
+    var byArea = {};
+    calDayItems(dateStr).forEach(function(it){
+      if(!it.area) return;
+      byArea[it.area] = (byArea[it.area] || 0) + (it.durationMinutes || 0);
+    });
+    var areas = Object.keys(byArea);
+    if(!areas.length) return null;
+    var totalDuration = areas.reduce(function(s, a){ return s + byArea[a]; }, 0);
+    if(!totalDuration) return null;
+    var sum = { r:0, g:0, b:0 };
+    areas.forEach(function(area){
+      var rgb = hexToRgb(cssVarColor("--cat-" + area.toLowerCase()));
+      var weight = byArea[area] / totalDuration;
+      sum.r += rgb.r * weight; sum.g += rgb.g * weight; sum.b += rgb.b * weight;
+    });
+    return { r: Math.round(sum.r), g: Math.round(sum.g), b: Math.round(sum.b) };
+  }
+  function calQualityColorsForDates(dateKeys){
+    var colors = {};
+    dateKeys.forEach(function(k){
+      var rgb = calDayQualityRgb(k);
+      if(rgb) colors[k] = { c: "rgb(" + rgb.r + "," + rgb.g + "," + rgb.b + ")", bg: "rgba(" + rgb.r + "," + rgb.g + "," + rgb.b + ",0.28)" };
+    });
+    return colors;
+  }
+  // Single entry point both calendar-strip renderers call: given the active view and the full set of
+  // dates on screen, returns { dateKey: {c, bg} } for whichever dates should be colored — empty for
+  // "plain" (the original uncolored dot-only look) so callers don't need their own view branching.
+  function calStripColorsForDates(view, dateKeys){
+    if(view === "intensity") return calIntensityColorsForDates(dateKeys);
+    if(view === "quality") return calQualityColorsForDates(dateKeys);
+    return {};
+  }
   // .status-dot/.matrix-tile-status convey status through color (+ a glow on "behind") alone — no
   // text anywhere else on the tile/card says it. A title gives that same info to anyone who can't
   // rely on color (or is just hovering to check without reading the rest of the card).
@@ -4198,7 +4294,7 @@
   var activePlannerTab = "areas";
   var activeKnowledgeTab = "pinned";
   var filters = { goals:"all", projects:"all", habits:"all", actions:"all", people:"all" };
-  var views = { goals:"list", projects:"matrix", habits:"matrix", actions:"matrix", sleep:"daily", people:"cards", journal:"notes" };
+  var views = { goals:"list", projects:"matrix", habits:"matrix", actions:"matrix", sleep:"daily", people:"cards", journal:"notes", calStrip:"plain" };
 
   function wireSubViewToggle(containerId, panelKey, renderFn){
     var el = document.getElementById(containerId);
@@ -14660,16 +14756,21 @@
     var todayKey = todayStr();
     var gEvents = googleEventsCache[monthKey(todayCalMonth)] || [];
     var weekdayLabels = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+    var dateKeys = [];
+    for(var d=1; d<=daysInMonth; d++) dateKeys.push(year + "-" + String(month+1).padStart(2,"0") + "-" + String(d).padStart(2,"0"));
+    var colorMap = calStripColorsForDates(views.calStrip, dateKeys);
     var html = "";
     for(var day=1; day<=daysInMonth; day++){
       var cellDate = new Date(year, month, day);
-      var cellKey = year + "-" + String(month+1).padStart(2,"0") + "-" + String(day).padStart(2,"0");
+      var cellKey = dateKeys[day - 1];
       var dow = cellDate.getDay();
       var isWeekend = dow === 0 || dow === 6;
       var hasStuff = gEvents.some(function(ev){ return ev.date === cellKey; }) ||
         state.projects.some(function(p){ return p.due === cellKey; }) ||
         state.actions.some(function(a){ return a.date === cellKey; });
-      html += '<div class="today-month-strip-day' + (isWeekend?' weekend':'') + (cellKey===todayKey?' today':'') + (cellKey===todaySelectedDate?' selected':'') + '" data-date="' + cellKey + '">' +
+      var col = colorMap[cellKey];
+      var colStyle = col ? ' style="background:' + col.bg + ';border-color:' + col.c + ';"' : '';
+      html += '<div class="today-month-strip-day' + (isWeekend?' weekend':'') + (cellKey===todayKey?' today':'') + (cellKey===todaySelectedDate?' selected':'') + '" data-date="' + cellKey + '"' + colStyle + '>' +
         '<span class="today-month-strip-day-wd">' + weekdayLabels[dow] + '</span>' +
         '<span class="today-month-strip-day-num">' + day + '</span>' +
         (hasStuff ? '<span class="today-month-strip-day-dot"></span>' : '<span class="today-month-strip-day-dot-empty"></span>') +
@@ -14679,6 +14780,8 @@
     gridEl.innerHTML = html;
     var selectedEl = gridEl.querySelector(".today-month-strip-day.selected") || gridEl.querySelector(".today-month-strip-day.today");
     if(selectedEl && selectedEl.scrollIntoView) selectedEl.scrollIntoView({ block:"nearest", inline:"center" });
+    var toggleEl = document.getElementById("todayCalViewToggle");
+    if(toggleEl) toggleEl.querySelectorAll(".sub-view-tab").forEach(function(b){ b.classList.toggle("active", b.dataset.sub === views.calStrip); });
   }
   document.getElementById("todayCalGrid").addEventListener("click", function(e){
     var cell = e.target.closest(".today-month-strip-day[data-date]");
@@ -14686,6 +14789,7 @@
     todaySelectedDate = cell.dataset.date;
     renderToday();
   });
+  wireSubViewToggle("todayCalViewToggle", "calStrip", renderTodayCalGrid);
   document.getElementById("todayCalPrevBtn").addEventListener("click", function(){
     todayCalMonth.setMonth(todayCalMonth.getMonth()-1);
     renderTodayCalGrid();
@@ -16015,14 +16119,19 @@
     var daysInMonth = new Date(year, month + 1, 0).getDate();
     var todayKey = todayStr();
     var weekdayLabels = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+    var dateKeys = [];
+    for(var d=1; d<=daysInMonth; d++) dateKeys.push(year + "-" + String(month+1).padStart(2,"0") + "-" + String(d).padStart(2,"0"));
+    var colorMap = calStripColorsForDates(views.calStrip, dateKeys);
     var html = "";
     for(var day=1; day<=daysInMonth; day++){
       var cellDate = new Date(year, month, day);
-      var cellKey = year + "-" + String(month+1).padStart(2,"0") + "-" + String(day).padStart(2,"0");
+      var cellKey = dateKeys[day - 1];
       var dow = cellDate.getDay();
       var isWeekend = dow === 0 || dow === 6;
       var hasStuff = state.actions.some(function(a){ return a.date === cellKey; });
-      html += '<div class="today-month-strip-day' + (isWeekend?' weekend':'') + (cellKey===todayKey?' today':'') + '" data-date="' + cellKey + '">' +
+      var col = colorMap[cellKey];
+      var colStyle = col ? ' style="background:' + col.bg + ';border-color:' + col.c + ';"' : '';
+      html += '<div class="today-month-strip-day' + (isWeekend?' weekend':'') + (cellKey===todayKey?' today':'') + '" data-date="' + cellKey + '"' + colStyle + '>' +
         '<span class="today-month-strip-day-wd">' + weekdayLabels[dow] + '</span>' +
         '<span class="today-month-strip-day-num">' + day + '</span>' +
         (hasStuff ? '<span class="today-month-strip-day-dot"></span>' : '<span class="today-month-strip-day-dot-empty"></span>') +
@@ -16031,6 +16140,8 @@
     gridEl.innerHTML = html;
     var todayEl = gridEl.querySelector(".today-month-strip-day.today");
     if(todayEl && todayEl.scrollIntoView) todayEl.scrollIntoView({ block:"nearest", inline:"center" });
+    var toggleEl = document.getElementById("futureCalViewToggle");
+    if(toggleEl) toggleEl.querySelectorAll(".sub-view-tab").forEach(function(b){ b.classList.toggle("active", b.dataset.sub === views.calStrip); });
   }
   function wireFutureCalGrid(){
     var gridEl = document.getElementById("futureCalGrid");
@@ -16050,6 +16161,7 @@
       futureCalMonth.setMonth(futureCalMonth.getMonth()+1);
       renderFutureCalGrid();
     });
+    wireSubViewToggle("futureCalViewToggle", "calStrip", renderFutureCalGrid);
   }
   wireFutureCalGrid();
 
