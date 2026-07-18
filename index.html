@@ -1315,6 +1315,11 @@
   .finance-month-row-bar{ height:100%; border-radius:4px; }
   .finance-month-row-value{ width:6em; text-align:right; flex-shrink:0; font-weight:700; }
 
+  /* ---- Goal detail: daily report panel ---- */
+  .goal-report-nav{ display:flex; align-items:center; gap:10px; }
+  .goal-report-frame-wrap{ margin-top:12px; }
+  .goal-report-frame{ width:100%; height:70vh; border:1px solid var(--border); border-radius:6px; background:var(--bg-raised); }
+
   /* ===== MODAL ===== */
   .modal-overlay{ position:fixed; inset:0; background:rgba(4,6,10,0.7); backdrop-filter:blur(3px); display:flex; align-items:center; justify-content:center; z-index:100; padding:20px; animation:overlayIn var(--dur-fast) var(--ease-out); }
   @keyframes overlayIn{ from{ opacity:0; } to{ opacity:1; } }
@@ -2306,6 +2311,26 @@
       </div>
       <div id="goalDetailBody"></div>
 
+      <!-- Daily report — embeds the local HTML file a routine writes to
+           _Memory/_projects/<files_slug>/html/YYYY-MM-DD.html (gitignored, local-only; see that
+           folder's README.md). Hidden entirely unless the goal has files_slug set. Only reachable
+           when the planner is opened via the local dev server — a file:// page or the deployed
+           GitHub Pages site can't fetch arbitrary local files. -->
+      <div class="goal-integration-block" id="goalReportBlock" style="display:none;">
+        <div class="integration-block-head">
+          <h2>daily report</h2>
+          <div class="goal-report-nav">
+            <button class="cal-nav-btn" id="goalReportPrevBtn" type="button" aria-label="Previous day">‹</button>
+            <span class="cal-month-label" id="goalReportDateLabel"></span>
+            <button class="cal-nav-btn" id="goalReportNextBtn" type="button" aria-label="Next day">›</button>
+          </div>
+        </div>
+        <div class="goal-report-frame-wrap">
+          <iframe id="goalReportFrame" class="goal-report-frame" sandbox="allow-same-origin allow-popups" title="Daily report" style="display:none;"></iframe>
+          <div class="empty-state" id="goalReportEmpty" style="display:none;">No report found for this date.</div>
+        </div>
+      </div>
+
       <div class="goal-integration-block">
         <div class="integration-block-head">
           <h2>plan</h2>
@@ -3286,6 +3311,10 @@
         </div>
         <p class="panel-hint">Or pick a built-in vector icon instead:</p>
         <div class="icon-gallery" id="goalIconGallery"></div>
+      </div>
+      <div class="field"><label for="goalFilesSlugInput">daily report folder (optional)</label>
+        <input type="text" id="goalFilesSlugInput" placeholder="e.g. apartment">
+        <p class="panel-hint">If set, the goal page embeds today's HTML report from <code>_Memory/_projects/&lt;slug&gt;/html/</code> — a local, gitignored folder. Only works when running via the local dev server.</p>
       </div>
       <div class="modal-actions"><button class="btn" id="cancelGoalModalBtn" type="button">cancel</button><button class="btn btn-accent" id="saveGoalBtn" type="button">save goal</button></div>
     </div>
@@ -4570,7 +4599,7 @@
     // position defaults to 0 (via ||0) when the migration_positions.sql column doesn't exist yet —
     // Array.sort is stable, so that's a no-op and rows keep the server's created_at order until
     // the migration runs and real position values exist.
-    state.goals = (results[0].data || []).map(function(r){ return { id:r.id, title:r.title, priority:r.priority, category:r.category, secondaryCategories:r.secondary_categories || [], secondaryGoalIds:r.secondary_goal_ids || [], due:r.due, ongoing:r.ongoing, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), notesMd:r.notes_md||"", linkedPeopleIds:r.linked_people_ids||[] }; });
+    state.goals = (results[0].data || []).map(function(r){ return { id:r.id, title:r.title, priority:r.priority, category:r.category, secondaryCategories:r.secondary_categories || [], secondaryGoalIds:r.secondary_goal_ids || [], due:r.due, ongoing:r.ongoing, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), notesMd:r.notes_md||"", linkedPeopleIds:r.linked_people_ids||[], filesSlug:r.files_slug||"" }; });
     state.goals.sort(function(a,b){ return a.position - b.position; });
     state.projects = (results[1].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), categories:r.categories||[], notesMd:r.notes_md||"", linkedPeopleIds:r.linked_people_ids||[] }; });
     state.projects.sort(function(a,b){ return a.position - b.position; });
@@ -8442,7 +8471,7 @@
     });
   }
   function goalPayload(snapshot){
-    return { id:snapshot.id, title:snapshot.title, priority:snapshot.priority, category:snapshot.category, secondary_categories:snapshot.secondaryCategories, secondary_goal_ids:snapshot.secondaryGoalIds, due:snapshot.due, ongoing:snapshot.ongoing, position:snapshot.position, health_override:snapshot.healthOverride, health_pct_override:snapshot.healthPctOverride, icon:snapshot.icon, whiteboard_x:snapshot.wbX, whiteboard_y:snapshot.wbY, notes_md:snapshot.notesMd };
+    return { id:snapshot.id, title:snapshot.title, priority:snapshot.priority, category:snapshot.category, secondary_categories:snapshot.secondaryCategories, secondary_goal_ids:snapshot.secondaryGoalIds, due:snapshot.due, ongoing:snapshot.ongoing, position:snapshot.position, health_override:snapshot.healthOverride, health_pct_override:snapshot.healthPctOverride, icon:snapshot.icon, whiteboard_x:snapshot.wbX, whiteboard_y:snapshot.wbY, notes_md:snapshot.notesMd, files_slug:snapshot.filesSlug };
   }
   async function deleteGoal(goalId){
     var g = state.goals.find(function(x){ return x.id === goalId; });
@@ -8930,7 +8959,73 @@
   function closeGoalDetailPage(){
     showSection(goalDetailReturnSection);
     goalDetailId = null;
+    goalReportSlugInit = null;
+    goalReportLoadedKey = null;
   }
+  // ---- Goal detail: daily report panel — reads a local HTML file a routine writes to
+  // _Memory/_projects/<files_slug>/html/YYYY-MM-DD.html (gitignored, local-only; see that folder's
+  // README.md). No directory-listing endpoint exists, so "browsing" just means trying dates one at a
+  // time via fetch. Only works over http(s) (the local dev server) — file:// pages and the deployed
+  // GitHub Pages site can't fetch arbitrary local files.
+  var goalReportDate = null;
+  var goalReportSlugInit = null;   // which goal's files_slug we've already run the fallback search for
+  var goalReportLoadedKey = null;  // "<slug>|<date>" of what's currently in the iframe, so a renderAll()
+                                    // pass triggered by something unrelated doesn't reload/reflash it
+  function goalReportUrl(slug, dateStr){ return "_Memory/_projects/" + encodeURIComponent(slug) + "/html/" + dateStr + ".html"; }
+  async function goalReportExists(slug, dateStr){
+    try{ var res = await fetch(goalReportUrl(slug, dateStr), { cache:"no-store" }); return res.ok; }
+    catch(e){ return false; }
+  }
+  async function goalReportLoad(slug, dateStr){
+    document.getElementById("goalReportDateLabel").textContent = fmtDate(dateStr);
+    var frame = document.getElementById("goalReportFrame");
+    var empty = document.getElementById("goalReportEmpty");
+    var ok = await goalReportExists(slug, dateStr);
+    if(ok){
+      frame.src = goalReportUrl(slug, dateStr);
+      frame.style.display = "";
+      empty.style.display = "none";
+    } else {
+      frame.removeAttribute("src");
+      frame.style.display = "none";
+      empty.style.display = "";
+    }
+  }
+  async function renderGoalReportPanel(g){
+    var block = document.getElementById("goalReportBlock");
+    if(!g || !g.filesSlug){ block.style.display = "none"; goalReportSlugInit = null; goalReportLoadedKey = null; return; }
+    block.style.display = "";
+    var slug = g.filesSlug;
+    if(goalReportSlugInit !== slug){
+      // First time this goal's panel has shown this session — the routine may not have written
+      // today's file yet, so walk backward up to two weeks to find the latest one that exists,
+      // rather than defaulting to a blank "today" every time the page opens.
+      goalReportSlugInit = slug;
+      goalReportDate = todayStr();
+      for(var i=0;i<14;i++){
+        var tryDate = addDaysToDateStr(todayStr(), -i);
+        if(await goalReportExists(slug, tryDate)){ goalReportDate = tryDate; break; }
+      }
+    }
+    var key = slug + "|" + goalReportDate;
+    if(goalReportLoadedKey === key) return;
+    goalReportLoadedKey = key;
+    await goalReportLoad(slug, goalReportDate);
+  }
+  document.getElementById("goalReportPrevBtn").addEventListener("click", async function(){
+    var g = goalById(goalDetailId);
+    if(!g || !g.filesSlug) return;
+    goalReportDate = addDaysToDateStr(goalReportDate || todayStr(), -1);
+    goalReportLoadedKey = g.filesSlug + "|" + goalReportDate;
+    await goalReportLoad(g.filesSlug, goalReportDate);
+  });
+  document.getElementById("goalReportNextBtn").addEventListener("click", async function(){
+    var g = goalById(goalDetailId);
+    if(!g || !g.filesSlug) return;
+    goalReportDate = addDaysToDateStr(goalReportDate || todayStr(), 1);
+    goalReportLoadedKey = g.filesSlug + "|" + goalReportDate;
+    await goalReportLoad(g.filesSlug, goalReportDate);
+  });
   // Individually-designed goal pages: specific goals (matched by title, for now) get their own
   // hand-built dashboard block on their detail page instead of a generic user-facing setting.
   // Sleep is the first one; more goals will get their own dedicated block the same way over time.
@@ -8992,6 +9087,7 @@
     var g = goalById(goalDetailId);
     if(!g){ closeGoalDetailPage(); return; }
     document.getElementById("goalDetailBody").innerHTML = renderGoalCardHtml(g) + renderLinkedNotesHtml("goal", g.id);
+    renderGoalReportPanel(g);
     var sleepBlock = document.getElementById("sleepIntegrationBlock");
     if(isSleepGoal(g)){
       sleepBlock.style.display = "";
@@ -16039,6 +16135,7 @@
     // uploaded image (a data: URI would never match any HABIT_ICON_LIBRARY entry anyway, but this
     // keeps the gallery visibly showing "none selected" for that case rather than a coincidence).
     renderGoalIconGallery(goalIconDraft && goalIconDraft.indexOf("data:") !== 0 ? goalIconDraft : null);
+    document.getElementById("goalFilesSlugInput").value = editGoalObj ? (editGoalObj.filesSlug || "") : "";
     openModal("goalModalOverlay");
     document.getElementById("goalTitleInput").focus();
   }
@@ -16063,7 +16160,8 @@
       ongoing: ongoing,
       health_override: chipValue(document.getElementById("goalHealthLevelSelect"), "hl") || null,
       health_pct_override: healthPctRaw === "" ? null : Math.max(0, Math.min(100, Math.round(Number(healthPctRaw)))),
-      icon: goalIconDraft
+      icon: goalIconDraft,
+      files_slug: document.getElementById("goalFilesSlugInput").value.trim() || null
     };
     this.disabled = true;
     var isEdit = !!editingGoalId;
@@ -16073,7 +16171,7 @@
     this.disabled = false;
     if(res.error){ dbErrorToast(res.error, "Couldn't save"); return; }
     var r = res.data;
-    var mapped = { id:r.id, title:r.title, priority:r.priority, category:r.category, secondaryCategories:r.secondary_categories || [], secondaryGoalIds:r.secondary_goal_ids || [], due:r.due, ongoing:r.ongoing, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), linkedPeopleIds:r.linked_people_ids||[] };
+    var mapped = { id:r.id, title:r.title, priority:r.priority, category:r.category, secondaryCategories:r.secondary_categories || [], secondaryGoalIds:r.secondary_goal_ids || [], due:r.due, ongoing:r.ongoing, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), linkedPeopleIds:r.linked_people_ids||[], filesSlug:r.files_slug||"" };
     if(isEdit){
       var idx = state.goals.findIndex(function(x){ return x.id === editingGoalId; });
       if(idx !== -1) state.goals[idx] = mapped;
