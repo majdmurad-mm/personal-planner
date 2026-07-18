@@ -1121,7 +1121,7 @@
      directly, since none of that is area/goal-specific. Cards/table stay in #peopleSection's normal
      scrolling page layout (fixed height below); graph mode instead switches #peopleSection into the
      same full-viewport flex-column technique #whiteboardSection uses (see its own comment above) —
-     .ppl-fullscreen-graph is toggled by renderPeople() whenever views.people === "graph". */
+     .ppl-fullscreen-graph is toggled by renderPeople() whenever views.people is "graph" or "graph3d". */
   .ppl-canvas-wrap{ height:600px; margin-top:16px; }
   #peopleSection.ppl-fullscreen-graph{ margin:-32px -40px -70px; padding:14px 40px 14px; height:100vh; box-sizing:border-box; display:flex; flex-direction:column; }
   #peopleSection.ppl-fullscreen-graph .main-header{ margin-bottom:10px; flex-shrink:0; }
@@ -1129,6 +1129,15 @@
   #peopleSection.ppl-fullscreen-graph .sub-view-toggle{ flex-shrink:0; }
   #peopleSection.ppl-fullscreen-graph #peopleGraphPanel{ flex:1; min-height:0; display:flex; flex-direction:column; }
   #peopleSection.ppl-fullscreen-graph .ppl-canvas-wrap{ flex:1; height:auto; min-height:0; margin-top:0; }
+  /* People 3D graph — same full-viewport treatment, same Three.js canvas chrome as the Home page's
+     3D graph (.home-graph-fallback/.home-node-tip reused directly; see initHomeScene's comment). */
+  #peopleSection.ppl-fullscreen-graph #peopleGraph3dPanel{ flex:1; min-height:0; display:flex; flex-direction:column; }
+  .ppl-graph3d-wrap{ position:relative; flex:1; min-height:0; overflow:hidden; background:var(--bg-inset); height:600px; }
+  #peopleSection.ppl-fullscreen-graph .ppl-graph3d-wrap{ height:auto; }
+  #pplCanvas3d{ position:absolute; inset:0; width:100%; height:100%; display:block; cursor:grab; touch-action:none; }
+  #pplCanvas3d.dragging{ cursor:grabbing; }
+  #pplCanvas3d.panning{ cursor:move; }
+  #pplCanvas3d.node-dragging{ cursor:grabbing; }
   /* Same story for the Planner's Graph tab (#graphPanel) — it moved out of its own standalone
      #whiteboardSection (see the WHITEBOARD block above) into a tab inside #plannerSection, but
      .wb-canvas-wrap's flex:1 still needs an actual flex container with real height to size against.
@@ -2836,6 +2845,7 @@
       <div class="sub-view-toggle" id="peopleSubToggle">
         <button class="sub-view-tab active" data-sub="cards" type="button">cards</button>
         <button class="sub-view-tab" data-sub="graph" type="button">graph</button>
+        <button class="sub-view-tab" data-sub="graph3d" type="button">3d</button>
         <button class="sub-view-tab" data-sub="table" type="button">table</button>
       </div>
       <div class="filter-row" id="peopleFilterRow">
@@ -2888,6 +2898,19 @@
             </div>
             <div class="wb-overlay" id="pplOverlay"></div>
           </div>
+        </div>
+      </div>
+      <!-- People 3D graph: same node/edge data and physics rules as the 2D graph above (sun pull by
+           contact score, social-group/relationship clustering, related-people edges), rendered as a
+           Three.js force-directed constellation — closely adapted from the Home page's 3D system graph
+           (see initHomeScene) for the camera/render-loop plumbing. See buildPeopleGraph3D/initPplScene3d. -->
+      <div id="peopleGraph3dPanel" style="display:none;">
+        <div class="ppl-graph3d-wrap" id="pplGraph3dWrap">
+          <canvas id="pplCanvas3d" aria-hidden="true"></canvas>
+          <div class="home-graph-fallback" id="pplGraph3dFallback" hidden>
+            <p class="panel-hint">The 3D graph needs WebGL — it's unavailable here.</p>
+          </div>
+          <div class="home-node-tip" id="pplNodeTip3d" hidden></div>
         </div>
       </div>
       <!-- People table: same editable-cell pattern as the Tracker table (see .tracker-cell-input /
@@ -12129,6 +12152,487 @@
   }
   initPeopleGraph();
 
+  /* ---------------- People 3D graph (Three.js) ---------------- */
+  // Same node/edge data and physics RULES as the People 2D graph above — sun pull scaled by contact
+  // score with a hard buffer distance, same-group and same-relationship ambient clustering, real
+  // related-people spring edges plus the same auto-linked-by-main-group implicit edges — rendered as
+  // a live force-directed constellation instead of a flat SVG/DOM canvas. Reuses the 2D graph's own
+  // cache (pplRebuildGraphCache/pplCachedEdges/pplCachedNodeGroups/pplCachedNodeGroupLists/
+  // pplCachedNodeRelationship/pplCachedContactPull/pplCachedGroupColors) as pure data rather than
+  // recomputing any of it. Camera/render-loop/drag/hover plumbing is closely adapted from the Home
+  // page's 3D system graph (see initHomeScene above) — hand-rolled orbit/pan/zoom, no OrbitControls
+  // import, renderer.setAnimationLoop, pause-not-dispose on tab-leave, full dispose on theme toggle.
+  // Scoped out for v1 (flagged, not requested): social-group convex-hull rendering in 3D (group
+  // membership instead shows as a floating label sprite at the group's live centroid) and press-and-
+  // hold edge-weight editing in 3D (would need edge raycasting, which no 3D surface here has yet) —
+  // clicking a person node still opens them for editing, same as the 2D graph's node click.
+  var PPL3_NODE_R = 0.55, PPL3_SUN_R = 1.5;
+  // Hard floor distance from the sun (mirrors PPL_SUN_BUFFER's role in the 2D graph, re-scaled to
+  // this ~20-unit-radius 3D world instead of the 2D world's ~4000px span).
+  var PPL3_SUN_BUFFER = PPL3_SUN_R + PPL3_NODE_R + 1.2;
+  // Re-scaled versions of the PPL_* 2D constants, same ratios to each other (see each constant's
+  // comment on the 2D system above) adapted to this scene's ~20-unit span the way Home's G_* constants
+  // are re-scaled versions of the whiteboard's WB_* ones (see initHomeScene's own comment).
+  var PPL3_REPEL = 260, PPL3_GROUP_PUSH = 90, PPL3_LINK_DIST = 6.5, PPL3_LINK_K = 0.03,
+      PPL3_GROUP_PULL_K = 0.003, PPL3_RELATIONSHIP_PULL_K = 0.0018, PPL3_CONTACT_PULL_K = 0.01,
+      PPL3_DAMP = 0.85, PPL3_ALPHA_DECAY = 0.992;
+  var PPL3_RELATIONSHIP_VAR = { Family:"--cat-health", Friend:"--cat-relationships", Colleague:"--cat-career", Mentor:"--cat-growth", Partner:"--violet", Other:"--cat-sol" };
+  var ppl3SimNodes = []; // { id, x, y, z, vx, vy, vz, fixed } — parallel to pplSimNodes, one z axis added
+  function ppl3FindSimNode(id){
+    for(var i=0;i<ppl3SimNodes.length;i++){ if(ppl3SimNodes[i].id === id) return ppl3SimNodes[i]; }
+    return null;
+  }
+  // Persists across tab switches (module-level, like pplSimNodes) so leaving and returning to the 3D
+  // tab doesn't reshuffle everyone's position — only adds nodes for new people and drops removed ones.
+  function ppl3SyncSimNodes(){
+    var wantedIds = {};
+    state.people.forEach(function(p){ wantedIds[p.id] = true; });
+    ppl3SimNodes = ppl3SimNodes.filter(function(n){ return wantedIds[n.id]; });
+    state.people.forEach(function(p){
+      if(ppl3FindSimNode(p.id)) return;
+      var angle = Math.random() * Math.PI * 2, radius = 6 + Math.random() * 10;
+      ppl3SimNodes.push({ id:p.id, x: Math.cos(angle) * radius, y: (Math.random() - 0.5) * 8, z: Math.sin(angle) * radius, vx:0, vy:0, vz:0, fixed:false });
+    });
+  }
+  function ppl3ApplySpring(edge){
+    var a = ppl3FindSimNode(edge.fromId), b = ppl3FindSimNode(edge.toId);
+    if(!a || !b) return;
+    var dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
+    var dist = Math.sqrt(dx*dx + dy*dy + dz*dz) || 0.01;
+    var force = (dist - PPL3_LINK_DIST) * PPL3_LINK_K * (edge.weight || 1) * ppl3Alpha;
+    var fx = (dx/dist) * force, fy = (dy/dist) * force, fz = (dz/dist) * force;
+    a.vx += fx; a.vy += fy; a.vz += fz;
+    b.vx -= fx; b.vy -= fy; b.vz -= fz;
+  }
+  // Same force rules as pplTickPhysics (base repulsion + extra push between different main groups,
+  // ambient pull for any shared group, ambient pull for shared relationship type, real edge springs,
+  // per-node sun pull scaled by contact score with a hard buffer) with a z axis added throughout —
+  // reads the SAME cached lookups the 2D graph's tick populates (pplRebuildGraphCache), so the two
+  // views can never disagree about who's grouped/related to whom.
+  function ppl3TickPhysics(){
+    var nodes = ppl3SimNodes;
+    var groups = nodes.map(function(n){ return pplCachedNodeGroups[n.id]; });
+    var groupLists = nodes.map(function(n){ return pplCachedNodeGroupLists[n.id]; });
+    var relationships = nodes.map(function(n){ return pplCachedNodeRelationship[n.id]; });
+    for(var i=0;i<nodes.length;i++){
+      for(var j=i+1;j<nodes.length;j++){
+        var dx = nodes[j].x - nodes[i].x, dy = nodes[j].y - nodes[i].y, dz = nodes[j].z - nodes[i].z;
+        var distSq = dx*dx + dy*dy + dz*dz || 0.01, dist = Math.sqrt(distSq);
+        var repel = PPL3_REPEL;
+        if(groups[i] && groups[j] && groups[i] !== groups[j]) repel += PPL3_GROUP_PUSH;
+        var force = (repel / distSq) * ppl3Alpha;
+        var fx = (dx/dist) * force, fy = (dy/dist) * force, fz = (dz/dist) * force;
+        nodes[i].vx -= fx; nodes[i].vy -= fy; nodes[i].vz -= fz;
+        nodes[j].vx += fx; nodes[j].vy += fy; nodes[j].vz += fz;
+        if(pplGroupListsOverlap(groupLists[i], groupLists[j])){
+          var pull = (dist - PPL3_LINK_DIST) * PPL3_GROUP_PULL_K * ppl3Alpha;
+          var pfx = (dx/dist) * pull, pfy = (dy/dist) * pull, pfz = (dz/dist) * pull;
+          nodes[i].vx += pfx; nodes[i].vy += pfy; nodes[i].vz += pfz;
+          nodes[j].vx -= pfx; nodes[j].vy -= pfy; nodes[j].vz -= pfz;
+        }
+        if(relationships[i] && relationships[i] === relationships[j]){
+          var relPull = (dist - PPL3_LINK_DIST) * PPL3_RELATIONSHIP_PULL_K * ppl3Alpha;
+          var rfx = (dx/dist) * relPull, rfy = (dy/dist) * relPull, rfz = (dz/dist) * relPull;
+          nodes[i].vx += rfx; nodes[i].vy += rfy; nodes[i].vz += rfz;
+          nodes[j].vx -= rfx; nodes[j].vy -= rfy; nodes[j].vz -= rfz;
+        }
+      }
+    }
+    pplCachedEdges.forEach(ppl3ApplySpring);
+    nodes.forEach(function(n){
+      if(n.fixed){ n.vx = 0; n.vy = 0; n.vz = 0; return; }
+      var pullMult = pplCachedContactPull[n.id];
+      if(pullMult == null) pullMult = 1;
+      n.vx += (0 - n.x) * PPL3_CONTACT_PULL_K * pullMult * ppl3Alpha;
+      n.vy += (0 - n.y) * PPL3_CONTACT_PULL_K * pullMult * ppl3Alpha;
+      n.vz += (0 - n.z) * PPL3_CONTACT_PULL_K * pullMult * ppl3Alpha;
+      n.vx *= PPL3_DAMP; n.vy *= PPL3_DAMP; n.vz *= PPL3_DAMP;
+      n.x += n.vx; n.y += n.vy; n.z += n.vz;
+      var distSun = Math.sqrt(n.x*n.x + n.y*n.y + n.z*n.z) || 0.01;
+      if(distSun < PPL3_SUN_BUFFER){
+        var sunScale = PPL3_SUN_BUFFER / distSun;
+        n.x *= sunScale; n.y *= sunScale; n.z *= sunScale;
+      }
+    });
+    ppl3Alpha *= PPL3_ALPHA_DECAY;
+  }
+  var ppl3Alpha = 0;
+  var pplScene3d = null, pplScene3dIniting = false, pplScene3dFailed = false;
+  function ensurePplScene3d(){
+    if(pplScene3d || pplScene3dIniting || pplScene3dFailed) return;
+    if(!homeWebGLUsable()){
+      pplScene3dFailed = true;
+      document.getElementById("pplGraph3dFallback").hidden = false;
+      return;
+    }
+    pplScene3dIniting = true;
+    document.getElementById("pplGraph3dFallback").hidden = true;
+    initPplScene3d().catch(function(err){
+      pplScene3dFailed = true;
+      document.getElementById("pplGraph3dFallback").hidden = false;
+      console.warn("people 3D graph unavailable:", err.message);
+    }).finally(function(){ pplScene3dIniting = false; });
+  }
+  async function initPplScene3d(){
+    var THREE = await loadThree();
+    var wrap = document.getElementById("pplGraph3dWrap");
+    var canvas = document.getElementById("pplCanvas3d");
+    var w = wrap.clientWidth || 800, h = wrap.clientHeight || 500;
+    var renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(w, h, false);
+    var scene = new THREE.Scene();
+    var camera = new THREE.PerspectiveCamera(50, w / h, 0.1, 700);
+
+    var starCount = 420, starPos = new Float32Array(starCount * 3);
+    for(var s = 0; s < starCount; s++){
+      starPos[s*3] = (Math.random() - 0.5) * 400;
+      starPos[s*3+1] = (Math.random() - 0.5) * 220;
+      starPos[s*3+2] = (Math.random() - 0.5) * 400;
+    }
+    var starGeo = new THREE.BufferGeometry();
+    starGeo.setAttribute("position", new THREE.BufferAttribute(starPos, 3));
+    scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: new THREE.Color(cssVarColor("--text-faint")), size: 0.22, transparent: true, opacity: 0.5 })));
+
+    var sphereGeo = new THREE.SphereGeometry(1, 14, 10);
+    var matByColor = {};
+    function materialFor(cssVar){
+      var hex = cssVarColor(cssVar);
+      if(!matByColor[hex]) matByColor[hex] = new THREE.MeshBasicMaterial({ color: new THREE.Color(hex) });
+      return matByColor[hex];
+    }
+    var edgeMat = new THREE.LineBasicMaterial({ color: new THREE.Color(cssVarColor("--text-dim")), transparent: true, opacity: 0.32 });
+    // Auto-linked (same-main-group, no real edge yet) lines are deliberately fainter — mirrors the 2D
+    // graph's .ppl-conn-line implicit-edge treatment (thin/low-opacity, see renderPeopleGraphConnections).
+    var implicitEdgeMat = new THREE.LineBasicMaterial({ color: new THREE.Color(cssVarColor("--text-faint")), transparent: true, opacity: 0.14 });
+    function groupLabelSprite(text, hexColor){
+      var cv = document.createElement("canvas");
+      cv.width = 256; cv.height = 64;
+      var ctx = cv.getContext("2d");
+      ctx.fillStyle = hexColor;
+      ctx.font = '600 30px "IBM Plex Mono", monospace';
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(text.toLowerCase(), 128, 32);
+      var sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, opacity: 0.85, depthTest: false }));
+      sp.scale.set(9, 2.25, 1);
+      return sp;
+    }
+    // The sun (#pplSunNode's 3D counterpart) sits fixed at the world origin — same "everyone's pull
+    // toward you is scaled by contact score" idea, just a persistent mesh rather than part of the
+    // per-person rebuild below.
+    var sunMesh = new THREE.Mesh(sphereGeo, new THREE.MeshBasicMaterial({ color: new THREE.Color(cssVarColor("--accent")) }));
+    sunMesh.scale.setScalar(PPL3_SUN_R);
+    scene.add(sunMesh);
+    var sunLabel = groupLabelSprite("you", cssVarColor("--accent"));
+    sunLabel.position.set(0, PPL3_SUN_R + 1.6, 0);
+    scene.add(sunLabel);
+
+    var graph = null;
+    function buildLineSegments(edgeList, mat){
+      var pos = new Float32Array(edgeList.length * 6);
+      var geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      var lines = new THREE.LineSegments(geo, mat);
+      scene.add(lines);
+      return { edges: edgeList, lines: lines, pos: pos };
+    }
+    function disposeGraph(){
+      if(!graph) return;
+      Object.keys(graph.meshes).forEach(function(id){ scene.remove(graph.meshes[id]); });
+      [graph.explicitLines, graph.implicitLines].forEach(function(ls){ scene.remove(ls.lines); ls.lines.geometry.dispose(); });
+      graph.groupSprites.forEach(function(gs){ scene.remove(gs.sprite); if(gs.sprite.material.map) gs.sprite.material.map.dispose(); gs.sprite.material.dispose(); });
+      graph = null;
+    }
+    // Rebuilds only the Three.js objects (meshes/lines/label sprites) from the current person set and
+    // cache — ppl3SimNodes' positions themselves are untouched, so calling this again (resync) doesn't
+    // reshuffle anyone already on screen, it just re-renders the current (possibly changed) person list.
+    function rebuildGraph(){
+      disposeGraph();
+      var meshes = {};
+      ppl3SimNodes.forEach(function(n){
+        var p = state.people.find(function(x){ return x.id === n.id; });
+        if(!p) return;
+        var mesh = new THREE.Mesh(sphereGeo, materialFor(PPL3_RELATIONSHIP_VAR[p.relationship] || "--cat-sol"));
+        mesh.scale.setScalar(PPL3_NODE_R);
+        mesh.userData.personId = n.id;
+        scene.add(mesh);
+        meshes[n.id] = mesh;
+      });
+      var explicitEdges = pplCachedEdges.filter(function(e){ return !e.implicit; });
+      var implicitEdges = pplCachedEdges.filter(function(e){ return e.implicit; });
+      var groupNames = {};
+      ppl3SimNodes.forEach(function(n){ (pplCachedNodeGroupLists[n.id] || []).forEach(function(g){ groupNames[g] = true; }); });
+      var groupSprites = Object.keys(groupNames).map(function(g){
+        var sp = groupLabelSprite(g, pplCachedGroupColors[g] || cssVarColor("--text-dim"));
+        scene.add(sp);
+        return { group: g, sprite: sp };
+      });
+      graph = { meshes: meshes, explicitLines: buildLineSegments(explicitEdges, edgeMat), implicitLines: buildLineSegments(implicitEdges, implicitEdgeMat), groupSprites: groupSprites };
+    }
+    rebuildGraph();
+
+    function tickGraph(){ if(ppl3Alpha >= 0.01) ppl3TickPhysics(); }
+    function writeLineSegment(ls){
+      for(var i=0;i<ls.edges.length;i++){
+        var e = ls.edges[i], a = ppl3FindSimNode(e.fromId), b = ppl3FindSimNode(e.toId);
+        if(!a || !b) continue;
+        ls.pos[i*6] = a.x; ls.pos[i*6+1] = a.y; ls.pos[i*6+2] = a.z;
+        ls.pos[i*6+3] = b.x; ls.pos[i*6+4] = b.y; ls.pos[i*6+5] = b.z;
+      }
+      ls.lines.geometry.attributes.position.needsUpdate = true;
+    }
+    function syncGraphToScene(){
+      if(!graph) return;
+      ppl3SimNodes.forEach(function(n){
+        var m = graph.meshes[n.id];
+        if(m) m.position.set(n.x, n.y, n.z);
+      });
+      writeLineSegment(graph.explicitLines);
+      writeLineSegment(graph.implicitLines);
+      graph.groupSprites.forEach(function(gs){
+        var sumX = 0, sumY = 0, sumZ = 0, count = 0;
+        ppl3SimNodes.forEach(function(n){
+          if((pplCachedNodeGroupLists[n.id] || []).indexOf(gs.group) === -1) return;
+          sumX += n.x; sumY += n.y; sumZ += n.z; count++;
+        });
+        gs.sprite.visible = count > 0;
+        if(count) gs.sprite.position.set(sumX / count, sumY / count + 1.4, sumZ / count);
+      });
+    }
+
+    // ---- navigation + node drag/click, adapted directly from initHomeScene (see its own comment) ----
+    var orbit = { theta: 0.6, phi: 1.15, dist: 30, autoUntil: 0 };
+    var target = new THREE.Vector3(0, 0, 0);
+    var dragging = false, panning = false, downPanning = false;
+    var lastX = 0, lastY = 0, downX = 0, downY = 0, pinchDist = null, pinchMidX = 0, pinchMidY = 0;
+    var activePointers = {};
+    var raycaster = new THREE.Raycaster(), ndc = new THREE.Vector2(), hoveredId = null;
+    var tipEl = document.getElementById("pplNodeTip3d");
+    var _right = new THREE.Vector3(), _up = new THREE.Vector3(), _dir = new THREE.Vector3(), _wUp = new THREE.Vector3(0, 1, 0);
+    var draggingId = null;
+    var dragPlane = new THREE.Plane(), dragPoint = new THREE.Vector3(), _camDir = new THREE.Vector3();
+    function panBy(dx, dy){
+      _dir.copy(camera.position).sub(target).normalize();
+      _right.copy(_wUp).cross(_dir).normalize();
+      _up.copy(_dir).cross(_right);
+      var sc = orbit.dist * 0.0016;
+      target.addScaledVector(_right, -dx * sc).addScaledVector(_up, dy * sc);
+      if(target.length() > 40) target.setLength(40);
+      orbit.autoUntil = performance.now() + 6000;
+    }
+    function applyCamera(){
+      orbit.phi = Math.max(0.25, Math.min(Math.PI - 0.25, orbit.phi));
+      orbit.dist = Math.max(6, Math.min(220, orbit.dist));
+      camera.position.set(
+        target.x + orbit.dist * Math.sin(orbit.phi) * Math.cos(orbit.theta),
+        target.y + orbit.dist * Math.cos(orbit.phi),
+        target.z + orbit.dist * Math.sin(orbit.phi) * Math.sin(orbit.theta)
+      );
+      camera.lookAt(target);
+    }
+    function pickNode(e){
+      var rect = canvas.getBoundingClientRect();
+      ndc.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      ndc.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(ndc, camera);
+      if(!graph) return null;
+      var meshList = Object.keys(graph.meshes).map(function(id){ return graph.meshes[id]; });
+      var hit = raycaster.intersectObjects(meshList, false)[0];
+      return hit ? hit.object.userData.personId : null;
+    }
+    function endNodeDrag(){
+      if(draggingId == null) return;
+      var n = ppl3FindSimNode(draggingId);
+      if(n) n.fixed = false;
+      draggingId = null;
+      canvas.classList.remove("node-dragging");
+    }
+    function onDown(e){
+      canvas.setPointerCapture(e.pointerId);
+      activePointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+      var ids = Object.keys(activePointers);
+      if(ids.length === 2){
+        var p0 = activePointers[ids[0]], p1 = activePointers[ids[1]];
+        pinchDist = Math.hypot(p0.x - p1.x, p0.y - p1.y);
+        pinchMidX = (p0.x + p1.x) / 2; pinchMidY = (p0.y + p1.y) / 2;
+        dragging = false;
+        endNodeDrag();
+      } else {
+        downPanning = panning = (e.button === 2 || e.shiftKey);
+        downX = e.clientX; downY = e.clientY;
+        var hitId = !panning ? pickNode(e) : null;
+        if(hitId != null){
+          draggingId = hitId;
+          dragging = false;
+          var n = ppl3FindSimNode(hitId);
+          n.fixed = true; n.vx = 0; n.vy = 0; n.vz = 0;
+          camera.getWorldDirection(_camDir);
+          dragPlane.setFromNormalAndCoplanarPoint(_camDir, n);
+          canvas.classList.add("node-dragging");
+        } else {
+          dragging = true;
+          lastX = e.clientX; lastY = e.clientY;
+          canvas.classList.toggle("panning", panning);
+          canvas.classList.toggle("dragging", !panning);
+        }
+      }
+      orbit.autoUntil = Infinity;
+    }
+    function onMove(e){
+      if(activePointers[e.pointerId]) activePointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+      var ids = Object.keys(activePointers);
+      if(pinchDist != null && ids.length === 2){
+        var p0 = activePointers[ids[0]], p1 = activePointers[ids[1]];
+        var nd = Math.hypot(p0.x - p1.x, p0.y - p1.y);
+        if(nd > 0){ orbit.dist *= pinchDist / nd; pinchDist = nd; }
+        var mx = (p0.x + p1.x) / 2, my = (p0.y + p1.y) / 2;
+        panBy(mx - pinchMidX, my - pinchMidY);
+        pinchMidX = mx; pinchMidY = my;
+        return;
+      }
+      if(draggingId != null){
+        var dn = ppl3FindSimNode(draggingId);
+        if(!dn){ endNodeDrag(); return; }
+        var rect2 = canvas.getBoundingClientRect();
+        ndc.x = ((e.clientX - rect2.left) / rect2.width) * 2 - 1;
+        ndc.y = -((e.clientY - rect2.top) / rect2.height) * 2 + 1;
+        raycaster.setFromCamera(ndc, camera);
+        if(raycaster.ray.intersectPlane(dragPlane, dragPoint)){
+          dn.x = dragPoint.x; dn.y = dragPoint.y; dn.z = dragPoint.z;
+        }
+        return;
+      }
+      if(dragging){
+        if(panning) panBy(e.clientX - lastX, e.clientY - lastY);
+        else { orbit.theta += (e.clientX - lastX) * 0.005; orbit.phi -= (e.clientY - lastY) * 0.005; }
+        lastX = e.clientX; lastY = e.clientY;
+        return;
+      }
+      var id = pickNode(e);
+      hoveredId = id;
+      canvas.style.cursor = id != null ? "pointer" : "";
+      if(id != null){
+        var p = state.people.find(function(x){ return x.id === id; });
+        tipEl.hidden = false;
+        tipEl.textContent = p ? (p.name + " · " + p.relationship) : "";
+        var wrapRect = wrap.getBoundingClientRect();
+        tipEl.style.left = (e.clientX - wrapRect.left + 14) + "px";
+        tipEl.style.top = (e.clientY - wrapRect.top + 10) + "px";
+      } else {
+        tipEl.hidden = true;
+      }
+    }
+    function onUp(e){
+      if(draggingId != null){
+        var draggedId = draggingId;
+        endNodeDrag();
+        delete activePointers[e.pointerId];
+        if(!Object.keys(activePointers).length) orbit.autoUntil = performance.now() + 6000;
+        var movedPx = Math.abs(e.clientX - downX) + Math.abs(e.clientY - downY);
+        if(movedPx <= 6) editPerson(draggedId);
+        else ppl3Alpha = Math.max(ppl3Alpha, 1);
+        return;
+      }
+      delete activePointers[e.pointerId];
+      if(Object.keys(activePointers).length < 2) pinchDist = null;
+      var wasDragging = dragging, wasPanning = downPanning;
+      if(!Object.keys(activePointers).length){
+        dragging = false; panning = false;
+        canvas.classList.remove("dragging", "panning");
+        orbit.autoUntil = performance.now() + 6000;
+      }
+      if(!wasDragging || wasPanning) return;
+      var moved = Math.abs(e.clientX - downX) + Math.abs(e.clientY - downY) > 6;
+      if(moved) return;
+      var id = pickNode(e);
+      if(id != null) editPerson(id);
+    }
+    function onCancel(e){
+      delete activePointers[e.pointerId];
+      pinchDist = null;
+      endNodeDrag();
+      dragging = false; panning = false;
+      canvas.classList.remove("dragging", "panning");
+      orbit.autoUntil = performance.now() + 6000;
+    }
+    function onWheel(e){
+      e.preventDefault();
+      orbit.dist *= (1 + Math.sign(e.deltaY) * 0.08);
+      orbit.autoUntil = performance.now() + 6000;
+    }
+    function onContextMenu(e){ e.preventDefault(); }
+    canvas.addEventListener("pointerdown", onDown);
+    canvas.addEventListener("pointermove", onMove);
+    canvas.addEventListener("pointerup", onUp);
+    canvas.addEventListener("pointercancel", onCancel);
+    canvas.addEventListener("wheel", onWheel, { passive: false });
+    canvas.addEventListener("contextmenu", onContextMenu);
+
+    function onResize(){
+      var nw = wrap.clientWidth || w, nh = wrap.clientHeight || h;
+      renderer.setSize(nw, nh, false);
+      camera.aspect = nw / nh;
+      camera.updateProjectionMatrix();
+    }
+    window.addEventListener("resize", onResize);
+
+    function frame(){
+      if(!prefersReducedMotion() && performance.now() > orbit.autoUntil) orbit.theta += 0.0016;
+      tickGraph();
+      syncGraphToScene();
+      if(graph) Object.keys(graph.meshes).forEach(function(id){
+        var m = graph.meshes[id];
+        var want = (id === hoveredId) ? PPL3_NODE_R * 1.6 : PPL3_NODE_R;
+        m.scale.setScalar(m.scale.x + (want - m.scale.x) * 0.2);
+      });
+      applyCamera();
+      renderer.render(scene, camera);
+    }
+    renderer.setAnimationLoop(frame);
+
+    pplScene3d = {
+      setRunning: function(on){ renderer.setAnimationLoop(on ? frame : null); },
+      resync: function(){ rebuildGraph(); },
+      dispose: function(){
+        renderer.setAnimationLoop(null);
+        canvas.removeEventListener("pointerdown", onDown);
+        canvas.removeEventListener("pointermove", onMove);
+        canvas.removeEventListener("pointerup", onUp);
+        canvas.removeEventListener("pointercancel", onCancel);
+        canvas.removeEventListener("wheel", onWheel);
+        canvas.removeEventListener("contextmenu", onContextMenu);
+        window.removeEventListener("resize", onResize);
+        disposeGraph();
+        scene.traverse(function(o){
+          if(o.geometry) o.geometry.dispose();
+          if(o.material){
+            if(o.material.map) o.material.map.dispose();
+            o.material.dispose();
+          }
+        });
+        renderer.dispose();
+      }
+    };
+  }
+  function pplScene3dSetActive(on){ if(pplScene3d) pplScene3d.setRunning(on); }
+  document.addEventListener("visibilitychange", function(){
+    pplScene3dSetActive(!document.hidden && activeSection === "people" && views.people === "graph3d");
+  });
+  // Same reasoning as the Home 3D graph's own theme-toggle listener: every CSS-var-derived color is
+  // baked into materials/label textures at build time, so the cheapest correct fix for a theme flip
+  // is a full dispose — the next activatePeopleGraph3D() call (tab re-entry) re-inits from scratch.
+  document.getElementById("themeToggleBtn").addEventListener("click", function(){
+    if(pplScene3d){ pplScene3d.dispose(); pplScene3d = null; pplScene3dFailed = false; }
+  });
+  function activatePeopleGraph3D(){
+    ppl3SyncSimNodes();
+    pplRebuildGraphCache();
+    ensurePplScene3d();
+    if(pplScene3d) pplScene3d.resync();
+    ppl3Alpha = 1;
+    pplScene3dSetActive(true);
+  }
+
   /* ---------------- Location page: Leaflet base map + people/live-gps/history layers ---------------- */
   function locMapGpsRow(r){ return { id:r.id, lat:r.lat, lng:r.lng, recordedAt:r.recorded_at, source:r.source||"gps" }; }
   function locHaversineMeters(lat1, lng1, lat2, lng2){
@@ -13855,11 +14359,14 @@
     var view = views.people;
     document.getElementById("peopleCardsPanel").style.display = view === "cards" ? "" : "none";
     document.getElementById("peopleGraphPanel").style.display = view === "graph" ? "" : "none";
+    document.getElementById("peopleGraph3dPanel").style.display = view === "graph3d" ? "" : "none";
     document.getElementById("peopleTablePanel").style.display = view === "table" ? "" : "none";
-    document.getElementById("peopleFilterRow").style.display = view === "graph" ? "none" : "";
-    document.getElementById("peopleSection").classList.toggle("ppl-fullscreen-graph", view === "graph");
+    document.getElementById("peopleFilterRow").style.display = (view === "graph" || view === "graph3d") ? "none" : "";
+    document.getElementById("peopleSection").classList.toggle("ppl-fullscreen-graph", view === "graph" || view === "graph3d");
     pplRefreshSocialGroupDatalist();
-    if(view === "graph"){ activatePeopleGraph(); return; }
+    if(view === "graph"){ pplScene3dSetActive(false); activatePeopleGraph(); return; }
+    if(view === "graph3d"){ activatePeopleGraph3D(); return; }
+    pplScene3dSetActive(false);
     if(view === "table"){ renderPeopleTable(list); return; }
     renderPeopleCards(list);
   }
