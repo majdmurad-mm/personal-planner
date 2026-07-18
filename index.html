@@ -1915,10 +1915,15 @@
           <button type="button" data-tl-day-delta="1" title="next day">›</button>
         </div>
         <div class="home-tl-hours" id="homeTlHours"></div>
+        <!-- Rows group by life AREA now, not by item kind (habit/action/note) — see
+             HOME_TL_AREA_GROUPS/computeHomeTimelineBlocks. Habits/actions/notes for the same area
+             land in the same row (still distinguished by shape/color), which spreads same-time
+             items across rows by what they're actually about instead of piling every habit into
+             one row regardless of area. -->
         <div class="home-tl-lanes" id="homeTlLanes">
-          <div class="home-tl-lane" id="homeTlLaneHabits"></div>
-          <div class="home-tl-lane" id="homeTlLaneActions"></div>
-          <div class="home-tl-lane" id="homeTlLaneNotes"></div>
+          <div class="home-tl-lane" id="homeTlLaneHealth"></div>
+          <div class="home-tl-lane" id="homeTlLaneMaintenance"></div>
+          <div class="home-tl-lane" id="homeTlLaneCareer"></div>
         </div>
         <div class="home-tl-now" id="homeTlNow"></div>
         <div class="home-tl-daynight" id="homeTlDayNight"></div>
@@ -6673,38 +6678,65 @@
     renderHomeTimelineDock();
     renderHomeCalStrip();
   }
+  // Dock rows group by life AREA, not by item kind — a habit, action, and note that are all
+  // "Health" land in the same row, which spreads same-time items across rows by what they're
+  // actually about instead of piling every habit into one row regardless of area (the previous
+  // kind-based grouping's real source of visual overlap: a user's habits skew toward a handful of
+  // areas, so "all habits" was really "most of one or two areas" crowded into a single row).
+  // Covers all 7 CATEGORIES between the 3 rows; an item with no area at all falls back to the
+  // first row (Sol is this app's general/catch-all area already, so that's the natural home for it).
+  var HOME_TL_AREA_GROUPS = [
+    { key:"health", areas:["Health","Sol","Relationships"] },
+    { key:"maintenance", areas:["Maintenance","Finance"] },
+    { key:"career", areas:["Career","Growth"] }
+  ];
+  function homeTlAreaGroupKey(area){
+    for(var i = 0; i < HOME_TL_AREA_GROUPS.length; i++){
+      if(HOME_TL_AREA_GROUPS[i].areas.indexOf(area) !== -1) return HOME_TL_AREA_GROUPS[i].key;
+    }
+    return HOME_TL_AREA_GROUPS[0].key;
+  }
+  // Built once — CATEGORY_ICONS never changes at runtime — so renderHomeTimelineDock isn't
+  // rebuilding these tiny strings on every tick.
+  var HOME_TL_GROUP_LABEL = {}, HOME_TL_GROUP_TITLE = {};
+  HOME_TL_AREA_GROUPS.forEach(function(g){
+    HOME_TL_GROUP_LABEL[g.key] = g.areas.map(function(a){ return CATEGORY_ICONS[a]; }).join("");
+    HOME_TL_GROUP_TITLE[g.key] = g.areas.join(", ");
+  });
   function computeHomeTimelineBlocks(){
     var day = homeTlSelectedDate;
     var prevDay = addDaysToDateStr(day, -1);
-    var blocks = { habit:[], action:[], note:[] };
+    var all = [];
     state.habits.filter(function(h){ return habitOccursOnDate(h, day); }).forEach(function(h){
       var f = habitInstanceFields(h, day);
       if(!f.timeOfDay) return;
-      blocks.habit.push({ kind:"habit-instance", id:h.id, date:day, title:h.title, start:timeToFraction(f.timeOfDay), width:Math.max((f.durationMinutes || 15) / 1440, 0.006), area:habitCategory(h), done:habitDoneForDate(h, day), overnight:false });
+      all.push({ kind:"habit-instance", id:h.id, date:day, title:h.title, start:timeToFraction(f.timeOfDay), width:Math.max((f.durationMinutes || 15) / 1440, 0.006), area:habitCategory(h), done:habitDoneForDate(h, day), overnight:false });
     });
     state.habits.filter(function(h){ return habitOccursOnDate(h, prevDay); }).forEach(function(h){
       var f = habitInstanceFields(h, prevDay);
       if(!f.timeOfDay) return;
       var spill = overnightSpilloverMinutes(f.timeOfDay, f.durationMinutes);
       if(!spill) return;
-      blocks.habit.push({ kind:"habit-instance", id:h.id, date:prevDay, title:"‹ " + h.title, start:0, width:spill / 1440, area:habitCategory(h), done:habitDoneForDate(h, prevDay), overnight:true });
+      all.push({ kind:"habit-instance", id:h.id, date:prevDay, title:"‹ " + h.title, start:0, width:spill / 1440, area:habitCategory(h), done:habitDoneForDate(h, prevDay), overnight:true });
     });
     state.actions.filter(function(a){ return a.date === day && a.timeOfDay; }).forEach(function(a){
-      blocks.action.push({ kind:"action", id:a.id, date:day, title:a.title, start:timeToFraction(a.timeOfDay), width:Math.max((a.durationMinutes || 15) / 1440, 0.006), area:actionCategory(a), done:!!a.done, overnight:false });
+      all.push({ kind:"action", id:a.id, date:day, title:a.title, start:timeToFraction(a.timeOfDay), width:Math.max((a.durationMinutes || 15) / 1440, 0.006), area:actionCategory(a), done:!!a.done, overnight:false });
     });
     state.journal.filter(function(n){ return n.date === day && n.timeOfDay; }).forEach(function(n){
       var preview = (n.title || n.text || "").slice(0, 40);
-      // area stays the single primary category (still what homeAreaVisible below filters by) —
-      // colorRgb is the additive blend across every area, used only for the block's own color.
-      blocks.note.push({ kind:"journal", id:n.id, date:day, title:"✎ " + preview, start:timeToFraction(n.timeOfDay), width:0.008, area:noteCategory(n), colorRgb:mergedAreaColorRgb(noteCategories(n)), done:false, overnight:false });
+      // area stays the single primary category (still what homeAreaVisible below filters by, and
+      // what decides which row this note lands in) — colorRgb is the additive blend across every
+      // area, used only for the block's own color.
+      all.push({ kind:"journal", id:n.id, date:day, title:"✎ " + preview, start:timeToFraction(n.timeOfDay), width:0.008, area:noteCategory(n), colorRgb:mergedAreaColorRgb(noteCategories(n)), done:false, overnight:false });
     });
-    // Areas toggled off in the legend rail hide their blocks here too (a null-area item is never
-    // filtered — there's no area to hide it under).
-    ["habit","action","note"].forEach(function(k){ blocks[k] = blocks[k].filter(function(b){ return homeAreaVisible(b.area); }); });
+    // Areas toggled off in the legend rail hide their blocks here too.
+    all = all.filter(function(b){ return homeAreaVisible(b.area); });
+    var blocks = { health:[], maintenance:[], career:[] };
+    all.forEach(function(b){ blocks[homeTlAreaGroupKey(b.area)].push(b); });
     return blocks;
   }
-  function homeTlLaneHtml(label, list){
-    return '<span class="home-tl-lane-label">' + label + '</span>' + list.map(function(b){
+  function homeTlLaneHtml(label, list, labelTitle){
+    return '<span class="home-tl-lane-label"' + (labelTitle ? ' title="' + escapeHtml(labelTitle) + '"' : '') + '>' + label + '</span>' + list.map(function(b){
       var z = tlZIndexForDuration(b.width * 1440);
       // Notes have no duration field (see computeHomeTimelineBlocks) so they never get a handle. The
       // overnight-spillover tail's left edge isn't a real start time (see wireHomeTimelineDock), so
@@ -6729,19 +6761,19 @@
     return fmtDate(day);
   }
   function renderHomeTimelineDock(){
-    var laneHabits = document.getElementById("homeTlLaneHabits");
-    if(!laneHabits) return;
+    var laneHealth = document.getElementById("homeTlLaneHealth");
+    if(!laneHealth) return;
     var todayKey = todayStr();
     var blocks = computeHomeTimelineBlocks();
-    var sig = homeTlSelectedDate + "|" + ["habit","action","note"].map(function(k){
+    var sig = homeTlSelectedDate + "|" + ["health","maintenance","career"].map(function(k){
       return blocks[k].map(function(b){ return b.id + ":" + b.start + ":" + b.width + ":" + (b.done ? 1 : 0); }).join(",");
     }).join("|");
     var dock = document.getElementById("homeTimelineDock");
     if(dock.dataset.sig !== sig){
       dock.dataset.sig = sig;
-      laneHabits.innerHTML = homeTlLaneHtml("habits", blocks.habit);
-      document.getElementById("homeTlLaneActions").innerHTML = homeTlLaneHtml("actions", blocks.action);
-      document.getElementById("homeTlLaneNotes").innerHTML = homeTlLaneHtml("notes", blocks.note);
+      laneHealth.innerHTML = homeTlLaneHtml(HOME_TL_GROUP_LABEL.health, blocks.health, HOME_TL_GROUP_TITLE.health);
+      document.getElementById("homeTlLaneMaintenance").innerHTML = homeTlLaneHtml(HOME_TL_GROUP_LABEL.maintenance, blocks.maintenance, HOME_TL_GROUP_TITLE.maintenance);
+      document.getElementById("homeTlLaneCareer").innerHTML = homeTlLaneHtml(HOME_TL_GROUP_LABEL.career, blocks.career, HOME_TL_GROUP_TITLE.career);
       var hoursEl = document.getElementById("homeTlHours");
       if(!hoursEl.childElementCount){
         var hh = "";
