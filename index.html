@@ -1059,8 +1059,9 @@
   .notes-band-field::before{ content:""; position:absolute; left:50%; top:0; bottom:0; border-left:1px dashed var(--border); opacity:0.6; }
   .notes-band-field .journal-entry{ position:absolute; width:250px; max-width:46%; margin:0; cursor:pointer; box-sizing:border-box; }
   .notes-band-field .journal-entry:hover{ z-index:5; }
-  /* 10-line preview cap — opening the note (click) is how you read the rest. */
-  .notes-canvas .journal-entry-text{ display:-webkit-box; -webkit-line-clamp:10; -webkit-box-orient:vertical; overflow:hidden; }
+  /* Cards on the canvas preview attributes only (date, tags, title, sentiment, waveform) — never
+     the note body text; opening the card (click) is the only way to read/edit it, in the
+     full-page resizable overlay below. */
   /* Markdown toolbar in the note editor modal */
   .md-toolbar{ display:flex; gap:4px; margin-bottom:6px; flex-wrap:wrap; }
   .md-toolbar button{ min-width:30px; height:26px; padding:0 8px; border:1px solid var(--border-bright); border-radius:5px; background:var(--bg-raised); color:var(--text-dim); font-family:var(--mono); font-size:11.5px; cursor:pointer; }
@@ -1326,6 +1327,21 @@
   .modal-head{ display:flex; align-items:center; gap:8px; padding:13px 18px; border-bottom:1px solid var(--border); background:var(--bg-inset); }
   .modal-head h2{ font-family:var(--mono); font-size:13px; margin:0; font-weight:600; }
   .modal-inner{ padding:20px; }
+  /* The note editor opens full-page rather than the standard compact modal (see JOURNAL ENTRY
+     MODAL) — cards on the notes canvas preview attributes only, so this is genuinely where the
+     text gets read and written, and wants real room. Flex column: the field rows above the
+     textarea stay their natural height, .note-editor-textfield eats all remaining vertical space
+     (down to its own min-height:0 so the flex math doesn't get stuck at content size), and
+     modal-actions stays pinned to the bottom. Resizable by its own corner grip
+     (journalModalResize/wireNoteEditorResize) same as the rest of this app's resizable widgets —
+     position:relative here is what anchors that handle. */
+  .note-editor-modal{ position:relative; max-width:none; width:min(1200px, 94vw); height:88vh; max-height:none; display:flex; flex-direction:column; overflow:hidden; }
+  .note-editor-modal .modal-inner{ flex:1; min-height:0; display:flex; flex-direction:column; overflow-y:auto; }
+  .note-editor-textfield{ flex:1; min-height:0; display:flex; flex-direction:column; }
+  .note-editor-textfield #journalEditTextInput{ flex:1; min-height:120px; resize:none; }
+  .modal-resize{ position:absolute; right:2px; bottom:2px; width:18px; height:18px; cursor:nwse-resize; touch-action:none; z-index:5; }
+  .modal-resize::before{ content:""; position:absolute; right:5px; bottom:5px; width:8px; height:8px; border-right:2px solid var(--border-bright); border-bottom:2px solid var(--border-bright); opacity:0.7; }
+  .modal-resize:hover::before{ opacity:1; border-color:var(--accent-dim); }
   .chip-select{ display:flex; gap:6px; flex-wrap:wrap; }
   .chip-opt{ font-family:var(--mono); font-size:11px; font-weight:600; padding:7px 10px; border-radius:var(--radius); border:1px solid var(--border); cursor:pointer; color:var(--text-faint); transition:all .15s ease; }
   .chip-opt:hover{ color:var(--text-dim); }
@@ -3560,8 +3576,12 @@
 </div>
 
 <!-- ===== JOURNAL ENTRY MODAL ===== -->
+<!-- Opens full-page (see .note-editor-modal) since cards on the canvas only preview attributes,
+     never the note body — this modal IS where the text actually gets read/written. Resizable by
+     its own corner grip (journalModalResize/wireNoteEditorResize), size persisted so it stays put
+     across sessions like every other resizable widget in this app. -->
 <div class="modal-overlay" id="journalModalOverlay" hidden>
-  <div class="modal">
+  <div class="modal note-editor-modal">
     <div class="modal-head"><span class="dot g"></span><h2 id="journalModalTitle">edit_note.json</h2></div>
     <div class="modal-inner">
       <div class="field"><label for="journalEditTitleInput">title (optional)</label><input type="text" id="journalEditTitleInput" placeholder="Title"></div>
@@ -3585,7 +3605,7 @@
           <div class="chip-opt" role="button" tabindex="0" data-p="P0">P0</div><div class="chip-opt" role="button" tabindex="0" data-p="P1">P1</div><div class="chip-opt" role="button" tabindex="0" data-p="P2">P2</div><div class="chip-opt" role="button" tabindex="0" data-p="P3">P3</div>
         </div></div>
       </div>
-      <div class="field"><label for="journalEditTextInput">note</label>
+      <div class="field note-editor-textfield"><label for="journalEditTextInput">note</label>
         <!-- Markdown formatting toolbar — each button wraps the selection / prefixes the selected
              lines with plain .md syntax (see mdApplyFormat), so the note stays ordinary Markdown
              and renders through the same marked+DOMPurify pipeline as before (GFM checkboxes
@@ -3601,10 +3621,11 @@
           <button type="button" data-md="quote" title="Quote (&gt; )">❝</button>
           <button type="button" data-md="code" title="Inline code (`code`)">‹›</button>
         </div>
-        <textarea id="journalEditTextInput" class="journal-textarea" rows="10"></textarea>
+        <textarea id="journalEditTextInput" class="journal-textarea"></textarea>
       </div>
       <div class="modal-actions"><button class="btn" id="cancelJournalModalBtn" type="button">cancel</button><button class="btn btn-accent" id="saveJournalEditBtn" type="button">save note</button></div>
     </div>
+    <div class="modal-resize" id="journalModalResize" title="Drag to resize"></div>
   </div>
 </div>
 
@@ -12830,7 +12851,6 @@
         '<button class="icon-btn" data-action="del-journal" data-id="' + entry.id + '" aria-label="Delete entry">&times;</button>' +
       '</div></div>' +
       renderNoteTitleHtml(entry) +
-      '<div class="journal-entry-text journal-entry-md">' + renderNoteBodyHtml(entry.text) + '</div>' +
       renderSentimentChipsHtml(entry) +
       renderJournalWaveformHtml(entry) +
     '</div>';
@@ -13391,6 +13411,11 @@
     setChip(document.getElementById("journalEditPrioritySelect"), "p", (n && n.priority) || "");
     document.getElementById("journalEditTextInput").value = (n && n.text) || "";
     document.getElementById("journalEditTimePickPanel").hidden = true;
+    var editorEl = document.getElementById("journalModalOverlay").querySelector(".note-editor-modal");
+    var savedSize = null;
+    try{ savedSize = JSON.parse(safeGet(window.localStorage, "pp_note_editor_size") || "null"); }catch(e){}
+    if(savedSize && savedSize.w){ editorEl.style.width = savedSize.w + "px"; editorEl.style.height = savedSize.h + "px"; }
+    else{ editorEl.style.width = ""; editorEl.style.height = ""; }
     openModal("journalModalOverlay");
     document.getElementById("journalEditTextInput").focus();
   }
@@ -13443,6 +13468,37 @@
       var btn = e.target.closest("[data-md]");
       if(btn) mdApplyFormat(ta, btn.dataset.md);
     });
+  })();
+  // Note editor's own corner-grip resize (same math as wireHomeMapResize) — the modal sits centered
+  // in a fixed-position flex overlay rather than a drag-positioned widget, so there's no separate
+  // position to persist, just size. Clamped to the viewport (minus the overlay's own padding) since
+  // there's no wrap element to bound against here.
+  (function wireNoteEditorResize(){
+    var el = document.getElementById("journalModalOverlay").querySelector(".note-editor-modal");
+    var handle = document.getElementById("journalModalResize");
+    var MIN_W = 420, MIN_H = 320;
+    var active = false, startX = 0, startY = 0, startW = 0, startH = 0, maxW = 9999, maxH = 9999;
+    handle.addEventListener("pointerdown", function(e){
+      active = true;
+      startX = e.clientX; startY = e.clientY;
+      startW = el.offsetWidth; startH = el.offsetHeight;
+      maxW = window.innerWidth - 24; maxH = window.innerHeight - 24;
+      handle.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    });
+    handle.addEventListener("pointermove", function(e){
+      if(!active) return;
+      var w = Math.max(MIN_W, Math.min(maxW, startW + (e.clientX - startX)));
+      var h = Math.max(MIN_H, Math.min(maxH, startH + (e.clientY - startY)));
+      el.style.width = w + "px"; el.style.height = h + "px";
+    });
+    function end(){
+      if(!active) return;
+      active = false;
+      safeSet(window.localStorage, "pp_note_editor_size", JSON.stringify({ w: el.offsetWidth, h: el.offsetHeight }));
+    }
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
   })();
   document.getElementById("cancelJournalModalBtn").addEventListener("click", function(){ closeModal("journalModalOverlay"); });
   document.getElementById("saveJournalEditBtn").addEventListener("click", async function(){
