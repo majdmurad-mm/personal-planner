@@ -10,7 +10,8 @@
 //
 // Serves every file under this folder as-is, plus one special endpoint:
 //   GET /__memory_projects_list — lists the local project folders under _Memory/_projects/ (used by
-//   the Integrations page and each goal's daily-report panel). See _Memory/_projects/README.md.
+//   the Integrations page and each linked goal/project's "html integrations" panel). See
+//   _Memory/_projects/README.md.
 
 const http = require("http");
 const fs = require("fs");

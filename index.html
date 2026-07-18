@@ -1315,13 +1315,13 @@
   .finance-month-row-bar{ height:100%; border-radius:4px; }
   .finance-month-row-value{ width:6em; text-align:right; flex-shrink:0; font-weight:700; }
 
-  /* ---- Goal detail: daily report panel ---- */
-  .goal-report-nav{ display:flex; align-items:center; gap:10px; }
-  .goal-report-frame-wrap{ margin-top:12px; }
-  .goal-report-frame{ width:100%; height:70vh; border:1px solid var(--border); border-radius:6px; background:var(--bg-raised); }
+  /* ---- Goal/entity detail: html integrations panel ---- */
+  .html-int-file-select{ font-family:var(--mono); font-size:11.5px; color:var(--text); background:var(--bg-inset); border:1px solid var(--border-bright); border-radius:6px; padding:5px 8px; max-width:60%; }
+  .html-int-frame-wrap{ margin-top:12px; }
+  .html-int-frame{ width:100%; height:70vh; border:1px solid var(--border); border-radius:6px; background:var(--bg-raised); }
 
   /* ---- Integrations page ---- */
-  .integrations-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:14px; margin-top:16px; }
+  .integrations-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:14px; margin-top:16px; }
   .integration-card{ border:1px solid var(--border); border-radius:10px; padding:14px 16px; background:var(--bg-raised); display:flex; flex-direction:column; gap:10px; }
   .integration-card.missing{ border-color:var(--p0); border-style:dashed; }
   .integration-card-head{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
@@ -1330,8 +1330,15 @@
   .integration-filetype-row{ display:flex; align-items:center; justify-content:space-between; gap:8px; font-family:var(--mono); font-size:11.5px; color:var(--text-dim); }
   .integration-filetype-name{ color:var(--text); }
   .integration-card-linked{ display:flex; flex-wrap:wrap; gap:6px; padding-top:8px; border-top:1px solid var(--border); }
-  .integration-link-chip{ font-family:var(--mono); font-size:11px; padding:4px 10px; border-radius:999px; border:1px solid var(--border-bright); background:var(--bg-inset); color:var(--text-dim); cursor:pointer; }
-  .integration-link-chip:hover{ color:var(--text); border-color:var(--accent-dim); }
+  .integration-link-chip-wrap{ display:flex; align-items:stretch; border-radius:999px; overflow:hidden; border:1px solid var(--border-bright); background:var(--bg-inset); }
+  .integration-link-chip{ font-family:var(--mono); font-size:11px; padding:4px 10px; border:none; background:none; color:var(--text-dim); cursor:pointer; }
+  .integration-link-chip:hover{ color:var(--text); }
+  .integration-unlink-btn{ font-family:var(--mono); font-size:11px; padding:4px 8px; border:none; border-left:1px solid var(--border-bright); background:none; color:var(--text-faint); cursor:pointer; }
+  .integration-unlink-btn:hover{ color:var(--p0); background:rgba(var(--p0-rgb, 229,72,77), 0.1); }
+  .integration-link-form{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding-top:10px; border-top:1px solid var(--border); }
+  .integration-link-form select{ font-family:var(--mono); font-size:11px; color:var(--text); background:var(--bg-inset); border:1px solid var(--border-bright); border-radius:6px; padding:4px 6px; flex:1; min-width:0; }
+  .integration-link-form select:disabled{ opacity:0.5; }
+  .integration-link-form .btn{ padding:5px 12px; font-size:11px; }
 
   /* ===== MODAL ===== */
   .modal-overlay{ position:fixed; inset:0; background:rgba(4,6,10,0.7); backdrop-filter:blur(3px); display:flex; align-items:center; justify-content:center; z-index:100; padding:20px; animation:overlayIn var(--dur-fast) var(--ease-out); }
@@ -2325,23 +2332,21 @@
       </div>
       <div id="goalDetailBody"></div>
 
-      <!-- Daily report — embeds the local HTML file a routine writes to
-           _Memory/_projects/<files_slug>/html/YYYY-MM-DD.html (gitignored, local-only; see that
-           folder's README.md). Hidden entirely unless the goal has files_slug set. Only reachable
-           when the planner is opened via the local dev server — a file:// page or the deployed
-           GitHub Pages site can't fetch arbitrary local files. -->
-      <div class="goal-integration-block" id="goalReportBlock" style="display:none;">
+      <!-- HTML integrations — embeds local HTML files a linked _Memory/_projects/<files_slug>/html/
+           folder holds (gitignored, local-only; see that folder's README.md and the Integrations
+           page, which is where a folder actually gets linked to this goal). Hidden entirely unless
+           the link is set on this goal AND the linked folder's html/ subfolder actually has at least
+           one file — a slug can be typed in before the routine has written anything yet. Only
+           reachable when the planner is opened via the local dev server — a file:// page or the
+           deployed GitHub Pages site can't fetch arbitrary local files. -->
+      <div class="goal-integration-block" id="goalHtmlIntBlock" style="display:none;">
         <div class="integration-block-head">
-          <h2>daily report</h2>
-          <div class="goal-report-nav">
-            <button class="cal-nav-btn" id="goalReportPrevBtn" type="button" aria-label="Previous day">‹</button>
-            <span class="cal-month-label" id="goalReportDateLabel"></span>
-            <button class="cal-nav-btn" id="goalReportNextBtn" type="button" aria-label="Next day">›</button>
-          </div>
+          <h2>html integrations</h2>
+          <select class="html-int-file-select" id="goalHtmlIntFileSelect"></select>
         </div>
-        <div class="goal-report-frame-wrap">
-          <iframe id="goalReportFrame" class="goal-report-frame" sandbox="allow-same-origin allow-popups" title="Daily report" style="display:none;"></iframe>
-          <div class="empty-state" id="goalReportEmpty" style="display:none;">No report found for this date.</div>
+        <div class="html-int-frame-wrap">
+          <iframe id="goalHtmlIntFrame" class="html-int-frame" sandbox="allow-same-origin allow-popups" title="HTML integration"></iframe>
+          <div class="empty-state" id="goalHtmlIntEmpty" style="display:none;">No file selected.</div>
         </div>
       </div>
 
@@ -2478,6 +2483,19 @@
         <div>
           <button class="btn" id="entityPageBackBtn" type="button">‹ back</button>
           <div id="entityPageTitleRow" class="entity-page-title-row"></div>
+        </div>
+      </div>
+      <!-- HTML integrations — same panel as the goal detail page's (see its comment there); projects
+           only, since actions don't get a files_slug field. Hidden unless linked AND the linked
+           folder's html/ subfolder actually has a file. -->
+      <div class="goal-integration-block" id="entityHtmlIntBlock" style="display:none;">
+        <div class="integration-block-head">
+          <h2>html integrations</h2>
+          <select class="html-int-file-select" id="entityHtmlIntFileSelect"></select>
+        </div>
+        <div class="html-int-frame-wrap">
+          <iframe id="entityHtmlIntFrame" class="html-int-frame" sandbox="allow-same-origin allow-popups" title="HTML integration"></iframe>
+          <div class="empty-state" id="entityHtmlIntEmpty" style="display:none;">No file selected.</div>
         </div>
       </div>
       <div class="goal-integration-block">
@@ -3185,19 +3203,19 @@
     </section>
 
     <!-- ===== INTEGRATIONS SECTION — lists the local project folders under _Memory/_projects/ (a
-         gitignored, local-only directory — see that folder's README.md) and cross-references each
-         one against goals whose files_slug matches it. Reads via a small listing endpoint the local
-         dev server exposes (see .claude/launch.json) — only reachable when the planner is opened via
+         gitignored, local-only directory — see that folder's README.md) and lets any of them be
+         linked to a goal or project (writing its files_slug). Reads via a small listing endpoint the
+         local dev server exposes (see dev-server.js) — only reachable when the planner is opened via
          that server; a file:// page or the deployed GitHub Pages site can't list local folders. ===== -->
     <section id="integrationsSection" style="display:none;">
       <div class="main-header">
         <div>
           <h1>integrations</h1>
-          <p class="subhead">Local project folders in _Memory/_projects/ and the planner objects linked to them.</p>
+          <p class="subhead">Local project folders in _Memory/_projects/ and the goals/projects linked to them.</p>
         </div>
         <button class="btn" id="integrationsRefreshBtn" type="button">refresh</button>
       </div>
-      <p class="panel-hint">Link a folder to a goal via its "daily report folder" field in the goal modal.</p>
+      <p class="panel-hint">Pick a folder's kind + target below and click "link" to connect it to a goal or project — the linked object's "html integrations" panel then shows every file in that folder's html/ subfolder.</p>
       <div id="integrationsBody"></div>
     </section>
 
@@ -3342,10 +3360,6 @@
         </div>
         <p class="panel-hint">Or pick a built-in vector icon instead:</p>
         <div class="icon-gallery" id="goalIconGallery"></div>
-      </div>
-      <div class="field"><label for="goalFilesSlugInput">daily report folder (optional)</label>
-        <input type="text" id="goalFilesSlugInput" placeholder="e.g. apartment">
-        <p class="panel-hint">If set, the goal page embeds today's HTML report from <code>_Memory/_projects/&lt;slug&gt;/html/</code> — a local, gitignored folder. Only works when running via the local dev server.</p>
       </div>
       <div class="modal-actions"><button class="btn" id="cancelGoalModalBtn" type="button">cancel</button><button class="btn btn-accent" id="saveGoalBtn" type="button">save goal</button></div>
     </div>
@@ -4394,7 +4408,7 @@
     location: "location", related_people: "related people", planets: "people group",
     home_lat: "home location", home_lng: "home location",
     transcript: "recording transcript", duration_seconds: "recording length", waveform: "recording waveform",
-    notes_md: "page notes", dependencies: "action dependencies", files_slug: "daily report folder"
+    notes_md: "page notes", dependencies: "action dependencies", files_slug: "html integration folder"
   };
   function warnDroppedFields(dropped){
     if(!dropped || !dropped.length) return;
@@ -4632,7 +4646,7 @@
     // the migration runs and real position values exist.
     state.goals = (results[0].data || []).map(function(r){ return { id:r.id, title:r.title, priority:r.priority, category:r.category, secondaryCategories:r.secondary_categories || [], secondaryGoalIds:r.secondary_goal_ids || [], due:r.due, ongoing:r.ongoing, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), notesMd:r.notes_md||"", linkedPeopleIds:r.linked_people_ids||[], filesSlug:r.files_slug||"" }; });
     state.goals.sort(function(a,b){ return a.position - b.position; });
-    state.projects = (results[1].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), categories:r.categories||[], notesMd:r.notes_md||"", linkedPeopleIds:r.linked_people_ids||[] }; });
+    state.projects = (results[1].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), categories:r.categories||[], notesMd:r.notes_md||"", linkedPeopleIds:r.linked_people_ids||[], filesSlug:r.files_slug||"" }; });
     state.projects.sort(function(a,b){ return a.position - b.position; });
     state.habits = (results[2].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || null, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [], extraDates:r.extra_dates || [], customIntervalDays:r.custom_interval_days||null, monthDay:r.month_day||null, icon:r.icon||null, instanceOverrides:r.instance_overrides || {},
       locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), linkedPeopleIds:r.linked_people_ids||[] }; });
@@ -8311,7 +8325,7 @@
   }
   function wbConnPayload(c){ return { id:c.id, from_type:c.fromType, from_id:c.fromId, to_type:c.toType, to_id:c.toId }; }
   function projectPayload(snapshot){
-    return { id:snapshot.id, goal_id:snapshot.goalId, secondary_goal_ids:snapshot.secondaryGoalIds, title:snapshot.title, priority:snapshot.priority, due:snapshot.due, hours:snapshot.hours, done:snapshot.done, position:snapshot.position, health_override:snapshot.healthOverride, health_pct_override:snapshot.healthPctOverride, icon:snapshot.icon, whiteboard_x:snapshot.wbX, whiteboard_y:snapshot.wbY, categories:snapshot.categories, notes_md:snapshot.notesMd };
+    return { id:snapshot.id, goal_id:snapshot.goalId, secondary_goal_ids:snapshot.secondaryGoalIds, title:snapshot.title, priority:snapshot.priority, due:snapshot.due, hours:snapshot.hours, done:snapshot.done, position:snapshot.position, health_override:snapshot.healthOverride, health_pct_override:snapshot.healthPctOverride, icon:snapshot.icon, whiteboard_x:snapshot.wbX, whiteboard_y:snapshot.wbY, categories:snapshot.categories, notes_md:snapshot.notesMd, files_slug:snapshot.filesSlug };
   }
   async function deleteProject(id){
     var p = state.projects.find(function(x){ return x.id === id; });
@@ -8991,101 +9005,115 @@
   function closeGoalDetailPage(){
     showSection(goalDetailReturnSection);
     goalDetailId = null;
-    goalReportSlugInit = null;
-    goalReportLoadedKey = null;
   }
-  // ---- Goal detail: daily report panel — reads a local HTML file a routine writes to
-  // _Memory/_projects/<files_slug>/html/YYYY-MM-DD.html (gitignored, local-only; see that folder's
-  // README.md). No directory-listing endpoint exists, so "browsing" just means trying dates one at a
-  // time via fetch. Only works over http(s) (the local dev server) — file:// pages and the deployed
-  // GitHub Pages site can't fetch arbitrary local files.
-  var goalReportDate = null;
-  var goalReportSlugInit = null;   // which goal's files_slug we've already run the fallback search for
-  var goalReportLoadedKey = null;  // "<slug>|<date>" of what's currently in the iframe, so a renderAll()
-                                    // pass triggered by something unrelated doesn't reload/reflash it
-  // "?_=" + Date.now() on every call below is a deliberate cache-buster: it changes the URL each
-  // time, so even a service worker still running an older version (one that hadn't yet excluded
-  // _Memory/ from its cache-first strategy — see sw.js) can't serve a stale cached response, since
-  // its cache lookup is keyed on the full URL including the query string.
-  function goalReportUrl(slug, dateStr){ return "_Memory/_projects/" + encodeURIComponent(slug) + "/html/" + dateStr + ".html"; }
-  async function goalReportExists(slug, dateStr){
-    try{ var res = await fetch(goalReportUrl(slug, dateStr) + "?_=" + Date.now(), { cache:"no-store" }); return res.ok; }
-    catch(e){ return false; }
+  // ---- Generic "HTML integrations" panel — shared by the goal detail page and the project/entity
+  // detail page (see #goalHtmlIntBlock / #entityHtmlIntBlock). A goal or project links a local
+  // folder (_Memory/_projects/<slug>/, gitignored, local-only — see that folder's README.md) via its
+  // files_slug field, set from the Integrations page. Lists every file under that folder's html/
+  // subfolder and lets the reader pick any one — deliberately not scoped to "today" or any date
+  // assumption, since the linked folder might hold anything (reports, exports, snapshots), not
+  // necessarily one file per day. Only shown once the linked folder's html/ subfolder actually has
+  // at least one file — a slug can be typed in before the routine/folder exists yet. Only reachable
+  // when the planner is opened via the local dev server (see dev-server.js) — a file:// page or the
+  // deployed GitHub Pages site can neither list a directory nor fetch arbitrary local files.
+  // "?_=" + Date.now() on every fetch/src below is a deliberate cache-buster (see sw.js) so a stale
+  // service worker can never serve a frozen response for these local, routine-written paths.
+  async function fetchMemoryProjectsListing(){
+    try{
+      var res = await fetch("/__memory_projects_list?_=" + Date.now(), { cache:"no-store" });
+      return res.ok ? await res.json() : {};
+    }catch(e){ return null; }
   }
-  async function goalReportLoad(slug, dateStr){
-    document.getElementById("goalReportDateLabel").textContent = fmtDate(dateStr);
-    var frame = document.getElementById("goalReportFrame");
-    var empty = document.getElementById("goalReportEmpty");
-    var ok = await goalReportExists(slug, dateStr);
-    if(ok){
-      frame.src = goalReportUrl(slug, dateStr) + "?_=" + Date.now();
-      frame.style.display = "";
-      empty.style.display = "none";
-    } else {
-      frame.removeAttribute("src");
-      frame.style.display = "none";
-      empty.style.display = "";
-    }
+  function htmlIntFileUrl(slug, filename){
+    return "_Memory/_projects/" + encodeURIComponent(slug) + "/html/" + encodeURIComponent(filename) + "?_=" + Date.now();
   }
-  async function renderGoalReportPanel(g){
-    var block = document.getElementById("goalReportBlock");
-    if(!g || !g.filesSlug){ block.style.display = "none"; goalReportSlugInit = null; goalReportLoadedKey = null; return; }
+  function loadHtmlIntFile(prefix, slug, filename){
+    var frame = document.getElementById(prefix + "Frame");
+    var empty = document.getElementById(prefix + "Empty");
+    if(!filename){ frame.removeAttribute("src"); frame.style.display = "none"; empty.style.display = ""; return; }
+    frame.src = htmlIntFileUrl(slug, filename);
+    frame.style.display = "";
+    empty.style.display = "none";
+  }
+  async function renderHtmlIntPanel(prefix, owner){
+    var block = document.getElementById(prefix + "Block");
+    var slug = owner && owner.filesSlug;
+    if(!slug){ block.style.display = "none"; return; }
+    var listing = await fetchMemoryProjectsListing();
+    var files = (listing && listing[slug] && listing[slug].html) ? listing[slug].html.slice().sort() : [];
+    if(!files.length){ block.style.display = "none"; return; } // no html integration actually built yet
     block.style.display = "";
-    var slug = g.filesSlug;
-    if(goalReportSlugInit !== slug){
-      // First time this goal's panel has shown this session — the routine may not have written
-      // today's file yet, so walk backward up to two weeks to find the latest one that exists,
-      // rather than defaulting to a blank "today" every time the page opens.
-      goalReportSlugInit = slug;
-      goalReportDate = todayStr();
-      for(var i=0;i<14;i++){
-        var tryDate = addDaysToDateStr(todayStr(), -i);
-        if(await goalReportExists(slug, tryDate)){ goalReportDate = tryDate; break; }
-      }
-    }
-    var key = slug + "|" + goalReportDate;
-    if(goalReportLoadedKey === key) return;
-    goalReportLoadedKey = key;
-    await goalReportLoad(slug, goalReportDate);
+    var select = document.getElementById(prefix + "FileSelect");
+    var prevValue = select.value;
+    select.innerHTML = files.map(function(f){ return '<option value="' + escapeHtml(f) + '">' + escapeHtml(f.replace(/\.html?$/i, "")) + '</option>'; }).join("");
+    select.value = files.indexOf(prevValue) !== -1 ? prevValue : files[files.length - 1];
+    loadHtmlIntFile(prefix, slug, select.value);
   }
-  document.getElementById("goalReportPrevBtn").addEventListener("click", async function(){
+  document.getElementById("goalHtmlIntFileSelect").addEventListener("change", function(){
     var g = goalById(goalDetailId);
-    if(!g || !g.filesSlug) return;
-    goalReportDate = addDaysToDateStr(goalReportDate || todayStr(), -1);
-    goalReportLoadedKey = g.filesSlug + "|" + goalReportDate;
-    await goalReportLoad(g.filesSlug, goalReportDate);
+    if(g) loadHtmlIntFile("goalHtmlInt", g.filesSlug, this.value);
   });
-  document.getElementById("goalReportNextBtn").addEventListener("click", async function(){
-    var g = goalById(goalDetailId);
-    if(!g || !g.filesSlug) return;
-    goalReportDate = addDaysToDateStr(goalReportDate || todayStr(), 1);
-    goalReportLoadedKey = g.filesSlug + "|" + goalReportDate;
-    await goalReportLoad(g.filesSlug, goalReportDate);
+  document.getElementById("entityHtmlIntFileSelect").addEventListener("change", function(){
+    var obj = entityPageObj();
+    if(obj && entityPage.kind === "project") loadHtmlIntFile("entityHtmlInt", obj.filesSlug, this.value);
   });
 
   // ---- Integrations page: lists local project folders under _Memory/_projects/ (see that folder's
-  // README.md) and cross-references each against goals whose files_slug matches. The listing itself
-  // comes from a small endpoint the local dev server exposes (see .claude/launch.json) — there's no
+  // README.md) and lets any of them be linked to a goal or project (writing that object's
+  // files_slug — same field the html-integrations panel on its detail page reads). The listing
+  // itself comes from a small endpoint the local dev server exposes (see dev-server.js) — there's no
   // way to list a directory over plain HTTP otherwise. `integrationsData` is null before the first
   // fetch resolves (or if it fails outright — e.g. not running via the local server at all) and a
   // plain object (possibly empty) once it has.
   var integrationsData = null;
   async function activateIntegrations(){
     document.getElementById("integrationsBody").innerHTML = '<p class="panel-hint">Loading…</p>';
-    try{
-      var res = await fetch("/__memory_projects_list?_=" + Date.now(), { cache:"no-store" });
-      integrationsData = res.ok ? await res.json() : {};
-    }catch(e){
-      integrationsData = null;
-    }
+    integrationsData = await fetchMemoryProjectsListing();
     renderIntegrations();
   }
   document.getElementById("integrationsRefreshBtn").addEventListener("click", activateIntegrations);
   function goalsLinkedToSlug(slug){
     return state.goals.filter(function(g){ return g.filesSlug === slug; });
   }
+  function projectsLinkedToSlug(slug){
+    return state.projects.filter(function(p){ return p.filesSlug === slug; });
+  }
+  async function integrationLink(slug, kind, id){
+    if(!id) return;
+    var table = kind === "project" ? "projects" : "goals";
+    var res = await safeUpdate(table, id, { files_slug: slug });
+    if(res.error){ dbErrorToast(res.error, "Couldn't link"); return; }
+    var arr = kind === "project" ? state.projects : state.goals;
+    var obj = arr.find(function(x){ return x.id === id; });
+    if(obj) obj.filesSlug = slug;
+    warnDroppedFields(res.droppedFields);
+    renderIntegrations();
+  }
+  async function integrationUnlink(kind, id){
+    var table = kind === "project" ? "projects" : "goals";
+    var res = await safeUpdate(table, id, { files_slug: null });
+    if(res.error){ dbErrorToast(res.error, "Couldn't unlink"); return; }
+    var arr = kind === "project" ? state.projects : state.goals;
+    var obj = arr.find(function(x){ return x.id === id; });
+    if(obj) obj.filesSlug = "";
+    renderIntegrations();
+  }
+  // The target <select> in each card's link-form excludes whatever's already linked to that slug
+  // (relinking the same object is a no-op anyway) and repopulates whenever its kind toggle changes.
+  function populateIntegrationTargetSelect(form){
+    var slug = form.dataset.slug;
+    var kind = form.querySelector(".integration-link-kind").value;
+    var targetSel = form.querySelector(".integration-link-target");
+    var linkedIds = (kind === "project" ? projectsLinkedToSlug(slug) : goalsLinkedToSlug(slug)).map(function(x){ return x.id; });
+    var pool = (kind === "project" ? state.projects : state.goals).filter(function(x){ return linkedIds.indexOf(x.id) === -1; });
+    targetSel.innerHTML = pool.length
+      ? pool.map(function(x){ return '<option value="' + x.id + '">' + escapeHtml(x.title) + '</option>'; }).join("")
+      : '<option value="">(none available)</option>';
+    targetSel.disabled = !pool.length;
+  }
   function integrationCardHtml(slug, existsOnDisk, types){
-    var linkedGoals = goalsLinkedToSlug(slug);
+    var linked = goalsLinkedToSlug(slug).map(function(g){ return { kind:"goal", id:g.id, title:g.title }; })
+      .concat(projectsLinkedToSlug(slug).map(function(p){ return { kind:"project", id:p.id, title:p.title }; }));
     var typeKeys = existsOnDisk ? Object.keys(types).sort() : [];
     var bodyHtml = !existsOnDisk
       ? '<p class="panel-hint">No folder found at _Memory/_projects/' + escapeHtml(slug) + '/ yet.</p>'
@@ -9097,15 +9125,25 @@
             return '<div class="integration-filetype-row"><span class="integration-filetype-name">' + escapeHtml(t) + '</span>' +
               '<span>' + files.length + ' file' + (files.length === 1 ? "" : "s") + (latest ? " · latest " + fmtDate(latest) : "") + '</span></div>';
           }).join("");
-    var linkedHtml = linkedGoals.length
-      ? linkedGoals.map(function(g){ return '<button class="integration-link-chip" data-action="open-goal-detail" data-id="' + g.id + '" type="button">' + escapeHtml(g.title) + '</button>'; }).join("")
-      : '<span class="panel-hint">Not linked to any goal — set this as a goal’s "daily report folder".</span>';
+    var linkedHtml = linked.length
+      ? linked.map(function(item){
+          return '<span class="integration-link-chip-wrap">' +
+            '<button class="integration-link-chip" data-action="integration-open" data-kind="' + item.kind + '" data-id="' + item.id + '" type="button">' + (item.kind === "project" ? "▤ " : "◆ ") + escapeHtml(item.title) + '</button>' +
+            '<button class="integration-unlink-btn" data-action="integration-unlink" data-kind="' + item.kind + '" data-id="' + item.id + '" title="Unlink" type="button">×</button>' +
+          '</span>';
+        }).join("")
+      : '<span class="panel-hint">Not linked to anything yet.</span>';
     return '<div class="integration-card' + (existsOnDisk ? "" : " missing") + '">' +
       '<div class="integration-card-head"><span class="integration-card-slug">' + escapeHtml(slug) + '</span>' +
-      (existsOnDisk ? "" : '<span class="integration-card-warn" title="A goal references this slug, but no matching folder was found on disk">folder not found</span>') +
+      (existsOnDisk ? "" : '<span class="integration-card-warn" title="A goal or project references this slug, but no matching folder was found on disk">folder not found</span>') +
       '</div>' +
       bodyHtml +
       '<div class="integration-card-linked">' + linkedHtml + '</div>' +
+      '<div class="integration-link-form" data-slug="' + escapeHtml(slug) + '">' +
+        '<select class="integration-link-kind"><option value="goal">goal</option><option value="project">project</option></select>' +
+        '<select class="integration-link-target"></select>' +
+        '<button class="btn" data-action="integration-link" type="button">link</button>' +
+      '</div>' +
     '</div>';
   }
   function renderIntegrations(){
@@ -9115,20 +9153,40 @@
       return;
     }
     var slugs = Object.keys(integrationsData);
-    var goalSlugs = {};
-    state.goals.forEach(function(g){ if(g.filesSlug) goalSlugs[g.filesSlug] = true; });
-    Object.keys(goalSlugs).forEach(function(s){ if(slugs.indexOf(s) === -1) slugs.push(s); });
+    var refSlugs = {};
+    state.goals.forEach(function(g){ if(g.filesSlug) refSlugs[g.filesSlug] = true; });
+    state.projects.forEach(function(p){ if(p.filesSlug) refSlugs[p.filesSlug] = true; });
+    Object.keys(refSlugs).forEach(function(s){ if(slugs.indexOf(s) === -1) slugs.push(s); });
     slugs.sort();
     if(!slugs.length){
-      body.innerHTML = '<div class="empty-state">No project folders yet. Create one under <code>_Memory/_projects/&lt;slug&gt;/</code>, or set a goal’s "daily report folder" field to link one.</div>';
+      body.innerHTML = '<div class="empty-state">No project folders yet. Create one under <code>_Memory/_projects/&lt;slug&gt;/</code>, then link it to a goal or project below.</div>';
       return;
     }
     body.innerHTML = '<div class="integrations-grid">' + slugs.map(function(slug){
       var existsOnDisk = Object.prototype.hasOwnProperty.call(integrationsData, slug);
       return integrationCardHtml(slug, existsOnDisk, integrationsData[slug]);
     }).join("") + '</div>';
+    body.querySelectorAll(".integration-link-form").forEach(populateIntegrationTargetSelect);
   }
-  document.getElementById("integrationsSection").addEventListener("click", handleGoalCardClick);
+  document.getElementById("integrationsSection").addEventListener("change", function(e){
+    var kindSel = e.target.closest(".integration-link-kind");
+    if(kindSel) populateIntegrationTargetSelect(kindSel.closest(".integration-link-form"));
+  });
+  document.getElementById("integrationsSection").addEventListener("click", async function(e){
+    var linkBtn = e.target.closest('[data-action="integration-link"]');
+    if(linkBtn){
+      var form = linkBtn.closest(".integration-link-form");
+      await integrationLink(form.dataset.slug, form.querySelector(".integration-link-kind").value, form.querySelector(".integration-link-target").value);
+      return;
+    }
+    var unlinkBtn = e.target.closest('[data-action="integration-unlink"]');
+    if(unlinkBtn){ await integrationUnlink(unlinkBtn.dataset.kind, unlinkBtn.dataset.id); return; }
+    var openBtn = e.target.closest('[data-action="integration-open"]');
+    if(openBtn){
+      if(openBtn.dataset.kind === "project") openEntityPage("project", openBtn.dataset.id);
+      else openGoalDetailPage(openBtn.dataset.id);
+    }
+  });
 
   // Individually-designed goal pages: specific goals (matched by title, for now) get their own
   // hand-built dashboard block on their detail page instead of a generic user-facing setting.
@@ -9191,7 +9249,7 @@
     var g = goalById(goalDetailId);
     if(!g){ closeGoalDetailPage(); return; }
     document.getElementById("goalDetailBody").innerHTML = renderGoalCardHtml(g) + renderLinkedNotesHtml("goal", g.id);
-    renderGoalReportPanel(g);
+    renderHtmlIntPanel("goalHtmlInt", g);
     var sleepBlock = document.getElementById("sleepIntegrationBlock");
     if(isSleepGoal(g)){
       sleepBlock.style.display = "";
@@ -9284,6 +9342,7 @@
       '<span class="panel-hint" style="margin:0;">' + entityPage.kind +
         (entityPage.kind === "project" && obj.due ? ' · due ' + escapeHtml(fmtDate(obj.due)) : '') +
         (entityPage.kind === "action" && obj.date ? ' · ' + escapeHtml(fmtDate(obj.date)) : '') + '</span>';
+    renderHtmlIntPanel("entityHtmlInt", entityPage.kind === "project" ? obj : null);
     // Never clobber the textarea mid-typing — renderAll() fires on every save (including this
     // page's own autosave round-trips), and resetting .value would jump the caret.
     var ta = document.getElementById("entityMdInput");
@@ -16239,7 +16298,6 @@
     // uploaded image (a data: URI would never match any HABIT_ICON_LIBRARY entry anyway, but this
     // keeps the gallery visibly showing "none selected" for that case rather than a coincidence).
     renderGoalIconGallery(goalIconDraft && goalIconDraft.indexOf("data:") !== 0 ? goalIconDraft : null);
-    document.getElementById("goalFilesSlugInput").value = editGoalObj ? (editGoalObj.filesSlug || "") : "";
     openModal("goalModalOverlay");
     document.getElementById("goalTitleInput").focus();
   }
@@ -16264,8 +16322,7 @@
       ongoing: ongoing,
       health_override: chipValue(document.getElementById("goalHealthLevelSelect"), "hl") || null,
       health_pct_override: healthPctRaw === "" ? null : Math.max(0, Math.min(100, Math.round(Number(healthPctRaw)))),
-      icon: goalIconDraft,
-      files_slug: document.getElementById("goalFilesSlugInput").value.trim() || null
+      icon: goalIconDraft
     };
     this.disabled = true;
     var isEdit = !!editingGoalId;
