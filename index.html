@@ -9003,9 +9003,13 @@
   var goalReportSlugInit = null;   // which goal's files_slug we've already run the fallback search for
   var goalReportLoadedKey = null;  // "<slug>|<date>" of what's currently in the iframe, so a renderAll()
                                     // pass triggered by something unrelated doesn't reload/reflash it
+  // "?_=" + Date.now() on every call below is a deliberate cache-buster: it changes the URL each
+  // time, so even a service worker still running an older version (one that hadn't yet excluded
+  // _Memory/ from its cache-first strategy — see sw.js) can't serve a stale cached response, since
+  // its cache lookup is keyed on the full URL including the query string.
   function goalReportUrl(slug, dateStr){ return "_Memory/_projects/" + encodeURIComponent(slug) + "/html/" + dateStr + ".html"; }
   async function goalReportExists(slug, dateStr){
-    try{ var res = await fetch(goalReportUrl(slug, dateStr), { cache:"no-store" }); return res.ok; }
+    try{ var res = await fetch(goalReportUrl(slug, dateStr) + "?_=" + Date.now(), { cache:"no-store" }); return res.ok; }
     catch(e){ return false; }
   }
   async function goalReportLoad(slug, dateStr){
@@ -9014,7 +9018,7 @@
     var empty = document.getElementById("goalReportEmpty");
     var ok = await goalReportExists(slug, dateStr);
     if(ok){
-      frame.src = goalReportUrl(slug, dateStr);
+      frame.src = goalReportUrl(slug, dateStr) + "?_=" + Date.now();
       frame.style.display = "";
       empty.style.display = "none";
     } else {
@@ -9069,7 +9073,7 @@
   async function activateIntegrations(){
     document.getElementById("integrationsBody").innerHTML = '<p class="panel-hint">Loading…</p>';
     try{
-      var res = await fetch("/__memory_projects_list", { cache:"no-store" });
+      var res = await fetch("/__memory_projects_list?_=" + Date.now(), { cache:"no-store" });
       integrationsData = res.ok ? await res.json() : {};
     }catch(e){
       integrationsData = null;
