@@ -1838,7 +1838,6 @@
         <button class="side-link" data-section="people" type="button"><span class="sl-glyph">☺</span>People</button>
         <button class="side-link" data-section="location" type="button"><span class="sl-glyph">⚲</span>Location</button>
         <button class="side-link" data-section="knowledge" type="button"><span class="sl-glyph">▦</span>Knowledge</button>
-        <button class="side-link" data-section="finance" type="button"><span class="sl-glyph">$</span>Finance</button>
         <button class="side-link" data-section="tools" type="button"><span class="sl-glyph">✦</span>Tools</button>
       </nav>
 
@@ -2241,6 +2240,59 @@
         </div>
       </div>
       <div class="area-dash-stats" id="areaDetailStats"></div>
+
+      <!-- Finance dashboard — nested here (not a standalone top-level page) since Finance is one of
+           the app's life Areas; shown only when areaDetailCat === "Finance" (see renderAreaDetail).
+           All the child ids below are unchanged from when this was its own #financeSection, so every
+           existing getElementById/addEventListener wire-up (renderFinance, account/txn modals, etc.)
+           still works exactly the same regardless of where in the DOM this block lives. -->
+      <div id="areaDetailFinance" style="display:none;">
+        <div class="finance-panel-head">
+          <button class="btn btn-accent" id="financeAddTxnBtn" type="button">+ transaction</button>
+        </div>
+        <div class="sub-view-toggle" id="financeViewToggle">
+          <button class="sub-view-tab active" data-sub="overview" type="button">overview</button>
+          <button class="sub-view-tab" data-sub="accounts" type="button">accounts</button>
+          <button class="sub-view-tab" data-sub="monthly" type="button">monthly</button>
+          <button class="sub-view-tab" data-sub="ytd" type="button">year to date</button>
+        </div>
+
+        <div id="financeOverviewPanel">
+          <div class="finance-tiles" id="financeTiles"></div>
+          <div class="finance-block">
+            <h2>recent transactions</h2>
+            <div class="finance-txn-list" id="financeRecentList"></div>
+            <div class="empty-state" id="financeRecentEmpty" style="display:none;">No transactions yet — add one, or add an account first.</div>
+          </div>
+        </div>
+
+        <div id="financeAccountsPanel" style="display:none;">
+          <div class="finance-panel-head">
+            <button class="btn btn-accent" id="financeAddAccountBtn" type="button">+ account</button>
+          </div>
+          <div class="finance-accounts-list" id="financeAccountsList"></div>
+          <div class="empty-state" id="financeAccountsEmpty" style="display:none;">No accounts yet — add your first one (checking, savings, investment, or a loan).</div>
+        </div>
+
+        <div id="financeMonthlyPanel" style="display:none;">
+          <div class="finance-period-nav">
+            <button class="cal-nav-btn" id="financeMonthPrevBtn" type="button" aria-label="Previous month">‹</button>
+            <span class="cal-month-label" id="financeMonthLabel"></span>
+            <button class="cal-nav-btn" id="financeMonthNextBtn" type="button" aria-label="Next month">›</button>
+          </div>
+          <div id="financeMonthlyBody"></div>
+        </div>
+
+        <div id="financeYtdPanel" style="display:none;">
+          <div class="finance-period-nav">
+            <button class="cal-nav-btn" id="financeYtdPrevBtn" type="button" aria-label="Previous year">‹</button>
+            <span class="cal-month-label" id="financeYtdYearLabel"></span>
+            <button class="cal-nav-btn" id="financeYtdNextBtn" type="button" aria-label="Next year">›</button>
+          </div>
+          <div id="financeYtdBody"></div>
+        </div>
+      </div>
+
       <div id="areaDetailBody"></div>
     </section>
 
@@ -3175,60 +3227,6 @@
       </div>
     </section>
 
-    <!-- ===== FINANCE SECTION ===== -->
-    <!-- Phase 1: accounts/loans CRUD, manual transaction entry, monthly + YTD dashboards. No
-         upload/AI-categorization pipeline yet (see _Memory/migration_finance.sql header) — those
-         land in a later pass once this manual-entry shell is proven out. -->
-    <section id="financeSection" style="display:none;">
-      <div class="main-header">
-        <div>
-          <h1>finance</h1>
-          <p class="subhead">Accounts, loans, and where the money actually goes.</p>
-        </div>
-        <button class="btn btn-accent" id="financeAddTxnBtn" type="button">+ transaction</button>
-      </div>
-      <div class="sub-view-toggle" id="financeViewToggle">
-        <button class="sub-view-tab active" data-sub="overview" type="button">overview</button>
-        <button class="sub-view-tab" data-sub="accounts" type="button">accounts</button>
-        <button class="sub-view-tab" data-sub="monthly" type="button">monthly</button>
-        <button class="sub-view-tab" data-sub="ytd" type="button">year to date</button>
-      </div>
-
-      <div id="financeOverviewPanel">
-        <div class="finance-tiles" id="financeTiles"></div>
-        <div class="finance-block">
-          <h2>recent transactions</h2>
-          <div class="finance-txn-list" id="financeRecentList"></div>
-          <div class="empty-state" id="financeRecentEmpty" style="display:none;">No transactions yet — add one, or add an account first.</div>
-        </div>
-      </div>
-
-      <div id="financeAccountsPanel" style="display:none;">
-        <div class="finance-panel-head">
-          <button class="btn btn-accent" id="financeAddAccountBtn" type="button">+ account</button>
-        </div>
-        <div class="finance-accounts-list" id="financeAccountsList"></div>
-        <div class="empty-state" id="financeAccountsEmpty" style="display:none;">No accounts yet — add your first one (checking, savings, investment, or a loan).</div>
-      </div>
-
-      <div id="financeMonthlyPanel" style="display:none;">
-        <div class="finance-period-nav">
-          <button class="cal-nav-btn" id="financeMonthPrevBtn" type="button" aria-label="Previous month">‹</button>
-          <span class="cal-month-label" id="financeMonthLabel"></span>
-          <button class="cal-nav-btn" id="financeMonthNextBtn" type="button" aria-label="Next month">›</button>
-        </div>
-        <div id="financeMonthlyBody"></div>
-      </div>
-
-      <div id="financeYtdPanel" style="display:none;">
-        <div class="finance-period-nav">
-          <button class="cal-nav-btn" id="financeYtdPrevBtn" type="button" aria-label="Previous year">‹</button>
-          <span class="cal-month-label" id="financeYtdYearLabel"></span>
-          <button class="cal-nav-btn" id="financeYtdNextBtn" type="button" aria-label="Next year">›</button>
-        </div>
-        <div id="financeYtdBody"></div>
-      </div>
-    </section>
   </main>
 </div>
 
@@ -4689,7 +4687,7 @@
     });
   }
 
-  var ALL_SECTION_IDS = ["homeSection","todaySection","plannerSection","trackerSection","agentSection","timelineSection","journalSection","peopleSection","locationSection","knowledgeSection","futureSection","toolsSection","financeSection","goalDetailSection","areaDetailSection","entityPageSection"];
+  var ALL_SECTION_IDS = ["homeSection","todaySection","plannerSection","trackerSection","agentSection","timelineSection","journalSection","peopleSection","locationSection","knowledgeSection","futureSection","toolsSection","goalDetailSection","areaDetailSection","entityPageSection"];
   // Sidebar dropdown groups — a parent nav item with no page of its own, bundling a set of section
   // names under one submenu. See showSection() (active/auto-open) and the sideNav click handler
   // (data-toggle-submenu, open/close).
@@ -9703,8 +9701,15 @@
       '<div class="area-dash-stat warn"><span class="area-dash-stat-num">' + healthCounts.warn + '</span><span class="area-dash-stat-label">at risk</span></div>' +
       '<div class="area-dash-stat critical"><span class="area-dash-stat-num">' + healthCounts.critical + '</span><span class="area-dash-stat-label">critical</span></div>';
 
+    // Finance is a life Area like any other, but it also owns a full dashboard (accounts, loans,
+    // monthly/YTD views) — nested here rather than living as its own top-level page. See the
+    // #areaDetailFinance block's comment for why the child element ids didn't need to change.
+    var isFinance = cat === "Finance";
+    document.getElementById("areaDetailFinance").style.display = isFinance ? "" : "none";
+    if(isFinance) renderFinance();
+
     document.getElementById("areaDetailBody").innerHTML = data.goals.length
-      ? '<div class="goal-list">' + data.goals.map(renderGoalCardHtml).join("") + '</div>'
+      ? (isFinance ? '<div class="finance-block"><h2>goals</h2></div>' : "") + '<div class="goal-list">' + data.goals.map(renderGoalCardHtml).join("") + '</div>'
       : '<p class="area-empty-note">No goals in this area yet.</p>';
   }
   document.getElementById("areaDetailBackBtn").addEventListener("click", closeAreaDetailPage);
@@ -17885,8 +17890,9 @@
     });
   })();
 
-  // ==== Finance page (phase 1: accounts/loans CRUD, manual transactions, monthly + YTD
-  // dashboards) — see _Memory/migration_finance.sql. transactionCategory follows the same
+  // ==== Finance dashboard (phase 1: accounts/loans CRUD, manual transactions, monthly + YTD
+  // dashboards) — nested inside the Finance area's areaDetail page, not a standalone section (see
+  // #areaDetailFinance). See _Memory/migration_finance.sql. transactionCategory follows the same
   // xCategory(item) convention as actionCategory/habitCategory/etc. so a transaction's area badge
   // and accent color come from the exact same --cat-* system every other entity already uses.
   function transactionCategory(t){ return t.area || null; }
@@ -18258,7 +18264,6 @@
     timeline: [renderTimeline],
     journal: [renderJournal],
     people: [renderPeople],
-    finance: [renderFinance],
     // Tools' own grid is static (no live app-state to reflect) and is rendered once by wireTools()
     // at page load, not on every renderAll() pass — nothing to re-render here.
     tools: [],
