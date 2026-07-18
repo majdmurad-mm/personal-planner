@@ -1320,6 +1320,19 @@
   .goal-report-frame-wrap{ margin-top:12px; }
   .goal-report-frame{ width:100%; height:70vh; border:1px solid var(--border); border-radius:6px; background:var(--bg-raised); }
 
+  /* ---- Integrations page ---- */
+  .integrations-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:14px; margin-top:16px; }
+  .integration-card{ border:1px solid var(--border); border-radius:10px; padding:14px 16px; background:var(--bg-raised); display:flex; flex-direction:column; gap:10px; }
+  .integration-card.missing{ border-color:var(--p0); border-style:dashed; }
+  .integration-card-head{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .integration-card-slug{ font-family:var(--mono); font-size:13.5px; font-weight:700; color:var(--text); }
+  .integration-card-warn{ font-family:var(--mono); font-size:10px; color:var(--p0); border:1px solid var(--p0); border-radius:999px; padding:2px 8px; white-space:nowrap; }
+  .integration-filetype-row{ display:flex; align-items:center; justify-content:space-between; gap:8px; font-family:var(--mono); font-size:11.5px; color:var(--text-dim); }
+  .integration-filetype-name{ color:var(--text); }
+  .integration-card-linked{ display:flex; flex-wrap:wrap; gap:6px; padding-top:8px; border-top:1px solid var(--border); }
+  .integration-link-chip{ font-family:var(--mono); font-size:11px; padding:4px 10px; border-radius:999px; border:1px solid var(--border-bright); background:var(--bg-inset); color:var(--text-dim); cursor:pointer; }
+  .integration-link-chip:hover{ color:var(--text); border-color:var(--accent-dim); }
+
   /* ===== MODAL ===== */
   .modal-overlay{ position:fixed; inset:0; background:rgba(4,6,10,0.7); backdrop-filter:blur(3px); display:flex; align-items:center; justify-content:center; z-index:100; padding:20px; animation:overlayIn var(--dur-fast) var(--ease-out); }
   @keyframes overlayIn{ from{ opacity:0; } to{ opacity:1; } }
@@ -1843,6 +1856,7 @@
         <button class="side-link" data-section="people" type="button"><span class="sl-glyph">☺</span>People</button>
         <button class="side-link" data-section="location" type="button"><span class="sl-glyph">⚲</span>Location</button>
         <button class="side-link" data-section="knowledge" type="button"><span class="sl-glyph">▦</span>Knowledge</button>
+        <button class="side-link" data-section="integrations" type="button"><span class="sl-glyph">⛓</span>Integrations</button>
         <button class="side-link" data-section="tools" type="button"><span class="sl-glyph">✦</span>Tools</button>
       </nav>
 
@@ -3168,6 +3182,23 @@
           <p>Placeholder for the additional Knowledge section. We'll define what lives here when we build it out.</p>
         </div>
       </div>
+    </section>
+
+    <!-- ===== INTEGRATIONS SECTION — lists the local project folders under _Memory/_projects/ (a
+         gitignored, local-only directory — see that folder's README.md) and cross-references each
+         one against goals whose files_slug matches it. Reads via a small listing endpoint the local
+         dev server exposes (see .claude/launch.json) — only reachable when the planner is opened via
+         that server; a file:// page or the deployed GitHub Pages site can't list local folders. ===== -->
+    <section id="integrationsSection" style="display:none;">
+      <div class="main-header">
+        <div>
+          <h1>integrations</h1>
+          <p class="subhead">Local project folders in _Memory/_projects/ and the planner objects linked to them.</p>
+        </div>
+        <button class="btn" id="integrationsRefreshBtn" type="button">refresh</button>
+      </div>
+      <p class="panel-hint">Link a folder to a goal via its "daily report folder" field in the goal modal.</p>
+      <div id="integrationsBody"></div>
     </section>
 
     <!-- ===== TOOLS SECTION — a small, self-contained "app within the app": a grid of tool cards,
@@ -4716,7 +4747,7 @@
     });
   }
 
-  var ALL_SECTION_IDS = ["homeSection","todaySection","plannerSection","trackerSection","agentSection","timelineSection","journalSection","peopleSection","locationSection","knowledgeSection","futureSection","toolsSection","goalDetailSection","areaDetailSection","entityPageSection"];
+  var ALL_SECTION_IDS = ["homeSection","todaySection","plannerSection","trackerSection","agentSection","timelineSection","journalSection","peopleSection","locationSection","knowledgeSection","integrationsSection","futureSection","toolsSection","goalDetailSection","areaDetailSection","entityPageSection"];
   // Sidebar dropdown groups — a parent nav item with no page of its own, bundling a set of section
   // names under one submenu. See showSection() (active/auto-open) and the sideNav click handler
   // (data-toggle-submenu, open/close).
@@ -4756,6 +4787,7 @@
     if(name === "today"){ renderToday(); todayApplyZoomWidth(); ensureTodayGl(); }
     else if(name === "timeline") activateTimeline();
     else if(name === "location") activateLocation();
+    else if(name === "integrations") activateIntegrations();
     // Entering the planner with its Graph tab still active needs the same physics/reheat activation
     // the old top-level Graph section got on entry.
     else if(name === "planner" && activePlannerTab === "graph") activateWhiteboard();
@@ -9026,6 +9058,74 @@
     goalReportLoadedKey = g.filesSlug + "|" + goalReportDate;
     await goalReportLoad(g.filesSlug, goalReportDate);
   });
+
+  // ---- Integrations page: lists local project folders under _Memory/_projects/ (see that folder's
+  // README.md) and cross-references each against goals whose files_slug matches. The listing itself
+  // comes from a small endpoint the local dev server exposes (see .claude/launch.json) — there's no
+  // way to list a directory over plain HTTP otherwise. `integrationsData` is null before the first
+  // fetch resolves (or if it fails outright — e.g. not running via the local server at all) and a
+  // plain object (possibly empty) once it has.
+  var integrationsData = null;
+  async function activateIntegrations(){
+    document.getElementById("integrationsBody").innerHTML = '<p class="panel-hint">Loading…</p>';
+    try{
+      var res = await fetch("/__memory_projects_list", { cache:"no-store" });
+      integrationsData = res.ok ? await res.json() : {};
+    }catch(e){
+      integrationsData = null;
+    }
+    renderIntegrations();
+  }
+  document.getElementById("integrationsRefreshBtn").addEventListener("click", activateIntegrations);
+  function goalsLinkedToSlug(slug){
+    return state.goals.filter(function(g){ return g.filesSlug === slug; });
+  }
+  function integrationCardHtml(slug, existsOnDisk, types){
+    var linkedGoals = goalsLinkedToSlug(slug);
+    var typeKeys = existsOnDisk ? Object.keys(types).sort() : [];
+    var bodyHtml = !existsOnDisk
+      ? '<p class="panel-hint">No folder found at _Memory/_projects/' + escapeHtml(slug) + '/ yet.</p>'
+      : !typeKeys.length
+        ? '<p class="panel-hint">Folder is empty — no file-type subfolders yet.</p>'
+        : typeKeys.map(function(t){
+            var files = (types[t] || []).slice().sort();
+            var latest = files.length ? files[files.length - 1].replace(/\.[a-z0-9]+$/i, "") : null;
+            return '<div class="integration-filetype-row"><span class="integration-filetype-name">' + escapeHtml(t) + '</span>' +
+              '<span>' + files.length + ' file' + (files.length === 1 ? "" : "s") + (latest ? " · latest " + fmtDate(latest) : "") + '</span></div>';
+          }).join("");
+    var linkedHtml = linkedGoals.length
+      ? linkedGoals.map(function(g){ return '<button class="integration-link-chip" data-action="open-goal-detail" data-id="' + g.id + '" type="button">' + escapeHtml(g.title) + '</button>'; }).join("")
+      : '<span class="panel-hint">Not linked to any goal — set this as a goal’s "daily report folder".</span>';
+    return '<div class="integration-card' + (existsOnDisk ? "" : " missing") + '">' +
+      '<div class="integration-card-head"><span class="integration-card-slug">' + escapeHtml(slug) + '</span>' +
+      (existsOnDisk ? "" : '<span class="integration-card-warn" title="A goal references this slug, but no matching folder was found on disk">folder not found</span>') +
+      '</div>' +
+      bodyHtml +
+      '<div class="integration-card-linked">' + linkedHtml + '</div>' +
+    '</div>';
+  }
+  function renderIntegrations(){
+    var body = document.getElementById("integrationsBody");
+    if(integrationsData === null){
+      body.innerHTML = '<div class="empty-state">Couldn’t reach the local file listing. This page only works when the planner is opened via the local dev server (http://localhost:8977) — a plain file:// page or the deployed site can’t list local folders.</div>';
+      return;
+    }
+    var slugs = Object.keys(integrationsData);
+    var goalSlugs = {};
+    state.goals.forEach(function(g){ if(g.filesSlug) goalSlugs[g.filesSlug] = true; });
+    Object.keys(goalSlugs).forEach(function(s){ if(slugs.indexOf(s) === -1) slugs.push(s); });
+    slugs.sort();
+    if(!slugs.length){
+      body.innerHTML = '<div class="empty-state">No project folders yet. Create one under <code>_Memory/_projects/&lt;slug&gt;/</code>, or set a goal’s "daily report folder" field to link one.</div>';
+      return;
+    }
+    body.innerHTML = '<div class="integrations-grid">' + slugs.map(function(slug){
+      var existsOnDisk = Object.prototype.hasOwnProperty.call(integrationsData, slug);
+      return integrationCardHtml(slug, existsOnDisk, integrationsData[slug]);
+    }).join("") + '</div>';
+  }
+  document.getElementById("integrationsSection").addEventListener("click", handleGoalCardClick);
+
   // Individually-designed goal pages: specific goals (matched by title, for now) get their own
   // hand-built dashboard block on their detail page instead of a generic user-facing setting.
   // Sleep is the first one; more goals will get their own dedicated block the same way over time.
