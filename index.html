@@ -1509,7 +1509,10 @@
   .home-map-bar{ flex:0 0 auto; padding:5px 9px; cursor:grab; touch-action:none; user-select:none; font-family:var(--mono); font-size:9.5px; letter-spacing:0.05em; text-transform:uppercase; color:var(--text-dim); border-bottom:1px solid var(--border); }
   .home-map-widget.dragging .home-map-bar{ cursor:grabbing; }
   .home-map-canvas{ flex:1; min-height:0; }
-  .home-map-resize{ position:absolute; right:0; bottom:0; width:16px; height:16px; cursor:nwse-resize; touch-action:none; }
+  /* z-index:1001 — Leaflet's own bottom-right attribution control (.leaflet-bottom, z-index:1000)
+     sits in this exact corner and stops click propagation, so without outranking it here the grip
+     is visible but never receives a single pointer event; the resize drag silently does nothing. */
+  .home-map-resize{ position:absolute; right:0; bottom:0; width:16px; height:16px; z-index:1001; cursor:nwse-resize; touch-action:none; }
   .home-map-resize::before{ content:""; position:absolute; right:4px; bottom:4px; width:7px; height:7px; border-right:2px solid var(--border-bright); border-bottom:2px solid var(--border-bright); opacity:0.7; }
   .home-map-resize:hover::before{ opacity:1; border-color:var(--accent-dim); }
   /* Sticky notes — individual floating cards on the home cockpit, each colored by its (possibly
@@ -1547,6 +1550,24 @@
      desktop, where the timeline is always docked. z-index above the drawer itself so it stays
      clickable (to close again) even once the drawer is open and covering that corner. */
   .home-mobile-tl-toggle{ display:none; }
+  /* A slim month strip sitting between the split handle and the timeline dock — a compact cousin
+     of Present/Future's own .today-month-strip-day cells (see renderHomeCalStrip), one row, no
+     month label (day numbers + the today/selected ring carry enough orientation in this little
+     footprint). Clicking a cell sets which day the dock below shows. */
+  .home-cal-strip{ flex-shrink:0; display:flex; align-items:stretch; gap:4px; padding:5px 6px; background:var(--bg-raised); border-top:1px solid var(--border); }
+  .home-cal-strip-nav{ appearance:none; border:none; background:none; color:var(--text-dim); font-family:var(--mono); font-size:13px; line-height:1; padding:0 3px; cursor:pointer; border-radius:4px; flex-shrink:0; }
+  .home-cal-strip-nav:hover{ background:var(--bg-hover, rgba(255,255,255,0.08)); color:var(--text); }
+  .home-cal-strip-days{ flex:1; min-width:0; display:flex; gap:4px; overflow-x:auto; scroll-behavior:smooth; }
+  .home-cal-strip-day{ flex:0 0 32px; display:flex; flex-direction:column; align-items:center; gap:2px; padding:4px 2px 5px; border:1px solid var(--border); border-radius:5px; background:var(--bg-inset); cursor:pointer; }
+  .home-cal-strip-day:hover{ box-shadow:inset 0 0 0 1px var(--border-bright); }
+  .home-cal-strip-day.today{ box-shadow:inset 0 0 0 1.5px var(--violet); }
+  .home-cal-strip-day.selected{ box-shadow:inset 0 0 0 1.5px var(--accent); }
+  .home-cal-strip-day.selected .home-cal-strip-day-num{ color:var(--accent); font-weight:700; }
+  .home-cal-strip-day-wd{ font-family:var(--mono); font-size:8px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.05em; }
+  .home-cal-strip-day-num{ font-family:var(--mono); font-size:11px; color:var(--text-dim); }
+  .home-cal-strip-day.today .home-cal-strip-day-num{ color:var(--violet); font-weight:700; }
+  .home-cal-strip-day-dot{ width:3px; height:3px; border-radius:50%; background:var(--accent); }
+  .home-cal-strip-day-dot-empty{ width:3px; height:3px; }
   /* Today's timeline dock — full width along the bottom: an hour ruler, three interactive lanes
      (habits/actions/notes) against the shared hour-grid background, a now marker, and a day/night
      band pinned at the very bottom. Height is the resizable split (--home-dock-h). */
@@ -1809,6 +1830,15 @@
         <button class="home-mobile-tl-toggle" id="homeMobileTlToggle" type="button" title="Show today's timeline">⏱</button>
       </div>
       <div class="home-split-handle" id="homeSplitHandle" title="Drag to resize the graph and timeline"></div>
+      <!-- A slim, always-visible month strip sitting above the dock — same day-cell look as
+           Present/Future's own .today-month-strip (see renderHomeCalStrip), just compact enough
+           for the cockpit. Clicking a day drives homeTlSelectedDate, i.e. which day the timeline
+           dock below shows (see setHomeTlSelectedDate). -->
+      <div class="home-cal-strip" id="homeCalStrip">
+        <button type="button" id="homeCalStripPrevBtn" class="home-cal-strip-nav" title="Previous month">‹</button>
+        <div class="home-cal-strip-days" id="homeCalStripDays"></div>
+        <button type="button" id="homeCalStripNextBtn" class="home-cal-strip-nav" title="Next month">›</button>
+      </div>
       <div class="home-timeline-dock" id="homeTimelineDock">
         <div class="home-tl-day-toggle" id="homeTlDayToggle">
           <button type="button" data-tl-day-delta="-1" title="previous day">‹</button>
@@ -5358,21 +5388,17 @@
     });
   })();
 
-  // Day toggle (yesterday..+2 days) — clamped both ways by renderHomeTimelineDock's own
-  // disabled-state logic (prevBtn/nextBtn), but guard here too since a rapid double-click could
-  // otherwise queue two deltas before the first render disables the button.
+  // Day toggle — nudges homeTlSelectedDate by one day, unclamped (see setHomeTlSelectedDate); the
+  // calendar strip above the dock lets the same selection jump to any day, so this and the strip
+  // just need to agree on which date is selected, not fight over a fixed window.
   (function wireHomeTimelineDayToggle(){
     var toggle = document.getElementById("homeTlDayToggle");
     if(!toggle) return;
     toggle.addEventListener("click", function(e){
       var btn = e.target.closest("[data-tl-day-delta]");
-      if(!btn || btn.disabled) return;
+      if(!btn) return;
       var delta = Number(btn.dataset.tlDayDelta);
-      var next = addDaysToDateStr(homeTlSelectedDate, delta);
-      var range = homeTlDayRange(todayStr());
-      if(next < range.min || next > range.max) return;
-      homeTlSelectedDate = next;
-      renderHomeTimelineDock();
+      setHomeTlSelectedDate(addDaysToDateStr(homeTlSelectedDate, delta));
     });
   })();
 
@@ -6376,9 +6402,22 @@
   // time/duration overrides, plus the overnight spillover of the PRIOR day's late blocks (sleep
   // past midnight). Blocks carry data-kind/data-id/data-date, so the global right-click menu
   // (edit / postpone / skip) works on them exactly like it does on the Today page's own blocks.
-  // homeTlSelectedDate is clamped to {today, tomorrow} by the day-toggle wiring below — the dock
-  // shows exactly one of those two days at a time, not an open-ended date picker.
+  // The dock always shows exactly one day at a time; homeTlSelectedDate is free-form (any date),
+  // driven by either the day-toggle chevrons (±1) or a direct pick on the calendar strip above the
+  // dock (homeCalMonth — the month that strip is currently showing; see setHomeTlSelectedDate,
+  // which keeps the two in sync so picking a day in another month scrolls the strip there too).
   var homeTlSelectedDate = todayStr();
+  var homeCalMonth = new Date();
+  homeCalMonth.setDate(1);
+  function setHomeTlSelectedDate(dateStr){
+    homeTlSelectedDate = dateStr;
+    var d = new Date(dateStr + "T00:00:00");
+    if(d.getFullYear() !== homeCalMonth.getFullYear() || d.getMonth() !== homeCalMonth.getMonth()){
+      homeCalMonth = new Date(d.getFullYear(), d.getMonth(), 1);
+    }
+    renderHomeTimelineDock();
+    renderHomeCalStrip();
+  }
   function computeHomeTimelineBlocks(){
     var day = homeTlSelectedDate;
     var prevDay = addDaysToDateStr(day, -1);
@@ -6424,28 +6463,20 @@
         ' style="left:' + (b.start * 100) + '%; width:' + Math.max(b.width * 100, 0.7) + '%; z-index:' + z + ';' + colorStyle + '" title="' + escapeHtml(b.title) + '">' + handles + escapeHtml(b.title) + '</div>';
     }).join("");
   }
-  // The day-toggle's fixed window — yesterday through the day after tomorrow — relative to
-  // whatever todayKey actually is at render time (never a fixed pair of literal dates).
-  function homeTlDayRange(todayKey){
-    return { min: addDaysToDateStr(todayKey, -1), max: addDaysToDateStr(todayKey, 2) };
-  }
+  // Labels for dates near today read as relative words; anything further out (picked from the
+  // calendar strip above the dock, or reached by repeatedly nudging the day-toggle) just shows its
+  // date — there's no fixed window anymore, so this branch is a normal, expected case now.
   function homeTlDayLabel(day, todayKey){
     if(day === todayKey) return "today";
     if(day === addDaysToDateStr(todayKey, -1)) return "yesterday";
     if(day === addDaysToDateStr(todayKey, 1)) return "tomorrow";
     if(day === addDaysToDateStr(todayKey, 2)) return "in 2 days";
-    return fmtDate(day); // shouldn't happen — the selection is always clamped into the window above
+    return fmtDate(day);
   }
   function renderHomeTimelineDock(){
     var laneHabits = document.getElementById("homeTlLaneHabits");
     if(!laneHabits) return;
-    // The real calendar day moves forward under a dock left open for a while — reclamp the
-    // selection into the current {yesterday..+2} window rather than let it drift stale or out of
-    // range (e.g. a selection of "+2 days" left open overnight is still in-window as "tomorrow").
     var todayKey = todayStr();
-    var range = homeTlDayRange(todayKey);
-    if(homeTlSelectedDate < range.min) homeTlSelectedDate = range.min;
-    if(homeTlSelectedDate > range.max) homeTlSelectedDate = range.max;
     var blocks = computeHomeTimelineBlocks();
     var sig = homeTlSelectedDate + "|" + ["habit","action","note"].map(function(k){
       return blocks[k].map(function(b){ return b.id + ":" + b.start + ":" + b.width + ":" + (b.done ? 1 : 0); }).join(",");
@@ -6475,10 +6506,6 @@
     }
     var dayLabelEl = document.getElementById("homeTlDayLabel");
     if(dayLabelEl) dayLabelEl.textContent = homeTlDayLabel(homeTlSelectedDate, todayKey);
-    var prevBtn = document.querySelector('#homeTlDayToggle [data-tl-day-delta="-1"]');
-    var nextBtn = document.querySelector('#homeTlDayToggle [data-tl-day-delta="1"]');
-    if(prevBtn) prevBtn.disabled = homeTlSelectedDate === range.min;
-    if(nextBtn) nextBtn.disabled = homeTlSelectedDate === range.max;
     // Full-bleed background wash (homeTlDayNightBg) — theme-matched single-hue fade, not the
     // two-tone band the Timeline page uses. Rebuilt when the SELECTED day changes OR the theme
     // toggles (a stale cache key here would leave the wrong day's colors showing after a flip).
@@ -6491,6 +6518,64 @@
       dn.style.background = homeTlDayNightBg(selD.getFullYear(), selD.getMonth() + 1, selD.getDate(), themeKey === "dark");
     }
   }
+
+  // ---- Calendar strip above the timeline dock — a compact, one-row cousin of Present/Future's own
+  // .today-month-strip day-picker (same cell shape, same calStripColorsForDates intensity/quality
+  // coloring), scrollable across the whole current month. Clicking a cell drives which day the dock
+  // below shows, via setHomeTlSelectedDate.
+  function renderHomeCalStrip(){
+    var el = document.getElementById("homeCalStripDays");
+    if(!el) return;
+    var year = homeCalMonth.getFullYear(), month = homeCalMonth.getMonth();
+    var daysInMonth = new Date(year, month + 1, 0).getDate();
+    var todayKey = todayStr();
+    var dateKeys = [];
+    for(var d = 1; d <= daysInMonth; d++) dateKeys.push(year + "-" + String(month + 1).padStart(2, "0") + "-" + String(d).padStart(2, "0"));
+    // Cheap signature so the 1s home-dashboard tick doesn't rebuild this DOM every second — only
+    // when the month, selection, color view, or the underlying item counts actually change.
+    var sig = year + "-" + month + "|" + homeTlSelectedDate + "|" + views.calStrip + "|" + state.actions.length + "|" + state.habits.length;
+    if(el.dataset.sig !== sig){
+      el.dataset.sig = sig;
+      var colorMap = calStripColorsForDates(views.calStrip, dateKeys);
+      var weekdayLabels = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+      var html = "";
+      for(var day = 1; day <= daysInMonth; day++){
+        var cellKey = dateKeys[day - 1];
+        var dow = new Date(year, month, day).getDay();
+        var hasStuff = state.actions.some(function(a){ return a.date === cellKey; }) ||
+          state.habits.some(function(h){ return habitOccursOnDate(h, cellKey); });
+        var col = colorMap[cellKey];
+        var colStyle = col ? ' style="background:' + col.bg + ';border-color:' + col.c + ';"' : '';
+        html += '<div class="home-cal-strip-day' + (cellKey === todayKey ? ' today' : '') + (cellKey === homeTlSelectedDate ? ' selected' : '') + '" data-date="' + cellKey + '"' + colStyle + '>' +
+          '<span class="home-cal-strip-day-wd">' + weekdayLabels[dow] + '</span>' +
+          '<span class="home-cal-strip-day-num">' + day + '</span>' +
+          (hasStuff ? '<span class="home-cal-strip-day-dot"></span>' : '<span class="home-cal-strip-day-dot-empty"></span>') +
+        '</div>';
+      }
+      el.innerHTML = html;
+      var selectedEl = el.querySelector(".home-cal-strip-day.selected") || el.querySelector(".home-cal-strip-day.today");
+      if(selectedEl && selectedEl.scrollIntoView) selectedEl.scrollIntoView({ block:"nearest", inline:"center" });
+    }
+  }
+  (function wireHomeCalStrip(){
+    var daysEl = document.getElementById("homeCalStripDays");
+    var prevBtn = document.getElementById("homeCalStripPrevBtn");
+    var nextBtn = document.getElementById("homeCalStripNextBtn");
+    if(!daysEl) return;
+    daysEl.addEventListener("click", function(e){
+      var cell = e.target.closest(".home-cal-strip-day[data-date]");
+      if(!cell) return;
+      setHomeTlSelectedDate(cell.dataset.date);
+    });
+    prevBtn.addEventListener("click", function(){
+      homeCalMonth.setMonth(homeCalMonth.getMonth() - 1);
+      renderHomeCalStrip();
+    });
+    nextBtn.addEventListener("click", function(){
+      homeCalMonth.setMonth(homeCalMonth.getMonth() + 1);
+      renderHomeCalStrip();
+    });
+  })();
 
   // ---- Today's-locations map widget: a small Leaflet map showing every action scheduled for today
   // that has a saved location (locationLat/locationLng — same fields the Location page's own actions
@@ -6695,6 +6780,7 @@
         : (homeWeather.state === "error" ? "" : '<span>…</span>');
     }
     renderHomeAreasRail();
+    renderHomeCalStrip();
     renderHomeTimelineDock();
     renderHomeTodoMatrix();
     renderHomeNotesWidget();
