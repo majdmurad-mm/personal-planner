@@ -3175,12 +3175,9 @@
     <div class="modal-head"><span class="dot g"></span><h2 id="actionModalTitle">new_action.json</h2></div>
     <div class="modal-inner">
       <div class="field"><label for="actionTitleInput">action</label><input type="text" id="actionTitleInput" placeholder="e.g. Call the accountant"></div>
-      <div class="field-row">
-        <div class="field"><label for="actionTypeSelect">type</label><select id="actionTypeSelect"></select></div>
-        <div class="field"><label>priority</label><div class="chip-select" id="actionPrioSelect">
-          <div class="chip-opt" role="button" tabindex="0" data-p="P0">P0</div><div class="chip-opt sel" role="button" tabindex="0" data-p="P1">P1</div><div class="chip-opt" role="button" tabindex="0" data-p="P2">P2</div><div class="chip-opt" role="button" tabindex="0" data-p="P3">P3</div>
-        </div></div>
-      </div>
+      <div class="field"><label>priority</label><div class="chip-select" id="actionPrioSelect">
+        <div class="chip-opt" role="button" tabindex="0" data-p="P0">P0</div><div class="chip-opt sel" role="button" tabindex="0" data-p="P1">P1</div><div class="chip-opt" role="button" tabindex="0" data-p="P2">P2</div><div class="chip-opt" role="button" tabindex="0" data-p="P3">P3</div>
+      </div></div>
       <div class="field" id="actionAreaField"><label>area</label><div class="chip-select" id="actionAreaSelect">
         <div class="chip-opt" role="button" tabindex="0" data-ar="Health">✚ Health</div><div class="chip-opt" role="button" tabindex="0" data-ar="Finance">$ Finance</div><div class="chip-opt sel" role="button" tabindex="0" data-ar="Career">▲ Career</div>
         <div class="chip-opt" role="button" tabindex="0" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" role="button" tabindex="0" data-ar="Growth">↑ Growth</div><div class="chip-opt" role="button" tabindex="0" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" role="button" tabindex="0" data-ar="Sol">◐ Sol</div>
@@ -3770,7 +3767,6 @@
     if(!uri) return "";
     return iconMaskHtml("timeline-block-icon", uri, category);
   }
-  var ACTION_TYPES = ["Call","Email","Meeting","Research","Write","Review","Task","Follow-up"];
   var RELATIONSHIPS = ["Family","Friend","Colleague","Mentor","Partner","Other"];
 
   function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
@@ -4206,7 +4202,7 @@
     state.habits = (results[2].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || null, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [], extraDates:r.extra_dates || [], customIntervalDays:r.custom_interval_days||null, monthDay:r.month_day||null, icon:r.icon||null, instanceOverrides:r.instance_overrides || {},
       locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null) }; });
     state.habits.sort(function(a,b){ return a.position - b.position; });
-    state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null,
+    state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null,
       locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), notesMd:r.notes_md||"", dependencies:r.dependencies||[] }; });
     state.actions.sort(function(a,b){ return a.position - b.position; });
     state.journal = (results[4].data || []).map(function(r){ return { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, categories:r.categories||[], recordingId:r.recording_id||null, linkedObjects:r.linked_objects||[], sentiment:r.sentiment||[], title:r.title||"", priority:r.priority||null, createdAt:r.created_at||null }; });
@@ -7828,7 +7824,7 @@
     });
   }
   function actionPayload(snapshot){
-    return { id:snapshot.id, parent_type:snapshot.parentType, parent_id:snapshot.parentId, title:snapshot.title, type:snapshot.type, priority:snapshot.priority, date:snapshot.date, done:snapshot.done, position:snapshot.position, time_of_day:snapshot.timeOfDay, duration_minutes:snapshot.durationMinutes, category:snapshot.category,
+    return { id:snapshot.id, parent_type:snapshot.parentType, parent_id:snapshot.parentId, title:snapshot.title, priority:snapshot.priority, date:snapshot.date, done:snapshot.done, position:snapshot.position, time_of_day:snapshot.timeOfDay, duration_minutes:snapshot.durationMinutes, category:snapshot.category,
       location_address:snapshot.locationAddress, location_lat:snapshot.locationLat, location_lng:snapshot.locationLng, notes_md:snapshot.notesMd, dependencies:snapshot.dependencies };
   }
   async function deleteAction(id){
@@ -8172,7 +8168,7 @@
     if(!h || !fromDate || !toDate) return;
     var applied = await applySkipHabitInstance(h, fromDate);
     if(!applied) return;
-    var payload = { title:h.title, type:"Task", priority:h.priority, parent_type:"none", parent_id:null, date:toDate, done:false, time_of_day:h.timeOfDay||null, duration_minutes:h.durationMinutes||null, category:habitCategory(h) };
+    var payload = { title:h.title, priority:h.priority, parent_type:"none", parent_id:null, date:toDate, done:false, time_of_day:h.timeOfDay||null, duration_minutes:h.durationMinutes||null, category:habitCategory(h) };
     var res = await safeInsert("actions", payload, state.actions);
     if(res.error){
       // the action failed to create — roll back the skip so the habit instance isn't lost either
@@ -8183,7 +8179,7 @@
       return;
     }
     var r = res.data;
-    var newAction = { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null };
+    var newAction = { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null };
     state.actions.push(newAction);
     renderAll();
     warnDroppedFields(res.droppedFields);
@@ -9555,7 +9551,7 @@
             '<button class="icon-btn edit" data-action="edit-action" data-id="' + a.id + '" aria-label="Edit action">✎</button>' +
             '<button class="icon-btn" data-action="del-action" data-id="' + a.id + '" aria-label="Delete action">&times;</button>' +
           '</div>' +
-          '<div class="ms-tile-meta"><span class="prio-badge ' + a.priority + '">' + a.priority + '</span><span class="type-badge">' + a.type + '</span>' +
+          '<div class="ms-tile-meta"><span class="prio-badge ' + a.priority + '">' + a.priority + '</span>' +
           (a.parentType==="project" ? '<span>via ' + escapeHtml(parentTitle(a)) + '</span>' : '') +
           (a.date ? '<span style="color:' + (overdue?'var(--p0)':'var(--text-faint)') + '">' + fmtDate(a.date) + '</span>' : '') +
           '</div>' +
@@ -9575,7 +9571,6 @@
       return '<div class="goal-card' + (cat ? ' ' + cat : '') + '" data-kind="action" data-id="' + a.id + '" draggable="true">' +
         '<div class="card-tab">' +
           '<span class="prio-badge ' + a.priority + '">' + a.priority + '</span><span class="sep">·</span>' +
-          '<span class="type-badge">' + a.type + '</span><span class="sep">·</span>' +
           '<span class="parent-tag">' + (a.parentType === "none" ? "standalone" : (a.parentType + ': <b>' + escapeHtml(parentTitle(a)) + '</b>')) + '</span>' +
           '<span class="due-tag">' + (a.date ? '<span style="color:' + (overdue?'var(--p0)':'var(--text-dim)') + '">' + fmtDate(a.date) + '</span>' : '') +
           '<span class="status-dot ' + (a.done?"done":(overdue?"behind":"on-track")) + '" title="' + statusDotTitle(a.done?"done":(overdue?"behind":"on-track")) + '"></span></span>' +
@@ -11514,7 +11509,7 @@
     state.actions.forEach(function(a){
       if(a.locationLat == null || a.locationLng == null) return;
       var marker = L.circleMarker([a.locationLat, a.locationLng], { radius:6, color:"#2DD4BF", weight:1.5, opacity:0.85, fillColor:"#2DD4BF", fillOpacity:0.5 });
-      marker.bindPopup('<div class="loc-city-popup"><b>' + escapeHtml(a.title || "Untitled") + '</b><br>' + escapeHtml(a.type || "action") + (a.date ? " · " + escapeHtml(a.date) : "") + '</div>');
+      marker.bindPopup('<div class="loc-city-popup"><b>' + escapeHtml(a.title || "Untitled") + '</b>' + (a.date ? "<br>" + escapeHtml(a.date) : "") + '</div>');
       marker.on("click", function(){ editAction(a.id); });
       locActionsLayer.addLayer(marker);
     });
@@ -15539,9 +15534,6 @@
   });
 
   // Action modal
-  var actionTypeSel = document.getElementById("actionTypeSelect");
-  ACTION_TYPES.forEach(function(t){ var o = document.createElement("option"); o.textContent = t; actionTypeSel.appendChild(o); });
-
   // Area is always selectable, even when the action belongs to nothing (pt === "none") — an
   // action's area is its own field, independent of whether it has a parent. Parent options (when
   // there is a parent) are scoped to that area exactly like the goal picker: a goal has to match
@@ -15589,7 +15581,6 @@
     document.getElementById("actionTitleInput").value = editActionObj ? editActionObj.title : "";
     document.getElementById("actionDateInput").value = editActionObj ? (editActionObj.date || "") : todayStr();
     setChip(document.getElementById("actionPrioSelect"), "p", editActionObj ? editActionObj.priority : "P1");
-    if(editActionObj) actionTypeSel.value = editActionObj.type;
     var defaultPt = editActionObj ? editActionObj.parentType
       : (presetGoalId ? "goal" : (state.goals.length ? "goal" : (state.projects.length ? "project" : "none")));
     setChip(document.getElementById("actionParentTypeSelect"), "pt", defaultPt);
@@ -15637,7 +15628,6 @@
     if(pt !== "none" && !parentSelect.value) return;
     var payload = {
       title: title,
-      type: actionTypeSel.value,
       priority: chipValue(document.getElementById("actionPrioSelect"), "p"),
       parent_type: pt,
       parent_id: pt === "none" ? null : parentSelect.value,
@@ -15660,7 +15650,7 @@
     this.disabled = false;
     if(res.error){ alert(res.error.message); return; }
     var r = res.data;
-    var mapped = { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, type:r.type, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null,
+    var mapped = { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null,
       locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null) };
     if(isEdit){
       var idx = state.actions.findIndex(function(x){ return x.id === editingActionId; });
