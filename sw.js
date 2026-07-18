@@ -4,7 +4,7 @@
 // scripts, since caching those would risk serving stale auth/data logic or breaking third-party
 // requests this app doesn't control the caching semantics of. Real data still needs a network
 // connection; this just gets the UI itself on screen fast and offline-tolerant.
-var CACHE_NAME = "planner-shell-v2";
+var CACHE_NAME = "planner-shell-v3";
 var SHELL_FILES = ["./index.html", "./manifest.json", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/apple-touch-icon.png"];
 
 self.addEventListener("install", function(event){
@@ -35,6 +35,13 @@ self.addEventListener("fetch", function(event){
   // of internal, always-fresh endpoint; let it go straight to the network uncached, same as
   // cross-origin requests above.
   if(url.pathname.indexOf("/__") === 0) return;
+
+  // Local project files (goal daily-report panel, Integrations page) live under _Memory/_projects/
+  // and get written to on their own schedule by an external routine — a cache-first strategy would
+  // permanently freeze the first response for any given date/file (almost always a 404, checked
+  // before that day's file existed) and never notice it show up later. Same reasoning as the "/__"
+  // bypass above; always hit the network for anything under _Memory/.
+  if(url.pathname.indexOf("/_Memory/") === 0) return;
 
   // Navigations (loading the app itself) go network-first so a deployed update is picked up
   // immediately when online, falling back to the cached shell when offline.
