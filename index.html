@@ -1257,6 +1257,45 @@
   .empty-state h3{ font-family:var(--mono); font-size:15px; color:var(--text); margin:0 0 6px; }
   .empty-state p{ font-size:13px; margin:0; }
 
+  /* ---- Finance page ---- */
+  .finance-tiles{ display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin:16px 0 24px; }
+  .finance-tile{ background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:14px 16px; position:relative; overflow:hidden; }
+  .finance-tile::before{ content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--tile-accent, var(--border-bright)); }
+  .finance-tile-label{ font-family:var(--mono); font-size:9.5px; letter-spacing:0.08em; text-transform:uppercase; color:var(--text-faint); }
+  .finance-tile-value{ font-family:var(--mono); font-size:22px; font-weight:700; color:var(--text); margin-top:4px; }
+  .finance-tile-value.neg{ color:var(--p0); }
+  .finance-tile-sub{ font-size:11px; color:var(--text-dim); margin-top:4px; }
+  .finance-block{ margin-bottom:28px; }
+  .finance-block h2{ font-family:var(--mono); font-size:13px; color:var(--text-dim); margin:0 0 10px; }
+  .finance-txn-list{ display:flex; flex-direction:column; gap:1px; border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
+  .finance-txn-row{ display:flex; align-items:center; gap:10px; padding:9px 12px; background:var(--bg-raised); font-family:var(--mono); font-size:11.5px; }
+  .finance-txn-row:hover{ background:var(--bg-hover, rgba(255,255,255,0.04)); }
+  .finance-txn-date{ color:var(--text-faint); flex-shrink:0; width:5.2em; }
+  .finance-txn-account{ color:var(--text-faint); flex-shrink:0; width:8em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .finance-txn-desc{ flex:1; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .finance-txn-amount{ flex-shrink:0; font-weight:700; min-width:5.5em; text-align:right; }
+  .finance-txn-amount.pos{ color:var(--accent); }
+  .finance-txn-amount.neg{ color:var(--p0); }
+  .finance-txn-actions{ display:flex; gap:2px; flex-shrink:0; }
+  .finance-panel-head{ display:flex; justify-content:flex-end; margin-bottom:14px; }
+  .finance-accounts-list{ display:flex; flex-direction:column; gap:20px; }
+  .finance-account-group h3{ font-family:var(--mono); font-size:10px; letter-spacing:0.08em; text-transform:uppercase; color:var(--text-faint); margin:0 0 8px; }
+  .finance-account-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:10px; }
+  .finance-account-card{ background:var(--bg-raised); border:1px solid var(--border); border-radius:var(--radius); padding:12px 14px; position:relative; }
+  .finance-account-card.loan{ border-color:var(--p0); }
+  .finance-account-name{ font-family:var(--mono); font-size:12.5px; font-weight:700; color:var(--text); }
+  .finance-account-balance{ font-family:var(--mono); font-size:18px; font-weight:700; color:var(--text); margin-top:4px; }
+  .finance-account-balance.neg{ color:var(--p0); }
+  .finance-account-meta{ font-size:10.5px; color:var(--text-faint); margin-top:4px; }
+  .finance-account-actions{ position:absolute; top:10px; right:10px; display:flex; gap:2px; }
+  .finance-period-nav{ display:flex; align-items:center; gap:10px; margin-bottom:16px; }
+  .finance-month-grid{ display:flex; flex-direction:column; gap:10px; }
+  .finance-month-row{ display:flex; align-items:center; gap:10px; font-family:var(--mono); font-size:11.5px; }
+  .finance-month-row-label{ width:9em; flex-shrink:0; color:var(--text-dim); display:flex; align-items:center; gap:5px; }
+  .finance-month-row-bar-wrap{ flex:1; height:8px; border-radius:4px; background:var(--bg-inset); overflow:hidden; }
+  .finance-month-row-bar{ height:100%; border-radius:4px; }
+  .finance-month-row-value{ width:6em; text-align:right; flex-shrink:0; font-weight:700; }
+
   /* ===== MODAL ===== */
   .modal-overlay{ position:fixed; inset:0; background:rgba(4,6,10,0.7); backdrop-filter:blur(3px); display:flex; align-items:center; justify-content:center; z-index:100; padding:20px; animation:overlayIn var(--dur-fast) var(--ease-out); }
   @keyframes overlayIn{ from{ opacity:0; } to{ opacity:1; } }
@@ -1765,6 +1804,7 @@
         <button class="side-link" data-section="people" type="button"><span class="sl-glyph">☺</span>People</button>
         <button class="side-link" data-section="location" type="button"><span class="sl-glyph">⚲</span>Location</button>
         <button class="side-link" data-section="knowledge" type="button"><span class="sl-glyph">▦</span>Knowledge</button>
+        <button class="side-link" data-section="finance" type="button"><span class="sl-glyph">$</span>Finance</button>
         <button class="side-link" data-section="tools" type="button"><span class="sl-glyph">✦</span>Tools</button>
       </nav>
 
@@ -3090,6 +3130,61 @@
         <div class="loc-map" id="locMap"></div>
       </div>
     </section>
+
+    <!-- ===== FINANCE SECTION ===== -->
+    <!-- Phase 1: accounts/loans CRUD, manual transaction entry, monthly + YTD dashboards. No
+         upload/AI-categorization pipeline yet (see _Memory/migration_finance.sql header) — those
+         land in a later pass once this manual-entry shell is proven out. -->
+    <section id="financeSection" style="display:none;">
+      <div class="main-header">
+        <div>
+          <h1>finance</h1>
+          <p class="subhead">Accounts, loans, and where the money actually goes.</p>
+        </div>
+        <button class="btn btn-accent" id="financeAddTxnBtn" type="button">+ transaction</button>
+      </div>
+      <div class="sub-view-toggle" id="financeViewToggle">
+        <button class="sub-view-tab active" data-sub="overview" type="button">overview</button>
+        <button class="sub-view-tab" data-sub="accounts" type="button">accounts</button>
+        <button class="sub-view-tab" data-sub="monthly" type="button">monthly</button>
+        <button class="sub-view-tab" data-sub="ytd" type="button">year to date</button>
+      </div>
+
+      <div id="financeOverviewPanel">
+        <div class="finance-tiles" id="financeTiles"></div>
+        <div class="finance-block">
+          <h2>recent transactions</h2>
+          <div class="finance-txn-list" id="financeRecentList"></div>
+          <div class="empty-state" id="financeRecentEmpty" style="display:none;">No transactions yet — add one, or add an account first.</div>
+        </div>
+      </div>
+
+      <div id="financeAccountsPanel" style="display:none;">
+        <div class="finance-panel-head">
+          <button class="btn btn-accent" id="financeAddAccountBtn" type="button">+ account</button>
+        </div>
+        <div class="finance-accounts-list" id="financeAccountsList"></div>
+        <div class="empty-state" id="financeAccountsEmpty" style="display:none;">No accounts yet — add your first one (checking, savings, investment, or a loan).</div>
+      </div>
+
+      <div id="financeMonthlyPanel" style="display:none;">
+        <div class="finance-period-nav">
+          <button class="cal-nav-btn" id="financeMonthPrevBtn" type="button" aria-label="Previous month">‹</button>
+          <span class="cal-month-label" id="financeMonthLabel"></span>
+          <button class="cal-nav-btn" id="financeMonthNextBtn" type="button" aria-label="Next month">›</button>
+        </div>
+        <div id="financeMonthlyBody"></div>
+      </div>
+
+      <div id="financeYtdPanel" style="display:none;">
+        <div class="finance-period-nav">
+          <button class="cal-nav-btn" id="financeYtdPrevBtn" type="button" aria-label="Previous year">‹</button>
+          <span class="cal-month-label" id="financeYtdYearLabel"></span>
+          <button class="cal-nav-btn" id="financeYtdNextBtn" type="button" aria-label="Next year">›</button>
+        </div>
+        <div id="financeYtdBody"></div>
+      </div>
+    </section>
   </main>
 </div>
 
@@ -3380,6 +3475,58 @@
         </div>
       </div>
       <div class="modal-actions"><button class="btn" id="cancelPoiModalBtn" type="button">cancel</button><button class="btn btn-accent" id="savePoiBtn" type="button">save point</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== FINANCE ACCOUNT MODAL ===== -->
+<div class="modal-overlay" id="financeAccountModalOverlay" hidden>
+  <div class="modal">
+    <div class="modal-head"><span class="dot g"></span><h2 id="financeAccountModalTitle">new_account.json</h2></div>
+    <div class="modal-inner">
+      <div class="field"><label for="financeAccountNameInput">name</label><input type="text" id="financeAccountNameInput" placeholder="e.g. Giro-Konto"></div>
+      <div class="field"><label>type</label><div class="chip-select" id="financeAccountTypeSelect">
+        <div class="chip-opt sel" role="button" tabindex="0" data-fat="checking">checking</div><div class="chip-opt" role="button" tabindex="0" data-fat="savings">savings</div><div class="chip-opt" role="button" tabindex="0" data-fat="investment">investment</div><div class="chip-opt" role="button" tabindex="0" data-fat="loan">loan</div>
+      </div></div>
+      <div class="field" id="financeAccountLinkedField"><label for="financeAccountLinkedSelect">attached to (optional)</label><select id="financeAccountLinkedSelect"><option value="">none</option></select></div>
+      <div class="field-row">
+        <div class="field"><label for="financeAccountBalanceInput" id="financeAccountBalanceLabel">current balance</label><input type="number" step="0.01" id="financeAccountBalanceInput" placeholder="0.00"></div>
+        <div class="field"><label for="financeAccountCurrencyInput">currency</label><input type="text" id="financeAccountCurrencyInput" placeholder="EUR" value="EUR" maxlength="6"></div>
+      </div>
+      <div id="financeAccountLoanFields" style="display:none;">
+        <p class="panel-hint" style="margin-top:0;">Balance above is the amount still owed.</p>
+        <div class="field-row">
+          <div class="field"><label for="financeAccountLoanPaymentInput">monthly payment</label><input type="number" step="0.01" id="financeAccountLoanPaymentInput" placeholder="0.00"></div>
+          <div class="field"><label for="financeAccountLoanRateInput">interest rate % (optional)</label><input type="number" step="0.01" id="financeAccountLoanRateInput" placeholder="0.0"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label for="financeAccountLoanOriginalInput">original amount (optional)</label><input type="number" step="0.01" id="financeAccountLoanOriginalInput" placeholder="0.00"></div>
+          <div class="field"><label for="financeAccountLoanPurposeInput">what it was for (optional)</label><input type="text" id="financeAccountLoanPurposeInput" placeholder="e.g. moving to Berlin"></div>
+        </div>
+      </div>
+      <div class="modal-actions"><button class="btn" id="cancelFinanceAccountModalBtn" type="button">cancel</button><button class="btn btn-accent" id="saveFinanceAccountBtn" type="button">save account</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== FINANCE TRANSACTION MODAL ===== -->
+<div class="modal-overlay" id="financeTxnModalOverlay" hidden>
+  <div class="modal">
+    <div class="modal-head"><span class="dot g"></span><h2>new_transaction.json</h2></div>
+    <div class="modal-inner">
+      <div class="field"><label for="financeTxnAccountSelect">account</label><select id="financeTxnAccountSelect"></select></div>
+      <div class="field-row">
+        <div class="field"><label for="financeTxnDateInput">date</label><input type="date" id="financeTxnDateInput"></div>
+        <div class="field"><label for="financeTxnAmountInput">amount</label><input type="number" step="0.01" id="financeTxnAmountInput" placeholder="-45.00"></div>
+      </div>
+      <p class="panel-hint" style="margin-top:0;">Positive = money in (income, deposit). Negative = money out (a purchase, a bill, a loan payment).</p>
+      <div class="field"><label for="financeTxnDescInput">description</label><input type="text" id="financeTxnDescInput" placeholder="e.g. REWE groceries"></div>
+      <div class="field"><label>area (optional)</label><div class="chip-select" id="financeTxnAreaSelect">
+        <div class="chip-opt sel" role="button" tabindex="0" data-ar="">uncategorized</div><div class="chip-opt" role="button" tabindex="0" data-ar="Health">✚ Health</div><div class="chip-opt" role="button" tabindex="0" data-ar="Finance">$ Finance</div><div class="chip-opt" role="button" tabindex="0" data-ar="Career">▲ Career</div>
+        <div class="chip-opt" role="button" tabindex="0" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" role="button" tabindex="0" data-ar="Growth">↑ Growth</div><div class="chip-opt" role="button" tabindex="0" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" role="button" tabindex="0" data-ar="Sol">◐ Sol</div>
+      </div></div>
+      <div class="field"><label for="financeTxnSubcatInput">subcategory (optional)</label><input type="text" id="financeTxnSubcatInput" placeholder="e.g. groceries"></div>
+      <div class="modal-actions"><button class="btn" id="cancelFinanceTxnModalBtn" type="button">cancel</button><button class="btn btn-accent" id="saveFinanceTxnBtn" type="button">save transaction</button></div>
     </div>
   </div>
 </div>
@@ -4227,7 +4374,7 @@
     return setPreview;
   }
 
-  var state = { goals:[], projects:[], habits:[], actions:[], journal:[], people:[], trackerVars:[], trackerEntries:[], trackerDays:[], wbConnections:[], sleepScores:[], trash:[], socialGroupColors:[], gpsPings:[], pois:[], recordings:[] };
+  var state = { goals:[], projects:[], habits:[], actions:[], journal:[], people:[], trackerVars:[], trackerEntries:[], trackerDays:[], wbConnections:[], sleepScores:[], trash:[], socialGroupColors:[], gpsPings:[], pois:[], recordings:[], financeAccounts:[], financeTransactions:[] };
   var currentUser = null;
 
   function goalById(id){ return state.goals.find(function(g){ return g.id === id; }); }
@@ -4351,7 +4498,9 @@
       sb.from("social_group_colors").select("*"),
       sb.from("gps_pings").select("*").order("recorded_at"),
       sb.from("points_of_interest").select("*").order("created_at"),
-      sb.from("recordings").select("*").order("created_at")
+      sb.from("recordings").select("*").order("created_at"),
+      sb.from("finance_accounts").select("*").order("position", { ascending:true }),
+      sb.from("finance_transactions").select("*").order("date", { ascending:false })
     ]);
     results.forEach(function(r){ if(r.error) console.error(r.error); });
     // position defaults to 0 (via ||0) when the migration_positions.sql column doesn't exist yet —
@@ -4392,6 +4541,10 @@
     // Empty until migration_action_habit_poi_location.sql has been run.
     state.pois = (results[13].data || []).map(function(r){ return { id:r.id, name:r.name, lat:r.lat, lng:r.lng, notes:r.notes||"", linkedPeopleIds:r.linked_people_ids||[] }; });
     state.recordings = (results[14].data || []).map(function(r){ return { id:r.id, storagePath:r.storage_path, durationSeconds:r.duration_seconds, waveform:r.waveform||[], createdAt:r.created_at, transcript:r.transcript||"" }; });
+    // Empty until migration_finance.sql has been run, same graceful-degradation shape as above.
+    state.financeAccounts = (results[15].data || []).map(function(r){ return { id:r.id, name:r.name, type:r.type, linkedAccountId:r.linked_account_id||null, balance:Number(r.balance)||0, currency:r.currency||"EUR", loanMonthlyPayment:(r.loan_monthly_payment!=null?Number(r.loan_monthly_payment):null), loanInterestRate:(r.loan_interest_rate!=null?Number(r.loan_interest_rate):null), loanOriginalAmount:(r.loan_original_amount!=null?Number(r.loan_original_amount):null), loanPurpose:r.loan_purpose||"", position:r.position||0, archived:!!r.archived }; });
+    state.financeAccounts.sort(function(a,b){ return a.position - b.position; });
+    state.financeTransactions = (results[16].data || []).map(function(r){ return { id:r.id, accountId:r.account_id, date:r.date, description:r.description||"", amount:Number(r.amount)||0, area:r.area||null, subcategory:r.subcategory||"", source:r.source||"manual", aiCategorized:!!r.ai_categorized }; });
     await backfillLegacyHabitTrackers();
     await backfillHabitIcons();
   }
@@ -4457,7 +4610,7 @@
   var activePlannerTab = "areas";
   var activeKnowledgeTab = "pinned";
   var filters = { goals:"all", projects:"all", habits:"all", actions:"all", people:"all" };
-  var views = { goals:"list", projects:"matrix", habits:"matrix", actions:"matrix", sleep:"daily", people:"cards", journal:"notes", calStrip:"plain" };
+  var views = { goals:"list", projects:"matrix", habits:"matrix", actions:"matrix", sleep:"daily", people:"cards", journal:"notes", calStrip:"plain", finance:"overview" };
 
   function wireSubViewToggle(containerId, panelKey, renderFn){
     var el = document.getElementById(containerId);
@@ -4470,7 +4623,7 @@
     });
   }
 
-  var ALL_SECTION_IDS = ["homeSection","todaySection","plannerSection","trackerSection","agentSection","timelineSection","journalSection","peopleSection","locationSection","knowledgeSection","futureSection","toolsSection","goalDetailSection","areaDetailSection","entityPageSection"];
+  var ALL_SECTION_IDS = ["homeSection","todaySection","plannerSection","trackerSection","agentSection","timelineSection","journalSection","peopleSection","locationSection","knowledgeSection","futureSection","toolsSection","financeSection","goalDetailSection","areaDetailSection","entityPageSection"];
   // Sidebar dropdown groups — a parent nav item with no page of its own, bundling a set of section
   // names under one submenu. See showSection() (active/auto-open) and the sideNav click handler
   // (data-toggle-submenu, open/close).
@@ -17335,6 +17488,366 @@
     });
   })();
 
+  // ==== Finance page (phase 1: accounts/loans CRUD, manual transactions, monthly + YTD
+  // dashboards) — see _Memory/migration_finance.sql. transactionCategory follows the same
+  // xCategory(item) convention as actionCategory/habitCategory/etc. so a transaction's area badge
+  // and accent color come from the exact same --cat-* system every other entity already uses.
+  function transactionCategory(t){ return t.area || null; }
+  function financeAccountById(id){ return state.financeAccounts.find(function(a){ return a.id === id; }); }
+  function financeTxnById(id){ return state.financeTransactions.find(function(t){ return t.id === id; }); }
+  function financeAccountsByType(type){ return state.financeAccounts.filter(function(a){ return a.type === type && !a.archived; }); }
+  function financeSumBalance(accounts){ return accounts.reduce(function(s, a){ return s + (a.balance || 0); }, 0); }
+  // Wealth/Balance/Debt read straight off each account's own stored balance (kept current by manual
+  // entry for now — this is the phase-1 shell, no upload/reconciliation pipeline yet). Income is the
+  // one figure derived from transactions, since "income" is inherently a flow over a period, not a
+  // balance snapshot.
+  function financeWealthTotal(){ return financeSumBalance(financeAccountsByType("investment")); }
+  function financeBalanceTotal(){ return financeSumBalance(financeAccountsByType("checking").concat(financeAccountsByType("savings"))); }
+  function financeDebtTotal(){ return financeSumBalance(financeAccountsByType("loan")); }
+  function financeLoanMonthlyTotal(){ return financeAccountsByType("loan").reduce(function(s, a){ return s + (a.loanMonthlyPayment || 0); }, 0); }
+  function financeTxnsInMonth(year, month){
+    var prefix = year + "-" + String(month + 1).padStart(2, "0");
+    return state.financeTransactions.filter(function(t){ return t.date && t.date.slice(0, 7) === prefix; });
+  }
+  function financeTxnsInYear(year){
+    var prefix = String(year);
+    return state.financeTransactions.filter(function(t){ return t.date && t.date.slice(0, 4) === prefix; });
+  }
+  function fmtMoney(amount, currency){
+    var v = Number(amount) || 0;
+    var formatted = Math.abs(v).toLocaleString(undefined, { minimumFractionDigits:2, maximumFractionDigits:2 });
+    var cur = currency || "EUR";
+    var symbol = cur === "EUR" ? "€" : (cur === "USD" ? "$" : cur + " ");
+    return (v < 0 ? "-" : "") + symbol + formatted;
+  }
+  function financeTxnRowHtml(t){
+    var acc = financeAccountById(t.accountId);
+    var areaBadge = t.area ? '<span class="cat-badge ' + t.area + '">' + CATEGORY_ICONS[t.area] + '</span>' : '';
+    return '<div class="finance-txn-row" data-id="' + t.id + '">' +
+      '<span class="finance-txn-date">' + fmtDate(t.date) + '</span>' +
+      '<span class="finance-txn-account">' + escapeHtml(acc ? acc.name : "—") + '</span>' +
+      areaBadge +
+      '<span class="finance-txn-desc">' + escapeHtml(t.description || "(no description)") + '</span>' +
+      '<span class="finance-txn-amount ' + (t.amount >= 0 ? "pos" : "neg") + '">' + fmtMoney(t.amount, acc ? acc.currency : null) + '</span>' +
+      '<span class="finance-txn-actions">' +
+        '<button class="icon-btn edit" data-action="edit-finance-txn" data-id="' + t.id + '" aria-label="Edit transaction">✎</button>' +
+        '<button class="icon-btn" data-action="del-finance-txn" data-id="' + t.id + '" aria-label="Delete transaction">&times;</button>' +
+      '</span>' +
+    '</div>';
+  }
+  function financeTxnListClick(e){
+    var edit = e.target.closest('[data-action="edit-finance-txn"]');
+    if(edit){ openFinanceTxnModal(financeTxnById(edit.dataset.id)); return; }
+    var del = e.target.closest('[data-action="del-finance-txn"]');
+    if(del) deleteFinanceTxn(del.dataset.id);
+  }
+
+  function renderFinance(){
+    var toggleEl = document.getElementById("financeViewToggle");
+    toggleEl.querySelectorAll(".sub-view-tab").forEach(function(b){ b.classList.toggle("active", b.dataset.sub === views.finance); });
+    document.getElementById("financeOverviewPanel").style.display = views.finance === "overview" ? "" : "none";
+    document.getElementById("financeAccountsPanel").style.display = views.finance === "accounts" ? "" : "none";
+    document.getElementById("financeMonthlyPanel").style.display = views.finance === "monthly" ? "" : "none";
+    document.getElementById("financeYtdPanel").style.display = views.finance === "ytd" ? "" : "none";
+    if(views.finance === "overview") renderFinanceOverview();
+    else if(views.finance === "accounts") renderFinanceAccounts();
+    else if(views.finance === "monthly") renderFinanceMonthly();
+    else if(views.finance === "ytd") renderFinanceYtd();
+  }
+  wireSubViewToggle("financeViewToggle", "finance", renderFinance);
+
+  function renderFinanceOverview(){
+    var now = new Date();
+    var income = financeTxnsInMonth(now.getFullYear(), now.getMonth()).filter(function(t){ return t.amount > 0; }).reduce(function(s, t){ return s + t.amount; }, 0);
+    var wealth = financeWealthTotal(), balance = financeBalanceTotal(), debt = financeDebtTotal();
+    var loanMonthly = financeLoanMonthlyTotal();
+    var wealthN = financeAccountsByType("investment").length;
+    var balanceN = financeAccountsByType("checking").length + financeAccountsByType("savings").length;
+    var tiles = [
+      { label:"income (this month)", value:income, accent:"var(--cat-sol)", sub:"" },
+      { label:"wealth", value:wealth, accent:"var(--cat-growth)", sub: wealthN + " investable account" + (wealthN === 1 ? "" : "s") },
+      { label:"current balance", value:balance, accent:"var(--cat-career)", sub: balanceN + " liquid account" + (balanceN === 1 ? "" : "s") },
+      { label:"debt", value:debt, accent:"var(--p0)", sub: loanMonthly ? fmtMoney(loanMonthly) + "/mo across loans" : "no loan payments set" }
+    ];
+    document.getElementById("financeTiles").innerHTML = tiles.map(function(t){
+      return '<div class="finance-tile" style="--tile-accent:' + t.accent + ';">' +
+        '<div class="finance-tile-label">' + t.label + '</div>' +
+        '<div class="finance-tile-value' + (t.value < 0 ? " neg" : "") + '">' + fmtMoney(t.value) + '</div>' +
+        (t.sub ? '<div class="finance-tile-sub">' + escapeHtml(t.sub) + '</div>' : "") +
+      '</div>';
+    }).join("");
+    var recent = state.financeTransactions.slice().sort(function(a, b){ return a.date < b.date ? 1 : (a.date > b.date ? -1 : 0); }).slice(0, 15);
+    document.getElementById("financeRecentEmpty").style.display = recent.length ? "none" : "";
+    document.getElementById("financeRecentList").innerHTML = recent.map(financeTxnRowHtml).join("");
+  }
+  document.getElementById("financeRecentList").addEventListener("click", financeTxnListClick);
+
+  var FINANCE_ACCOUNT_TYPE_LABEL = { checking:"checking", savings:"savings", investment:"investment", loan:"loans" };
+  function financeAccountCardHtml(a){
+    var linked = a.linkedAccountId ? financeAccountById(a.linkedAccountId) : null;
+    var metaParts = [];
+    if(linked) metaParts.push("attached to " + linked.name);
+    if(a.type === "loan"){
+      if(a.loanMonthlyPayment) metaParts.push(fmtMoney(a.loanMonthlyPayment, a.currency) + "/mo");
+      if(a.loanInterestRate != null) metaParts.push(a.loanInterestRate + "% interest");
+      if(a.loanPurpose) metaParts.push(a.loanPurpose);
+    }
+    return '<div class="finance-account-card' + (a.type === "loan" ? " loan" : "") + '" data-id="' + a.id + '">' +
+      '<div class="finance-account-actions">' +
+        '<button class="icon-btn edit" data-action="edit-finance-account" data-id="' + a.id + '" aria-label="Edit account">✎</button>' +
+        '<button class="icon-btn" data-action="del-finance-account" data-id="' + a.id + '" aria-label="Delete account">&times;</button>' +
+      '</div>' +
+      '<div class="finance-account-name">' + escapeHtml(a.name) + '</div>' +
+      '<div class="finance-account-balance' + (a.balance < 0 ? " neg" : "") + '">' + fmtMoney(a.balance, a.currency) + '</div>' +
+      (metaParts.length ? '<div class="finance-account-meta">' + escapeHtml(metaParts.join(" · ")) + '</div>' : "") +
+    '</div>';
+  }
+  function renderFinanceAccounts(){
+    var visible = state.financeAccounts.filter(function(a){ return !a.archived; });
+    document.getElementById("financeAccountsEmpty").style.display = visible.length ? "none" : "";
+    var html = "";
+    ["checking","savings","investment","loan"].forEach(function(type){
+      var accs = visible.filter(function(a){ return a.type === type; });
+      if(!accs.length) return;
+      html += '<div class="finance-account-group"><h3>' + FINANCE_ACCOUNT_TYPE_LABEL[type] + '</h3><div class="finance-account-grid">' + accs.map(financeAccountCardHtml).join("") + '</div></div>';
+    });
+    document.getElementById("financeAccountsList").innerHTML = html;
+  }
+  document.getElementById("financeAccountsList").addEventListener("click", async function(e){
+    var edit = e.target.closest('[data-action="edit-finance-account"]');
+    if(edit){ openFinanceAccountModal(financeAccountById(edit.dataset.id)); return; }
+    var del = e.target.closest('[data-action="del-finance-account"]');
+    if(del) await deleteFinanceAccount(del.dataset.id);
+  });
+
+  // ---- monthly + YTD dashboards: both walk the same per-area spending breakdown, just over a
+  // different date range (one calendar month vs. the whole year so far), so the row-building logic
+  // is shared and only the header/range differ.
+  function financeAreaBreakdownHtml(txns){
+    var byArea = {};
+    txns.forEach(function(t){ if(t.amount >= 0) return; var a = t.area || "Uncategorized"; byArea[a] = (byArea[a] || 0) + Math.abs(t.amount); });
+    var areas = Object.keys(byArea).sort(function(a, b){ return byArea[b] - byArea[a]; });
+    if(!areas.length) return '<p class="panel-hint">No spending recorded.</p>';
+    var max = Math.max.apply(null, areas.map(function(a){ return byArea[a]; }));
+    return '<div class="finance-month-grid">' + areas.map(function(a){
+      var pct = max ? (byArea[a] / max * 100) : 0;
+      var colorVar = a === "Uncategorized" ? "var(--text-faint)" : categoryColorVar(a);
+      var icon = a === "Uncategorized" ? "?" : CATEGORY_ICONS[a];
+      return '<div class="finance-month-row">' +
+        '<span class="finance-month-row-label">' + icon + ' ' + escapeHtml(a) + '</span>' +
+        '<span class="finance-month-row-bar-wrap"><span class="finance-month-row-bar" style="width:' + pct + '%;background:' + colorVar + ';"></span></span>' +
+        '<span class="finance-month-row-value">' + fmtMoney(byArea[a]) + '</span>' +
+      '</div>';
+    }).join("") + '</div>';
+  }
+  var financeMonth = new Date();
+  financeMonth.setDate(1);
+  function renderFinanceMonthly(){
+    var year = financeMonth.getFullYear(), month = financeMonth.getMonth();
+    document.getElementById("financeMonthLabel").textContent = financeMonth.toLocaleDateString(undefined, { month:"long", year:"numeric" });
+    var txns = financeTxnsInMonth(year, month);
+    var income = txns.filter(function(t){ return t.amount > 0; }).reduce(function(s, t){ return s + t.amount; }, 0);
+    var spent = txns.filter(function(t){ return t.amount < 0; }).reduce(function(s, t){ return s + Math.abs(t.amount); }, 0);
+    var loanPayments = financeLoanMonthlyTotal();
+    var net = income - spent;
+    var html = '<div class="finance-tiles">' +
+      '<div class="finance-tile" style="--tile-accent:var(--cat-sol);"><div class="finance-tile-label">income</div><div class="finance-tile-value">' + fmtMoney(income) + '</div></div>' +
+      '<div class="finance-tile" style="--tile-accent:var(--p0);"><div class="finance-tile-label">total spent</div><div class="finance-tile-value">' + fmtMoney(spent) + '</div></div>' +
+      '<div class="finance-tile" style="--tile-accent:var(--p0);"><div class="finance-tile-label">loan payments</div><div class="finance-tile-value">' + fmtMoney(loanPayments) + '</div></div>' +
+      '<div class="finance-tile" style="--tile-accent:' + (net >= 0 ? "var(--accent)" : "var(--p0)") + ';"><div class="finance-tile-label">net position</div><div class="finance-tile-value' + (net < 0 ? " neg" : "") + '">' + fmtMoney(net) + '</div></div>' +
+    '</div>' +
+    '<div class="finance-block"><h2>spending by area</h2>' + financeAreaBreakdownHtml(txns) + '</div>' +
+    '<div class="finance-block"><h2>transactions this month</h2><div class="finance-txn-list" id="financeMonthTxnList">' +
+      (txns.length ? txns.slice().sort(function(a, b){ return a.date < b.date ? 1 : -1; }).map(financeTxnRowHtml).join("") : '<div class="finance-txn-row" style="justify-content:center;color:var(--text-faint);">Nothing this month.</div>') +
+    '</div></div>';
+    document.getElementById("financeMonthlyBody").innerHTML = html;
+    var listEl = document.getElementById("financeMonthTxnList");
+    if(listEl) listEl.addEventListener("click", financeTxnListClick);
+  }
+  document.getElementById("financeMonthPrevBtn").addEventListener("click", function(){ financeMonth.setMonth(financeMonth.getMonth() - 1); renderFinanceMonthly(); });
+  document.getElementById("financeMonthNextBtn").addEventListener("click", function(){ financeMonth.setMonth(financeMonth.getMonth() + 1); renderFinanceMonthly(); });
+
+  var financeYtdYear = new Date().getFullYear();
+  function renderFinanceYtd(){
+    document.getElementById("financeYtdYearLabel").textContent = String(financeYtdYear);
+    var txns = financeTxnsInYear(financeYtdYear);
+    var income = txns.filter(function(t){ return t.amount > 0; }).reduce(function(s, t){ return s + t.amount; }, 0);
+    var spent = txns.filter(function(t){ return t.amount < 0; }).reduce(function(s, t){ return s + Math.abs(t.amount); }, 0);
+    var loanPayments = financeLoanMonthlyTotal() * (financeYtdYear === new Date().getFullYear() ? (new Date().getMonth() + 1) : 12);
+    var net = income - spent;
+    // month-by-month income/spend, so the cumulative shape of the year is visible at a glance
+    var monthRows = "";
+    for(var m = 0; m < 12; m++){
+      var mTxns = financeTxnsInMonth(financeYtdYear, m);
+      if(!mTxns.length) continue;
+      var mIncome = mTxns.filter(function(t){ return t.amount > 0; }).reduce(function(s, t){ return s + t.amount; }, 0);
+      var mSpent = mTxns.filter(function(t){ return t.amount < 0; }).reduce(function(s, t){ return s + Math.abs(t.amount); }, 0);
+      var mMax = Math.max(mIncome, mSpent, 1);
+      monthRows += '<div class="finance-month-row">' +
+        '<span class="finance-month-row-label">' + new Date(financeYtdYear, m, 1).toLocaleDateString(undefined, { month:"short" }) + '</span>' +
+        '<span class="finance-month-row-bar-wrap"><span class="finance-month-row-bar" style="width:' + (mSpent / mMax * 100) + '%;background:var(--p0);"></span></span>' +
+        '<span class="finance-month-row-value">' + fmtMoney(mSpent) + ' / ' + fmtMoney(mIncome) + '</span>' +
+      '</div>';
+    }
+    var html = '<div class="finance-tiles">' +
+      '<div class="finance-tile" style="--tile-accent:var(--cat-sol);"><div class="finance-tile-label">income ytd</div><div class="finance-tile-value">' + fmtMoney(income) + '</div></div>' +
+      '<div class="finance-tile" style="--tile-accent:var(--p0);"><div class="finance-tile-label">spent ytd</div><div class="finance-tile-value">' + fmtMoney(spent) + '</div></div>' +
+      '<div class="finance-tile" style="--tile-accent:var(--p0);"><div class="finance-tile-label">loan payments ytd (est.)</div><div class="finance-tile-value">' + fmtMoney(loanPayments) + '</div></div>' +
+      '<div class="finance-tile" style="--tile-accent:' + (net >= 0 ? "var(--accent)" : "var(--p0)") + ';"><div class="finance-tile-label">net position</div><div class="finance-tile-value' + (net < 0 ? " neg" : "") + '">' + fmtMoney(net) + '</div></div>' +
+    '</div>' +
+    '<div class="finance-block"><h2>spending by area</h2>' + financeAreaBreakdownHtml(txns) + '</div>' +
+    (monthRows ? '<div class="finance-block"><h2>spent / income by month</h2><div class="finance-month-grid">' + monthRows + '</div></div>' : '');
+    document.getElementById("financeYtdBody").innerHTML = html;
+  }
+  document.getElementById("financeYtdPrevBtn").addEventListener("click", function(){ financeYtdYear -= 1; renderFinanceYtd(); });
+  document.getElementById("financeYtdNextBtn").addEventListener("click", function(){ financeYtdYear += 1; renderFinanceYtd(); });
+
+  // ---- Account modal ----
+  var editingFinanceAccountId = null;
+  wireChipSelect(document.getElementById("financeAccountTypeSelect"), "fat");
+  document.getElementById("financeAccountTypeSelect").addEventListener("click", function(){
+    var type = chipValue(this, "fat") || "checking";
+    document.getElementById("financeAccountLoanFields").style.display = type === "loan" ? "" : "none";
+    document.getElementById("financeAccountLinkedField").style.display = type === "loan" ? "none" : "";
+    document.getElementById("financeAccountBalanceLabel").textContent = type === "loan" ? "amount still owed" : "current balance";
+  });
+  function fillFinanceAccountLinkedSelect(excludeId){
+    var sel = document.getElementById("financeAccountLinkedSelect");
+    var options = state.financeAccounts.filter(function(a){ return a.id !== excludeId && a.type !== "loan" && !a.archived; });
+    sel.innerHTML = '<option value="">none</option>' + options.map(function(a){ return '<option value="' + a.id + '">' + escapeHtml(a.name) + '</option>'; }).join("");
+  }
+  function openFinanceAccountModal(editObj){
+    editingFinanceAccountId = editObj ? editObj.id : null;
+    document.getElementById("financeAccountModalTitle").textContent = editObj ? "edit_account.json" : "new_account.json";
+    document.getElementById("financeAccountNameInput").value = editObj ? editObj.name : "";
+    var type = editObj ? editObj.type : "checking";
+    setChip(document.getElementById("financeAccountTypeSelect"), "fat", type);
+    document.getElementById("financeAccountLoanFields").style.display = type === "loan" ? "" : "none";
+    document.getElementById("financeAccountLinkedField").style.display = type === "loan" ? "none" : "";
+    document.getElementById("financeAccountBalanceLabel").textContent = type === "loan" ? "amount still owed" : "current balance";
+    fillFinanceAccountLinkedSelect(editObj ? editObj.id : null);
+    document.getElementById("financeAccountLinkedSelect").value = (editObj && editObj.linkedAccountId) || "";
+    document.getElementById("financeAccountBalanceInput").value = editObj ? editObj.balance : "";
+    document.getElementById("financeAccountCurrencyInput").value = editObj ? editObj.currency : "EUR";
+    document.getElementById("financeAccountLoanPaymentInput").value = editObj && editObj.loanMonthlyPayment != null ? editObj.loanMonthlyPayment : "";
+    document.getElementById("financeAccountLoanRateInput").value = editObj && editObj.loanInterestRate != null ? editObj.loanInterestRate : "";
+    document.getElementById("financeAccountLoanOriginalInput").value = editObj && editObj.loanOriginalAmount != null ? editObj.loanOriginalAmount : "";
+    document.getElementById("financeAccountLoanPurposeInput").value = editObj ? editObj.loanPurpose : "";
+    openModal("financeAccountModalOverlay");
+    document.getElementById("financeAccountNameInput").focus();
+  }
+  document.getElementById("financeAddAccountBtn").addEventListener("click", function(){ openFinanceAccountModal(null); });
+  document.getElementById("cancelFinanceAccountModalBtn").addEventListener("click", function(){ closeModal("financeAccountModalOverlay"); });
+  document.getElementById("saveFinanceAccountBtn").addEventListener("click", async function(){
+    var name = document.getElementById("financeAccountNameInput").value.trim();
+    if(!name) return;
+    var type = chipValue(document.getElementById("financeAccountTypeSelect"), "fat") || "checking";
+    var payload = {
+      name: name, type: type,
+      linked_account_id: type === "loan" ? null : (document.getElementById("financeAccountLinkedSelect").value || null),
+      balance: Number(document.getElementById("financeAccountBalanceInput").value) || 0,
+      currency: document.getElementById("financeAccountCurrencyInput").value.trim() || "EUR",
+      loan_monthly_payment: type === "loan" && document.getElementById("financeAccountLoanPaymentInput").value !== "" ? Number(document.getElementById("financeAccountLoanPaymentInput").value) : null,
+      loan_interest_rate: type === "loan" && document.getElementById("financeAccountLoanRateInput").value !== "" ? Number(document.getElementById("financeAccountLoanRateInput").value) : null,
+      loan_original_amount: type === "loan" && document.getElementById("financeAccountLoanOriginalInput").value !== "" ? Number(document.getElementById("financeAccountLoanOriginalInput").value) : null,
+      loan_purpose: type === "loan" ? document.getElementById("financeAccountLoanPurposeInput").value.trim() : null
+    };
+    this.disabled = true;
+    var isEdit = !!editingFinanceAccountId;
+    var res = isEdit ? await safeUpdate("finance_accounts", editingFinanceAccountId, payload) : await safeInsert("finance_accounts", payload, state.financeAccounts);
+    this.disabled = false;
+    if(res.error){ dbErrorToast(res.error, "Couldn't save"); return; }
+    var r = res.data;
+    var mapped = { id:r.id, name:r.name, type:r.type, linkedAccountId:r.linked_account_id||null, balance:Number(r.balance)||0, currency:r.currency||"EUR", loanMonthlyPayment:(r.loan_monthly_payment!=null?Number(r.loan_monthly_payment):null), loanInterestRate:(r.loan_interest_rate!=null?Number(r.loan_interest_rate):null), loanOriginalAmount:(r.loan_original_amount!=null?Number(r.loan_original_amount):null), loanPurpose:r.loan_purpose||"", position:r.position||0, archived:!!r.archived };
+    if(isEdit){
+      var idx = state.financeAccounts.findIndex(function(x){ return x.id === editingFinanceAccountId; });
+      if(idx !== -1) state.financeAccounts[idx] = mapped;
+    } else {
+      state.financeAccounts.push(mapped);
+    }
+    renderAll();
+    closeModal("financeAccountModalOverlay");
+    warnDroppedFields(res.droppedFields);
+  });
+  async function deleteFinanceAccount(id){
+    var acc = financeAccountById(id);
+    if(!acc) return;
+    var txnCount = state.financeTransactions.filter(function(t){ return t.accountId === id; }).length;
+    if(!confirm("Delete \"" + acc.name + "\"?" + (txnCount ? " Its " + txnCount + " transaction" + (txnCount === 1 ? "" : "s") + " will be deleted too." : "") + " This can't be undone.")) return;
+    var r = await sb.from("finance_accounts").delete().eq("id", id);
+    if(r.error){ dbErrorToast(r.error, "Couldn't delete"); return; }
+    state.financeAccounts = state.financeAccounts.filter(function(a){ return a.id !== id; });
+    state.financeTransactions = state.financeTransactions.filter(function(t){ return t.accountId !== id; });
+    renderAll();
+  }
+
+  // ---- Transaction modal ----
+  var editingFinanceTxnId = null;
+  wireChipSelect(document.getElementById("financeTxnAreaSelect"), "ar");
+  function fillFinanceTxnAccountSelect(){
+    var sel = document.getElementById("financeTxnAccountSelect");
+    var accs = state.financeAccounts.filter(function(a){ return !a.archived; });
+    sel.innerHTML = accs.map(function(a){ return '<option value="' + a.id + '">' + escapeHtml(a.name) + '</option>'; }).join("");
+  }
+  function openFinanceTxnModal(editObj, presetAccountId){
+    editingFinanceTxnId = editObj ? editObj.id : null;
+    fillFinanceTxnAccountSelect();
+    document.getElementById("financeTxnAccountSelect").value = editObj ? editObj.accountId : (presetAccountId || (state.financeAccounts[0] && state.financeAccounts[0].id) || "");
+    document.getElementById("financeTxnDateInput").value = editObj ? editObj.date : todayStr();
+    document.getElementById("financeTxnAmountInput").value = editObj ? editObj.amount : "";
+    document.getElementById("financeTxnDescInput").value = editObj ? editObj.description : "";
+    setChip(document.getElementById("financeTxnAreaSelect"), "ar", editObj ? (editObj.area || "") : "");
+    document.getElementById("financeTxnSubcatInput").value = editObj ? editObj.subcategory : "";
+    openModal("financeTxnModalOverlay");
+    document.getElementById("financeTxnAmountInput").focus();
+  }
+  document.getElementById("financeAddTxnBtn").addEventListener("click", function(){
+    if(!state.financeAccounts.length){ toast("Add an account first."); return; }
+    openFinanceTxnModal(null);
+  });
+  document.getElementById("cancelFinanceTxnModalBtn").addEventListener("click", function(){ closeModal("financeTxnModalOverlay"); });
+  document.getElementById("saveFinanceTxnBtn").addEventListener("click", async function(){
+    var accountId = document.getElementById("financeTxnAccountSelect").value;
+    var amount = Number(document.getElementById("financeTxnAmountInput").value);
+    if(!accountId || !document.getElementById("financeTxnAmountInput").value || isNaN(amount)) return;
+    var payload = {
+      account_id: accountId,
+      date: document.getElementById("financeTxnDateInput").value || todayStr(),
+      description: document.getElementById("financeTxnDescInput").value.trim(),
+      amount: amount,
+      area: chipValue(document.getElementById("financeTxnAreaSelect"), "ar") || null,
+      subcategory: document.getElementById("financeTxnSubcatInput").value.trim() || null,
+      source: "manual"
+    };
+    this.disabled = true;
+    var isEdit = !!editingFinanceTxnId;
+    // finance_transactions has no position column (nothing to manually reorder — the list is always
+    // date-sorted), so this goes through safeWrite directly rather than safeInsert, which would
+    // otherwise inject a position field only to have safeWrite's own missing-column handling strip
+    // it back out again on the first attempt.
+    var res = isEdit ? await safeUpdate("finance_transactions", editingFinanceTxnId, payload) : await safeWrite(function(p){ return sb.from("finance_transactions").insert(p).select().single(); }, payload);
+    this.disabled = false;
+    if(res.error){ dbErrorToast(res.error, "Couldn't save"); return; }
+    var r = res.data;
+    var mapped = { id:r.id, accountId:r.account_id, date:r.date, description:r.description||"", amount:Number(r.amount)||0, area:r.area||null, subcategory:r.subcategory||"", source:r.source||"manual", aiCategorized:!!r.ai_categorized };
+    if(isEdit){
+      var idx = state.financeTransactions.findIndex(function(x){ return x.id === editingFinanceTxnId; });
+      if(idx !== -1) state.financeTransactions[idx] = mapped;
+    } else {
+      state.financeTransactions.push(mapped);
+    }
+    renderAll();
+    closeModal("financeTxnModalOverlay");
+    warnDroppedFields(res.droppedFields);
+  });
+  async function deleteFinanceTxn(id){
+    if(!confirm("Delete this transaction? This can't be undone.")) return;
+    var r = await sb.from("finance_transactions").delete().eq("id", id);
+    if(r.error){ dbErrorToast(r.error, "Couldn't delete"); return; }
+    state.financeTransactions = state.financeTransactions.filter(function(t){ return t.id !== id; });
+    renderAll();
+  }
+
   var SECTION_RENDERERS = {
     home: [renderHomeDashboard],
     agent: [],
@@ -17348,6 +17861,7 @@
     timeline: [renderTimeline],
     journal: [renderJournal],
     people: [renderPeople],
+    finance: [renderFinance],
     // Tools' own grid is static (no live app-state to reflect) and is rendered once by wireTools()
     // at page load, not on every renderAll() pass — nothing to re-render here.
     tools: [],
