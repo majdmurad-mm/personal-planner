@@ -896,6 +896,13 @@
   .timeline-block-icon + .timeline-block-title{ margin-left:32px; }
   .timeline-block-title{ font-family:var(--mono); font-size:10px; font-weight:500; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; z-index:1; }
   .timeline-block.done{ opacity:0.5; }
+  /* Dedicated done-toggle — clicking the block body itself now opens its editor instead (see
+     wireTimelineLayerDrag). Same small filled-circle treatment as the home cockpit dock's
+     .home-tl-done-btn, sized for this row's slightly taller block. */
+  .timeline-done-btn{ flex:0 0 auto; width:12px; height:12px; border-radius:50%; border:1.5px solid currentColor; opacity:0.75; background:none; padding:0; margin-right:1px; cursor:pointer; position:relative; z-index:1; touch-action:none; }
+  .timeline-done-btn:hover{ opacity:1; }
+  .timeline-done-btn.done{ background:currentColor; opacity:0.9; }
+  .timeline-done-btn.done::after{ content:""; position:absolute; left:2.5px; top:0.5px; width:3.5px; height:6px; border-right:1.5px solid var(--bg-raised); border-bottom:1.5px solid var(--bg-raised); transform:rotate(40deg); }
   /* Filled area tint, not just a border accent — these blocks are often too narrow (short
      duration) for a thin left-border to read as "colored" at a glance. Brighter (higher alpha)
      than the shared --cat-X-bg variable used elsewhere (cards, tiles, rows) — blocks need to stand
@@ -1700,8 +1707,17 @@
   .home-tl-lane-label{ position:absolute; left:6px; top:50%; transform:translateY(-50%); font-family:var(--mono); font-size:9px; letter-spacing:0.08em; text-transform:uppercase; color:var(--text-faint); pointer-events:none; z-index:1; }
   /* Each block gets an inline z-index from tlZIndexForDuration (shorter on top when two overlap);
      .home-tl-lanes itself sits above the full-bleed day/night background via its own z-index:1. */
-  .home-tl-block{ position:absolute; top:3px; bottom:3px; border-radius:3px; border:1px solid var(--border-bright); background:var(--bg-inset); color:var(--text); font-family:var(--mono); font-size:9.5px; line-height:1.15; padding:2px 5px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; cursor:pointer; touch-action:none; }
+  .home-tl-block{ position:absolute; top:3px; bottom:3px; border-radius:3px; border:1px solid var(--border-bright); background:var(--bg-inset); color:var(--text); font-family:var(--mono); font-size:9.5px; line-height:1.15; padding:2px 5px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; cursor:pointer; touch-action:none; display:flex; align-items:center; gap:4px; }
   .home-tl-block.done{ opacity:0.45; }
+  /* Dedicated done-toggle — deliberately separate from clicking the block body, which now opens the
+     item's edit affordance instead (see wireHomeTimelineDock's downOnDoneBtn). A plain empty circle
+     that fills solid + gets a check on completion, sized to sit comfortably inside even the dock's
+     shortest blocks. */
+  .home-tl-done-btn{ flex:0 0 auto; width:11px; height:11px; border-radius:50%; border:1.4px solid currentColor; opacity:0.75; background:none; padding:0; cursor:pointer; position:relative; touch-action:none; }
+  .home-tl-done-btn:hover{ opacity:1; }
+  .home-tl-done-btn.done{ background:currentColor; opacity:0.9; }
+  .home-tl-done-btn.done::after{ content:""; position:absolute; left:2.5px; top:0.5px; width:3px; height:5.5px; border-right:1.4px solid var(--bg-inset); border-bottom:1.4px solid var(--bg-inset); transform:rotate(40deg); }
+  .home-tl-block-title{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   /* Press-and-hold to arm a move (see wireHomeTimelineDock) — the fill sweep signals the wait, then
      the block lifts into drag; matches the Today timeline's gesture. !important since a block's own
      inline z-index (up to 1440) would otherwise be able to outrank this. */
@@ -5980,15 +5996,16 @@
   })();
 
   // Timeline dock interactions — same gesture vocabulary as the Today timeline (see
-  // wireTimelineLayerDrag): a clean click completes a habit/action (opens the editor for a note),
-  // and a press-and-hold arms a drag that moves the item's time. Overnight-spillover tails aren't
-  // draggable (their left edge isn't a real start time), only click-through. All three lanes share
-  // one 24h horizontal scale, so the pointer x is measured against #homeTlLanes (full width = a day)
-  // regardless of which lane the block sits in.
+  // wireTimelineLayerDrag): a clean click on the dedicated done-button toggles a habit/action
+  // complete; a clean click anywhere else on the block opens its editor (the note popover for a
+  // journal entry); a press-and-hold arms a drag that moves the item's time instead. Overnight-
+  // spillover tails aren't draggable (their left edge isn't a real start time), only click-through.
+  // All three lanes share one 24h horizontal scale, so the pointer x is measured against
+  // #homeTlLanes (full width = a day) regardless of which lane the block sits in.
   (function wireHomeTimelineDock(){
     var dock = document.getElementById("homeTimelineDock");
     var lanes = document.getElementById("homeTlLanes");
-    var dragEl = null, dragId = null, dragKind = null, dragDate = null, dragOvernight = false;
+    var dragEl = null, dragId = null, dragKind = null, dragDate = null, dragOvernight = false, dragOnDoneBtn = false;
     var armed = false, armTimer = null, moved = false, movedBeforeArm = false, downX = 0, downY = 0;
     function clearArmTimer(){ if(armTimer){ clearTimeout(armTimer); armTimer = null; } }
     dock.addEventListener("pointerdown", function(e){
@@ -5997,9 +6014,16 @@
       if(!block) return;
       dragEl = block; dragId = block.dataset.id; dragKind = block.dataset.kind; dragDate = block.dataset.date;
       dragOvernight = !!block.dataset.overnight;
+      // Captured once here rather than re-inspected in pointerup: once the block calls
+      // setPointerCapture below, every later pointer event for this pointerId reports the block
+      // itself as e.target (per the Pointer Events spec' capture-target override), not whatever the
+      // pointer is physically over — so pointerup can no longer tell whether the release landed on
+      // the done-button specifically. The done-button also never arms a drag; a press-and-hold on it
+      // just toggles the same as a quick tap.
+      dragOnDoneBtn = !!e.target.closest(".home-tl-done-btn");
       armed = false; moved = false; movedBeforeArm = false; downX = e.clientX; downY = e.clientY;
       block.setPointerCapture(e.pointerId);
-      if(!dragOvernight){
+      if(!dragOvernight && !dragOnDoneBtn){
         block.classList.add("tl-holding");
         armTimer = setTimeout(function(){ armed = true; block.classList.remove("tl-holding"); block.classList.add("dragging"); }, TL_DRAG_HOLD_MS);
       }
@@ -6018,17 +6042,22 @@
       dragEl.style.left = (totalMin / 1440 * 100) + "%";
       dragEl.dataset.pendingTime = minutesToTime(totalMin);
     });
-    dock.addEventListener("pointerup", async function(){
+    dock.addEventListener("pointerup", async function(e){
       if(!dragEl) return;
       clearArmTimer();
-      var el = dragEl, id = dragId, kind = dragKind, date = dragDate, newTime = el.dataset.pendingTime;
+      var el = dragEl, id = dragId, kind = dragKind, date = dragDate, newTime = el.dataset.pendingTime, onDoneBtn = dragOnDoneBtn;
       var wasArmed = armed, wasMoved = moved, wasMovedBeforeArm = movedBeforeArm;
-      dragEl = null; dragId = null; dragKind = null; dragDate = null; dragOvernight = false; armed = false;
+      dragEl = null; dragId = null; dragKind = null; dragDate = null; dragOvernight = false; dragOnDoneBtn = false; armed = false;
       el.classList.remove("dragging", "tl-holding");
       if(!wasArmed){
         if(wasMovedBeforeArm) return;
-        if(kind === "habit-instance") await handleHabitMarkClick(id, date);
-        else if(kind === "action") await toggleActionDone(id);
+        if(onDoneBtn){
+          if(kind === "habit-instance") await handleHabitMarkClick(id, date);
+          else if(kind === "action") await toggleActionDone(id);
+          return;
+        }
+        if(kind === "habit-instance") openHabitInstancePopover(e.clientX, e.clientY, id, date);
+        else if(kind === "action") editAction(id);
         else if(kind === "journal") editJournalEntry(id);
         return;
       }
@@ -6052,7 +6081,7 @@
     dock.addEventListener("pointercancel", function(){
       clearArmTimer();
       if(dragEl) dragEl.classList.remove("dragging", "tl-holding");
-      dragEl = null; dragId = null; dragKind = null; dragDate = null; dragOvernight = false; armed = false;
+      dragEl = null; dragId = null; dragKind = null; dragDate = null; dragOvernight = false; dragOnDoneBtn = false; armed = false;
     });
     // Clicking empty lane space (not a block or its resize handle) opens the add-action modal,
     // presetting the date to whichever day the dock is currently showing and the time to wherever
@@ -6880,8 +6909,10 @@
       if(resizable === true) handles = '<span class="home-tl-block-resize home-tl-block-resize-left" data-resize-handle="left"></span>';
       if(resizable) handles += '<span class="home-tl-block-resize home-tl-block-resize-right" data-resize-handle="right"></span>';
       var colorStyle = b.colorRgb ? ("background:rgb(" + b.colorRgb.r + "," + b.colorRgb.g + "," + b.colorRgb.b + " / 0.12);border-color:rgb(" + b.colorRgb.r + "," + b.colorRgb.g + "," + b.colorRgb.b + ");") : "";
+      // Only actions/habit-instances have a "done" concept — notes never get the toggle button.
+      var doneBtn = b.kind !== "journal" ? '<button class="home-tl-done-btn' + (b.done ? " done" : "") + '" type="button" title="' + (b.done ? "Mark not done" : "Mark done") + '" aria-label="' + (b.done ? "Mark not done" : "Mark done") + '"></button>' : "";
       return '<div class="home-tl-block' + (b.area ? " " + b.area : "") + (b.done ? " done" : "") + '" data-kind="' + b.kind + '" data-id="' + b.id + '" data-date="' + b.date + '"' + (b.overnight ? ' data-overnight="1"' : '') +
-        ' style="left:' + (b.start * 100) + '%; width:' + Math.max(b.width * 100, 0.7) + '%; z-index:' + z + ';' + colorStyle + '" title="' + escapeHtml(b.title) + '">' + handles + escapeHtml(b.title) + '</div>';
+        ' style="left:' + (b.start * 100) + '%; width:' + Math.max(b.width * 100, 0.7) + '%; z-index:' + z + ';' + colorStyle + '" title="' + escapeHtml(b.title) + '">' + handles + doneBtn + '<span class="home-tl-block-title">' + escapeHtml(b.title) + '</span></div>';
     }).join("");
   }
   // Labels for dates near today read as relative words; anything further out (picked from the
@@ -15144,15 +15175,18 @@
   // draggable), falsy = no handle at all (notes have no duration field).
   function todayTimelineBlockHtml(kind, id, date, left, width, title, label, area, extraClass, overnight, resizable, iconHtml){
     var cls = (area ? " " + area : "") + (extraClass || "");
+    var isDone = (" " + (extraClass || "") + " ").indexOf(" done ") !== -1;
     var handles = "";
     if(resizable === true) handles = '<span class="timeline-block-resize timeline-block-resize-left" data-resize-handle="left"></span>';
     if(resizable) handles += '<span class="timeline-block-resize timeline-block-resize-right" data-resize-handle="right"></span>';
+    // Only actions/habit-instances have a "done" concept — notes never get the toggle button.
+    var doneBtn = kind !== "journal" ? '<button class="timeline-done-btn' + (isDone ? " done" : "") + '" type="button" title="' + (isDone ? "Mark not done" : "Mark done") + '" aria-label="' + (isDone ? "Mark not done" : "Mark done") + '"></button>' : "";
     // width is already percent-of-day (see call sites), so it converts straight to minutes for the
     // shorter-on-top stacking rule — including the overnight tail, whose width is just its spillover
     // portion, which is exactly the on-screen extent that should win the stacking comparison.
     var z = tlZIndexForDuration(width / 100 * 1440);
     return '<div class="timeline-block' + cls + '" data-kind="' + kind + '" data-id="' + id + '" data-date="' + date + '"' + (overnight ? ' data-overnight="1"' : '') + ' style="left:' + left + '%; width:' + width + '%; z-index:' + z + ';" title="' + escapeHtml(title) + '">' +
-      handles + (iconHtml || "") + '<span class="timeline-block-title">' + label + '</span></div>';
+      handles + (iconHtml || "") + doneBtn + '<span class="timeline-block-title">' + label + '</span></div>';
   }
   function renderTodayTimelineAreaRow(area){
     var track = document.getElementById(todayTimelineRowId(area));
@@ -15204,16 +15238,18 @@
   }
   // Dragging a block left/right updates its time-of-day (snapped to 5 min) — this is what "moving
   // it along the timeline updates its properties" means. A press only "arms" into a drag after
-  // TL_DRAG_HOLD_MS of holding still (the .tl-holding fill bar shows the wait) — a release before
-  // that toggles the item done/not-done instead (notes have no done concept, so those are a no-op),
-  // which is what keeps an ordinary click from also nudging the block's time by a few minutes.
-  // Use the right-click menu (already wired globally via data-kind/data-id) to edit/delete/postpone.
+  // TL_DRAG_HOLD_MS of holding still (the .tl-holding fill bar shows the wait). A release before
+  // that on the dedicated done-button (.timeline-done-btn) toggles done/not-done (notes have no
+  // done concept, so they never get the button); a release anywhere else on the block opens its
+  // editor instead — keeps an ordinary click from also nudging the block's time by a few minutes,
+  // and from silently completing something you only meant to open. Use the right-click menu
+  // (already wired globally via data-kind/data-id) to delete/postpone.
   // Each area row now mixes habit/action/note blocks together, so the kind is read from the block
   // being dragged (data-kind) rather than being fixed per track.
   var TL_DRAG_HOLD_MS = 1000, TL_DRAG_ARM_MOVE_THRESHOLD = 4;
   function wireTimelineLayerDrag(trackId){
     var track = document.getElementById(trackId);
-    var dragEl = null, dragId = null, dragKind = null, dragDate = null, dragOvernight = false;
+    var dragEl = null, dragId = null, dragKind = null, dragDate = null, dragOvernight = false, dragOnDoneBtn = false;
     var armed = false, armTimer = null, moved = false, movedBeforeArm = false, downX = 0, downY = 0;
     function clearArmTimer(){ if(armTimer){ clearTimeout(armTimer); armTimer = null; } }
     track.addEventListener("pointerdown", function(e){
@@ -15222,12 +15258,15 @@
       if(!block) return;
       dragEl = block; dragId = block.dataset.id; dragKind = block.dataset.kind; dragDate = block.dataset.date;
       dragOvernight = !!block.dataset.overnight;
+      // Captured once here, not re-inspected in pointerup — see wireHomeTimelineDock's identical
+      // comment for why (pointer capture below overrides e.target on later events).
+      dragOnDoneBtn = !!e.target.closest(".timeline-done-btn");
       armed = false; moved = false; movedBeforeArm = false; downX = e.clientX; downY = e.clientY;
       block.setPointerCapture(e.pointerId);
       // The overnight-spillover tail (yesterday's item continuing past midnight) has no sensible
       // "new start time" to derive from its own left edge, so it isn't draggable — it's still
-      // click-to-toggle below, just never arms into a drag.
-      if(!dragOvernight){
+      // click-through below, just never arms into a drag. Same for a press on the done-button.
+      if(!dragOvernight && !dragOnDoneBtn){
         block.classList.add("tl-holding");
         armTimer = setTimeout(function(){
           armed = true;
@@ -15251,17 +15290,23 @@
       dragEl.style.left = (totalMin / 1440 * 100) + "%";
       dragEl.dataset.pendingTime = newTime;
     });
-    track.addEventListener("pointerup", async function(){
+    track.addEventListener("pointerup", async function(e){
       if(!dragEl) return;
       clearArmTimer();
-      var el = dragEl, id = dragId, kind = dragKind, date = dragDate, newTime = el.dataset.pendingTime;
+      var el = dragEl, id = dragId, kind = dragKind, date = dragDate, newTime = el.dataset.pendingTime, onDoneBtn = dragOnDoneBtn;
       var wasArmed = armed, wasMoved = moved, wasMovedBeforeArm = movedBeforeArm;
-      dragEl = null; dragId = null; dragKind = null; dragDate = null; dragOvernight = false; armed = false;
+      dragEl = null; dragId = null; dragKind = null; dragDate = null; dragOvernight = false; dragOnDoneBtn = false; armed = false;
       el.classList.remove("dragging", "tl-holding");
       if(!wasArmed){
         if(wasMovedBeforeArm) return; // let go mid-press before the hold armed — not a clean click either
-        if(kind === "habit-instance") await handleHabitMarkClick(id, date);
-        else if(kind === "action") await toggleActionDone(id);
+        if(onDoneBtn){
+          if(kind === "habit-instance") await handleHabitMarkClick(id, date);
+          else if(kind === "action") await toggleActionDone(id);
+          return;
+        }
+        if(kind === "habit-instance") openHabitInstancePopover(e.clientX, e.clientY, id, date);
+        else if(kind === "action") editAction(id);
+        else if(kind === "journal") editJournalEntry(id);
         return;
       }
       if(!wasMoved || !newTime) return;
@@ -15285,7 +15330,7 @@
     track.addEventListener("pointercancel", function(){
       clearArmTimer();
       if(dragEl) dragEl.classList.remove("dragging", "tl-holding");
-      dragEl = null; dragId = null; dragKind = null; dragDate = null; dragOvernight = false; armed = false;
+      dragEl = null; dragId = null; dragKind = null; dragDate = null; dragOvernight = false; dragOnDoneBtn = false; armed = false;
     });
   }
   TODAY_TIMELINE_AREAS.forEach(function(area){ wireTimelineLayerDrag(todayTimelineRowId(area)); });
