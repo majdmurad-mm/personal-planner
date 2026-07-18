@@ -1037,16 +1037,34 @@
   .journal-composer-meta .time-pick-row{ width:auto; }
   .journal-composer-meta .time-pick-row input[type="time"]{ width:auto; flex:none; }
   .journal-textarea{ width:100%; font-size:14px; line-height:1.5; min-height:70px; }
-  /* Notes split into three columns by auto-classified length (see noteLengthType/renderJournal) —
-     auto-fit/minmax so it degrades from 3 columns down to 1 on narrower viewports without a manual
-     breakpoint, same pattern .home-grid already uses. */
-  .journal-columns{ display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:18px; align-items:start; margin-top:20px; }
-  .journal-column{ min-width:0; }
-  .journal-column-head{ display:flex; align-items:center; gap:8px; margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid var(--border); }
-  .journal-column-count{ font-family:var(--mono); font-size:11px; color:var(--text-faint); }
-  .journal-column-list:empty::after{ content:"nothing here yet"; display:block; font-family:var(--mono); font-size:11px; color:var(--text-faint); padding:4px 0 16px; }
-  .journal-month-head{ font-family:var(--mono); font-size:10.5px; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-faint); margin:20px 0 10px; padding-bottom:7px; border-bottom:1px solid var(--border); }
-  .journal-month-head:first-child{ margin-top:0; }
+  /* ===== Notes mood-map canvas (see renderNotesCanvas) ===== */
+  /* X = sentiment (positive left -> negative right), Y = time bands. DOM cards, not WebGL — the
+     cards are text-heavy and interactive (buttons, clickable @/# tags, click-to-open), which a
+     canvas/GL layer would break; same choice the People and Knowledge graphs already made. */
+  .notes-canvas-toolbar{ display:flex; align-items:center; gap:18px; margin-top:18px; }
+  .notes-scale-toggle{ margin:0; flex-shrink:0; }
+  .notes-axis{ flex:1; display:flex; align-items:center; gap:10px; min-width:0; }
+  .notes-axis-end{ font-family:var(--mono); font-size:9.5px; letter-spacing:0.08em; text-transform:uppercase; color:var(--text-faint); flex-shrink:0; }
+  /* hue sweep matches SENTIMENT_HUES exactly: joyful 145 (left) down to angry 0 (right) */
+  .notes-axis-bar{ flex:1; height:4px; border-radius:2px; background:linear-gradient(90deg, hsl(145,70%,45%), hsl(65,70%,45%), hsl(0,70%,50%)); opacity:0.75; }
+  .notes-canvas{ margin-top:12px; }
+  .notes-band{ display:flex; gap:14px; border-top:1px solid var(--border); padding:10px 0 12px; }
+  .notes-band:first-child{ border-top:none; }
+  .notes-band-label{ flex:0 0 96px; font-family:var(--mono); font-size:10px; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-faint); padding-top:4px; line-height:1.5; }
+  .notes-band-count{ display:block; color:var(--border-bright); }
+  /* the field is the band's own coordinate space — cards are absolutely positioned in it by
+     sentiment (left:%) and collision-stacked (top:px) by packNotesBandField; a dashed center line
+     marks neutral. */
+  .notes-band-field{ position:relative; flex:1; min-width:0; min-height:56px; }
+  .notes-band-field::before{ content:""; position:absolute; left:50%; top:0; bottom:0; border-left:1px dashed var(--border); opacity:0.6; }
+  .notes-band-field .journal-entry{ position:absolute; width:250px; max-width:46%; margin:0; cursor:pointer; box-sizing:border-box; }
+  .notes-band-field .journal-entry:hover{ z-index:5; }
+  /* 10-line preview cap — opening the note (click) is how you read the rest. */
+  .notes-canvas .journal-entry-text{ display:-webkit-box; -webkit-line-clamp:10; -webkit-box-orient:vertical; overflow:hidden; }
+  /* Markdown toolbar in the note editor modal */
+  .md-toolbar{ display:flex; gap:4px; margin-bottom:6px; flex-wrap:wrap; }
+  .md-toolbar button{ min-width:30px; height:26px; padding:0 8px; border:1px solid var(--border-bright); border-radius:5px; background:var(--bg-raised); color:var(--text-dim); font-family:var(--mono); font-size:11.5px; cursor:pointer; }
+  .md-toolbar button:hover{ color:var(--text); border-color:var(--accent-dim); background:var(--bg-inset); }
   .journal-entry{ background:var(--bg-raised); border:1px solid var(--border); border-left:3px solid var(--accent-dim); border-radius:var(--radius); padding:13px 15px; margin-bottom:9px; transition:box-shadow var(--dur-fast) var(--ease-out); }
   .journal-entry:hover{ box-shadow:var(--elev-1); }
   .journal-entry-top{ display:flex; justify-content:space-between; align-items:center; margin-bottom:7px; }
@@ -2631,20 +2649,25 @@
         <div class="loc-geocode-status" id="journalRecordStatus"></div>
         <textarea id="journalTextInput" class="journal-textarea" placeholder="Write today's entry… Markdown supported — @ tags people, # tags goals/projects/habits/actions" rows="3"></textarea>
       </div>
-      <div class="journal-columns" id="journalEntries">
-        <div class="journal-column">
-          <div class="journal-column-head"><span class="length-badge log">log</span><span class="journal-column-count" id="journalColCountLog"></span></div>
-          <div class="journal-column-list" id="journalColLog"></div>
+      <!-- 2D mood-map canvas replacing the old log/note/document columns: X = sentiment (positive
+           on the left, negative on the right — from each note's sentiment tags via the
+           valence-ordered SENTIMENT_HUES scale; untagged notes sit in the middle), Y = time in
+           bands (newest first), with the day/week/month toggle switching how coarsely time is
+           bucketed. Cards that would overlap inside a band stack downward instead
+           (see packNotesBandField), so same-time same-mood notes read as a cluster. -->
+      <div class="notes-canvas-toolbar">
+        <div class="sub-view-toggle notes-scale-toggle" id="journalScaleToggle">
+          <button class="sub-view-tab active" data-sub="day" type="button">day</button>
+          <button class="sub-view-tab" data-sub="week" type="button">week</button>
+          <button class="sub-view-tab" data-sub="month" type="button">month</button>
         </div>
-        <div class="journal-column">
-          <div class="journal-column-head"><span class="length-badge note">note</span><span class="journal-column-count" id="journalColCountNote"></span></div>
-          <div class="journal-column-list" id="journalColNote"></div>
-        </div>
-        <div class="journal-column">
-          <div class="journal-column-head"><span class="length-badge document">document</span><span class="journal-column-count" id="journalColCountDocument"></span></div>
-          <div class="journal-column-list" id="journalColDocument"></div>
+        <div class="notes-axis">
+          <span class="notes-axis-end">positive</span>
+          <div class="notes-axis-bar"></div>
+          <span class="notes-axis-end">negative</span>
         </div>
       </div>
+      <div class="notes-canvas" id="journalEntries"></div>
       <div class="empty-state" id="journalEmptyState" style="display:none;">
         <div class="glyph">✎</div><h3>no entries yet</h3><p>Write your first note above.</p>
       </div>
@@ -3562,7 +3585,24 @@
           <div class="chip-opt" role="button" tabindex="0" data-p="P0">P0</div><div class="chip-opt" role="button" tabindex="0" data-p="P1">P1</div><div class="chip-opt" role="button" tabindex="0" data-p="P2">P2</div><div class="chip-opt" role="button" tabindex="0" data-p="P3">P3</div>
         </div></div>
       </div>
-      <div class="field"><label for="journalEditTextInput">note</label><textarea id="journalEditTextInput" class="journal-textarea" rows="5"></textarea></div>
+      <div class="field"><label for="journalEditTextInput">note</label>
+        <!-- Markdown formatting toolbar — each button wraps the selection / prefixes the selected
+             lines with plain .md syntax (see mdApplyFormat), so the note stays ordinary Markdown
+             and renders through the same marked+DOMPurify pipeline as before (GFM checkboxes
+             included). pointerdown is prevented so clicking a button never steals the textarea's
+             selection. -->
+        <div class="md-toolbar" id="journalEditMdToolbar">
+          <button type="button" data-md="bold" title="Bold (**text**)"><b>B</b></button>
+          <button type="button" data-md="italic" title="Italic (*text*)"><i>I</i></button>
+          <button type="button" data-md="h1" title="Heading (# )">H1</button>
+          <button type="button" data-md="h2" title="Subheading (## )">H2</button>
+          <button type="button" data-md="list" title="Bullet list (- )">•</button>
+          <button type="button" data-md="check" title="Checkbox (- [ ] )">☑</button>
+          <button type="button" data-md="quote" title="Quote (&gt; )">❝</button>
+          <button type="button" data-md="code" title="Inline code (`code`)">‹›</button>
+        </div>
+        <textarea id="journalEditTextInput" class="journal-textarea" rows="10"></textarea>
+      </div>
       <div class="modal-actions"><button class="btn" id="cancelJournalModalBtn" type="button">cancel</button><button class="btn btn-accent" id="saveJournalEditBtn" type="button">save note</button></div>
     </div>
   </div>
@@ -12374,12 +12414,14 @@
       return renderNoteTextWithTags(tags[Number(i)] || "");
     });
   }
-  // Attribute tags shown across the top of a note card — the auto-classified length type and saved
-  // time (always shown, both automatic — see noteLengthType/fmtSavedAt), plus priority and area (both
-  // optional/manual). Priority/area reuse the same .prio-badge/.cat-badge classes goal cards already
-  // use, so they read identically to everywhere else in the app.
+  // Attribute tags shown across the top of a note card — saved time (automatic — see fmtSavedAt),
+  // plus priority and area (both optional/manual). Priority/area reuse the same
+  // .prio-badge/.cat-badge classes goal cards already use, so they read identically to everywhere
+  // else in the app. The old log/note/document length badge is gone — the notes page no longer
+  // classifies by length at all (noteLengthType itself survives only for the Home widget's
+  // today's-logs filter).
   function renderNoteTagsHtml(entry){
-    var tags = '<span class="length-badge ' + noteLengthType(entry) + '">' + noteLengthType(entry) + '</span>';
+    var tags = "";
     if(entry.createdAt) tags += '<span class="saved-badge" title="Saved at ' + escapeHtml(fmtSavedAt(entry.createdAt)) + '">saved ' + escapeHtml(fmtSavedAt(entry.createdAt)) + '</span>';
     if(entry.priority) tags += '<span class="prio-badge ' + entry.priority + '">' + entry.priority + '</span>';
     noteCategories(entry).forEach(function(cat){
@@ -12770,52 +12812,130 @@
     journalPendingRecording = null;
     renderAll();
   });
-  // Renders one column's worth of note cards — month headers restart per column, since each column
-  // (log/note/document) is now its own independent chronological list rather than one shared feed.
-  function renderNoteCardsHtml(list){
-    var monthsSeen = {};
-    return list.map(function(entry){
-      var d = new Date(entry.date + "T00:00:00");
-      var monthKey = d.toLocaleDateString(undefined, { month:"long", year:"numeric" });
-      var head = "";
-      if(!monthsSeen[monthKey]){ monthsSeen[monthKey] = true; head = '<div class="journal-month-head">' + monthKey + '</div>'; }
-      var catClass = noteCategory(entry) ? " " + noteCategory(entry) : "";
-      var merged = mergedAreaColorCss(noteCategories(entry));
-      var style = merged ? ' style="border-left-color:' + merged.c + ';background:' + merged.bg + ';"' : '';
-      return head + '<div class="journal-entry' + catClass + '"' + style + ' data-kind="journal" data-id="' + entry.id + '">' +
-        renderNoteTagsHtml(entry) +
-        '<div class="journal-entry-top"><span class="journal-entry-date">' + d.toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" }) + (entry.timeOfDay ? " · " + fmtTimeOfDay(entry.timeOfDay) : "") + '</span>' +
-        '<div class="entity-actions">' +
-          '<button class="icon-btn" data-action="analyze-sentiment" data-id="' + entry.id + '" aria-label="Analyze sentiment" title="Analyze sentiment (AI)">✨</button>' +
-          '<button class="icon-btn" data-action="auto-annotate" data-id="' + entry.id + '" aria-label="Auto-fill title, areas, and links" title="Auto-fill title, areas, and goal/people links (AI)">🏷</button>' +
-          '<button class="icon-btn edit" data-action="edit-journal" data-id="' + entry.id + '" aria-label="Edit entry">✎</button>' +
-          '<button class="icon-btn" data-action="del-journal" data-id="' + entry.id + '" aria-label="Delete entry">&times;</button>' +
-        '</div></div>' +
-        renderNoteTitleHtml(entry) +
-        '<div class="journal-entry-text journal-entry-md">' + renderNoteBodyHtml(entry.text) + '</div>' +
-        renderSentimentChipsHtml(entry) +
-        renderJournalWaveformHtml(entry) +
+  // One note card — shared by every band on the mood-map canvas. left:% is the sentiment position
+  // (set by the caller, center-anchored via translateX in CSS-free inline margin math below is
+  // avoided: packNotesBandField converts the center-% to a concrete px left after measuring).
+  function noteCanvasCardHtml(entry, xPct){
+    var d = new Date(entry.date + "T00:00:00");
+    var catClass = noteCategory(entry) ? " " + noteCategory(entry) : "";
+    var merged = mergedAreaColorCss(noteCategories(entry));
+    var style = merged ? 'border-left-color:' + merged.c + ';border-color:' + merged.c + ';background:' + merged.bg + ';' : '';
+    return '<div class="journal-entry' + catClass + '" style="' + style + '" data-kind="journal" data-id="' + entry.id + '" data-x="' + xPct + '">' +
+      renderNoteTagsHtml(entry) +
+      '<div class="journal-entry-top"><span class="journal-entry-date">' + d.toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" }) + (entry.timeOfDay ? " · " + fmtTimeOfDay(entry.timeOfDay) : "") + '</span>' +
+      '<div class="entity-actions">' +
+        '<button class="icon-btn" data-action="analyze-sentiment" data-id="' + entry.id + '" aria-label="Analyze sentiment" title="Analyze sentiment (AI)">✨</button>' +
+        '<button class="icon-btn" data-action="auto-annotate" data-id="' + entry.id + '" aria-label="Auto-fill title, areas, and links" title="Auto-fill title, areas, and goal/people links (AI)">🏷</button>' +
+        '<button class="icon-btn edit" data-action="edit-journal" data-id="' + entry.id + '" aria-label="Edit entry">✎</button>' +
+        '<button class="icon-btn" data-action="del-journal" data-id="' + entry.id + '" aria-label="Delete entry">&times;</button>' +
+      '</div></div>' +
+      renderNoteTitleHtml(entry) +
+      '<div class="journal-entry-text journal-entry-md">' + renderNoteBodyHtml(entry.text) + '</div>' +
+      renderSentimentChipsHtml(entry) +
+      renderJournalWaveformHtml(entry) +
+    '</div>';
+  }
+  // Sentiment valence 0..1 (0 = most negative, 1 = most positive) straight from the same
+  // SENTIMENT_HUES scale the chips are colored by (angry:0 ... joyful:145) — several tags average.
+  // Untagged notes return null and sit at the canvas's neutral center line.
+  function noteValence(entry){
+    var tags = (entry.sentiment || []).filter(function(t){ return SENTIMENT_HUES[t] != null; });
+    if(!tags.length) return null;
+    var sum = tags.reduce(function(s, t){ return s + SENTIMENT_HUES[t]; }, 0);
+    return (sum / tags.length) / 145;
+  }
+  // Which time band a note falls into at the current scale — day: its own date; week: the Monday
+  // of its week; month: YYYY-MM. Keys sort lexicographically in date order in all three modes.
+  function notesBandKey(dateStr, scale){
+    if(scale === "month") return dateStr.slice(0, 7);
+    if(scale === "week"){
+      var d = new Date(dateStr + "T00:00:00");
+      return addDaysToDateStr(dateStr, -((d.getDay() + 6) % 7));  // back to Monday
+    }
+    return dateStr;
+  }
+  function notesBandLabel(key, scale){
+    if(scale === "month") return new Date(key + "-01T00:00:00").toLocaleDateString(undefined, { month:"long", year:"numeric" });
+    if(scale === "week"){
+      var start = new Date(key + "T00:00:00");
+      var end = new Date(addDaysToDateStr(key, 6) + "T00:00:00");
+      return start.toLocaleDateString(undefined, { month:"short", day:"numeric" }) + " – " + end.toLocaleDateString(undefined, { month:"short", day:"numeric" });
+    }
+    return new Date(key + "T00:00:00").toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" });
+  }
+  // Collision-stacks one band's cards using their REAL rendered sizes: each card wants to sit at
+  // its sentiment x; any card that would horizontally overlap an already-placed one drops below it
+  // instead (skyline packing), which is what makes same-time same-mood notes read as a vertical
+  // cluster. Runs right after innerHTML lands (offsetWidth/Height force a sync layout — fine here,
+  // this only runs on the Notes page render). In jsdom (no layout) sizes come back 0 and every
+  // card just stays at top:0 — tests assert structure/order, not pixel geometry.
+  function packNotesBandField(field){
+    var fieldW = field.clientWidth || 900;
+    var cards = Array.prototype.slice.call(field.querySelectorAll(".journal-entry"));
+    var GAP = 8;
+    var items = cards.map(function(el){
+      var w = el.offsetWidth || 250;
+      var cx = (parseFloat(el.dataset.x) || 50) / 100 * fieldW;
+      var left = Math.max(0, Math.min(fieldW - w, cx - w / 2));
+      return { el: el, left: left, w: w, h: el.offsetHeight || 60 };
+    });
+    items.sort(function(a, b){ return a.left - b.left; });
+    var placed = [], maxBottom = 0;
+    items.forEach(function(it){
+      var y = 0;
+      placed.forEach(function(p){
+        if(it.left < p.left + p.w + GAP && p.left < it.left + it.w + GAP) y = Math.max(y, p.top + p.h + GAP);
+      });
+      it.el.style.left = it.left + "px";
+      it.el.style.top = y + "px";
+      placed.push({ left: it.left, w: it.w, top: y, h: it.h });
+      maxBottom = Math.max(maxBottom, y + it.h);
+    });
+    field.style.height = (maxBottom ? maxBottom + 4 : 56) + "px";
+  }
+  function renderNotesCanvas(){
+    var canvas = document.getElementById("journalEntries");
+    var scale = views.notesScale;
+    // newest first; within a day, later times first (undated-time notes last)
+    var sorted = state.journal.slice().sort(function(a, b){
+      if(a.date !== b.date) return b.date.localeCompare(a.date);
+      return (b.timeOfDay || "").localeCompare(a.timeOfDay || "");
+    });
+    var bandOrder = [], bands = {};
+    sorted.forEach(function(entry){
+      var key = notesBandKey(entry.date, scale);
+      if(!bands[key]){ bands[key] = []; bandOrder.push(key); }
+      bands[key].push(entry);
+    });
+    canvas.innerHTML = bandOrder.map(function(key){
+      var cards = bands[key].map(function(entry){
+        var v = noteValence(entry);
+        // positive on the LEFT: valence 1 -> 0%, valence 0 -> 100%, untagged -> center
+        var xPct = v == null ? 50 : (1 - v) * 100;
+        return noteCanvasCardHtml(entry, xPct);
+      }).join("");
+      return '<div class="notes-band">' +
+        '<div class="notes-band-label">' + notesBandLabel(key, scale) + '<span class="notes-band-count">' + bands[key].length + ' note' + (bands[key].length === 1 ? '' : 's') + '</span></div>' +
+        '<div class="notes-band-field">' + cards + '</div>' +
       '</div>';
     }).join("");
+    canvas.querySelectorAll(".notes-band-field").forEach(packNotesBandField);
   }
-  // One column per auto-classified length type (see noteLengthType) instead of one shared feed —
-  // each column is independently sorted newest-first.
-  var JOURNAL_COLUMN_IDS = { log:"journalColLog", note:"journalColNote", document:"journalColDocument" };
-  var JOURNAL_COLUMN_COUNT_IDS = { log:"journalColCountLog", note:"journalColCountNote", document:"journalColCountDocument" };
   function renderJournal(){
     var view = views.journal;
     document.getElementById("journalNotesPanel").style.display = view === "recordings" ? "none" : "";
     document.getElementById("journalRecordingsPanel").style.display = view === "recordings" ? "" : "none";
     if(view === "recordings"){ renderRecordingsList(); return; }
-    var sorted = state.journal.slice().sort(function(a,b){ return b.date.localeCompare(a.date); });
-    var columns = { log:[], note:[], document:[] };
-    sorted.forEach(function(entry){ columns[noteLengthType(entry)].push(entry); });
-    ["log","note","document"].forEach(function(type){
-      document.getElementById(JOURNAL_COLUMN_IDS[type]).innerHTML = renderNoteCardsHtml(columns[type]);
-      document.getElementById(JOURNAL_COLUMN_COUNT_IDS[type]).textContent = columns[type].length;
-    });
-    document.getElementById("journalEmptyState").style.display = sorted.length ? "none" : "";
+    var scaleToggle = document.getElementById("journalScaleToggle");
+    scaleToggle.querySelectorAll(".sub-view-tab").forEach(function(b){ b.classList.toggle("active", b.dataset.sub === views.notesScale); });
+    renderNotesCanvas();
+    document.getElementById("journalEmptyState").style.display = state.journal.length ? "none" : "";
   }
+  views.notesScale = safeGet(window.localStorage, "pp_notes_scale") || "day";
+  wireSubViewToggle("journalScaleToggle", "notesScale", function(){
+    safeSet(window.localStorage, "pp_notes_scale", views.notesScale);
+    renderJournal();
+  });
   // Every recording, independent of whether a journal entry still references it — includes ones
   // recorded but never attached to a saved note. Sorted newest first, same as the notes list.
   function renderRecordingsList(){
@@ -13120,7 +13240,12 @@
     var editBtn = e.target.closest('[data-action="edit-journal"]');
     if(editBtn){ editJournalEntry(editBtn.dataset.id); return; }
     var del = e.target.closest('[data-action="del-journal"]');
-    if(del) await deleteJournalEntry(del.dataset.id);
+    if(del){ await deleteJournalEntry(del.dataset.id); return; }
+    // Cards on the canvas only PREVIEW the first 10 lines — clicking anywhere else on the card
+    // (every interactive child above already returned) opens the note in the editor to read/edit
+    // the whole thing.
+    var card = e.target.closest('.journal-entry[data-kind="journal"]');
+    if(card) editJournalEntry(card.dataset.id);
   });
   // SoundCloud-style amplitude bar — bar heights come straight from the recording's stored peak
   // array (computeWaveformPeaks, captured once when the recording finished), so this is just markup,
@@ -13275,6 +13400,50 @@
     openJournalEditModal(n);
   }
   document.getElementById("addTodayNoteBtn").addEventListener("click", function(){ openJournalEditModal(null); });
+  // ---- Markdown formatting toolbar (note editor modal) ----
+  // Two primitives cover every button: wrap the selection in delimiters (bold/italic/code), or
+  // toggle a prefix on every selected line (headings/lists/checkboxes/quotes — prefixing is
+  // line-based in Markdown). Both work directly on the textarea's value + selection range, so the
+  // note stays plain .md and undo/redo/autocomplete behave like normal typing.
+  function mdApplyFormat(ta, kind){
+    var s = ta.selectionStart, e = ta.selectionEnd, v = ta.value;
+    function wrapSel(before, after){
+      var sel = v.slice(s, e) || "text";
+      ta.value = v.slice(0, s) + before + sel + after + v.slice(e);
+      ta.selectionStart = s + before.length;
+      ta.selectionEnd = s + before.length + sel.length;
+    }
+    function togglePrefix(prefix){
+      var lineStart = v.lastIndexOf("\n", s - 1) + 1;
+      var seg = v.slice(lineStart, e);
+      var lines = seg.split("\n");
+      var allHave = lines.every(function(l){ return l.indexOf(prefix) === 0; });
+      var out = lines.map(function(l){ return allHave ? l.slice(prefix.length) : prefix + l; }).join("\n");
+      ta.value = v.slice(0, lineStart) + out + v.slice(e);
+      ta.selectionStart = lineStart;
+      ta.selectionEnd = lineStart + out.length;
+    }
+    if(kind === "bold") wrapSel("**", "**");
+    else if(kind === "italic") wrapSel("*", "*");
+    else if(kind === "code") wrapSel("`", "`");
+    else if(kind === "h1") togglePrefix("# ");
+    else if(kind === "h2") togglePrefix("## ");
+    else if(kind === "list") togglePrefix("- ");
+    else if(kind === "check") togglePrefix("- [ ] ");
+    else if(kind === "quote") togglePrefix("> ");
+    ta.focus();
+  }
+  (function wireJournalMdToolbar(){
+    var toolbar = document.getElementById("journalEditMdToolbar");
+    var ta = document.getElementById("journalEditTextInput");
+    // preventDefault on pointerdown keeps the textarea focused and its selection intact while the
+    // button is clicked — without it, the click would collapse the selection before we read it.
+    toolbar.addEventListener("pointerdown", function(e){ if(e.target.closest("[data-md]")) e.preventDefault(); });
+    toolbar.addEventListener("click", function(e){
+      var btn = e.target.closest("[data-md]");
+      if(btn) mdApplyFormat(ta, btn.dataset.md);
+    });
+  })();
   document.getElementById("cancelJournalModalBtn").addEventListener("click", function(){ closeModal("journalModalOverlay"); });
   document.getElementById("saveJournalEditBtn").addEventListener("click", async function(){
     var text = document.getElementById("journalEditTextInput").value.trim();
