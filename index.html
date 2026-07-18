@@ -1502,12 +1502,16 @@
   /* Today's-locations map widget — sits below the Google Photos slideshow on the same right edge
      (see .home-photos above) so the two don't overlap by default; draggable by its own bar only
      (not the whole card), same convention as the todo/notes widgets, since the map body needs its
-     own pointer events for Leaflet's pan/zoom. Not resizable — a fixed size keeps this simple like
-     the clock/photos widgets, rather than every floating widget needing its own resize grip. */
-  .home-map-widget{ position:absolute; top:178px; right:14px; z-index:5; width:230px; height:190px; border-radius:10px; border:1px solid var(--border); background:rgba(var(--bg-raised-rgb), 0.55); backdrop-filter:blur(8px); display:flex; flex-direction:column; overflow:hidden; }
+     own pointer events for Leaflet's pan/zoom. Resizable by its own corner grip (see
+     wireHomeMapResize) — size persisted separately from position, same split the todo/notes
+     widgets use. */
+  .home-map-widget{ position:absolute; top:178px; right:14px; z-index:5; width:230px; height:190px; min-width:180px; min-height:140px; border-radius:10px; border:1px solid var(--border); background:rgba(var(--bg-raised-rgb), 0.55); backdrop-filter:blur(8px); display:flex; flex-direction:column; overflow:hidden; }
   .home-map-bar{ flex:0 0 auto; padding:5px 9px; cursor:grab; touch-action:none; user-select:none; font-family:var(--mono); font-size:9.5px; letter-spacing:0.05em; text-transform:uppercase; color:var(--text-dim); border-bottom:1px solid var(--border); }
   .home-map-widget.dragging .home-map-bar{ cursor:grabbing; }
   .home-map-canvas{ flex:1; min-height:0; }
+  .home-map-resize{ position:absolute; right:0; bottom:0; width:16px; height:16px; cursor:nwse-resize; touch-action:none; }
+  .home-map-resize::before{ content:""; position:absolute; right:4px; bottom:4px; width:7px; height:7px; border-right:2px solid var(--border-bright); border-bottom:2px solid var(--border-bright); opacity:0.7; }
+  .home-map-resize:hover::before{ opacity:1; border-color:var(--accent-dim); }
   /* Sticky notes — individual floating cards on the home cockpit, each colored by its (possibly
      multiple) areas — they're part of the Notes system: every sticky can be filed into Notes via ✓,
      inheriting its areas. The draft (text, areas, x/y) lives in localStorage until saved or
@@ -1797,6 +1801,7 @@
         <div class="home-map-widget" id="homeMapWidget">
           <div class="home-map-bar" id="homeMapBar" title="Drag to move">today's action locations</div>
           <div class="home-map-canvas" id="homeMapCanvas"></div>
+          <div class="home-map-resize" id="homeMapResize" title="Drag to resize"></div>
         </div>
         <!-- Mobile only (see @media max-width:820px): on a phone the graph fills the whole screen as
              a view-only background and the timeline becomes an on-demand drawer instead of a fixed
@@ -5382,7 +5387,8 @@
 
   // Today's-locations map widget — draggable by its bar only (not the whole card), same convention
   // as the todo/notes widgets below, since the map body itself needs its own pointer events for
-  // Leaflet's own pan/zoom. Not resizable, position persisted separately (pp_home_map_pos).
+  // Leaflet's own pan/zoom. Position persisted separately (pp_home_map_pos) from size (see
+  // wireHomeMapResize, pp_home_map_size).
   (function wireHomeMapDrag(){
     var el = document.getElementById("homeMapWidget");
     var bar = document.getElementById("homeMapBar");
@@ -5390,6 +5396,9 @@
     var pos = null;
     try{ pos = JSON.parse(safeGet(window.localStorage, "pp_home_map_pos") || "null"); }catch(e){}
     if(pos && typeof pos.left === "number"){ el.style.left = pos.left + "px"; el.style.top = pos.top + "px"; el.style.right = "auto"; el.style.bottom = "auto"; }
+    var size = null;
+    try{ size = JSON.parse(safeGet(window.localStorage, "pp_home_map_size") || "null"); }catch(e){}
+    if(size && size.w){ el.style.width = size.w + "px"; el.style.height = size.h + "px"; }
     var dragging = false, offX = 0, offY = 0, moved = false;
     bar.addEventListener("pointerdown", function(e){
       dragging = true; moved = false;
@@ -5415,6 +5424,41 @@
     }
     bar.addEventListener("pointerup", end);
     bar.addEventListener("pointercancel", end);
+  })();
+  // Resizable by its own corner grip (same math as wireHomeTodoResize) — Leaflet caches its own
+  // container size internally, so a CSS-only width/height change leaves the map thinking it's still
+  // the old size (tiles clipped/misaligned) until invalidateSize() tells it to re-measure, which is
+  // only worth doing once the drag actually finishes rather than on every pointermove.
+  (function wireHomeMapResize(){
+    var el = document.getElementById("homeMapWidget");
+    var handle = document.getElementById("homeMapResize");
+    var wrap = document.querySelector(".home-graph-wrap");
+    var MIN_W = 180, MIN_H = 140;
+    var active = false, startX = 0, startY = 0, startW = 0, startH = 0, maxW = 9999, maxH = 9999;
+    handle.addEventListener("pointerdown", function(e){
+      active = true;
+      startX = e.clientX; startY = e.clientY;
+      startW = el.offsetWidth; startH = el.offsetHeight;
+      var r = el.getBoundingClientRect(), wr = wrap.getBoundingClientRect();
+      maxW = wr.right - r.left - 6; maxH = wr.bottom - r.top - 6;  // stay inside the graph area
+      handle.setPointerCapture(e.pointerId);
+      e.stopPropagation();  // don't also let this bubble into the bar's drag handler
+      e.preventDefault();
+    });
+    handle.addEventListener("pointermove", function(e){
+      if(!active) return;
+      var w = Math.max(MIN_W, Math.min(maxW, startW + (e.clientX - startX)));
+      var h = Math.max(MIN_H, Math.min(maxH, startH + (e.clientY - startY)));
+      el.style.width = w + "px"; el.style.height = h + "px";
+    });
+    function end(){
+      if(!active) return;
+      active = false;
+      safeSet(window.localStorage, "pp_home_map_size", JSON.stringify({ w: el.offsetWidth, h: el.offsetHeight }));
+      if(homeMap) homeMap.invalidateSize();
+    }
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
   })();
 
   // Today's to-dos widget: draggable by its head (same pattern as the clock above — position
