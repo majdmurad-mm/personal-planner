@@ -9067,6 +9067,18 @@
     }
     return html;
   }
+  // A year-wide ruler is mostly off-screen, so the FIRST paint of each chart scrolls itself so
+  // today's column sits just right of the label rail. Only the first — re-renders (bar drags,
+  // dependency edits, zoom) keep whatever scroll position you've panned to, tracked per wrap
+  // via data-gantt-autoscrolled (innerHTML swaps replace the chart but never the wrap itself,
+  // so both the flag and the browser's own scrollLeft survive every re-render).
+  function ganttScrollTodayIntoView(wrapEl, start, today){
+    if(wrapEl.dataset.ganttAutoscrolled === "1") return;
+    wrapEl.dataset.ganttAutoscrolled = "1";
+    var todayIdx = ganttDayIndex(start, today);
+    if(todayIdx < 0) return;
+    wrapEl.scrollLeft = Math.max(0, todayIdx * GANTT_COL_W - GANTT_COL_W * 2);
+  }
   // Renders a full chart (header + rows + arrow layer) into wrapEl from a {rows, actions, selfId}
   // data set — shared by renderEntityGantt (project/action page) and renderGoalGanttChart (goal
   // page), the only two call sites.
@@ -9077,7 +9089,10 @@
       return;
     }
     var today = todayStr();
-    // Date range: every scheduled action + every row's due date + today, padded, min 3 weeks wide.
+    // Date range: starts 3 days before the earliest scheduled action / due date / today, and the
+    // ruler always spans at least a FULL YEAR from there (stretching further only if something is
+    // actually scheduled beyond it) — the chart is a year planner you scroll through, not a strip
+    // cropped to whatever happens to be scheduled. scrollTodayIntoView below keeps that usable.
     var dates = [today];
     data.actions.forEach(function(a){ if(a.date) dates.push(a.date); });
     data.rows.forEach(function(r){ if(r.kind === "project" && r.obj.due) dates.push(r.obj.due); });
@@ -9085,7 +9100,7 @@
     var start = addDaysToDateStr(dates[0], -3);
     var end = addDaysToDateStr(dates[dates.length - 1], 7);
     var days = ganttDayIndex(start, end) + 1;
-    if(days < 21){ end = addDaysToDateStr(start, 20); days = 21; }
+    if(days < 365){ end = addDaysToDateStr(start, 364); days = 365; }
 
     var head = ganttHeadHtml(start, days, today);
 
@@ -9117,6 +9132,7 @@
     wrapEl.innerHTML = '<div class="gantt-inner" style="min-width:' + (GANTT_LABEL_W + days * GANTT_COL_W) + 'px; --gantt-col:' + GANTT_COL_W + 'px;" data-gantt-start="' + start + '">' +
       ganttBgLayersHtml(start, days, today) + head + rows + '<svg class="gantt-arrow-svg"></svg></div>';
     renderGanttArrowsIn(wrapEl);
+    ganttScrollTodayIntoView(wrapEl, start, today);
   }
   // Dependency arrows, drawn AFTER the bars exist since the endpoints are the bars' real on-screen
   // rects (an S-curve from the prerequisite's right edge to the dependent's left edge). Reads
@@ -9189,7 +9205,7 @@
   // is already handled elsewhere (the habit-instance popover on Today/Timeline), not here. Shares
   // ganttHeadHtml for the same day-ruler and GANTT_COL_W for the same column width/zoom as the
   // Gantt view, so switching between the two tabs doesn't shift the time scale underneath you.
-  var GANTT_HABITS_DAYS = 28, GANTT_HABITS_LEAD = 3;
+  var GANTT_HABITS_DAYS = 365, GANTT_HABITS_LEAD = 3;
   function renderFutureHabitsGantt(){
     var wrap = document.getElementById("futureHabitsGanttWrap");
     if(!wrap) return;
@@ -9214,6 +9230,7 @@
       rows += '<div class="gantt-row"><div class="gantt-row-label">' + escapeHtml(h.title) + '</div><div class="gantt-track gantt-habit-track">' + ticks + '</div></div>';
     });
     wrap.innerHTML = '<div class="gantt-inner" style="min-width:' + (GANTT_LABEL_W + days * GANTT_COL_W) + 'px; --gantt-col:' + GANTT_COL_W + 'px;">' + ganttBgLayersHtml(start, days, today) + head + rows + '</div>';
+    ganttScrollTodayIntoView(wrap, start, today);
   }
   // ---- Gantt interactions: bar drag-to-reschedule + handle drag-to-link — one wiring function
   // shared by every chart on the page (currently the entity page's and the goal page's), written
