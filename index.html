@@ -12399,6 +12399,13 @@
     // Auto-linked (same-main-group, no real edge yet) lines are deliberately fainter — mirrors the 2D
     // graph's .ppl-conn-line implicit-edge treatment (thin/low-opacity, see renderPeopleGraphConnections).
     var implicitEdgeMat = new THREE.LineBasicMaterial({ color: new THREE.Color(cssVarColor("--text-faint")), transparent: true, opacity: 0.14 });
+    // Faint ambient ray from the sun to EVERY person, regardless of any real/implicit edge — the 3D
+    // counterpart of the 2D graph's #pplSunLinesLayer (renderPeopleGraphSunLines). One shared low-
+    // opacity material rather than the 2D version's per-line contact-score-scaled opacity (Three.js
+    // LineBasicMaterial has no per-segment opacity without a custom vertex-color shader) — the
+    // per-node PULL strength (see ppl3TickPhysics/PPL3_CONTACT_PULL_K) already reads contact score,
+    // this is just the visual "everyone is connected to you" that pull represents.
+    var sunLineMat = new THREE.LineBasicMaterial({ color: new THREE.Color(cssVarColor("--accent")), transparent: true, opacity: 0.16 });
     function groupLabelSprite(text, hexColor){
       var cv = document.createElement("canvas");
       cv.width = 256; cv.height = 64;
@@ -12430,10 +12437,20 @@
       scene.add(lines);
       return { edges: edgeList, lines: lines, pos: pos };
     }
+    // Same shape as buildLineSegments but keyed by person id rather than {fromId,toId} edge objects —
+    // one end is always the fixed sun at the origin, so there's nothing to look up for it.
+    function buildSunLines(personIds){
+      var pos = new Float32Array(personIds.length * 6);
+      var geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      var lines = new THREE.LineSegments(geo, sunLineMat);
+      scene.add(lines);
+      return { ids: personIds, lines: lines, pos: pos };
+    }
     function disposeGraph(){
       if(!graph) return;
       Object.keys(graph.meshes).forEach(function(id){ scene.remove(graph.meshes[id]); });
-      [graph.explicitLines, graph.implicitLines].forEach(function(ls){ scene.remove(ls.lines); ls.lines.geometry.dispose(); });
+      [graph.explicitLines, graph.implicitLines, graph.sunLines].forEach(function(ls){ scene.remove(ls.lines); ls.lines.geometry.dispose(); });
       graph.groupSprites.forEach(function(gs){ scene.remove(gs.sprite); if(gs.sprite.material.map) gs.sprite.material.map.dispose(); gs.sprite.material.dispose(); });
       graph = null;
     }
@@ -12461,7 +12478,10 @@
         scene.add(sp);
         return { group: g, sprite: sp };
       });
-      graph = { meshes: meshes, explicitLines: buildLineSegments(explicitEdges, edgeMat), implicitLines: buildLineSegments(implicitEdges, implicitEdgeMat), groupSprites: groupSprites };
+      // Every person gets a sun line, connecting all nodes to the central node regardless of any
+      // real/implicit edge between people themselves — see buildSunLines/PPL3_CONTACT_PULL_K.
+      var sunLines = buildSunLines(ppl3SimNodes.map(function(n){ return n.id; }));
+      graph = { meshes: meshes, explicitLines: buildLineSegments(explicitEdges, edgeMat), implicitLines: buildLineSegments(implicitEdges, implicitEdgeMat), sunLines: sunLines, groupSprites: groupSprites };
     }
     rebuildGraph();
 
@@ -12475,6 +12495,17 @@
       }
       ls.lines.geometry.attributes.position.needsUpdate = true;
     }
+    // One end is always the fixed sun at the world origin — no lookup needed there, just the current
+    // sim position for the other end.
+    function writeSunLineSegment(ls){
+      for(var i=0;i<ls.ids.length;i++){
+        var n = ppl3FindSimNode(ls.ids[i]);
+        if(!n) continue;
+        ls.pos[i*6] = 0; ls.pos[i*6+1] = 0; ls.pos[i*6+2] = 0;
+        ls.pos[i*6+3] = n.x; ls.pos[i*6+4] = n.y; ls.pos[i*6+5] = n.z;
+      }
+      ls.lines.geometry.attributes.position.needsUpdate = true;
+    }
     function syncGraphToScene(){
       if(!graph) return;
       ppl3SimNodes.forEach(function(n){
@@ -12483,6 +12514,7 @@
       });
       writeLineSegment(graph.explicitLines);
       writeLineSegment(graph.implicitLines);
+      writeSunLineSegment(graph.sunLines);
       graph.groupSprites.forEach(function(gs){
         var sumX = 0, sumY = 0, sumZ = 0, count = 0;
         ppl3SimNodes.forEach(function(n){
