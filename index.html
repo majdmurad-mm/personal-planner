@@ -564,6 +564,32 @@
      to be a sized, positioned box for the map to fill — reuses .wb-canvas-wrap for the border/radius/
      full-viewport-flex-column sizing every other full-page canvas view already has. */
   .loc-map{ position:absolute; inset:0; background:#0b0b0e; }
+  /* Left sidebar next to the map: a flat, individually-clickable list of every item currently shown
+     across the ON layers (people/actions/habits/POIs — not the raw live-gps/history trail, which
+     isn't a set of discrete named items) — see locLegendItems/renderLocLegend. Clicking an entry pans
+     the map to it and opens the same editor its own marker click would. */
+  .loc-page-body{ flex:1; min-height:0; display:flex; gap:12px; }
+  .loc-map-wrap{ flex:1; min-width:0; }
+  .loc-legend-panel{ width:220px; flex-shrink:0; display:flex; flex-direction:column; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg-raised); overflow:hidden; }
+  .loc-legend-head{ flex-shrink:0; font-family:var(--mono); font-size:10px; letter-spacing:0.06em; text-transform:uppercase; color:var(--text-dim); padding:10px 12px; border-bottom:1px solid var(--border); }
+  .loc-legend-list{ flex:1; min-height:0; overflow-y:auto; padding:4px; }
+  .loc-legend-empty{ padding:10px 8px; font-size:11.5px; color:var(--text-faint); }
+  .loc-legend-item{ display:flex; align-items:center; gap:8px; padding:7px 8px; border-radius:6px; cursor:pointer; }
+  .loc-legend-item:hover{ background:var(--bg-hover, rgba(255,255,255,0.06)); }
+  .loc-legend-dot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .loc-legend-text{ min-width:0; display:flex; flex-direction:column; }
+  .loc-legend-label{ font-size:12px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .loc-legend-sub{ font-family:var(--mono); font-size:10px; color:var(--text-faint); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  @media (max-width: 860px){
+    .loc-page-body{ flex-direction:column; }
+    .loc-legend-panel{ width:auto; max-height:140px; }
+  }
+  /* Link-an-existing-point picker, embedded in every located marker's popup (POI/action/habit/person
+     city marker — see locLinkPickerHtml/wireLocLinkPicker) — lets that exact lat/lng be reused as
+     another person's home or another action/habit's location instead of re-geocoding an address. */
+  .loc-link-picker{ display:flex; gap:6px; margin-top:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.12); }
+  .loc-link-picker select{ flex:1; min-width:0; font-size:11px; }
+  .loc-link-picker .loc-link-btn{ padding:4px 8px; font-size:10.5px; flex-shrink:0; }
   .loc-geocode-row{ display:flex; gap:8px; }
   .loc-geocode-row input{ flex:1; }
   .loc-geocode-status{ font-family:var(--mono); font-size:10.5px; color:var(--text-dim); margin-top:4px; min-height:14px; }
@@ -1942,7 +1968,7 @@
         <div class="home-node-tip" id="homeNodeTip" hidden></div>
         <div class="home-todo-matrix" id="homeTodoMatrix">
           <div class="home-todo-head" id="homeTodoHead" title="Drag to move">
-            <span class="home-todo-title">today</span>
+            <span class="home-todo-title" id="homeTodoTitle">today</span>
             <div class="home-todo-tabs">
               <button class="home-todo-tab" data-mode="worklife" type="button">personal/work</button>
               <button class="home-todo-tab sel" data-mode="priority" type="button">priority</button>
@@ -3319,24 +3345,30 @@
           <h1>location</h1>
         </div>
       </div>
-      <div class="wb-canvas-wrap loc-map-wrap" id="locMapWrap">
-        <div class="wb-toolbar wb-toolbar-float" id="locToolbarFloat">
-          <button class="btn on" id="locLayerPeopleBtn" type="button" title="Show people's home locations">☺ people</button>
-          <div class="loc-people-mode-group" id="locPeopleModeGroup">
-            <button class="btn loc-mode-btn on" data-mode="count" type="button" title="Size markers by how many people share a city">by count</button>
-            <button class="btn loc-mode-btn" data-mode="relationship" type="button" title="Color and split markers by relationship type">by relationship</button>
-          </div>
-          <button class="btn" id="locLayerActionsBtn" type="button" title="Show actions and habits that have a location set">▪ actions/habits</button>
-          <button class="btn" id="locLayerPoiBtn" type="button" title="Show points of interest you've added">★ points of interest</button>
-          <button class="btn" id="locAddPoiBtn" type="button" title="Click the map to drop a new point of interest">+ add poi</button>
-          <button class="btn" id="locLayerLiveBtn" type="button" title="Track and show your live GPS position while this page is open">◉ live gps</button>
-          <button class="btn" id="locLayerHistoryBtn" type="button" title="Show recorded/imported location history">↔ history</button>
-          <button class="btn" id="locImportBtn" type="button" title="Import a Google Maps Timeline export (JSON)">⇩ import timeline</button>
-          <input type="file" id="locImportFile" accept="application/json" hidden>
-          <span class="wb-save-status" id="locStatus"></span>
+      <div class="loc-page-body">
+        <div class="loc-legend-panel" id="locLegendPanel">
+          <div class="loc-legend-head">on the map</div>
+          <div class="loc-legend-list" id="locLegendList"></div>
         </div>
-        <p class="panel-hint wb-hint-float wb-pan-hint">Pan: drag. Zoom: scroll or pinch. Click a pin to open it.</p>
-        <div class="loc-map" id="locMap"></div>
+        <div class="wb-canvas-wrap loc-map-wrap" id="locMapWrap">
+          <div class="wb-toolbar wb-toolbar-float" id="locToolbarFloat">
+            <button class="btn" id="locLayerActionsBtn" type="button" title="Show actions and habits that have a location set">▪ actions/habits</button>
+            <button class="btn on" id="locLayerPeopleBtn" type="button" title="Show people's home locations">☺ people</button>
+            <div class="loc-people-mode-group" id="locPeopleModeGroup">
+              <button class="btn loc-mode-btn on" data-mode="count" type="button" title="Size markers by how many people share a city">by count</button>
+              <button class="btn loc-mode-btn" data-mode="relationship" type="button" title="Color and split markers by relationship type">by relationship</button>
+            </div>
+            <button class="btn" id="locLayerPoiBtn" type="button" title="Show points of interest you've added">★ points of interest</button>
+            <button class="btn" id="locAddPoiBtn" type="button" title="Click the map to drop a new point of interest">+ add poi</button>
+            <button class="btn" id="locLayerLiveBtn" type="button" title="Track and show your live GPS position while this page is open">◉ live gps</button>
+            <button class="btn" id="locLayerHistoryBtn" type="button" title="Show recorded/imported location history">↔ history</button>
+            <button class="btn" id="locImportBtn" type="button" title="Import a Google Maps Timeline export (JSON)">⇩ import timeline</button>
+            <input type="file" id="locImportFile" accept="application/json" hidden>
+            <span class="wb-save-status" id="locStatus"></span>
+          </div>
+          <p class="panel-hint wb-hint-float wb-pan-hint">Pan: drag. Zoom: scroll or pinch. Click a pin to open it.</p>
+          <div class="loc-map" id="locMap"></div>
+        </div>
       </div>
     </section>
 
@@ -6032,6 +6064,7 @@
     var armed = false, armTimer = null, moved = false, movedBeforeArm = false, downX = 0, downY = 0;
     function clearArmTimer(){ if(armTimer){ clearTimeout(armTimer); armTimer = null; } }
     dock.addEventListener("pointerdown", function(e){
+      if(e.button > 0) return; // right/middle click — leave it to the browser's contextmenu event (see the global [data-kind][data-id] handler) instead of arming a drag
       if(e.target.closest("[data-resize-handle]")) return; // handled by wireHomeTimelineDockResize instead
       var block = e.target.closest(".home-tl-block");
       if(!block) return;
@@ -6134,6 +6167,7 @@
     var resizeEl = null, resizeId = null, resizeKind = null, resizeEdge = null;
     var fixedEdgePx = 0, moved = false;
     dock.addEventListener("pointerdown", function(e){
+      if(e.button > 0) return; // right/middle click shouldn't start a resize either
       var handle = e.target.closest("[data-resize-handle]");
       if(!handle) return;
       var block = handle.closest(".home-tl-block");
@@ -6304,35 +6338,38 @@
     priority: ["P0", "P1", "P2", "P3"],
     worklife: ["personal · actions", "career · actions", "personal · habits", "career · habits"]
   };
+  // Follows whichever day is selected on the home calendar strip (homeTlSelectedDate, shared with the
+  // timeline dock below) rather than always "today" — so picking a different day on the strip shows
+  // that day's to-dos too, not just that day's timeline.
   function homeTodayActionsList(){
-    var today = todayStr();
-    return state.actions.filter(function(a){ return a.date === today && homeAreaVisible(actionCategory(a)); });
+    var day = homeTlSelectedDate;
+    return state.actions.filter(function(a){ return a.date === day && homeAreaVisible(actionCategory(a)); });
   }
   function homeTodayHabitList(){
-    var today = todayStr();
-    return state.habits.filter(function(h){ return habitOccursOnDate(h, today) && homeAreaVisible(habitCategory(h)); });
+    var day = homeTlSelectedDate;
+    return state.habits.filter(function(h){ return habitOccursOnDate(h, day) && homeAreaVisible(habitCategory(h)); });
   }
   function homeTodoPriorityQuadrants(){
-    var today = todayStr();
+    var day = homeTlSelectedDate;
     var q = { P0:[], P1:[], P2:[], P3:[] };
     homeTodayActionsList().forEach(function(a){
-      (q[a.priority] || q.P2).push({ kind:"action", id:a.id, date:today, title:a.title, done:!!a.done, area:actionCategory(a), priority:a.priority });
+      (q[a.priority] || q.P2).push({ kind:"action", id:a.id, date:day, title:a.title, done:!!a.done, area:actionCategory(a), priority:a.priority });
     });
     homeTodayHabitList().forEach(function(h){
-      (q[h.priority] || q.P2).push({ kind:"habit-instance", id:h.id, date:today, title:h.title, done:habitDoneForDate(h, today), area:habitCategory(h), priority:h.priority });
+      (q[h.priority] || q.P2).push({ kind:"habit-instance", id:h.id, date:day, title:h.title, done:habitDoneForDate(h, day), area:habitCategory(h), priority:h.priority });
     });
     return [q.P0, q.P1, q.P2, q.P3];
   }
   function homeTodoWorklifeQuadrants(){
-    var today = todayStr();
+    var day = homeTlSelectedDate;
     var personalActions = [], careerActions = [], personalHabits = [], careerHabits = [];
     homeTodayActionsList().forEach(function(a){
-      var item = { kind:"action", id:a.id, date:today, title:a.title, done:!!a.done, area:actionCategory(a), priority:a.priority, timeOfDay:a.timeOfDay };
+      var item = { kind:"action", id:a.id, date:day, title:a.title, done:!!a.done, area:actionCategory(a), priority:a.priority, timeOfDay:a.timeOfDay };
       (item.area === "Career" ? careerActions : personalActions).push(item);
     });
     homeTodayHabitList().forEach(function(h){
-      var fields = habitInstanceFields(h, today);
-      var item = { kind:"habit-instance", id:h.id, date:today, title:h.title, done:habitDoneForDate(h, today), area:habitCategory(h), priority:h.priority, timeOfDay:fields.timeOfDay };
+      var fields = habitInstanceFields(h, day);
+      var item = { kind:"habit-instance", id:h.id, date:day, title:h.title, done:habitDoneForDate(h, day), area:habitCategory(h), priority:h.priority, timeOfDay:fields.timeOfDay };
       (item.area === "Career" ? careerHabits : personalHabits).push(item);
     });
     // Earlier-in-the-day first, in each quadrant independently — "HH:MM" strings sort correctly as
@@ -6372,11 +6409,16 @@
   function renderHomeTodoMatrix(){
     var grid = document.getElementById("homeTodoGrid");
     if(!grid) return;
+    var titleEl = document.getElementById("homeTodoTitle");
+    if(titleEl) titleEl.textContent = homeTlDayLabel(homeTlSelectedDate, todayStr());
     var quads = homeTodoMode === "worklife" ? homeTodoWorklifeQuadrants() : homeTodoPriorityQuadrants();
     var labels = HOME_TODO_LABELS[homeTodoMode];
     // area + priority are included (not just id/done) since they now drive text color, and array
     // order matters too in worklife mode (time-sorted) — both are already captured by this join.
-    var sig = homeTodoMode + "|" + quads.map(function(list){
+    // homeTlSelectedDate itself is included too — picking a different day on the calendar strip
+    // (see setHomeTlSelectedDate) must force a re-render even if that day happens to have the exact
+    // same item ids/areas/priorities as whatever was showing before.
+    var sig = homeTodoMode + "|" + homeTlSelectedDate + "|" + quads.map(function(list){
       return list.map(function(it){ return it.id + ":" + (it.done ? 1 : 0) + ":" + it.area + ":" + it.priority; }).join(",");
     }).join("|");
     if(grid.dataset.sig === sig) return;
@@ -6863,6 +6905,8 @@
     }
     renderHomeTimelineDock();
     renderHomeCalStrip();
+    renderHomeTodoMatrix();
+    renderHomeMapWidget();
   }
   // Dock rows group by life AREA, not by item kind — a habit, action, and note that are all
   // "Health" land in the same row, which spreads same-time items across rows by what they're
@@ -7094,18 +7138,27 @@
   }
   function renderHomeMapWidget(){
     if(!homeMap) return;
-    var today = todayStr();
-    var located = state.actions.filter(function(a){ return a.date === today && a.locationLat != null && a.locationLng != null; });
-    var sig = located.map(function(a){ return a.id + ":" + a.locationLat + ":" + a.locationLng + ":" + (a.timeOfDay || "") + ":" + a.title; }).join("|");
+    // Follows homeTlSelectedDate (the day picked on the calendar strip / timeline dock toggle), not
+    // always literal "today" — see setHomeTlSelectedDate.
+    var day = homeTlSelectedDate;
+    var located = state.actions.filter(function(a){ return a.date === day && a.locationLat != null && a.locationLng != null; });
+    var sig = day + "|" + located.map(function(a){ return a.id + ":" + a.locationLat + ":" + a.locationLng + ":" + (a.timeOfDay || "") + ":" + a.title; }).join("|");
     if(sig === homeMapMarkersSig) return;
     homeMapMarkersSig = sig;
     homeMapMarkers.clearLayers();
+    // Default view fits every point actually on the map for this day (home base + any located
+    // actions) instead of always sitting at the fixed home-base zoom — a day with errands far from
+    // home pans/zooms out to show them all. Only runs when the marker set actually changes (the sig
+    // check above), so it doesn't fight a user's own manual pan/zoom on every unrelated re-render.
+    var bounds = L.latLngBounds([[HOME_MAP_BASE_LAT, HOME_MAP_BASE_LON]]);
     located.forEach(function(a){
       var marker = L.circleMarker([a.locationLat, a.locationLng], { radius:6, color:"#2DD4BF", weight:1.5, opacity:0.9, fillColor:"#2DD4BF", fillOpacity:0.55 });
       marker.bindPopup('<div class="loc-city-popup"><b>' + escapeHtml(a.title || "Untitled") + '</b>' + (a.timeOfDay ? '<br>' + escapeHtml(fmtTimeOfDay(a.timeOfDay)) : '') + '</div>');
       marker.on("click", function(){ editAction(a.id); });
       homeMapMarkers.addLayer(marker);
+      bounds.extend([a.locationLat, a.locationLng]);
     });
+    homeMap.fitBounds(bounds, { padding: [24, 24], maxZoom: 14 });
   }
 
   // ---- Google Photos slideshow (top-right HUD). Google locked the broad library-read scope down
@@ -12716,7 +12769,117 @@
     btn.classList.toggle("on", on);
     if(!locMap) return on;
     if(on) locMap.addLayer(layer); else locMap.removeLayer(layer);
+    renderLocLegend();
     return on;
+  }
+
+  // Every located marker's popup (POI/action/habit/person-city — see locLinkPickerHtml) can hand its
+  // exact lat/lng off to a person or an action/habit, so an existing pin can be reused as-is instead
+  // of re-geocoding the same address again. Writes straight to that entity's own location field —
+  // there's no separate "location" table to point at, each entity just carries its own lat/lng.
+  function locLinkOptionsHtml(){
+    var html = "";
+    if(state.people.length) html += '<optgroup label="People">' + state.people.map(function(p){ return '<option value="person:' + p.id + '">' + escapeHtml(p.name) + '</option>'; }).join("") + '</optgroup>';
+    if(state.actions.length) html += '<optgroup label="Actions">' + state.actions.map(function(a){ return '<option value="action:' + a.id + '">' + escapeHtml(a.title) + '</option>'; }).join("") + '</optgroup>';
+    if(state.habits.length) html += '<optgroup label="Habits">' + state.habits.map(function(h){ return '<option value="habit:' + h.id + '">' + escapeHtml(h.title) + '</option>'; }).join("") + '</optgroup>';
+    return html;
+  }
+  function locLinkPickerHtml(lat, lng){
+    return '<div class="loc-link-picker"><select class="loc-link-select"><option value="">link this location to…</option>' + locLinkOptionsHtml() + '</select>' +
+      '<button type="button" class="btn loc-link-btn" data-lat="' + lat + '" data-lng="' + lng + '">link</button></div>';
+  }
+  async function locLinkLocationTo(kind, id, lat, lng){
+    if(kind === "person"){
+      var p = state.people.find(function(x){ return x.id === id; });
+      if(!p) return;
+      var res = await safeUpdate("people", id, { home_lat: lat, home_lng: lng });
+      if(res.error){ console.error(res.error); toast("Could not link: " + res.error.message); return; }
+      p.homeLat = lat; p.homeLng = lng;
+      toast("Linked location to " + p.name);
+      if(document.getElementById("locLayerPeopleBtn").classList.contains("on")) locRenderPeopleLayer();
+    } else if(kind === "action"){
+      var a = state.actions.find(function(x){ return x.id === id; });
+      if(!a) return;
+      var res2 = await safeUpdate("actions", id, { location_lat: lat, location_lng: lng });
+      if(res2.error){ console.error(res2.error); toast("Could not link: " + res2.error.message); return; }
+      a.locationLat = lat; a.locationLng = lng;
+      toast("Linked location to " + a.title);
+      if(document.getElementById("locLayerActionsBtn").classList.contains("on")) locRenderActionsLayer();
+    } else if(kind === "habit"){
+      var h = state.habits.find(function(x){ return x.id === id; });
+      if(!h) return;
+      var res3 = await safeUpdate("habits", id, { location_lat: lat, location_lng: lng });
+      if(res3.error){ console.error(res3.error); toast("Could not link: " + res3.error.message); return; }
+      h.locationLat = lat; h.locationLng = lng;
+      toast("Linked location to " + h.title);
+      if(document.getElementById("locLayerActionsBtn").classList.contains("on")) locRenderActionsLayer();
+    }
+    renderLocLegend();
+  }
+  // Wires the link-picker embedded in a just-opened popup — called from every located marker's own
+  // "popupopen" handler (POI/action/habit/person-city), since Leaflet rebuilds the popup's DOM fresh
+  // each time it opens.
+  function wireLocLinkPicker(popupEl, lat, lng){
+    if(!popupEl) return;
+    var btn = popupEl.querySelector(".loc-link-btn");
+    if(!btn) return;
+    btn.addEventListener("click", async function(){
+      var sel = popupEl.querySelector(".loc-link-select");
+      var val = sel.value;
+      if(!val) return;
+      var sep = val.indexOf(":"), kind = val.slice(0, sep), id = val.slice(sep + 1);
+      btn.disabled = true;
+      await locLinkLocationTo(kind, id, lat, lng);
+      btn.disabled = false;
+      if(sel) sel.value = "";
+    });
+  }
+
+  // Flat, individually-clickable list of every item on the ON layers (people/actions/habits/POIs —
+  // the live-gps/history trail is a continuous stream of raw points, not discrete named items, so it
+  // stays out of this list) — see the .loc-legend-panel sidebar next to the map.
+  function locLegendItems(){
+    var items = [];
+    if(document.getElementById("locLayerActionsBtn").classList.contains("on")){
+      state.actions.forEach(function(a){
+        if(a.locationLat == null || a.locationLng == null) return;
+        items.push({ kind:"action", id:a.id, label:a.title || "Untitled", sub:a.date || "", lat:a.locationLat, lng:a.locationLng, color:"#2DD4BF" });
+      });
+      state.habits.forEach(function(h){
+        if(h.locationLat == null || h.locationLng == null) return;
+        items.push({ kind:"habit", id:h.id, label:h.title || "Untitled", sub:h.frequency || "habit", lat:h.locationLat, lng:h.locationLng, color:"#818CF8" });
+      });
+    }
+    if(document.getElementById("locLayerPeopleBtn").classList.contains("on")){
+      state.people.forEach(function(p){
+        if(p.homeLat == null || p.homeLng == null) return;
+        items.push({ kind:"person", id:p.id, label:p.name || "Unnamed", sub:p.relationship || "", lat:p.homeLat, lng:p.homeLng, color: LOC_RELATIONSHIP_COLORS[p.relationship] || LOC_RELATIONSHIP_COLORS.Other });
+      });
+    }
+    if(document.getElementById("locLayerPoiBtn").classList.contains("on")){
+      state.pois.forEach(function(poi){
+        items.push({ kind:"poi", id:poi.id, label:poi.name || "Unnamed", sub:poi.notes || "point of interest", lat:poi.lat, lng:poi.lng, color:"#FFD54A" });
+      });
+    }
+    return items;
+  }
+  function locLegendItemHtml(it){
+    return '<div class="loc-legend-item" data-kind="' + it.kind + '" data-id="' + it.id + '" data-lat="' + it.lat + '" data-lng="' + it.lng + '">' +
+      '<span class="loc-legend-dot" style="background:' + it.color + ';"></span>' +
+      '<span class="loc-legend-text"><span class="loc-legend-label">' + escapeHtml(it.label) + '</span>' +
+      (it.sub ? '<span class="loc-legend-sub">' + escapeHtml(it.sub) + '</span>' : '') + '</span></div>';
+  }
+  function locLegendOpenItem(kind, id){
+    if(kind === "action") editAction(id);
+    else if(kind === "habit") editHabit(id);
+    else if(kind === "person") editPerson(id);
+    // POIs have no dedicated editor (only the delete link in their own popup) — panning to it is enough.
+  }
+  function renderLocLegend(){
+    var list = document.getElementById("locLegendList");
+    if(!list) return;
+    var items = locLegendItems();
+    list.innerHTML = items.length ? items.map(locLegendItemHtml).join("") : '<div class="loc-legend-empty">Nothing on the map yet — toggle a layer above.</div>';
   }
 
   // Groups people into one point per city rather than one pin per person — rounding to ~1km grid
@@ -12747,7 +12910,8 @@
     if(group.label) titleBits.push(escapeHtml(group.label));
     if(cityLabel) titleBits.push(escapeHtml(cityLabel));
     var html = '<div class="loc-city-popup">' + (titleBits.length ? '<b>' + titleBits.join(" · ") + '</b> — ' : '') + n + (n === 1 ? ' person' : ' people') +
-      '<ul>' + group.people.map(function(p){ return '<li><a href="#" class="loc-person-link" data-id="' + p.id + '">' + escapeHtml(p.name || "Unnamed") + '</a></li>'; }).join('') + '</ul></div>';
+      '<ul>' + group.people.map(function(p){ return '<li><a href="#" class="loc-person-link" data-id="' + p.id + '">' + escapeHtml(p.name || "Unnamed") + '</a></li>'; }).join('') + '</ul>' +
+      locLinkPickerHtml(group.lat, group.lng) + '</div>';
     marker.bindPopup(html);
     marker.on("popupopen", function(e){
       var el = e.popup.getElement();
@@ -12755,6 +12919,7 @@
       el.querySelectorAll(".loc-person-link").forEach(function(a){
         a.addEventListener("click", function(ev){ ev.preventDefault(); editPerson(a.dataset.id); });
       });
+      wireLocLinkPicker(el, group.lat, group.lng);
     });
     locPeopleLayer.addLayer(marker);
   }
@@ -12832,6 +12997,7 @@
       });
       Object.keys(groups).forEach(function(key){ locAddCityMarker(groups[key]); });
     }
+    renderLocLegend();
   }
 
   function locRenderHistoryLayer(){
@@ -12863,24 +13029,31 @@
       marker.on("click", function(){ editHabit(h.id); });
       locActionsLayer.addLayer(marker);
     });
+    renderLocLegend();
   }
 
+  // POI markers are the app's purpose-built "just a location, nothing else" pins (unlike an action/
+  // habit marker, which already opens its own edit modal on click before a popup could be read) — so
+  // this is where the "link this existing location to a person or task" picker (locLinkPickerHtml)
+  // lives, alongside the person-city markers above (locAddCityMarker).
   function locRenderPoiLayer(){
     if(!locPoiLayer) return;
     locPoiLayer.clearLayers();
     state.pois.forEach(function(poi){
       var marker = L.circleMarker([poi.lat, poi.lng], { radius:7, color:"#FFD54A", weight:1.5, opacity:0.9, fillColor:"#FFD54A", fillOpacity:0.55 });
       var html = '<div class="loc-city-popup"><b>' + escapeHtml(poi.name) + '</b>' + (poi.notes ? '<br>' + escapeHtml(poi.notes) : '') +
-        '<br><a href="#" class="loc-poi-delete" data-id="' + poi.id + '">delete</a></div>';
+        '<br><a href="#" class="loc-poi-delete" data-id="' + poi.id + '">delete</a>' + locLinkPickerHtml(poi.lat, poi.lng) + '</div>';
       marker.bindPopup(html);
       marker.on("popupopen", function(e){
         var el = e.popup.getElement();
         if(!el) return;
         var delLink = el.querySelector(".loc-poi-delete");
         if(delLink) delLink.addEventListener("click", function(ev){ ev.preventDefault(); deletePoi(poi.id); });
+        wireLocLinkPicker(el, poi.lat, poi.lng);
       });
       locPoiLayer.addLayer(marker);
     });
+    renderLocLegend();
   }
   async function deletePoi(id){
     state.pois = state.pois.filter(function(p){ return p.id !== id; });
@@ -13110,6 +13283,15 @@
       e.target.value = "";
       if(!file) return;
       await locImportGoogleTimelineFile(file);
+    });
+    // Clicking a sidebar entry pans the map to it and opens the same editor its own marker click
+    // would (see locLegendOpenItem) — POIs have no dedicated editor, so panning is all that happens.
+    document.getElementById("locLegendList").addEventListener("click", function(e){
+      var item = e.target.closest(".loc-legend-item");
+      if(!item) return;
+      var lat = parseFloat(item.dataset.lat), lng = parseFloat(item.dataset.lng);
+      locMap.setView([lat, lng], Math.max(locMap.getZoom(), 14));
+      locLegendOpenItem(item.dataset.kind, item.dataset.id);
     });
 
     locRenderPeopleLayer();
