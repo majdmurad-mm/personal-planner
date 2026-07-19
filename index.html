@@ -289,6 +289,23 @@
   .trash-row-label{ font-size:13px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:280px; }
   .trash-row-age{ font-family:var(--mono); font-size:9.5px; color:var(--text-faint); }
 
+  /* Archive page — same flat-row shape as .trash-row (kind/title/meta + a right-side action), just
+     card-bordered and colored by area like every other planner list. See archiveItems/renderArchive. */
+  .archive-list{ display:flex; flex-direction:column; gap:8px; }
+  .archive-row{ display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid var(--border); border-left-width:3px; border-radius:var(--radius); background:var(--bg-raised); cursor:pointer; }
+  .archive-row:hover{ border-color:var(--border-bright); }
+  .archive-row-kind{ flex-shrink:0; font-family:var(--mono); font-size:9px; text-transform:uppercase; letter-spacing:0.05em; color:var(--text-faint); width:52px; }
+  .archive-row-main{ flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+  .archive-row-title{ font-size:13px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .archive-row-sub{ font-family:var(--mono); font-size:10px; color:var(--text-faint); }
+  .archive-row.Health{ border-left-color:var(--cat-health); }
+  .archive-row.Finance{ border-left-color:var(--cat-finance); }
+  .archive-row.Career{ border-left-color:var(--cat-career); }
+  .archive-row.Maintenance{ border-left-color:var(--cat-maintenance); }
+  .archive-row.Growth{ border-left-color:var(--cat-growth); }
+  .archive-row.Relationships{ border-left-color:var(--cat-relationships); }
+  .archive-row.Sol{ border-left-color:var(--cat-sol); }
+
   /* ===== MAIN ===== */
   .main{ padding:32px 40px 70px; max-width:none; width:100%; min-width:0; }
   .main-header{ display:flex; justify-content:space-between; align-items:flex-end; gap:var(--space-5); flex-wrap:wrap; margin-bottom:var(--space-1); }
@@ -1916,6 +1933,7 @@
         <button class="side-link" data-section="knowledge" type="button"><span class="sl-glyph">▦</span>Knowledge</button>
         <button class="side-link" data-section="integrations" type="button"><span class="sl-glyph">⛓</span>Integrations</button>
         <button class="side-link" data-section="tools" type="button"><span class="sl-glyph">✦</span>Tools</button>
+        <button class="side-link" data-section="archive" type="button"><span class="sl-glyph">▣</span>Archive</button>
       </nav>
 
       <div class="term-stats">
@@ -3369,6 +3387,29 @@
           <p class="panel-hint wb-hint-float wb-pan-hint">Pan: drag. Zoom: scroll or pinch. Click a pin to open it.</p>
           <div class="loc-map" id="locMap"></div>
         </div>
+      </div>
+    </section>
+
+    <!-- Archive: a read-only view of already-completed work (done projects, done actions) kept out
+         of the active planner views but still browsable/reopenable — right-click reuses the same
+         global context menu every other [data-kind][data-id] card gets (edit/delete/open page). Not
+         a separate stored "archived" flag — an item lands here purely by being marked done, and
+         leaves the moment it's marked not-done again (see archiveItems/the ↺ unarchive button). -->
+    <section id="archiveSection" style="display:none;">
+      <div class="main-header">
+        <div>
+          <h1>archive</h1>
+          <p class="subhead">Completed projects and actions — done work kept out of the active views.</p>
+        </div>
+      </div>
+      <div class="filter-row" id="archiveFilterRow">
+        <button class="filter-chip active" data-filter="all" type="button">all</button>
+        <button class="filter-chip" data-filter="project" type="button">projects</button>
+        <button class="filter-chip" data-filter="action" type="button">actions</button>
+      </div>
+      <div class="archive-list" id="archiveList"></div>
+      <div class="empty-state" id="archiveEmptyState" style="display:none;">
+        <div class="glyph">▣</div><h3>nothing archived yet</h3><p>Mark a project or action done and it'll show up here.</p>
       </div>
     </section>
 
@@ -4832,7 +4873,7 @@
     });
   }
 
-  var ALL_SECTION_IDS = ["homeSection","todaySection","plannerSection","trackerSection","agentSection","timelineSection","journalSection","peopleSection","locationSection","knowledgeSection","integrationsSection","futureSection","toolsSection","goalDetailSection","areaDetailSection","entityPageSection"];
+  var ALL_SECTION_IDS = ["homeSection","todaySection","plannerSection","trackerSection","agentSection","timelineSection","journalSection","peopleSection","locationSection","knowledgeSection","integrationsSection","futureSection","toolsSection","archiveSection","goalDetailSection","areaDetailSection","entityPageSection"];
   // Sidebar dropdown groups — a parent nav item with no page of its own, bundling a set of section
   // names under one submenu. See showSection() (active/auto-open) and the sideNav click handler
   // (data-toggle-submenu, open/close).
@@ -19244,6 +19285,64 @@
     renderAll();
   }
 
+  /* ---------------- Archive ---------------- */
+  // v1 scope: projects and actions, the two entity types with a real boolean "done" state — a habit
+  // is recurring (no single "done" moment to archive by; see toggleActionDone/toggleProjectDone) and
+  // a goal has no done concept at all (health/percentage instead), so neither has a well-defined home
+  // here yet. An item is "in the archive" purely by being done; there's no separate archived flag to
+  // maintain, and unarchiving (the ↺ button, or reopening it from wherever it's normally edited) is
+  // just toggling done back off.
+  var archiveFilter = "all";
+  function archiveItems(){
+    var items = [];
+    state.projects.forEach(function(p){
+      if(!p.done) return;
+      items.push({ kind:"project", id:p.id, title:p.title || "Untitled", area:projectCategory(p), sub:p.due ? ("due " + fmtDate(p.due)) : "" });
+    });
+    state.actions.forEach(function(a){
+      if(!a.done) return;
+      items.push({ kind:"action", id:a.id, title:a.title || "Untitled", area:actionCategory(a), sub:a.date ? fmtDate(a.date) : "" });
+    });
+    items.sort(function(a, b){ return a.title.localeCompare(b.title); });
+    return items;
+  }
+  function archiveRowHtml(it){
+    return '<div class="archive-row' + (it.area ? " " + it.area : "") + '" data-kind="' + it.kind + '" data-id="' + it.id + '">' +
+      '<span class="archive-row-kind">' + it.kind + '</span>' +
+      '<div class="archive-row-main"><span class="archive-row-title">' + escapeHtml(it.title) + '</span>' +
+      (it.sub ? '<span class="archive-row-sub">' + escapeHtml(it.sub) + '</span>' : '') + '</div>' +
+      '<div class="entity-actions"><button class="icon-btn" data-action="unarchive" data-kind="' + it.kind + '" data-id="' + it.id + '" title="Mark not done" aria-label="Mark not done">↺</button></div>' +
+    '</div>';
+  }
+  function renderArchive(){
+    var list = document.getElementById("archiveList");
+    if(!list) return;
+    var items = archiveItems().filter(function(it){ return archiveFilter === "all" || it.kind === archiveFilter; });
+    document.getElementById("archiveEmptyState").style.display = items.length ? "none" : "";
+    list.innerHTML = items.map(archiveRowHtml).join("");
+  }
+  document.getElementById("archiveFilterRow").addEventListener("click", function(e){
+    var chip = e.target.closest(".filter-chip");
+    if(!chip) return;
+    archiveFilter = chip.dataset.filter;
+    this.querySelectorAll(".filter-chip").forEach(function(c){ c.classList.toggle("active", c === chip); });
+    renderArchive();
+  });
+  document.getElementById("archiveList").addEventListener("click", async function(e){
+    var unarchiveBtn = e.target.closest("[data-action='unarchive']");
+    if(unarchiveBtn){
+      e.stopPropagation();
+      if(unarchiveBtn.dataset.kind === "project") await toggleProjectDone(unarchiveBtn.dataset.id);
+      else await toggleActionDone(unarchiveBtn.dataset.id);
+      renderArchive();
+      return;
+    }
+    var row = e.target.closest(".archive-row");
+    if(!row) return;
+    if(row.dataset.kind === "project") editProject(row.dataset.id);
+    else editAction(row.dataset.id);
+  });
+
   var SECTION_RENDERERS = {
     home: [renderHomeDashboard],
     agent: [],
@@ -19260,6 +19359,7 @@
     // Tools' own grid is static (no live app-state to reflect) and is rendered once by wireTools()
     // at page load, not on every renderAll() pass — nothing to re-render here.
     tools: [],
+    archive: [renderArchive],
     goalDetail: [renderGoalDetail],
     areaDetail: [renderAreaDetail],
     entityPage: [renderEntityPage]
