@@ -4603,8 +4603,16 @@
     transcript: "recording transcript", duration_seconds: "recording length", waveform: "recording waveform",
     notes_md: "page notes", dependencies: "action dependencies", files_slug: "html integration folder"
   };
+  // Fields the app still SENDS purely to satisfy a legacy NOT NULL column that a cleanup migration
+  // will eventually remove (actions.type, the removed Call/Meeting field — see
+  // migration_drop_action_type.sql). Once that migration runs, the column disappears, safeWrite
+  // strips the padding field on every save, and without this list each save would toast a bogus
+  // "needs a pending database update" warning about a column that's gone on purpose.
+  var LEGACY_SILENT_DROP_FIELDS = { type: true };
   function warnDroppedFields(dropped){
     if(!dropped || !dropped.length) return;
+    dropped = dropped.filter(function(c){ return !LEGACY_SILENT_DROP_FIELDS[c]; });
+    if(!dropped.length) return;
     var labels = dropped.map(function(c){ return DROPPED_FIELD_LABELS[c] || c; });
     labels = labels.filter(function(l, i){ return labels.indexOf(l) === i; });
     toast("Saved, but " + labels.join(", ") + " needs a pending database update to be run first — see _Memory/ for the migration.");
@@ -8726,7 +8734,9 @@
     });
   }
   function actionPayload(snapshot){
-    return { id:snapshot.id, parent_type:snapshot.parentType, parent_id:snapshot.parentId, title:snapshot.title, priority:snapshot.priority, date:snapshot.date, done:snapshot.done, position:snapshot.position, time_of_day:snapshot.timeOfDay, duration_minutes:snapshot.durationMinutes, category:snapshot.category,
+    // type:"Task" is legacy padding for the not-yet-dropped NOT NULL column, so undo/trash restores
+    // can re-insert — see LEGACY_SILENT_DROP_FIELDS and migration_drop_action_type.sql.
+    return { id:snapshot.id, parent_type:snapshot.parentType, parent_id:snapshot.parentId, title:snapshot.title, priority:snapshot.priority, date:snapshot.date, done:snapshot.done, position:snapshot.position, time_of_day:snapshot.timeOfDay, duration_minutes:snapshot.durationMinutes, category:snapshot.category, type:"Task",
       location_address:snapshot.locationAddress, location_lat:snapshot.locationLat, location_lng:snapshot.locationLng, notes_md:snapshot.notesMd, dependencies:snapshot.dependencies };
   }
   async function deleteAction(id){
@@ -8739,7 +8749,9 @@
     if(r.error){ console.error(r.error); return; }
     await writeTrash("action", snapshot.title, actionPayload(snapshot));
     pushUndo("delete action \"" + snapshot.title + "\"", async function(){
-      var ri = await sb.from("actions").insert(actionPayload(snapshot)).select().single();
+      // safeWrite (not a raw insert) so the legacy type padding in actionPayload gets gracefully
+      // dropped once migration_drop_action_type.sql has removed the column.
+      var ri = await safeWrite(function(p){ return sb.from("actions").insert(p).select().single(); }, actionPayload(snapshot));
       if(ri.error){ console.error(ri.error); toast("Could not restore action: " + ri.error.message); return; }
       state.actions.push(snapshot);
       renderAll();
@@ -9070,7 +9082,7 @@
     if(!h || !fromDate || !toDate) return;
     var applied = await applySkipHabitInstance(h, fromDate);
     if(!applied) return;
-    var payload = { title:h.title, priority:h.priority, parent_type:"none", parent_id:null, date:toDate, done:false, time_of_day:h.timeOfDay||null, duration_minutes:h.durationMinutes||null, category:habitCategory(h) };
+    var payload = { title:h.title, priority:h.priority, parent_type:"none", parent_id:null, date:toDate, done:false, time_of_day:h.timeOfDay||null, duration_minutes:h.durationMinutes||null, category:habitCategory(h), type:"Task" /* legacy NOT NULL column — see LEGACY_SILENT_DROP_FIELDS */ };
     var res = await safeInsert("actions", payload, state.actions);
     if(res.error){
       // the action failed to create — roll back the skip so the habit instance isn't lost either
@@ -17812,6 +17824,9 @@
       res = await safeUpdate("actions", editingActionId, payload);
     } else {
       payload.done = false;
+      // Legacy: the type column (removed Call/Meeting field) is still NOT NULL until
+      // migration_drop_action_type.sql runs — see LEGACY_SILENT_DROP_FIELDS.
+      payload.type = "Task";
       res = await safeInsert("actions", payload, state.actions);
     }
     this.disabled = false;
