@@ -618,6 +618,10 @@
   .addr-suggest-item{ padding:6px 10px; font-family:var(--mono); font-size:11.5px; color:var(--text); cursor:pointer; border-bottom:1px solid var(--border); }
   .addr-suggest-item:last-child{ border-bottom:none; }
   .addr-suggest-item:hover{ background:var(--accent-glow); }
+  /* Your own points of interest, shown ahead of any network geocoding result (see
+     wireAddressAutocomplete's poiMatches) — a small badge distinguishes "a place you already
+     pinned" from a fresh Nominatim address match. */
+  .addr-suggest-poi-badge{ display:inline-block; margin-right:6px; padding:1px 5px; border-radius:3px; background:var(--accent-glow); color:var(--accent); font-size:9px; letter-spacing:0.03em; }
   #locLayerPeopleBtn.on, #locLayerLiveBtn.on, #locLayerHistoryBtn.on, #locLayerActionsBtn.on, #locLayerPoiBtn.on{ background:var(--accent); color:var(--bg); border-color:var(--accent); }
   #locAddPoiBtn.on{ background:#FFD54A; color:#1a1a1a; border-color:#FFD54A; }
   .loc-people-mode-group{ display:flex; gap:4px; }
@@ -3473,6 +3477,7 @@
             </div>
             <button class="btn" id="locLayerPoiBtn" type="button" title="Show points of interest you've added">★ points of interest</button>
             <button class="btn" id="locAddPoiBtn" type="button" title="Click the map to drop a new point of interest">+ add poi</button>
+            <button class="btn" id="locAddPoiAddressBtn" type="button" title="Add a point of interest by searching an address instead of clicking the map">+ add poi (address)</button>
             <button class="btn" id="locLayerLiveBtn" type="button" title="Track and show your live GPS position while this page is open">◉ live gps</button>
             <button class="btn" id="locLayerHistoryBtn" type="button" title="Show recorded/imported location history">↔ history</button>
             <button class="btn" id="locImportBtn" type="button" title="Import a Google Maps Timeline export (JSON)">⇩ import timeline</button>
@@ -3787,9 +3792,18 @@
 <!-- ===== POINT OF INTEREST MODAL ===== -->
 <div class="modal-overlay" id="poiModalOverlay" hidden>
   <div class="modal">
-    <div class="modal-head"><span class="dot g"></span><h2>new_point_of_interest.json</h2></div>
+    <div class="modal-head"><span class="dot g"></span><h2 id="poiModalTitle">new_point_of_interest.json</h2></div>
     <div class="modal-inner">
       <div class="field"><label for="poiNameInput">name</label><input type="text" id="poiNameInput" placeholder="e.g. Favorite coffee shop"></div>
+      <div class="field">
+        <label for="poiLocationInput">location</label>
+        <div class="loc-geocode-row addr-autocomplete-wrap">
+          <input type="text" id="poiLocationInput" placeholder="start typing an address or place…" autocomplete="off">
+          <div class="addr-suggest-dropdown" id="poiLocationSuggest" hidden></div>
+        </div>
+        <div class="loc-geocode-status" id="poiLocationStatus"></div>
+        <p class="panel-hint">Search for an address above, or cancel and click a spot directly on the map to drop a pin there instead.</p>
+      </div>
       <div class="field"><label for="poiNotesInput">notes (optional)</label><textarea id="poiNotesInput" rows="3" placeholder="Anything worth remembering…"></textarea></div>
       <div class="field"><label>linked people (optional)</label>
         <div class="dropdown-multi" id="poiLinkedPeopleDropdown">
@@ -13038,6 +13052,16 @@
   // getLat, getLng, onPick(lat,lng), onClear() }. Nominatim's usage policy caps free search at one
   // request/second — a 400ms debounce plus "only search once you've stopped typing" comfortably
   // stays under that for a single person typing into one field.
+  // Your own points of interest, matched by a simple substring search on their name — shown first,
+  // ahead of any network geocoding result, so reusing a place you've already pinned doesn't mean
+  // re-finding/re-typing its address. Shaped like a Nominatim row (display_name/lat/lon) so the rest
+  // of wireAddressAutocomplete (pick/render) doesn't need to know the difference.
+  function poiAddressMatches(q){
+    var needle = q.toLowerCase();
+    return state.pois.filter(function(p){ return p.name.toLowerCase().indexOf(needle) !== -1; })
+      .slice(0, 5)
+      .map(function(p){ return { display_name: p.name, lat: p.lat, lon: p.lng, isPoi: true }; });
+  }
   function wireAddressAutocomplete(opts){
     var debounceTimer = null, results = [];
     function close(){ opts.dropdownEl.hidden = true; opts.dropdownEl.innerHTML = ""; results = []; }
@@ -13052,21 +13076,31 @@
       opts.onPick(parseFloat(r.lat), parseFloat(r.lon));
       renderStatus();
     }
+    function renderResults(){
+      if(!results.length){ close(); return; }
+      opts.dropdownEl.innerHTML = results.map(function(r, i){
+        return '<div class="addr-suggest-item" data-i="' + i + '">' + (r.isPoi ? '<span class="addr-suggest-poi-badge">poi</span>' : '') + escapeHtml(r.display_name) + '</div>';
+      }).join("");
+      opts.dropdownEl.hidden = false;
+    }
     async function search(q){
       var rows;
       try{
         var res = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=5&q=" + encodeURIComponent(q), { headers: { "Accept": "application/json" } });
         rows = await res.json();
       } catch(err){ rows = []; }
-      results = rows || [];
-      if(!results.length){ close(); return; }
-      opts.dropdownEl.innerHTML = results.map(function(r, i){ return '<div class="addr-suggest-item" data-i="' + i + '">' + escapeHtml(r.display_name) + '</div>'; }).join("");
-      opts.dropdownEl.hidden = false;
+      results = poiAddressMatches(q).concat(rows || []);
+      renderResults();
     }
     opts.inputEl.addEventListener("input", function(){
       clearTimeout(debounceTimer);
       var q = opts.inputEl.value.trim();
       if(q.length < 3){ close(); return; }
+      // Local POI matches need no network round-trip — show them immediately while the debounced
+      // Nominatim search is still pending, then the network results get appended once they land
+      // (see search() above), POIs still first.
+      results = poiAddressMatches(q);
+      renderResults();
       debounceTimer = setTimeout(function(){ search(q); }, 400);
     });
     opts.inputEl.addEventListener("keydown", function(e){
@@ -13209,7 +13243,7 @@
     if(kind === "action") editAction(id);
     else if(kind === "habit") editHabit(id);
     else if(kind === "person") editPerson(id);
-    // POIs have no dedicated editor (only the delete link in their own popup) — panning to it is enough.
+    else if(kind === "poi") editPoi(id);
   }
   function renderLocLegend(){
     var list = document.getElementById("locLegendList");
@@ -13378,11 +13412,13 @@
     state.pois.forEach(function(poi){
       var marker = L.circleMarker([poi.lat, poi.lng], { radius:7, color:"#FFD54A", weight:1.5, opacity:0.9, fillColor:"#FFD54A", fillOpacity:0.55 });
       var html = '<div class="loc-city-popup"><b>' + escapeHtml(poi.name) + '</b>' + (poi.notes ? '<br>' + escapeHtml(poi.notes) : '') +
-        '<br><a href="#" class="loc-poi-delete" data-id="' + poi.id + '">delete</a>' + locLinkPickerHtml(poi.lat, poi.lng) + '</div>';
+        '<br><a href="#" class="loc-poi-edit" data-id="' + poi.id + '">edit</a> · <a href="#" class="loc-poi-delete" data-id="' + poi.id + '">delete</a>' + locLinkPickerHtml(poi.lat, poi.lng) + '</div>';
       marker.bindPopup(html);
       marker.on("popupopen", function(e){
         var el = e.popup.getElement();
         if(!el) return;
+        var editLink = el.querySelector(".loc-poi-edit");
+        if(editLink) editLink.addEventListener("click", function(ev){ ev.preventDefault(); editPoi(poi.id); });
         var delLink = el.querySelector(".loc-poi-delete");
         if(delLink) delLink.addEventListener("click", function(ev){ ev.preventDefault(); deletePoi(poi.id); });
         wireLocLinkPicker(el, poi.lat, poi.lng);
@@ -13398,32 +13434,66 @@
     if(r.error) console.error(r.error);
   }
   var poiPendingLat = null, poiPendingLng = null;
+  var editingPoiId = null;
   var updatePoiLinkedPeopleBtn = wireDropdownMulti("poiLinkedPeopleBtn", "poiLinkedPeopleSelect", "poiLinkedPeopleDropdown", "pid");
-  function renderPoiLinkedPeopleChips(){
-    renderPeopleChipOptions(document.getElementById("poiLinkedPeopleSelect"), []);
+  function renderPoiLinkedPeopleChips(preSelectedIds){
+    renderPeopleChipOptions(document.getElementById("poiLinkedPeopleSelect"), preSelectedIds || []);
     updatePoiLinkedPeopleBtn();
   }
-  function openPoiModal(lat, lng){
-    poiPendingLat = lat; poiPendingLng = lng;
-    document.getElementById("poiNameInput").value = "";
-    document.getElementById("poiNotesInput").value = "";
-    renderPoiLinkedPeopleChips();
+  var poiLocationAC = wireAddressAutocomplete({
+    inputEl: document.getElementById("poiLocationInput"),
+    dropdownEl: document.getElementById("poiLocationSuggest"),
+    statusEl: document.getElementById("poiLocationStatus"),
+    getLat: function(){ return poiPendingLat; }, getLng: function(){ return poiPendingLng; },
+    onPick: function(lat, lng){ poiPendingLat = lat; poiPendingLng = lng; },
+    onClear: function(){ poiPendingLat = null; poiPendingLng = null; }
+  });
+  // lat/lng arrive pre-set when opened from a map click (locAddPoiMode) or from editPoi; opened via
+  // the "+ add poi (address)" toolbar button instead, both start null and the address search above
+  // is the only way to set them (savePoiBtn below blocks saving until they are). editPoiObj, when
+  // given, switches the modal into edit mode — prefilled fields, an update instead of an insert.
+  function openPoiModal(lat, lng, editPoiObj){
+    editingPoiId = editPoiObj ? editPoiObj.id : null;
+    poiPendingLat = editPoiObj ? editPoiObj.lat : lat;
+    poiPendingLng = editPoiObj ? editPoiObj.lng : lng;
+    document.getElementById("poiModalTitle").textContent = editPoiObj ? "edit_point_of_interest.json" : "new_point_of_interest.json";
+    document.getElementById("poiNameInput").value = editPoiObj ? editPoiObj.name : "";
+    // The address field is a search-to-set-coordinates tool, not a stored value (points_of_interest
+    // has no address column) — it always starts blank; the coordinate status line below it (rendered
+    // by poiLocationAC.renderStatus, reading poiPendingLat/Lng) is what actually reflects the point's
+    // current location, prefilled or not.
+    document.getElementById("poiLocationInput").value = "";
+    poiLocationAC.renderStatus();
+    document.getElementById("poiNotesInput").value = editPoiObj ? (editPoiObj.notes || "") : "";
+    renderPoiLinkedPeopleChips(editPoiObj ? editPoiObj.linkedPeopleIds : []);
     document.getElementById("poiLinkedPeopleSelect").hidden = true;
     openModal("poiModalOverlay");
     document.getElementById("poiNameInput").focus();
+  }
+  function editPoi(id){
+    var poi = state.pois.find(function(x){ return x.id === id; });
+    if(poi) openPoiModal(poi.lat, poi.lng, poi);
   }
   document.getElementById("cancelPoiModalBtn").addEventListener("click", function(){ closeModal("poiModalOverlay"); });
   document.getElementById("savePoiBtn").addEventListener("click", async function(){
     var name = document.getElementById("poiNameInput").value.trim();
     if(!name) return;
+    if(poiPendingLat == null || poiPendingLng == null){ toast("Pick a location first — search an address above or click the map."); return; }
     var payload = { name: name, lat: poiPendingLat, lng: poiPendingLng, notes: document.getElementById("poiNotesInput").value.trim() || null,
       linked_people_ids: multiChipValues(document.getElementById("poiLinkedPeopleSelect"), "pid") };
     this.disabled = true;
-    var res = await sb.from("points_of_interest").insert(payload).select().single();
+    var isEdit = !!editingPoiId;
+    var res = isEdit ? await safeUpdate("points_of_interest", editingPoiId, payload) : await sb.from("points_of_interest").insert(payload).select().single();
     this.disabled = false;
     if(res.error){ dbErrorToast(res.error, "Couldn't save"); return; }
     var r = res.data;
-    state.pois.push({ id:r.id, name:r.name, lat:r.lat, lng:r.lng, notes:r.notes||"", linkedPeopleIds:r.linked_people_ids||[] });
+    var mapped = { id:r.id, name:r.name, lat:r.lat, lng:r.lng, notes:r.notes||"", linkedPeopleIds:r.linked_people_ids||[] };
+    if(isEdit){
+      var idx = state.pois.findIndex(function(x){ return x.id === editingPoiId; });
+      if(idx !== -1) state.pois[idx] = mapped;
+    } else {
+      state.pois.push(mapped);
+    }
     locRenderPoiLayer();
     closeModal("poiModalOverlay");
   });
@@ -13602,6 +13672,11 @@
       locAddPoiMode = false;
       document.getElementById("locAddPoiBtn").classList.remove("on");
       openPoiModal(e.latlng.lat, e.latlng.lng);
+    });
+    // Alternative to the click-the-map flow above — opens straight away with no location set yet,
+    // so the address search field in the modal (poiLocationAC) is the only way to place it.
+    document.getElementById("locAddPoiAddressBtn").addEventListener("click", function(){
+      openPoiModal(null, null);
     });
     document.getElementById("locLayerLiveBtn").addEventListener("click", function(){
       var on = locToggleLayer(locLiveLayer, this);
