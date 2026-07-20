@@ -4,7 +4,7 @@
 // scripts, since caching those would risk serving stale auth/data logic or breaking third-party
 // requests this app doesn't control the caching semantics of. Real data still needs a network
 // connection; this just gets the UI itself on screen fast and offline-tolerant.
-var CACHE_NAME = "planner-shell-v4";
+var CACHE_NAME = "planner-shell-v5";
 var SHELL_FILES = ["./index.html", "./manifest.json", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/apple-touch-icon.png"];
 
 self.addEventListener("install", function(event){
@@ -53,8 +53,14 @@ self.addEventListener("fetch", function(event){
   // instead of just failing normally. Bypass the shell logic entirely for anything else.
   if(req.mode === "navigate"){
     if(url.pathname === "/" || url.pathname === "/index.html"){
+      // "no-store" here, not just this handler's own network-first intent: GitHub Pages serves
+      // index.html with Cache-Control: max-age=600, so a plain fetch(req) can silently return the
+      // browser's own HTTP-cached (stale) response for up to 10 minutes after a deploy — the app
+      // never touches the network at all, and a just-shipped feature looks "missing" until that
+      // window expires. Forcing no-store makes every load actually hit the network, matching what
+      // "network-first" is supposed to mean.
       event.respondWith(
-        fetch(req).then(function(res){
+        fetch(req, { cache: "no-store" }).then(function(res){
           var copy = res.clone();
           caches.open(CACHE_NAME).then(function(cache){ cache.put("./index.html", copy); });
           return res;
@@ -62,7 +68,7 @@ self.addEventListener("fetch", function(event){
       );
       return;
     }
-    event.respondWith(fetch(req));
+    event.respondWith(fetch(req, { cache: "no-store" }));
     return;
   }
 
