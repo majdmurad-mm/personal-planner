@@ -621,6 +621,11 @@
   .addr-suggest-item{ padding:6px 10px; font-family:var(--mono); font-size:11.5px; color:var(--text); cursor:pointer; border-bottom:1px solid var(--border); }
   .addr-suggest-item:last-child{ border-bottom:none; }
   .addr-suggest-item:hover{ background:var(--accent-glow); }
+  /* The POI modal is short, and .modal's own overflow-y:auto was CLIPPING the absolutely-positioned
+     suggestion dropdown at the modal's bottom edge — typing an address appeared to do nothing (the
+     "add place by address" bug). The taller modals never showed this because their dropdown overlays
+     fields below it instead of the modal boundary. Scoped here only: tall modals still need scroll. */
+  #poiModalOverlay .modal{ overflow:visible; }
   /* Your own points of interest, shown ahead of any network geocoding result (see
      wireAddressAutocomplete's poiMatches) — a small badge distinguishes "a place you already
      pinned" from a fresh Nominatim address match. */
@@ -641,6 +646,14 @@
      so Whiteboard/People graph (not reported as buggy) are untouched. */
   #locToolbarFloat{ z-index:1000; max-width:calc(100% - 24px); box-sizing:border-box; gap:8px; padding:6px 8px; }
   #locToolbarFloat .btn{ padding:5px 8px; font-size:11px; }
+  /* Grouped toolbar (show / add place / tools): each group carries a tiny uppercase caption and a
+     hairline separator, so the 13 controls read as three intents instead of one undifferentiated
+     strip. Groups wrap as whole units on narrow maps (each is its own flex row that can't break
+     mid-group), which beats the old behavior of buttons wrapping at arbitrary points. */
+  .loc-toolbar{ align-items:stretch; }
+  .loc-tb-group{ display:flex; align-items:center; gap:5px; padding-right:10px; border-right:1px solid var(--border); }
+  .loc-tb-group:last-of-type{ padding-right:0; border-right:none; }
+  .loc-tb-label{ font-family:var(--mono); font-size:8.5px; letter-spacing:0.1em; text-transform:uppercase; color:var(--text-faint); margin-right:2px; white-space:nowrap; }
   /* Unconditional (not scoped to :root[data-theme="dark"]) — the basemap itself is always dark now
      (see initLocation's tile layer), independent of the app's own light/dark toggle, so Leaflet's
      stock light-mode chrome would look mismatched either way if left theme-conditional. */
@@ -3472,23 +3485,35 @@
           <div class="loc-legend-list" id="locLegendList"></div>
         </div>
         <div class="wb-canvas-wrap loc-map-wrap" id="locMapWrap">
-          <div class="wb-toolbar wb-toolbar-float" id="locToolbarFloat">
-            <button class="btn" id="locLayerActionsBtn" type="button" title="Show every task and habit that has a location">▪ tasks &amp; habits</button>
-            <button class="btn on" id="locLayerPeopleBtn" type="button" title="Show where the people you know live">☺ people</button>
-            <div class="loc-people-mode-group" id="locPeopleModeGroup">
-              <button class="btn loc-mode-btn on" data-mode="count" type="button" title="One marker per city, sized by how many people live there">group by city</button>
-              <button class="btn loc-mode-btn" data-mode="relationship" type="button" title="Split and color markers by relationship (family, friends, …)">color by relation</button>
+          <!-- Toolbar grouped by intent — SHOW (what's on the map), ADD (create a place), TOOLS
+               (act on the data) — instead of one flat run of 13 buttons. Every id is unchanged;
+               only structure, labels and grouping are new. -->
+          <div class="wb-toolbar wb-toolbar-float loc-toolbar" id="locToolbarFloat">
+            <div class="loc-tb-group">
+              <span class="loc-tb-label">show</span>
+              <button class="btn" id="locLayerActionsBtn" type="button" title="Show every task and habit that has a location">▪ tasks</button>
+              <button class="btn on" id="locLayerPeopleBtn" type="button" title="Show where the people you know live">☺ people</button>
+              <div class="loc-people-mode-group" id="locPeopleModeGroup" title="How people markers are drawn">
+                <button class="btn loc-mode-btn on" data-mode="count" type="button" title="One marker per city, sized by how many people live there">by city</button>
+                <button class="btn loc-mode-btn" data-mode="relationship" type="button" title="Split and color markers by relationship (family, friends, …)">by relation</button>
+              </div>
+              <button class="btn" id="locLayerPoiBtn" type="button" title="Show your saved places">★ places</button>
+              <button class="btn" id="locLayerLiveBtn" type="button" title="Follow your live GPS position while this page is open">◉ live</button>
+              <button class="btn" id="locLayerHistoryBtn" type="button" title="Draw your recorded/imported movement history as a trail">↔ trail</button>
+              <button class="btn" id="locLayerHeatBtn" type="button" title="Show your recorded movement history as a heatmap — where you actually spend time">▒ heat</button>
             </div>
-            <button class="btn" id="locLayerPoiBtn" type="button" title="Show your saved places">★ my places</button>
-            <button class="btn" id="locAddPoiBtn" type="button" title="Turn this on, then click anywhere on the map to save that spot as a place">+ place (map click)</button>
-            <button class="btn" id="locAddPoiAddressBtn" type="button" title="Save a new place by searching for its address">+ place (address)</button>
-            <button class="btn" id="locPlanTripBtn" type="button" title="Order your open located tasks into an efficient trip from home and draw the driving route">⛟ plan trip</button>
-            <button class="btn" id="locLayerHeatBtn" type="button" title="Show your recorded movement history as a heatmap — where you actually spend time">▒ heatmap</button>
-            <button class="btn" id="locLayerLiveBtn" type="button" title="Follow your live GPS position while this page is open">◉ live position</button>
-            <button class="btn" id="locLayerHistoryBtn" type="button" title="Draw your recorded/imported movement history as a trail">↔ history trail</button>
-            <button class="btn" id="locBasemapBtn" type="button" title="Switch between the dark map and satellite imagery">🛰 satellite</button>
-            <button class="btn" id="locImportBtn" type="button" title="Import location history — a Google Maps Timeline export (.json) or a GPS track (.gpx)">⇩ import</button>
-            <button class="btn" id="locExportGpxBtn" type="button" title="Download your recorded location history as a .gpx file">⇪ export gpx</button>
+            <div class="loc-tb-group">
+              <span class="loc-tb-label">add place</span>
+              <button class="btn" id="locAddPoiBtn" type="button" title="Turn this on, then click anywhere on the map to save that spot as a place">⊕ on map</button>
+              <button class="btn" id="locAddPoiAddressBtn" type="button" title="Save a new place by searching for its address">⌕ by address</button>
+            </div>
+            <div class="loc-tb-group">
+              <span class="loc-tb-label">tools</span>
+              <button class="btn" id="locPlanTripBtn" type="button" title="Order your open located tasks into an efficient trip from home and draw the driving route">⛟ plan trip</button>
+              <button class="btn" id="locBasemapBtn" type="button" title="Switch between the dark map and satellite imagery">🛰 satellite</button>
+              <button class="btn" id="locImportBtn" type="button" title="Import location history — a Google Maps Timeline export (.json) or a GPS track (.gpx)">⇩ import</button>
+              <button class="btn" id="locExportGpxBtn" type="button" title="Download your recorded location history as a .gpx file">⇪ export</button>
+            </div>
             <input type="file" id="locImportFile" accept=".json,.gpx,application/json" hidden>
             <span class="wb-save-status" id="locStatus"></span>
           </div>
