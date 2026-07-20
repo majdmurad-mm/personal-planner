@@ -1805,6 +1805,27 @@
   .home-tl-lanes{ position:absolute; top:20px; bottom:16px; left:0; right:0; background:var(--tl-hour-grid); touch-action:none; z-index:1; }
   .home-tl-lane{ position:relative; height:33.333%; border-top:1px dashed var(--border); }
   .home-tl-lane:first-child{ border-top:none; }
+  /* Unscheduled panel: floats over the dock's right edge (same translucent-overlay language as the
+     home widgets) — the day's untimed tasks, draggable onto the lanes, and the drop zone for the
+     reverse gesture (block → unscheduled). z-index above the lanes but below a block mid-drag. */
+  .home-tl-unscheduled{ position:absolute; right:6px; top:22px; bottom:18px; width:150px; z-index:6; display:flex; flex-direction:column; border:1px solid var(--border-bright); border-radius:8px; background:rgba(var(--bg-raised-rgb), 0.82); backdrop-filter:blur(8px); overflow:hidden; }
+  .home-tl-unscheduled-head{ flex-shrink:0; font-family:var(--mono); font-size:8.5px; letter-spacing:0.1em; text-transform:uppercase; color:var(--text-dim); padding:5px 8px 4px; border-bottom:1px solid var(--border); }
+  .home-tl-unscheduled-list{ flex:1; min-height:0; overflow-y:auto; padding:5px; display:flex; flex-direction:column; gap:4px; }
+  .home-tl-unscheduled-item{ padding:4px 7px; border:1px solid var(--border); border-left:3px solid var(--border-bright); border-radius:5px; background:var(--bg-inset); font-family:var(--mono); font-size:10px; color:var(--text); cursor:grab; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .home-tl-unscheduled-item:active{ cursor:grabbing; }
+  .home-tl-unscheduled-item.dragging{ opacity:0.45; }
+  .home-tl-unscheduled-item.Health{ border-left-color:var(--cat-health); }
+  .home-tl-unscheduled-item.Finance{ border-left-color:var(--cat-finance); }
+  .home-tl-unscheduled-item.Career{ border-left-color:var(--cat-career); }
+  .home-tl-unscheduled-item.Maintenance{ border-left-color:var(--cat-maintenance); }
+  .home-tl-unscheduled-item.Growth{ border-left-color:var(--cat-growth); }
+  .home-tl-unscheduled-item.Relationships{ border-left-color:var(--cat-relationships); }
+  .home-tl-unscheduled-item.Sol{ border-left-color:var(--cat-sol); }
+  .home-tl-unscheduled-empty{ padding:6px 4px; font-family:var(--mono); font-size:9.5px; color:var(--text-faint); text-align:center; }
+  /* Shared "release here to unschedule" highlight — lit while an eligible task block is held over
+     either unscheduled panel (Present's or the dock's), and while an HTML5 drag hovers the lanes. */
+  .home-tl-unscheduled.drop-hot, .today-unscheduled.drop-hot{ outline:1.5px dashed var(--accent); outline-offset:-1.5px; }
+  .home-tl-lanes.tl-drop-target{ outline:1.5px dashed var(--accent); outline-offset:-1.5px; }
   .home-tl-lane-label{ position:absolute; left:6px; top:50%; transform:translateY(-50%); font-family:var(--mono); font-size:9px; letter-spacing:0.08em; text-transform:uppercase; color:var(--text-faint); pointer-events:none; z-index:1; }
   /* Each block gets an inline z-index from tlZIndexForDuration (shorter on top when two overlap);
      .home-tl-lanes itself sits above the full-bleed day/night background via its own z-index:1. */
@@ -2190,6 +2211,15 @@
         </div>
         <div class="home-tl-now" id="homeTlNow"></div>
         <div class="home-tl-daynight" id="homeTlDayNight"></div>
+        <!-- Same WHAT-before-WHEN panel the Present tab's timeline has: the selected day's untimed
+             open tasks. Drag one onto the lanes to give it a time; drag a task block here to take
+             its time away again (see renderHomeTlUnscheduled / wireHomeTlUnscheduledDnD, and the
+             release-over-panel branch in wireHomeTimelineDock). Floats over the strip's right edge,
+             matching the home page's overlay-widget language. -->
+        <div class="home-tl-unscheduled" id="homeTlUnscheduledPanel" title="Tasks for this day with no time yet — drag one onto the timeline, or drop a task block here to unschedule it">
+          <div class="home-tl-unscheduled-head">unscheduled</div>
+          <div class="home-tl-unscheduled-list" id="homeTlUnscheduledList"></div>
+        </div>
       </div>
     </section>
 
@@ -6322,6 +6352,10 @@
       var totalMin = Math.round(((x / rect.width) * 1440) / 5) * 5;
       dragEl.style.left = (totalMin / 1440 * 100) + "%";
       dragEl.dataset.pendingTime = minutesToTime(totalMin);
+      // Dragging an ACTION block over the unscheduled panel highlights it as a drop zone — release
+      // there clears the time instead of setting a new one (same gesture pair as the Present tab).
+      var unschedPanel = document.getElementById("homeTlUnscheduledPanel");
+      if(unschedPanel) unschedPanel.classList.toggle("drop-hot", dragKind === "action" && pointInsideEl(unschedPanel, e.clientX, e.clientY));
     });
     dock.addEventListener("pointerup", async function(e){
       if(!dragEl) return;
@@ -6330,6 +6364,8 @@
       var wasArmed = armed, wasMoved = moved, wasMovedBeforeArm = movedBeforeArm;
       dragEl = null; dragId = null; dragKind = null; dragDate = null; dragOvernight = false; dragOnDoneBtn = false; armed = false;
       el.classList.remove("dragging", "tl-holding");
+      var unschedPanel = document.getElementById("homeTlUnscheduledPanel");
+      if(unschedPanel) unschedPanel.classList.remove("drop-hot");
       if(!wasArmed){
         if(wasMovedBeforeArm) return;
         if(onDoneBtn){
@@ -6340,6 +6376,12 @@
         if(kind === "habit-instance") openHabitInstancePopover(e.clientX, e.clientY, id, date);
         else if(kind === "action") editAction(id);
         else if(kind === "journal") editJournalEntry(id);
+        return;
+      }
+      // Released over the unscheduled panel: the reverse gesture — the action loses its time and
+      // returns to the panel's WHAT list. Habit/note blocks fall through to a normal time-move.
+      if(wasMoved && kind === "action" && pointInsideEl(unschedPanel, e.clientX, e.clientY)){
+        await unscheduleAction(id);
         return;
       }
       if(!wasMoved || !newTime) return;
@@ -6363,6 +6405,8 @@
       clearArmTimer();
       if(dragEl) dragEl.classList.remove("dragging", "tl-holding");
       dragEl = null; dragId = null; dragKind = null; dragDate = null; dragOvernight = false; dragOnDoneBtn = false; armed = false;
+      var unschedPanel = document.getElementById("homeTlUnscheduledPanel");
+      if(unschedPanel) unschedPanel.classList.remove("drop-hot");
     });
     // Clicking empty lane space (not a block or its resize handle) opens the add-action modal,
     // presetting the date to whichever day the dock is currently showing and the time to wherever
@@ -7288,7 +7332,67 @@
       var selD = new Date(homeTlSelectedDate + "T00:00:00");
       dn.style.background = homeTlDayNightBg(selD.getFullYear(), selD.getMonth() + 1, selD.getDate(), themeKey === "dark");
     }
+    renderHomeTlUnscheduled();
   }
+  // The dock's own copy of the Present tab's unscheduled panel — the selected day's open tasks with
+  // no time yet, sig-guarded like everything else the 1s home tick touches.
+  function homeTlUnscheduledActions(){
+    return state.actions.filter(function(a){ return a.date === homeTlSelectedDate && !a.timeOfDay && !a.done; });
+  }
+  function renderHomeTlUnscheduled(){
+    var list = document.getElementById("homeTlUnscheduledList");
+    if(!list) return;
+    var items = homeTlUnscheduledActions();
+    var sig = homeTlSelectedDate + "|" + items.map(function(a){ return a.id + ":" + (actionCategory(a) || "") + ":" + a.title; }).join(",");
+    if(list.dataset.sig === sig) return;
+    list.dataset.sig = sig;
+    list.innerHTML = items.length ? items.map(function(a){
+      var cat = actionCategory(a);
+      return '<div class="home-tl-unscheduled-item' + (cat ? ' ' + cat : '') + '" draggable="true" data-id="' + a.id + '" title="' + escapeHtml(a.title) + ' — drag onto the timeline to schedule it">' + escapeHtml(a.title) + '</div>';
+    }).join("") : '<div class="home-tl-unscheduled-empty">all timed ✓</div>';
+  }
+  // Panel → lanes (HTML5 drag, same as the Present tab's): horizontal drop position over the lanes
+  // becomes the task's time. The reverse direction (block → panel) rides the dock's existing
+  // pointer hold-drag instead — see the release-over-panel branch in wireHomeTimelineDock.
+  (function wireHomeTlUnscheduledDnD(){
+    var list = document.getElementById("homeTlUnscheduledList");
+    var lanes = document.getElementById("homeTlLanes");
+    if(!list || !lanes) return;
+    var draggingId = null;
+    list.addEventListener("dragstart", function(e){
+      var item = e.target.closest(".home-tl-unscheduled-item");
+      if(!item){ e.preventDefault(); return; }
+      draggingId = item.dataset.id;
+      item.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+      try{ e.dataTransfer.setData("text/plain", "unscheduled-action:" + draggingId); }catch(err){}
+    });
+    list.addEventListener("dragend", function(e){
+      var item = e.target.closest(".home-tl-unscheduled-item");
+      if(item) item.classList.remove("dragging");
+      draggingId = null;
+      lanes.classList.remove("tl-drop-target");
+    });
+    lanes.addEventListener("dragover", function(e){
+      if(!draggingId) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      lanes.classList.add("tl-drop-target");
+    });
+    lanes.addEventListener("dragleave", function(e){
+      if(!lanes.contains(e.relatedTarget)) lanes.classList.remove("tl-drop-target");
+    });
+    lanes.addEventListener("drop", async function(e){
+      if(!draggingId) return;
+      e.preventDefault();
+      lanes.classList.remove("tl-drop-target");
+      var id = draggingId;
+      draggingId = null;
+      var rect = lanes.getBoundingClientRect();
+      var frac = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+      await scheduleActionAt(id, minutesToTime(Math.round((frac * 1440) / 5) * 5));
+    });
+  })();
 
   // ---- Calendar strip above the timeline dock — a compact, one-row cousin of Present/Future's own
   // .today-month-strip day-picker (same cell shape, same calStripColorsForDates intensity/quality
@@ -16196,6 +16300,50 @@
   function todayUnscheduledActions(){
     return state.actions.filter(function(a){ return a.date === todaySelectedDate && !a.timeOfDay && !a.done; });
   }
+  function pointInsideEl(el, x, y){
+    if(!el) return false;
+    var r = el.getBoundingClientRect();
+    return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+  }
+  // The two halves of the schedule/unschedule round-trip, shared by the Present tab and the Home
+  // dock (both have an unscheduled panel + a timeline): give an action a time (drag from panel onto
+  // the timeline) or take it away again (drag its block onto the panel). Optimistic with rollback.
+  async function scheduleActionAt(id, newTime){
+    var a = state.actions.find(function(x){ return x.id === id; });
+    if(!a) return;
+    var prevTime = a.timeOfDay;
+    a.timeOfDay = newTime;
+    renderAll();
+    var r = await safeUpdate("actions", id, { time_of_day: newTime });
+    if(r.error){
+      console.error(r.error);
+      a.timeOfDay = prevTime;
+      renderAll();
+      toast("Could not schedule: " + r.error.message);
+      return;
+    }
+    warnDroppedFields(r.droppedFields);
+    toast('"' + a.title + '" scheduled at ' + fmtTimeOfDay(newTime));
+  }
+  // Actions only: a habit occurrence always has its recurring schedule to fall back to, and a
+  // note's time is simply when it was written — neither has a meaningful "unscheduled" state.
+  async function unscheduleAction(id){
+    var a = state.actions.find(function(x){ return x.id === id; });
+    if(!a || !a.timeOfDay) return;
+    var prevTime = a.timeOfDay;
+    a.timeOfDay = null;
+    renderAll();
+    var r = await safeUpdate("actions", id, { time_of_day: null });
+    if(r.error){
+      console.error(r.error);
+      a.timeOfDay = prevTime;
+      renderAll();
+      toast("Could not unschedule: " + r.error.message);
+      return;
+    }
+    warnDroppedFields(r.droppedFields);
+    toast('"' + a.title + '" moved back to unscheduled');
+  }
   function renderTodayUnscheduled(){
     var list = document.getElementById("todayUnscheduledList");
     if(!list) return;
@@ -16243,26 +16391,11 @@
       unified.classList.remove("tl-drop-target");
       var id = draggingId;
       draggingId = null;
-      var a = state.actions.find(function(x){ return x.id === id; });
-      if(!a) return;
       // The unified world element IS the 24h scale (zoom just makes it wider), so clientX relative
       // to its own rect maps straight to a time fraction regardless of zoom or scroll position.
       var rect = unified.getBoundingClientRect();
       var frac = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
-      var newTime = minutesToTime(Math.round((frac * 1440) / 5) * 5);
-      var prevTime = a.timeOfDay;
-      a.timeOfDay = newTime;
-      renderAll();  // instantly moves it out of the panel and onto its area row
-      var r = await safeUpdate("actions", id, { time_of_day: newTime });
-      if(r.error){
-        console.error(r.error);
-        a.timeOfDay = prevTime;
-        renderAll();
-        toast("Could not schedule: " + r.error.message);
-        return;
-      }
-      warnDroppedFields(r.droppedFields);
-      toast('"' + a.title + '" scheduled at ' + fmtTimeOfDay(newTime));
+      await scheduleActionAt(id, minutesToTime(Math.round((frac * 1440) / 5) * 5));
     });
   })();
 
@@ -16694,6 +16827,10 @@
       var newTime = minutesToTime(totalMin);
       dragEl.style.left = (totalMin / 1440 * 100) + "%";
       dragEl.dataset.pendingTime = newTime;
+      // Dragging an ACTION block over the unscheduled panel highlights it as a drop zone — release
+      // there clears the time instead of setting a new one (see pointerup below).
+      var unschedPanel = document.getElementById("todayUnscheduledPanel");
+      if(unschedPanel) unschedPanel.classList.toggle("drop-hot", dragKind === "action" && pointInsideEl(unschedPanel, e.clientX, e.clientY));
     });
     track.addEventListener("pointerup", async function(e){
       if(!dragEl) return;
@@ -16702,6 +16839,8 @@
       var wasArmed = armed, wasMoved = moved, wasMovedBeforeArm = movedBeforeArm;
       dragEl = null; dragId = null; dragKind = null; dragDate = null; dragOvernight = false; dragOnDoneBtn = false; armed = false;
       el.classList.remove("dragging", "tl-holding");
+      var unschedPanel = document.getElementById("todayUnscheduledPanel");
+      if(unschedPanel) unschedPanel.classList.remove("drop-hot");
       if(!wasArmed){
         if(wasMovedBeforeArm) return; // let go mid-press before the hold armed — not a clean click either
         if(onDoneBtn){
@@ -16712,6 +16851,13 @@
         if(kind === "habit-instance") openHabitInstancePopover(e.clientX, e.clientY, id, date);
         else if(kind === "action") editAction(id);
         else if(kind === "journal") editJournalEntry(id);
+        return;
+      }
+      // Released over the unscheduled panel: the reverse gesture — the action loses its time and
+      // returns to the WHAT list. Habit/note blocks fall through to a normal time-move instead
+      // (see unscheduleAction for why they have no meaningful unscheduled state).
+      if(wasMoved && kind === "action" && pointInsideEl(unschedPanel, e.clientX, e.clientY)){
+        await unscheduleAction(id);
         return;
       }
       if(!wasMoved || !newTime) return;
@@ -16736,6 +16882,8 @@
       clearArmTimer();
       if(dragEl) dragEl.classList.remove("dragging", "tl-holding");
       dragEl = null; dragId = null; dragKind = null; dragDate = null; dragOvernight = false; dragOnDoneBtn = false; armed = false;
+      var unschedPanel = document.getElementById("todayUnscheduledPanel");
+      if(unschedPanel) unschedPanel.classList.remove("drop-hot");
     });
   }
   TODAY_TIMELINE_AREAS.forEach(function(area){ wireTimelineLayerDrag(todayTimelineRowId(area)); });
