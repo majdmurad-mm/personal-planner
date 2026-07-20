@@ -2350,6 +2350,8 @@
           <button class="filter-chip active" data-filter="all" type="button">all</button>
           <button class="filter-chip" data-filter="open" type="button">open</button>
           <button class="filter-chip" data-filter="done" type="button">done</button>
+          <button class="filter-chip" data-filter="overdue" type="button">overdue</button>
+          <button class="filter-chip" data-filter="unscheduled" type="button">unscheduled</button>
           <button class="filter-chip" data-filter="P0" type="button">P0</button>
           <button class="filter-chip" data-filter="P1" type="button">P1</button>
           <button class="filter-chip" data-filter="P2" type="button">P2</button>
@@ -10740,10 +10742,16 @@
 
   function renderActions(){
     var f = filters.actions;
+    var today = todayStr();
     var list = state.actions.filter(function(a){
       if(f === "all") return true;
       if(f === "open") return !a.done;
       if(f === "done") return a.done;
+      // Same "not done" scoping as the overdue color logic already used in the list/matrix cards
+      // below (var overdue = !a.done && a.date && a.date < todayStr()) — a completed task that's
+      // past its date or never had one isn't something that still needs attention.
+      if(f === "overdue") return !a.done && a.date && a.date < today;
+      if(f === "unscheduled") return !a.done && !a.date;
       return a.priority === f;
     });
     if(views.actions === "matrix") renderActionsMatrix(list); else renderActionsList(list);
