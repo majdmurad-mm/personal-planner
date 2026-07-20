@@ -879,6 +879,27 @@
      bordered box so they never shift each row's 0-100% time axis out of alignment with the others,
      and the "now" line is a direct child of the box so it spans all rows as one continuous line. */
   .today-timeline-body{ display:flex; gap:8px; align-items:stretch; }
+  /* Unscheduled-tasks panel, pinned to the timeline's right edge: the day's WHAT (tasks with no
+     time yet) waiting to be dragged onto the WHEN (the timeline — see wireTodayUnscheduledDrag).
+     Item cards reuse the area color vocabulary every other card uses (left edge). */
+  .today-unscheduled{ width:185px; flex-shrink:0; display:flex; flex-direction:column; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg-raised); overflow:hidden; }
+  .today-unscheduled-head{ flex-shrink:0; font-family:var(--mono); font-size:9px; letter-spacing:0.1em; text-transform:uppercase; color:var(--text-dim); padding:8px 10px 4px; }
+  .today-unscheduled-hint{ flex-shrink:0; margin:0; padding:0 10px 7px; font-size:10px; color:var(--text-faint); border-bottom:1px solid var(--border); }
+  .today-unscheduled-list{ flex:1; min-height:0; overflow-y:auto; padding:7px; display:flex; flex-direction:column; gap:6px; }
+  .today-unscheduled-item{ display:flex; align-items:center; gap:6px; padding:7px 9px; border:1px solid var(--border); border-left:3px solid var(--border-bright); border-radius:6px; background:var(--bg-inset); font-size:12px; color:var(--text); cursor:grab; }
+  .today-unscheduled-item:active{ cursor:grabbing; }
+  .today-unscheduled-item.dragging{ opacity:0.45; }
+  .today-unscheduled-item-title{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .today-unscheduled-item.Health{ border-left-color:var(--cat-health); }
+  .today-unscheduled-item.Finance{ border-left-color:var(--cat-finance); }
+  .today-unscheduled-item.Career{ border-left-color:var(--cat-career); }
+  .today-unscheduled-item.Maintenance{ border-left-color:var(--cat-maintenance); }
+  .today-unscheduled-item.Growth{ border-left-color:var(--cat-growth); }
+  .today-unscheduled-item.Relationships{ border-left-color:var(--cat-relationships); }
+  .today-unscheduled-item.Sol{ border-left-color:var(--cat-sol); }
+  .today-unscheduled-empty{ padding:8px 4px; font-size:11px; color:var(--text-faint); text-align:center; }
+  /* Drop feedback while an unscheduled task is held over the timeline. */
+  #todayTimelineUnified.tl-drop-target{ outline:1.5px dashed var(--accent); outline-offset:-1.5px; }
   .today-timeline-row-labels{ display:flex; flex-direction:column; width:26px; flex-shrink:0; }
   .today-timeline-row-labels span{ flex:1; display:flex; align-items:center; justify-content:center; font-size:12px; color:var(--text-faint); }
   .today-timeline-row-labels span.Health{ color:var(--cat-health); }
@@ -2238,6 +2259,15 @@
                 <span>12am</span><span>3am</span><span>6am</span><span>9am</span><span>12pm</span><span>3pm</span><span>6pm</span><span>9pm</span><span>12am</span>
               </div>
             </div>
+          </div>
+          <!-- WHAT before WHEN: this day's tasks that have no time yet, parked beside the timeline —
+               drag one onto the timeline and the horizontal drop position becomes its time (see
+               wireTodayUnscheduledDrag). It then leaves this list and appears as a block in its own
+               area row. -->
+          <div class="today-unscheduled" id="todayUnscheduledPanel">
+            <div class="today-unscheduled-head">unscheduled</div>
+            <p class="today-unscheduled-hint">Drag a task onto the timeline to decide when to do it.</p>
+            <div class="today-unscheduled-list" id="todayUnscheduledList"></div>
           </div>
         </div>
         <div class="today-daynight" id="todayDayNight"></div>
@@ -16158,6 +16188,84 @@
   }
   setInterval(function(){ if(activeSection === "today") renderTodayTimeline(); }, 60000);
 
+  // ---- Unscheduled panel: this day's open tasks with no time yet, beside the timeline. Dragging
+  // one onto the timeline turns the horizontal drop position into its time_of_day (5-minute snap,
+  // same granularity as every other timeline gesture) — the WHAT is decided in the list, the WHEN
+  // by where it lands. Done tasks are excluded (nothing left to schedule) and the timeline only
+  // shows timed items anyway, so the list and the timeline are exact complements of each other.
+  function todayUnscheduledActions(){
+    return state.actions.filter(function(a){ return a.date === todaySelectedDate && !a.timeOfDay && !a.done; });
+  }
+  function renderTodayUnscheduled(){
+    var list = document.getElementById("todayUnscheduledList");
+    if(!list) return;
+    var items = todayUnscheduledActions();
+    list.innerHTML = items.length ? items.map(function(a){
+      var cat = actionCategory(a);
+      return '<div class="today-unscheduled-item' + (cat ? ' ' + cat : '') + '" draggable="true" data-id="' + a.id + '" title="' + escapeHtml(a.title) + ' — drag onto the timeline to schedule it">' +
+        '<span class="prio-badge ' + a.priority + '">' + a.priority + '</span>' +
+        '<span class="today-unscheduled-item-title">' + escapeHtml(a.title) + '</span>' +
+      '</div>';
+    }).join("") : '<div class="today-unscheduled-empty">nothing waiting — every open task for this day has a time</div>';
+  }
+  (function wireTodayUnscheduledDrag(){
+    var list = document.getElementById("todayUnscheduledList");
+    var unified = document.getElementById("todayTimelineUnified");
+    if(!list || !unified) return;
+    var draggingId = null;
+    list.addEventListener("dragstart", function(e){
+      var item = e.target.closest(".today-unscheduled-item");
+      if(!item){ e.preventDefault(); return; }
+      draggingId = item.dataset.id;
+      item.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+      try{ e.dataTransfer.setData("text/plain", "unscheduled-action:" + draggingId); }catch(err){}
+    });
+    list.addEventListener("dragend", function(e){
+      var item = e.target.closest(".today-unscheduled-item");
+      if(item) item.classList.remove("dragging");
+      draggingId = null;
+      unified.classList.remove("tl-drop-target");
+    });
+    unified.addEventListener("dragover", function(e){
+      if(!draggingId) return;
+      e.preventDefault();  // required, or the browser refuses the drop entirely
+      e.dataTransfer.dropEffect = "move";
+      unified.classList.add("tl-drop-target");
+    });
+    unified.addEventListener("dragleave", function(e){
+      // Only clear when actually leaving the timeline, not when crossing into one of its own rows.
+      if(!unified.contains(e.relatedTarget)) unified.classList.remove("tl-drop-target");
+    });
+    unified.addEventListener("drop", async function(e){
+      if(!draggingId) return;
+      e.preventDefault();
+      unified.classList.remove("tl-drop-target");
+      var id = draggingId;
+      draggingId = null;
+      var a = state.actions.find(function(x){ return x.id === id; });
+      if(!a) return;
+      // The unified world element IS the 24h scale (zoom just makes it wider), so clientX relative
+      // to its own rect maps straight to a time fraction regardless of zoom or scroll position.
+      var rect = unified.getBoundingClientRect();
+      var frac = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+      var newTime = minutesToTime(Math.round((frac * 1440) / 5) * 5);
+      var prevTime = a.timeOfDay;
+      a.timeOfDay = newTime;
+      renderAll();  // instantly moves it out of the panel and onto its area row
+      var r = await safeUpdate("actions", id, { time_of_day: newTime });
+      if(r.error){
+        console.error(r.error);
+        a.timeOfDay = prevTime;
+        renderAll();
+        toast("Could not schedule: " + r.error.message);
+        return;
+      }
+      warnDroppedFields(r.droppedFields);
+      toast('"' + a.title + '" scheduled at ' + fmtTimeOfDay(newTime));
+    });
+  })();
+
   // ---- Today timeline zoom: a multiplier of the viewport's own width, not an absolute px value —
   // 1x always means "fit the container, no scroll" (matches the pre-zoom look/behavior exactly),
   // anything above that sets an explicit pixel width on the world (#todayTimelineUnified +
@@ -17215,6 +17323,7 @@
     if(activeSection !== "today") return;
     renderTodayTimeline();
     renderTodayTimelineAreas();
+    renderTodayUnscheduled();
     document.getElementById("todayDateLabel").textContent = fmtDateLong(todaySelectedDate) + (todaySelectedDate === todayStr() ? " (today)" : "");
 
     var actionsToday = state.actions.filter(function(a){ return a.date === todaySelectedDate; });
