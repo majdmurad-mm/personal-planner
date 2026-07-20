@@ -601,6 +601,9 @@
     .loc-page-body{ flex-direction:column; }
     .loc-legend-panel{ width:auto; max-height:140px; }
   }
+  /* Numbered trip-planner stop markers (see locPlanTrip/locTripStopIcon) — home shows ⌂, each task
+     its visiting order. High-contrast teal to match the route line they sit on. */
+  .loc-trip-stop{ width:22px; height:22px; border-radius:50%; background:#2DD4BF; color:#0b0b0e; border:2px solid #0b0b0e; box-shadow:0 1px 6px rgba(0,0,0,0.5); font-family:var(--mono); font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center; }
   /* Link-an-existing-point picker, embedded in every located marker's popup (POI/action/habit/person
      city marker — see locLinkPickerHtml/wireLocLinkPicker) — lets that exact lat/lng be reused as
      another person's home or another action/habit's location instead of re-geocoding an address. */
@@ -622,7 +625,8 @@
      wireAddressAutocomplete's poiMatches) — a small badge distinguishes "a place you already
      pinned" from a fresh Nominatim address match. */
   .addr-suggest-poi-badge{ display:inline-block; margin-right:6px; padding:1px 5px; border-radius:3px; background:var(--accent-glow); color:var(--accent); font-size:9px; letter-spacing:0.03em; }
-  #locLayerPeopleBtn.on, #locLayerLiveBtn.on, #locLayerHistoryBtn.on, #locLayerActionsBtn.on, #locLayerPoiBtn.on{ background:var(--accent); color:var(--bg); border-color:var(--accent); }
+  #locLayerPeopleBtn.on, #locLayerLiveBtn.on, #locLayerHistoryBtn.on, #locLayerActionsBtn.on, #locLayerPoiBtn.on,
+  #locLayerHeatBtn.on, #locPlanTripBtn.on, #locBasemapBtn.on{ background:var(--accent); color:var(--bg); border-color:var(--accent); }
   #locAddPoiBtn.on{ background:#FFD54A; color:#1a1a1a; border-color:#FFD54A; }
   .loc-people-mode-group{ display:flex; gap:4px; }
   .loc-mode-btn{ font-size:10.5px; padding:5px 8px; }
@@ -3464,27 +3468,31 @@
       </div>
       <div class="loc-page-body">
         <div class="loc-legend-panel" id="locLegendPanel">
-          <div class="loc-legend-head">on the map</div>
+          <div class="loc-legend-head">visible on the map</div>
           <div class="loc-legend-list" id="locLegendList"></div>
         </div>
         <div class="wb-canvas-wrap loc-map-wrap" id="locMapWrap">
           <div class="wb-toolbar wb-toolbar-float" id="locToolbarFloat">
-            <button class="btn" id="locLayerActionsBtn" type="button" title="Show actions and habits that have a location set">▪ actions/habits</button>
-            <button class="btn on" id="locLayerPeopleBtn" type="button" title="Show people's home locations">☺ people</button>
+            <button class="btn" id="locLayerActionsBtn" type="button" title="Show every task and habit that has a location">▪ tasks &amp; habits</button>
+            <button class="btn on" id="locLayerPeopleBtn" type="button" title="Show where the people you know live">☺ people</button>
             <div class="loc-people-mode-group" id="locPeopleModeGroup">
-              <button class="btn loc-mode-btn on" data-mode="count" type="button" title="Size markers by how many people share a city">by count</button>
-              <button class="btn loc-mode-btn" data-mode="relationship" type="button" title="Color and split markers by relationship type">by relationship</button>
+              <button class="btn loc-mode-btn on" data-mode="count" type="button" title="One marker per city, sized by how many people live there">group by city</button>
+              <button class="btn loc-mode-btn" data-mode="relationship" type="button" title="Split and color markers by relationship (family, friends, …)">color by relation</button>
             </div>
-            <button class="btn" id="locLayerPoiBtn" type="button" title="Show points of interest you've added">★ points of interest</button>
-            <button class="btn" id="locAddPoiBtn" type="button" title="Click the map to drop a new point of interest">+ add poi</button>
-            <button class="btn" id="locAddPoiAddressBtn" type="button" title="Add a point of interest by searching an address instead of clicking the map">+ add poi (address)</button>
-            <button class="btn" id="locLayerLiveBtn" type="button" title="Track and show your live GPS position while this page is open">◉ live gps</button>
-            <button class="btn" id="locLayerHistoryBtn" type="button" title="Show recorded/imported location history">↔ history</button>
-            <button class="btn" id="locImportBtn" type="button" title="Import a Google Maps Timeline export (JSON)">⇩ import timeline</button>
-            <input type="file" id="locImportFile" accept="application/json" hidden>
+            <button class="btn" id="locLayerPoiBtn" type="button" title="Show your saved places">★ my places</button>
+            <button class="btn" id="locAddPoiBtn" type="button" title="Turn this on, then click anywhere on the map to save that spot as a place">+ place (map click)</button>
+            <button class="btn" id="locAddPoiAddressBtn" type="button" title="Save a new place by searching for its address">+ place (address)</button>
+            <button class="btn" id="locPlanTripBtn" type="button" title="Order your open located tasks into an efficient trip from home and draw the driving route">⛟ plan trip</button>
+            <button class="btn" id="locLayerHeatBtn" type="button" title="Show your recorded movement history as a heatmap — where you actually spend time">▒ heatmap</button>
+            <button class="btn" id="locLayerLiveBtn" type="button" title="Follow your live GPS position while this page is open">◉ live position</button>
+            <button class="btn" id="locLayerHistoryBtn" type="button" title="Draw your recorded/imported movement history as a trail">↔ history trail</button>
+            <button class="btn" id="locBasemapBtn" type="button" title="Switch between the dark map and satellite imagery">🛰 satellite</button>
+            <button class="btn" id="locImportBtn" type="button" title="Import location history — a Google Maps Timeline export (.json) or a GPS track (.gpx)">⇩ import</button>
+            <button class="btn" id="locExportGpxBtn" type="button" title="Download your recorded location history as a .gpx file">⇪ export gpx</button>
+            <input type="file" id="locImportFile" accept=".json,.gpx,application/json" hidden>
             <span class="wb-save-status" id="locStatus"></span>
           </div>
-          <p class="panel-hint wb-hint-float wb-pan-hint">Pan: drag. Zoom: scroll or pinch. Click a pin to open it.</p>
+          <p class="panel-hint wb-hint-float wb-pan-hint">Drag to pan · scroll or pinch to zoom · click any marker to open it.</p>
           <div class="loc-map" id="locMap"></div>
         </div>
       </div>
@@ -4046,6 +4054,10 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<!-- Tiny heatmap plugin for the Location page's "activity heat" layer (see locHeatLayer) — renders
+     state.gpsPings as an intensity surface. Guarded at use with typeof L.heatLayer, so the page
+     still works fully if this CDN script fails to load. -->
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js" crossorigin=""></script>
 <script>
 (function(){
   "use strict";
@@ -13123,6 +13135,12 @@
 
   var locMap = null, locPeopleLayer = null, locLiveLayer = null, locHistoryLayer = null;
   var locActionsLayer = null, locPoiLayer = null;
+  // Heatmap of state.gpsPings (Leaflet.heat, created lazily on first toggle since the plugin layer
+  // needs its point data up front) and the planned-trip overlay (numbered stops + route polyline).
+  var locHeatLayer = null, locTripLayer = null;
+  // Both basemaps are kept as live references so the satellite toggle just swaps which one is on
+  // the map, instead of re-creating tile layers (and re-downloading tiles) on every switch.
+  var locDarkTiles = null, locSatelliteTiles = null, locSatelliteOn = false;
   var locLiveMarker = null, locLiveTrailLine = null, locLiveTrailLatLngs = [];
   var locLiveWatchId = null, locLastPingAt = 0, locLastPingLatLng = null;
   var LOC_MIN_PING_INTERVAL_MS = 60000, LOC_MIN_PING_DIST_M = 50;
@@ -13539,6 +13557,7 @@
       sb.from("gps_pings").insert({ lat:pingRow.lat, lng:pingRow.lng, recorded_at:pingRow.recordedAt, source:"gps", accuracy:pos.coords.accuracy||null })
         .then(function(r){ if(r.error) console.error(r.error); });
       if(document.getElementById("locLayerHistoryBtn").classList.contains("on")) locRenderHistoryLayer();
+      locRefreshHeatLayer();
     }
   }
 
@@ -13596,14 +13615,9 @@
     });
     return kept;
   }
-  async function locImportGoogleTimelineFile(file){
-    var statusEl = document.getElementById("locStatus");
-    statusEl.textContent = "reading file…";
-    var text;
-    try{ text = await file.text(); } catch(e){ statusEl.textContent = "could not read that file"; return; }
-    var json;
-    try{ json = JSON.parse(text); } catch(e){ statusEl.textContent = "not valid JSON"; return; }
-    var points = locExtractTimelinePoints(json);
+  // Shared tail of both import paths (Google Timeline JSON and GPX): decimate the raw points,
+  // chunk-insert them into gps_pings, reload state, redraw whatever history surfaces are visible.
+  async function locInsertImportedPoints(points, statusEl){
     if(!points.length){ statusEl.textContent = "no location points found in that file"; return; }
     points = locDecimatePoints(points, 5 * 60 * 1000, 100);
     var rows = points.map(function(p){ return { lat:p.lat, lng:p.lng, recorded_at:new Date(p.time).toISOString(), source:"import" }; });
@@ -13619,6 +13633,146 @@
     if(!reload.error) state.gpsPings = (reload.data || []).map(locMapGpsRow);
     statusEl.textContent = "imported " + inserted + " points";
     locRenderHistoryLayer();
+    locRefreshHeatLayer();
+  }
+  async function locImportGoogleTimelineFile(file){
+    var statusEl = document.getElementById("locStatus");
+    statusEl.textContent = "reading file…";
+    var text;
+    try{ text = await file.text(); } catch(e){ statusEl.textContent = "could not read that file"; return; }
+    var json;
+    try{ json = JSON.parse(text); } catch(e){ statusEl.textContent = "not valid JSON"; return; }
+    await locInsertImportedPoints(locExtractTimelinePoints(json), statusEl);
+  }
+  // GPX is the universal GPS-track format most fitness apps and devices export — both <trkpt>
+  // (track points, the common case) and <wpt> (standalone waypoints) are read; points without a
+  // <time> are dropped by locDecimatePoints' own time filter, same as timeline points without one.
+  async function locImportGpxFile(file){
+    var statusEl = document.getElementById("locStatus");
+    statusEl.textContent = "reading file…";
+    var text;
+    try{ text = await file.text(); } catch(e){ statusEl.textContent = "could not read that file"; return; }
+    var doc;
+    try{ doc = new DOMParser().parseFromString(text, "application/xml"); } catch(e){ doc = null; }
+    if(!doc || doc.querySelector("parsererror")){ statusEl.textContent = "not a valid GPX file"; return; }
+    var points = [];
+    doc.querySelectorAll("trkpt, wpt").forEach(function(pt){
+      var lat = parseFloat(pt.getAttribute("lat")), lng = parseFloat(pt.getAttribute("lon"));
+      if(isNaN(lat) || isNaN(lng)) return;
+      var timeEl = pt.querySelector("time");
+      points.push({ lat:lat, lng:lng, time: timeEl ? timeEl.textContent.trim() : null });
+    });
+    await locInsertImportedPoints(points, statusEl);
+  }
+  // The mirror of the imports above: the whole recorded history back out as one GPX track, so the
+  // data isn't locked in — any fitness/GPS tool can read the result.
+  function locExportGpx(){
+    if(!state.gpsPings.length){ toast("No recorded location history to export yet."); return; }
+    var pts = state.gpsPings.slice().sort(function(a,b){ return new Date(a.recordedAt) - new Date(b.recordedAt); });
+    var xml = '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<gpx version="1.1" creator="personal-planner" xmlns="http://www.topografix.com/GPX/1/1">\n<trk><name>location history</name><trkseg>\n' +
+      pts.map(function(p){ return '<trkpt lat="' + p.lat + '" lon="' + p.lng + '"><time>' + new Date(p.recordedAt).toISOString() + '</time></trkpt>'; }).join("\n") +
+      '\n</trkseg></trk>\n</gpx>\n';
+    var blob = new Blob([xml], { type: "application/gpx+xml" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "location-history-" + todayStr() + ".gpx";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  // ---- Activity heatmap: state.gpsPings as an intensity surface (Leaflet.heat). Created lazily on
+  // first toggle; refreshed in place when new pings arrive (live tracking, imports) while visible. ----
+  function locBuildHeatPoints(){
+    return state.gpsPings.map(function(p){ return [p.lat, p.lng, 0.6]; });
+  }
+  function locHeatAvailable(){ return typeof L !== "undefined" && typeof L.heatLayer === "function"; }
+  function locRefreshHeatLayer(){
+    if(locHeatLayer && locHeatLayer.setLatLngs) locHeatLayer.setLatLngs(locBuildHeatPoints());
+  }
+  function locToggleHeat(btn){
+    if(!locHeatAvailable()){ toast("The heatmap plugin didn't load — check your connection and reload."); return; }
+    if(!state.gpsPings.length){ toast("No recorded location history yet — turn on live position or import a file first."); return; }
+    var on = !btn.classList.contains("on");
+    btn.classList.toggle("on", on);
+    if(!locHeatLayer) locHeatLayer = L.heatLayer(locBuildHeatPoints(), { radius: 18, blur: 22, maxZoom: 15 });
+    else locRefreshHeatLayer();
+    if(on) locMap.addLayer(locHeatLayer); else locMap.removeLayer(locHeatLayer);
+  }
+
+  // ---- Trip planner: every open (not-done) task with a location, ordered into an efficient run
+  // starting from home (nearest-neighbor over locHaversineMeters — greedy, not a true TSP solve,
+  // which is overkill for a personal errand list), then the actual driving route between the stops
+  // from OSRM's free demo server (router.project-osrm.org — one request per plan, comfortably
+  // inside its 1 req/sec fair-use limit; no API key). If the routing call fails (offline, server
+  // down), the numbered stops still draw with straight connecting lines, so the ORDER — the useful
+  // part — survives without the road geometry. ----
+  function locTripStops(){
+    return state.actions.filter(function(a){ return !a.done && a.locationLat != null && a.locationLng != null; });
+  }
+  function locOrderTripStops(stops){
+    var remaining = stops.slice(), ordered = [];
+    var curLat = HOME_MAP_BASE_LAT, curLng = HOME_MAP_BASE_LON;
+    while(remaining.length){
+      var bestIdx = 0, bestDist = Infinity;
+      for(var i = 0; i < remaining.length; i++){
+        var d = locHaversineMeters(curLat, curLng, remaining[i].locationLat, remaining[i].locationLng);
+        if(d < bestDist){ bestDist = d; bestIdx = i; }
+      }
+      var next = remaining.splice(bestIdx, 1)[0];
+      ordered.push(next);
+      curLat = next.locationLat; curLng = next.locationLng;
+    }
+    return ordered;
+  }
+  function locTripStopIcon(n){
+    return L.divIcon({ className: "", html: '<div class="loc-trip-stop">' + n + '</div>', iconSize: [22, 22], iconAnchor: [11, 11] });
+  }
+  async function locPlanTrip(btn){
+    var statusEl = document.getElementById("locStatus");
+    var on = !btn.classList.contains("on");
+    if(!on){
+      btn.classList.remove("on");
+      if(locTripLayer){ locTripLayer.clearLayers(); locMap.removeLayer(locTripLayer); }
+      statusEl.textContent = "";
+      return;
+    }
+    var stops = locOrderTripStops(locTripStops());
+    if(!stops.length){ toast("No open tasks with a location to plan a trip from — add locations to some tasks first."); return; }
+    btn.classList.add("on");
+    if(!locTripLayer) locTripLayer = L.layerGroup();
+    locTripLayer.clearLayers();
+    locMap.addLayer(locTripLayer);
+    // Home is stop 0 — the trip starts there; each task gets a numbered marker in visiting order.
+    var waypoints = [[HOME_MAP_BASE_LAT, HOME_MAP_BASE_LON]].concat(stops.map(function(s){ return [s.locationLat, s.locationLng]; }));
+    locTripLayer.addLayer(L.marker([HOME_MAP_BASE_LAT, HOME_MAP_BASE_LON], { icon: locTripStopIcon("⌂") }));
+    stops.forEach(function(s, i){
+      var m = L.marker([s.locationLat, s.locationLng], { icon: locTripStopIcon(i + 1) });
+      m.bindPopup('<div class="loc-city-popup"><b>' + (i + 1) + '. ' + escapeHtml(s.title || "Untitled") + '</b>' + (s.date ? '<br>' + escapeHtml(s.date) : '') + '</div>');
+      m.on("click", function(){ /* popup only — the numbered order is the point here */ });
+      locTripLayer.addLayer(m);
+    });
+    statusEl.textContent = "routing " + stops.length + " stop" + (stops.length === 1 ? "" : "s") + "…";
+    var routed = false;
+    try{
+      var coords = waypoints.map(function(w){ return w[1] + "," + w[0]; }).join(";");
+      var res = await fetch("https://router.project-osrm.org/route/v1/driving/" + coords + "?overview=full&geometries=geojson", { headers: { "Accept": "application/json" } });
+      var json = await res.json();
+      var route = json && json.routes && json.routes[0];
+      if(route && route.geometry && route.geometry.coordinates){
+        var latlngs = route.geometry.coordinates.map(function(c){ return [c[1], c[0]]; });
+        locTripLayer.addLayer(L.polyline(latlngs, { color: "#2DD4BF", weight: 3, opacity: 0.85 }));
+        var km = (route.distance / 1000).toFixed(1), mins = Math.round(route.duration / 60);
+        statusEl.textContent = stops.length + " stop" + (stops.length === 1 ? "" : "s") + " · " + km + " km · ~" + mins + " min drive";
+        routed = true;
+      }
+    }catch(err){ /* fall through to straight lines below */ }
+    if(!routed){
+      locTripLayer.addLayer(L.polyline(waypoints, { color: "#2DD4BF", weight: 2, opacity: 0.6, dashArray: "6 6" }));
+      statusEl.textContent = stops.length + " stop" + (stops.length === 1 ? "" : "s") + " (route service unreachable — showing visit order only)";
+    }
+    var bounds = L.latLngBounds(waypoints);
+    locMap.fitBounds(bounds, { padding: [40, 40] });
   }
 
   function initLocation(){
@@ -13632,12 +13786,17 @@
     L.control.zoom({ position: "topright" }).addTo(locMap);
     // CARTO's free "Dark Matter" basemap (no API key, same OSM data underneath) — a permanently dark
     // map regardless of the app's own light/dark toggle, since a light basemap read as jarring next
-    // to everything else here.
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+    // to everything else here. Kept as a reference (not fire-and-forget) so the satellite toggle
+    // below can swap between it and Esri's free World Imagery tiles.
+    locDarkTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
       maxZoom: 19,
       subdomains: "abcd",
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
     }).addTo(locMap);
+    locSatelliteTiles = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+      maxZoom: 19,
+      attribution: 'Imagery &copy; Esri'
+    });
     locPeopleLayer = L.layerGroup().addTo(locMap);
     locLiveLayer = L.layerGroup();
     locHistoryLayer = L.layerGroup();
@@ -13686,6 +13845,16 @@
       var on = locToggleLayer(locHistoryLayer, this);
       if(on) locRenderHistoryLayer();
     });
+    document.getElementById("locLayerHeatBtn").addEventListener("click", function(){ locToggleHeat(this); });
+    document.getElementById("locPlanTripBtn").addEventListener("click", function(){ locPlanTrip(this); });
+    // Swap the whole basemap in place — overlays (markers, trails, heat, trip route) sit in their
+    // own layers/panes, so they're untouched by the switch.
+    document.getElementById("locBasemapBtn").addEventListener("click", function(){
+      locSatelliteOn = !locSatelliteOn;
+      this.classList.toggle("on", locSatelliteOn);
+      if(locSatelliteOn){ locMap.removeLayer(locDarkTiles); locMap.addLayer(locSatelliteTiles); }
+      else { locMap.removeLayer(locSatelliteTiles); locMap.addLayer(locDarkTiles); }
+    });
     document.getElementById("locImportBtn").addEventListener("click", function(){
       document.getElementById("locImportFile").click();
     });
@@ -13693,8 +13862,11 @@
       var file = e.target.files && e.target.files[0];
       e.target.value = "";
       if(!file) return;
-      await locImportGoogleTimelineFile(file);
+      // One import button, two formats — routed by extension: .gpx tracks vs Google Timeline JSON.
+      if(/\.gpx$/i.test(file.name)) await locImportGpxFile(file);
+      else await locImportGoogleTimelineFile(file);
     });
+    document.getElementById("locExportGpxBtn").addEventListener("click", locExportGpx);
     // Clicking a sidebar entry pans the map to it and opens the same editor its own marker click
     // would (see locLegendOpenItem) — POIs have no dedicated editor, so panning is all that happens.
     document.getElementById("locLegendList").addEventListener("click", function(e){
