@@ -1593,6 +1593,13 @@
   .home-todo-tab:hover{ color:var(--text); }
   .home-todo-tab.sel{ background:var(--accent-glow); color:var(--accent); border-color:var(--accent-dim); }
   .home-todo-grid{ display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr; gap:1px; background:var(--border); flex:1; min-height:0; }
+  /* Quick-task input pinned under the quadrants — Enter creates an action for the widget's selected
+     day (wireHomeTodoQuickAdd). Right padding clears the corner resize grip. */
+  .home-todo-quick{ flex-shrink:0; border-top:1px solid var(--border); }
+  .home-todo-quick input{ width:100%; box-sizing:border-box; appearance:none; border:none; background:none; padding:6px 20px 6px 10px; font-family:var(--mono); font-size:10.5px; color:var(--text); outline:none; }
+  .home-todo-quick input::placeholder{ color:var(--text-faint); }
+  .home-todo-quick input:focus{ background:rgba(var(--bg-raised-rgb), 0.9); }
+  .home-todo-quick input:disabled{ opacity:0.5; }
   .home-todo-quad{ background:var(--bg-raised); padding:6px 7px; overflow-y:auto; }
   .home-todo-quad-label{ font-family:var(--mono); font-size:8.5px; letter-spacing:0.06em; text-transform:uppercase; color:var(--text-faint); margin-bottom:4px; }
   .home-todo-quad.P0 .home-todo-quad-label{ color:var(--p0); }
@@ -2043,6 +2050,11 @@
             </div>
           </div>
           <div class="home-todo-grid" id="homeTodoGrid"></div>
+          <!-- Quick task: type + Enter creates an action for the widget's selected day (see
+               wireHomeTodoQuickAdd) — no modal, defaults only; open the full modal for anything more. -->
+          <div class="home-todo-quick">
+            <input type="text" id="homeTodoQuickInput" placeholder="+ quick task — Enter to add" autocomplete="off">
+          </div>
           <div class="home-todo-resize" id="homeTodoResize" title="Drag to resize"></div>
         </div>
         <div class="home-notes-widget" id="homeNotesWidget">
@@ -6582,6 +6594,32 @@
     if(kind === "habit-instance") await handleHabitMarkClick(id, date);
     else await toggleActionDone(id);
   });
+  // Quick task: type a title + Enter in the widget's bottom input → an action on the widget's
+  // selected day (homeTlSelectedDate), P2 / no parent / no time — everything else stays default,
+  // the full action modal is still there for anything richer. Same minimal-payload shape as
+  // postponeHabitInstance's auto-created action (including the legacy type padding — see
+  // LEGACY_SILENT_DROP_FIELDS).
+  (function wireHomeTodoQuickAdd(){
+    var input = document.getElementById("homeTodoQuickInput");
+    if(!input) return;
+    input.addEventListener("keydown", async function(e){
+      if(e.key !== "Enter") return;
+      var title = input.value.trim();
+      if(!title) return;
+      input.disabled = true;
+      var payload = { title:title, priority:"P2", parent_type:"none", parent_id:null, date:homeTlSelectedDate, done:false, type:"Task" };
+      var res = await safeInsert("actions", payload, state.actions);
+      input.disabled = false;
+      if(res.error){ dbErrorToast(res.error, "Couldn't add"); input.focus(); return; }
+      var r = res.data;
+      state.actions.push({ id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null,
+        locationAddress:"", locationLat:null, locationLng:null, linkedPeopleIds:[] });
+      input.value = "";
+      renderAll();
+      warnDroppedFields(res.droppedFields);
+      input.focus();
+    });
+  })();
 
   // ---- Notes widget: a compact bar (record / quick-add / today's sentiment / expand) that opens
   // into a list of everything captured today. The sentiment dot only pools LOG-length entries (see
