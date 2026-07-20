@@ -1792,7 +1792,11 @@
   /* Today's timeline dock — full width along the bottom: an hour ruler, three interactive lanes
      (habits/actions/notes) against the shared hour-grid background, a now marker, and a day/night
      band pinned at the very bottom. Height is the resizable split (--home-dock-h). */
-  .home-timeline-dock{ position:relative; flex-shrink:0; height:var(--home-dock-h, 150px); min-height:70px; background:var(--bg-raised); }
+  .home-timeline-dock{ position:relative; flex-shrink:0; height:var(--home-dock-h, 150px); min-height:70px; background:var(--bg-raised); display:flex; align-items:stretch; }
+  /* The 24h strip's own positioning context — all the absolute/%-positioned timeline internals
+     (hours, lanes, now marker, day/night wash) anchor to THIS, not the dock, so the unscheduled
+     panel beside it never skews their scale. */
+  .home-tl-strip{ position:relative; flex:1; min-width:0; }
   .home-tl-hours{ position:absolute; top:4px; left:0; right:0; height:12px; }
   .home-tl-hours span{ position:absolute; transform:translateX(-50%); font-family:var(--mono); font-size:9px; color:var(--text-faint); }
   /* today/tomorrow toggle — sits in the top-right corner, past the last hour tick ("21" lands at
@@ -1805,10 +1809,10 @@
   .home-tl-lanes{ position:absolute; top:20px; bottom:16px; left:0; right:0; background:var(--tl-hour-grid); touch-action:none; z-index:1; }
   .home-tl-lane{ position:relative; height:33.333%; border-top:1px dashed var(--border); }
   .home-tl-lane:first-child{ border-top:none; }
-  /* Unscheduled panel: floats over the dock's right edge (same translucent-overlay language as the
-     home widgets) — the day's untimed tasks, draggable onto the lanes, and the drop zone for the
-     reverse gesture (block → unscheduled). z-index above the lanes but below a block mid-drag. */
-  .home-tl-unscheduled{ position:absolute; right:6px; top:22px; bottom:18px; width:150px; z-index:6; display:flex; flex-direction:column; border:1px solid var(--border-bright); border-radius:8px; background:rgba(var(--bg-raised-rgb), 0.82); backdrop-filter:blur(8px); overflow:hidden; }
+  /* Unscheduled panel: sits BESIDE the strip as a flex sibling (same layout as the Present tab's
+     panel, not an overlay) — the day's untimed tasks, draggable onto the lanes, and the drop zone
+     for the reverse gesture (block → unscheduled). */
+  .home-tl-unscheduled{ flex-shrink:0; width:150px; margin:3px 4px 3px 0; display:flex; flex-direction:column; border:1px solid var(--border); border-radius:8px; background:var(--bg-inset); overflow:hidden; }
   .home-tl-unscheduled-head{ flex-shrink:0; font-family:var(--mono); font-size:8.5px; letter-spacing:0.1em; text-transform:uppercase; color:var(--text-dim); padding:5px 8px 4px; border-bottom:1px solid var(--border); }
   .home-tl-unscheduled-list{ flex:1; min-height:0; overflow-y:auto; padding:5px; display:flex; flex-direction:column; gap:4px; }
   .home-tl-unscheduled-item{ padding:4px 7px; border:1px solid var(--border); border-left:3px solid var(--border-bright); border-radius:5px; background:var(--bg-inset); font-family:var(--mono); font-size:10px; color:var(--text); cursor:grab; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -2193,29 +2197,34 @@
         </div>
       </div>
       <div class="home-timeline-dock" id="homeTimelineDock">
-        <div class="home-tl-day-toggle" id="homeTlDayToggle">
-          <button type="button" data-tl-day-delta="-1" title="previous day">‹</button>
-          <span id="homeTlDayLabel">today</span>
-          <button type="button" data-tl-day-delta="1" title="next day">›</button>
+        <!-- The 24h strip proper lives in its own relative wrapper so the unscheduled panel can sit
+             BESIDE it as a plain flex sibling (same layout as the Present tab) — every %-positioned
+             child (hour labels, lanes, now marker, day/night wash) then measures against the strip's
+             own width, staying aligned no matter how wide the panel is. -->
+        <div class="home-tl-strip">
+          <div class="home-tl-day-toggle" id="homeTlDayToggle">
+            <button type="button" data-tl-day-delta="-1" title="previous day">‹</button>
+            <span id="homeTlDayLabel">today</span>
+            <button type="button" data-tl-day-delta="1" title="next day">›</button>
+          </div>
+          <div class="home-tl-hours" id="homeTlHours"></div>
+          <!-- Rows group by life AREA now, not by item kind (habit/action/note) — see
+               HOME_TL_AREA_GROUPS/computeHomeTimelineBlocks. Habits/actions/notes for the same area
+               land in the same row (still distinguished by shape/color), which spreads same-time
+               items across rows by what they're actually about instead of piling every habit into
+               one row regardless of area. -->
+          <div class="home-tl-lanes" id="homeTlLanes">
+            <div class="home-tl-lane" id="homeTlLaneHealth"></div>
+            <div class="home-tl-lane" id="homeTlLaneMaintenance"></div>
+            <div class="home-tl-lane" id="homeTlLaneCareer"></div>
+          </div>
+          <div class="home-tl-now" id="homeTlNow"></div>
+          <div class="home-tl-daynight" id="homeTlDayNight"></div>
         </div>
-        <div class="home-tl-hours" id="homeTlHours"></div>
-        <!-- Rows group by life AREA now, not by item kind (habit/action/note) — see
-             HOME_TL_AREA_GROUPS/computeHomeTimelineBlocks. Habits/actions/notes for the same area
-             land in the same row (still distinguished by shape/color), which spreads same-time
-             items across rows by what they're actually about instead of piling every habit into
-             one row regardless of area. -->
-        <div class="home-tl-lanes" id="homeTlLanes">
-          <div class="home-tl-lane" id="homeTlLaneHealth"></div>
-          <div class="home-tl-lane" id="homeTlLaneMaintenance"></div>
-          <div class="home-tl-lane" id="homeTlLaneCareer"></div>
-        </div>
-        <div class="home-tl-now" id="homeTlNow"></div>
-        <div class="home-tl-daynight" id="homeTlDayNight"></div>
         <!-- Same WHAT-before-WHEN panel the Present tab's timeline has: the selected day's untimed
              open tasks. Drag one onto the lanes to give it a time; drag a task block here to take
              its time away again (see renderHomeTlUnscheduled / wireHomeTlUnscheduledDnD, and the
-             release-over-panel branch in wireHomeTimelineDock). Floats over the strip's right edge,
-             matching the home page's overlay-widget language. -->
+             release-over-panel branch in wireHomeTimelineDock). -->
         <div class="home-tl-unscheduled" id="homeTlUnscheduledPanel" title="Tasks for this day with no time yet — drag one onto the timeline, or drop a task block here to unschedule it">
           <div class="home-tl-unscheduled-head">unscheduled</div>
           <div class="home-tl-unscheduled-list" id="homeTlUnscheduledList"></div>
