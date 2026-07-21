@@ -882,7 +882,16 @@
   /* Unscheduled-tasks panel, pinned to the timeline's right edge: the day's WHAT (tasks with no
      time yet) waiting to be dragged onto the WHEN (the timeline — see wireTodayUnscheduledDrag).
      Item cards reuse the area color vocabulary every other card uses (left edge). */
-  .today-unscheduled{ width:185px; flex-shrink:0; display:flex; flex-direction:column; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg-raised); overflow:hidden; }
+  .today-unscheduled{ position:relative; width:185px; flex-shrink:0; display:flex; flex-direction:column; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg-raised); overflow:hidden; }
+  /* Shared left-edge width handle for both unscheduled panels (Present + home dock — see
+     wirePanelWidthResize). The panel sits to the RIGHT of its timeline, so its LEFT edge is the one
+     that borders the timeline: dragging that edge leftward widens the panel and narrows the
+     timeline. Width is persisted per panel; the timeline can never be squeezed below a usable
+     minimum (the max is computed from the row's live width at drag start). */
+  .unsched-resize-x{ position:absolute; left:0; top:0; bottom:0; width:6px; cursor:ew-resize; touch-action:none; z-index:3; }
+  .unsched-resize-x::before{ content:""; position:absolute; left:2px; top:50%; transform:translateY(-50%); width:2px; height:24px; border-radius:1px; background:var(--border-bright); opacity:0.55; }
+  .unsched-resize-x:hover::before, .resizing-x .unsched-resize-x::before{ opacity:1; background:var(--accent); height:34px; }
+  .resizing-x{ user-select:none; }
   .today-unscheduled-head{ flex-shrink:0; font-family:var(--mono); font-size:9px; letter-spacing:0.1em; text-transform:uppercase; color:var(--text-dim); padding:8px 10px 4px; }
   .today-unscheduled-hint{ flex-shrink:0; margin:0; padding:0 10px 7px; font-size:10px; color:var(--text-faint); border-bottom:1px solid var(--border); }
   .today-unscheduled-list{ flex:1; min-height:0; overflow-y:auto; padding:7px; display:flex; flex-direction:column; gap:6px; }
@@ -1822,9 +1831,10 @@
   /* Unscheduled panel: sits BESIDE the strip as a flex sibling (same layout as the Present tab's
      panel, not an overlay) — the day's untimed tasks, draggable onto the lanes, and the drop zone
      for the reverse gesture (block → unscheduled). */
-  .home-tl-unscheduled{ flex-shrink:0; width:150px; margin:3px 4px 3px 0; display:flex; flex-direction:column; border:1px solid var(--border); border-radius:8px; background:var(--bg-inset); overflow:hidden; }
+  .home-tl-unscheduled{ position:relative; flex-shrink:0; width:150px; margin:3px 4px 3px 0; display:flex; flex-direction:column; border:1px solid var(--border); border-radius:8px; background:var(--bg-inset); overflow:hidden; }
   .home-tl-unscheduled-head{ flex-shrink:0; font-family:var(--mono); font-size:8.5px; letter-spacing:0.1em; text-transform:uppercase; color:var(--text-dim); padding:5px 8px 4px; border-bottom:1px solid var(--border); }
-  .home-tl-unscheduled-list{ flex:1; min-height:0; overflow-y:auto; padding:5px; display:flex; flex-direction:column; gap:4px; }
+  /* left padding clears the width handle sitting on this panel's left edge (.unsched-resize-x) */
+  .home-tl-unscheduled-list{ flex:1; min-height:0; overflow-y:auto; padding:5px 5px 5px 8px; display:flex; flex-direction:column; gap:4px; }
   /* flex-shrink:0 is what actually prevents the overlap in the short (150px) dock: without it the
      column flex compresses each card below its own content height when several stack up, so their
      borders/text visually collide. Pinned to their natural size, the list scrolls instead. */
@@ -2239,6 +2249,7 @@
              its time away again (see renderHomeTlUnscheduled / wireHomeTlUnscheduledDnD, and the
              release-over-panel branch in wireHomeTimelineDock). -->
         <div class="home-tl-unscheduled" id="homeTlUnscheduledPanel" title="Tasks for this day with no time yet — drag one onto the timeline, or drop a task block here to unschedule it">
+          <div class="unsched-resize-x" id="homeTlUnscheduledResize" title="Drag to resize this panel"></div>
           <div class="home-tl-unscheduled-head">unscheduled</div>
           <div class="home-tl-unscheduled-list" id="homeTlUnscheduledList"></div>
         </div>
@@ -2317,6 +2328,7 @@
                wireTodayUnscheduledDrag). It then leaves this list and appears as a block in its own
                area row. -->
           <div class="today-unscheduled" id="todayUnscheduledPanel">
+            <div class="unsched-resize-x" id="todayUnscheduledResize" title="Drag to resize this panel"></div>
             <div class="today-unscheduled-head">unscheduled</div>
             <p class="today-unscheduled-hint">Drag a task onto the timeline to decide when to do it.</p>
             <div class="today-unscheduled-list" id="todayUnscheduledList"></div>
@@ -16361,6 +16373,56 @@
   // recurring habit itself). Notes are excluded — a note's time is when it was written, not a plan,
   // so there's nothing meaningful to unschedule.
   function canUnscheduleKind(kind){ return kind === "action" || kind === "habit-instance"; }
+  // Shared horizontal resizer for the unscheduled panels (Present tab + home dock). Each panel sits
+  // to the RIGHT of its timeline, so the edge bordering the timeline is its LEFT one — that's where
+  // the handle lives, and dragging it leftward widens the panel while narrowing the timeline. Same
+  // pointerdown/move/up + setPointerCapture + persist-on-release shape as the other resizers here
+  // (wireHomeTodoResize, wireHomeMapResize). opts.onResize lets a caller re-fit anything measured
+  // off the timeline's width after the split moves.
+  function wirePanelWidthResize(opts){
+    var panel = document.getElementById(opts.panelId);
+    var handle = document.getElementById(opts.handleId);
+    if(!panel || !handle) return;
+    var saved = parseFloat(safeGet(window.localStorage, opts.key) || "");
+    if(saved > 0) panel.style.width = saved + "px";
+    var active = false, startX = 0, startW = 0, maxW = 9999;
+    handle.addEventListener("pointerdown", function(e){
+      active = true;
+      startX = e.clientX;
+      startW = panel.offsetWidth;
+      // Measured per drag rather than cached: the row's width changes with the window, the sidebar
+      // collapse, and the dock's own height split. opts.minTimeline is what's reserved for the
+      // timeline, so the panel can never grow until the timeline is unusable.
+      var rowW = panel.parentElement ? panel.parentElement.clientWidth : 0;
+      maxW = Math.max(opts.min, rowW - opts.minTimeline);
+      handle.setPointerCapture(e.pointerId);
+      panel.classList.add("resizing-x");
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    handle.addEventListener("pointermove", function(e){
+      if(!active) return;
+      // Subtracting (not adding) the delta: the handle is on the panel's LEFT edge, so moving the
+      // pointer left — a negative dx — has to make the panel WIDER.
+      panel.style.width = Math.max(opts.min, Math.min(maxW, startW - (e.clientX - startX))) + "px";
+      if(opts.onResize) opts.onResize();
+    });
+    function end(){
+      if(!active) return;
+      active = false;
+      panel.classList.remove("resizing-x");
+      safeSet(window.localStorage, opts.key, String(panel.offsetWidth));
+      if(opts.onResize) opts.onResize();
+    }
+    handle.addEventListener("pointerup", end);
+    handle.addEventListener("pointercancel", end);
+  }
+  // Present's timeline is zoomable — its world width is derived from the viewport's own width, so it
+  // has to be recomputed once the panel beside it takes/gives back space. The home dock needs no
+  // equivalent: its lanes are absolutely positioned left:0/right:0 inside the strip and every block
+  // is a % of that, so they re-fit on their own.
+  wirePanelWidthResize({ panelId:"todayUnscheduledPanel", handleId:"todayUnscheduledResize", key:"pp_today_unsched_w", min:130, minTimeline:340, onResize: todayApplyZoomWidth });
+  wirePanelWidthResize({ panelId:"homeTlUnscheduledPanel", handleId:"homeTlUnscheduledResize", key:"pp_home_unsched_w", min:110, minTimeline:280 });
   function pointInsideEl(el, x, y){
     if(!el) return false;
     var r = el.getBoundingClientRect();
