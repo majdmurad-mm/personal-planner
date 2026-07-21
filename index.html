@@ -1796,7 +1796,12 @@
   /* The 24h strip's own positioning context — all the absolute/%-positioned timeline internals
      (hours, lanes, now marker, day/night wash) anchor to THIS, not the dock, so the unscheduled
      panel beside it never skews their scale. */
-  .home-tl-strip{ position:relative; flex:1; min-width:0; }
+  /* z-index:0 (with position:relative) deliberately makes this its OWN stacking context, so every
+     z-index inside the strip — blocks up to 1440, a dragged block at 2000, the now marker, the day
+     toggle — is contained within the strip's single layer and can never out-stack the unscheduled
+     sidebar sitting beside it. Without it those inline z-indexes compete directly with the sidebar
+     (a static flex item at z-index:auto) and win. */
+  .home-tl-strip{ position:relative; flex:1; min-width:0; z-index:0; }
   .home-tl-hours{ position:absolute; top:4px; left:0; right:0; height:12px; }
   .home-tl-hours span{ position:absolute; transform:translateX(-50%); font-family:var(--mono); font-size:9px; color:var(--text-faint); }
   /* today/tomorrow toggle — sits in the top-right corner, past the last hour tick ("21" lands at
@@ -1806,7 +1811,12 @@
   .home-tl-day-toggle button:hover:not(:disabled){ background:var(--bg-hover, rgba(255,255,255,0.08)); color:var(--text); }
   .home-tl-day-toggle button:disabled{ opacity:0.3; cursor:default; }
   #homeTlDayLabel{ min-width:5.5em; text-align:center; }
-  .home-tl-lanes{ position:absolute; top:20px; bottom:16px; left:0; right:0; background:var(--tl-hour-grid); touch-action:none; z-index:1; }
+  /* overflow:hidden matters: a block whose duration runs past midnight (e.g. 23:00 + 90min) computes
+     left+width beyond 100%, and since blocks carry a positive inline z-index (tlZIndexForDuration,
+     up to 1440) while the unscheduled sidebar beside the strip is a static flex item, that spill
+     would paint straight over the sidebar. Clipping here is also the semantically right answer — the
+     part past midnight is already drawn as the "overnight tail" on the NEXT day's strip. */
+  .home-tl-lanes{ position:absolute; top:20px; bottom:16px; left:0; right:0; background:var(--tl-hour-grid); touch-action:none; z-index:1; overflow:hidden; }
   .home-tl-lane{ position:relative; height:33.333%; border-top:1px dashed var(--border); }
   .home-tl-lane:first-child{ border-top:none; }
   /* Unscheduled panel: sits BESIDE the strip as a flex sibling (same layout as the Present tab's
@@ -6367,7 +6377,7 @@
       // Dragging an ACTION block over the unscheduled panel highlights it as a drop zone — release
       // there clears the time instead of setting a new one (same gesture pair as the Present tab).
       var unschedPanel = document.getElementById("homeTlUnscheduledPanel");
-      if(unschedPanel) unschedPanel.classList.toggle("drop-hot", dragKind === "action" && pointInsideEl(unschedPanel, e.clientX, e.clientY));
+      if(unschedPanel) unschedPanel.classList.toggle("drop-hot", canUnscheduleKind(dragKind) && pointInsideEl(unschedPanel, e.clientX, e.clientY));
     });
     dock.addEventListener("pointerup", async function(e){
       if(!dragEl) return;
@@ -6390,10 +6400,11 @@
         else if(kind === "journal") editJournalEntry(id);
         return;
       }
-      // Released over the unscheduled panel: the reverse gesture — the action loses its time and
-      // returns to the panel's WHAT list. Habit/note blocks fall through to a normal time-move.
-      if(wasMoved && kind === "action" && pointInsideEl(unschedPanel, e.clientX, e.clientY)){
-        await unscheduleAction(id);
+      // Released over the unscheduled panel: the reverse gesture — the item loses its time and
+      // returns to the panel's WHAT list (see canUnscheduleKind/unscheduleItem). Notes fall through
+      // to a normal time-move instead.
+      if(wasMoved && canUnscheduleKind(kind) && pointInsideEl(unschedPanel, e.clientX, e.clientY)){
+        await unscheduleItem(kind, id, date);
         return;
       }
       if(!wasMoved || !newTime) return;
@@ -7348,19 +7359,27 @@
   }
   // The dock's own copy of the Present tab's unscheduled panel — the selected day's open tasks with
   // no time yet, sig-guarded like everything else the 1s home tick touches.
-  function homeTlUnscheduledActions(){
-    return state.actions.filter(function(a){ return a.date === homeTlSelectedDate && !a.timeOfDay && !a.done; });
+  // Same two kinds the Present tab's panel lists (see todayUnscheduledItems) — open untimed actions
+  // dated to this day, plus habit occurrences due today with no resolved time.
+  function homeTlUnscheduledItems(){
+    var items = state.actions
+      .filter(function(a){ return a.date === homeTlSelectedDate && !a.timeOfDay && !a.done; })
+      .map(function(a){ return { kind:"action", id:a.id, title:a.title, area:actionCategory(a) }; });
+    state.habits.forEach(function(h){
+      if(!habitInstanceUnscheduled(h, homeTlSelectedDate)) return;
+      items.push({ kind:"habit-instance", id:h.id, title:h.title, area:habitCategory(h) });
+    });
+    return items;
   }
   function renderHomeTlUnscheduled(){
     var list = document.getElementById("homeTlUnscheduledList");
     if(!list) return;
-    var items = homeTlUnscheduledActions();
-    var sig = homeTlSelectedDate + "|" + items.map(function(a){ return a.id + ":" + (actionCategory(a) || "") + ":" + a.title; }).join(",");
+    var items = homeTlUnscheduledItems();
+    var sig = homeTlSelectedDate + "|" + items.map(function(it){ return it.kind + it.id + ":" + (it.area || "") + ":" + it.title; }).join(",");
     if(list.dataset.sig === sig) return;
     list.dataset.sig = sig;
-    list.innerHTML = items.length ? items.map(function(a){
-      var cat = actionCategory(a);
-      return '<div class="home-tl-unscheduled-item' + (cat ? ' ' + cat : '') + '" draggable="true" data-id="' + a.id + '" title="' + escapeHtml(a.title) + ' — drag onto the timeline to schedule it">' + escapeHtml(a.title) + '</div>';
+    list.innerHTML = items.length ? items.map(function(it){
+      return '<div class="home-tl-unscheduled-item' + (it.area ? ' ' + it.area : '') + '" draggable="true" data-kind="' + it.kind + '" data-id="' + it.id + '" title="' + escapeHtml(it.title) + ' — drag onto the timeline to schedule it">' + (it.kind === "habit-instance" ? "↻ " : "") + escapeHtml(it.title) + '</div>';
     }).join("") : '<div class="home-tl-unscheduled-empty">all timed ✓</div>';
   }
   // Panel → lanes (HTML5 drag, same as the Present tab's): horizontal drop position over the lanes
@@ -7370,19 +7389,20 @@
     var list = document.getElementById("homeTlUnscheduledList");
     var lanes = document.getElementById("homeTlLanes");
     if(!list || !lanes) return;
-    var draggingId = null;
+    var draggingId = null, draggingKind = null;
     list.addEventListener("dragstart", function(e){
       var item = e.target.closest(".home-tl-unscheduled-item");
       if(!item){ e.preventDefault(); return; }
       draggingId = item.dataset.id;
+      draggingKind = item.dataset.kind;
       item.classList.add("dragging");
       e.dataTransfer.effectAllowed = "move";
-      try{ e.dataTransfer.setData("text/plain", "unscheduled-action:" + draggingId); }catch(err){}
+      try{ e.dataTransfer.setData("text/plain", "unscheduled:" + draggingKind + ":" + draggingId); }catch(err){}
     });
     list.addEventListener("dragend", function(e){
       var item = e.target.closest(".home-tl-unscheduled-item");
       if(item) item.classList.remove("dragging");
-      draggingId = null;
+      draggingId = null; draggingKind = null;
       lanes.classList.remove("tl-drop-target");
     });
     lanes.addEventListener("dragover", function(e){
@@ -7398,11 +7418,11 @@
       if(!draggingId) return;
       e.preventDefault();
       lanes.classList.remove("tl-drop-target");
-      var id = draggingId;
-      draggingId = null;
+      var id = draggingId, kind = draggingKind;
+      draggingId = null; draggingKind = null;
       var rect = lanes.getBoundingClientRect();
       var frac = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
-      await scheduleActionAt(id, minutesToTime(Math.round((frac * 1440) / 5) * 5));
+      await scheduleItemAt(kind, id, homeTlSelectedDate, minutesToTime(Math.round((frac * 1440) / 5) * 5));
     });
   })();
 
@@ -8766,12 +8786,25 @@
   // day's occurrence. This is the ONLY thing an instance can change; the pattern itself (frequency,
   // weekdays, title, the habit's own base time/duration, etc.) only ever changes from the Planner
   // tab's own habit modal (data-kind="habit"), never from an instance (data-kind="habit-instance").
+  // An override of timeOfDay:"" is the explicit "this occurrence has no time on this day" marker —
+  // set by dragging the occurrence into an unscheduled panel (see unscheduleItem). It's deliberately
+  // distinct from having NO override, which falls back to the habit's own timeOfDay: without a
+  // sentinel there'd be no way to say "not today" for a habit that does have a base time. Normalized
+  // to null on the way out so every existing `if(!f.timeOfDay)` check just works and timeToFraction
+  // is never handed an empty string.
   function habitInstanceFields(h, dateStr){
     var ov = h.instanceOverrides && h.instanceOverrides[dateStr];
+    var t = (ov && ov.timeOfDay != null) ? ov.timeOfDay : h.timeOfDay;
     return {
-      timeOfDay: (ov && ov.timeOfDay != null) ? ov.timeOfDay : h.timeOfDay,
+      timeOfDay: t || null,
       durationMinutes: (ov && ov.durationMinutes != null) ? ov.durationMinutes : h.durationMinutes
     };
+  }
+  // Whether a habit occurrence is showing up on this day WITHOUT a time — i.e. it belongs in an
+  // unscheduled panel rather than on the timeline. Done occurrences are excluded for the same reason
+  // done actions are: there's nothing left to schedule.
+  function habitInstanceUnscheduled(h, dateStr){
+    return habitOccursOnDate(h, dateStr) && !habitInstanceFields(h, dateStr).timeOfDay && !habitDoneForDate(h, dateStr);
   }
   // Merges `patch` ({timeOfDay, durationMinutes}, either key optional) into one date's override, or —
   // if patch is null — clears that date's override entirely, falling back to the habit's own pattern
@@ -16309,9 +16342,25 @@
   // same granularity as every other timeline gesture) — the WHAT is decided in the list, the WHEN
   // by where it lands. Done tasks are excluded (nothing left to schedule) and the timeline only
   // shows timed items anyway, so the list and the timeline are exact complements of each other.
-  function todayUnscheduledActions(){
-    return state.actions.filter(function(a){ return a.date === todaySelectedDate && !a.timeOfDay && !a.done; });
+  // Both kinds that can meaningfully be "waiting for a time" on a given day: open actions dated to it
+  // with no time, and habit occurrences due that day with no resolved time (either the habit never
+  // had one, or this day's occurrence was explicitly unscheduled — see habitInstanceUnscheduled).
+  // Notes are excluded: a note's time is simply when it was written, not a plan.
+  function todayUnscheduledItems(){
+    var items = state.actions
+      .filter(function(a){ return a.date === todaySelectedDate && !a.timeOfDay && !a.done; })
+      .map(function(a){ return { kind:"action", id:a.id, title:a.title, area:actionCategory(a), priority:a.priority }; });
+    state.habits.forEach(function(h){
+      if(!habitInstanceUnscheduled(h, todaySelectedDate)) return;
+      items.push({ kind:"habit-instance", id:h.id, title:h.title, area:habitCategory(h), priority:h.priority });
+    });
+    return items;
   }
+  // Which timeline blocks can be dragged back OUT to an unscheduled panel. Actions lose their
+  // time_of_day; habit occurrences get this one day's timeOfDay:"" override (never touching the
+  // recurring habit itself). Notes are excluded — a note's time is when it was written, not a plan,
+  // so there's nothing meaningful to unschedule.
+  function canUnscheduleKind(kind){ return kind === "action" || kind === "habit-instance"; }
   function pointInsideEl(el, x, y){
     if(!el) return false;
     var r = el.getBoundingClientRect();
@@ -16356,35 +16405,60 @@
     warnDroppedFields(r.droppedFields);
     toast('"' + a.title + '" moved back to unscheduled');
   }
+  // Kind-dispatching wrappers over the pair above, so both unscheduled panels (Present + home dock)
+  // and both drag directions speak one vocabulary. A habit occurrence isn't an action: giving it a
+  // time writes a per-day override rather than touching the habit's own recurring time, and taking
+  // one away writes the timeOfDay:"" sentinel (see habitInstanceFields) rather than nulling a column
+  // — either way only THIS day's occurrence moves, never every other day's.
+  async function scheduleItemAt(kind, id, date, newTime){
+    if(kind === "habit-instance"){
+      var h = state.habits.find(function(x){ return x.id === id; });
+      await setHabitInstanceOverride(id, date, { timeOfDay: newTime });
+      if(h) toast('"' + h.title + '" scheduled at ' + fmtTimeOfDay(newTime) + ' for this day');
+      return;
+    }
+    await scheduleActionAt(id, newTime);
+  }
+  async function unscheduleItem(kind, id, date){
+    if(kind === "habit-instance"){
+      var h = state.habits.find(function(x){ return x.id === id; });
+      if(!h || !habitInstanceFields(h, date).timeOfDay) return;
+      await setHabitInstanceOverride(id, date, { timeOfDay: "" });
+      toast('"' + h.title + '" unscheduled for this day');
+      return;
+    }
+    await unscheduleAction(id);
+  }
   function renderTodayUnscheduled(){
     var list = document.getElementById("todayUnscheduledList");
     if(!list) return;
-    var items = todayUnscheduledActions();
-    list.innerHTML = items.length ? items.map(function(a){
-      var cat = actionCategory(a);
-      return '<div class="today-unscheduled-item' + (cat ? ' ' + cat : '') + '" draggable="true" data-id="' + a.id + '" title="' + escapeHtml(a.title) + ' — drag onto the timeline to schedule it">' +
-        '<span class="prio-badge ' + a.priority + '">' + a.priority + '</span>' +
-        '<span class="today-unscheduled-item-title">' + escapeHtml(a.title) + '</span>' +
+    var items = todayUnscheduledItems();
+    list.innerHTML = items.length ? items.map(function(it){
+      // ↻ marks a habit occurrence, so it reads as recurring rather than a one-off task at a glance.
+      return '<div class="today-unscheduled-item' + (it.area ? ' ' + it.area : '') + '" draggable="true" data-kind="' + it.kind + '" data-id="' + it.id + '" title="' + escapeHtml(it.title) + ' — drag onto the timeline to schedule it">' +
+        '<span class="prio-badge ' + it.priority + '">' + it.priority + '</span>' +
+        '<span class="today-unscheduled-item-title">' + (it.kind === "habit-instance" ? "↻ " : "") + escapeHtml(it.title) + '</span>' +
       '</div>';
-    }).join("") : '<div class="today-unscheduled-empty">nothing waiting — every open task for this day has a time</div>';
+    }).join("") : '<div class="today-unscheduled-empty">nothing waiting — everything for this day has a time</div>';
   }
   (function wireTodayUnscheduledDrag(){
     var list = document.getElementById("todayUnscheduledList");
     var unified = document.getElementById("todayTimelineUnified");
     if(!list || !unified) return;
-    var draggingId = null;
+    var draggingId = null, draggingKind = null;
     list.addEventListener("dragstart", function(e){
       var item = e.target.closest(".today-unscheduled-item");
       if(!item){ e.preventDefault(); return; }
       draggingId = item.dataset.id;
+      draggingKind = item.dataset.kind;
       item.classList.add("dragging");
       e.dataTransfer.effectAllowed = "move";
-      try{ e.dataTransfer.setData("text/plain", "unscheduled-action:" + draggingId); }catch(err){}
+      try{ e.dataTransfer.setData("text/plain", "unscheduled:" + draggingKind + ":" + draggingId); }catch(err){}
     });
     list.addEventListener("dragend", function(e){
       var item = e.target.closest(".today-unscheduled-item");
       if(item) item.classList.remove("dragging");
-      draggingId = null;
+      draggingId = null; draggingKind = null;
       unified.classList.remove("tl-drop-target");
     });
     unified.addEventListener("dragover", function(e){
@@ -16401,13 +16475,13 @@
       if(!draggingId) return;
       e.preventDefault();
       unified.classList.remove("tl-drop-target");
-      var id = draggingId;
-      draggingId = null;
+      var id = draggingId, kind = draggingKind;
+      draggingId = null; draggingKind = null;
       // The unified world element IS the 24h scale (zoom just makes it wider), so clientX relative
       // to its own rect maps straight to a time fraction regardless of zoom or scroll position.
       var rect = unified.getBoundingClientRect();
       var frac = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
-      await scheduleActionAt(id, minutesToTime(Math.round((frac * 1440) / 5) * 5));
+      await scheduleItemAt(kind, id, todaySelectedDate, minutesToTime(Math.round((frac * 1440) / 5) * 5));
     });
   })();
 
@@ -16743,7 +16817,7 @@
     if(!track) return;
     var yesterday = addDaysToDateStr(todaySelectedDate, -1);
     var html = "";
-    state.habits.filter(function(h){ return !!h.timeOfDay && habitOccursOnDate(h, todaySelectedDate) && habitCategory(h) === area; }).forEach(function(h){
+    state.habits.filter(function(h){ return habitOccursOnDate(h, todaySelectedDate) && !!habitInstanceFields(h, todaySelectedDate).timeOfDay && habitCategory(h) === area; }).forEach(function(h){
       var fields = habitInstanceFields(h, todaySelectedDate);
       var startFrac = timeToFraction(fields.timeOfDay) * 100;
       var widthFrac = Math.max(1.2, ((fields.durationMinutes || 15) / 1440) * 100);
@@ -16754,7 +16828,7 @@
     // draggable (wireTimelineLayerDrag skips anything with data-overnight — the segment's own start
     // time isn't meaningful to move), but its right edge IS resizable: that's how you shorten or
     // lengthen sleep from the wake-up side without having to go edit the original day's block.
-    state.habits.filter(function(h){ return !!h.timeOfDay && habitOccursOnDate(h, yesterday) && habitCategory(h) === area; }).forEach(function(h){
+    state.habits.filter(function(h){ return habitOccursOnDate(h, yesterday) && !!habitInstanceFields(h, yesterday).timeOfDay && habitCategory(h) === area; }).forEach(function(h){
       var fields = habitInstanceFields(h, yesterday);
       var spillMin = overnightSpilloverMinutes(fields.timeOfDay, fields.durationMinutes);
       if(!spillMin) return;
@@ -16842,7 +16916,7 @@
       // Dragging an ACTION block over the unscheduled panel highlights it as a drop zone — release
       // there clears the time instead of setting a new one (see pointerup below).
       var unschedPanel = document.getElementById("todayUnscheduledPanel");
-      if(unschedPanel) unschedPanel.classList.toggle("drop-hot", dragKind === "action" && pointInsideEl(unschedPanel, e.clientX, e.clientY));
+      if(unschedPanel) unschedPanel.classList.toggle("drop-hot", canUnscheduleKind(dragKind) && pointInsideEl(unschedPanel, e.clientX, e.clientY));
     });
     track.addEventListener("pointerup", async function(e){
       if(!dragEl) return;
@@ -16865,11 +16939,11 @@
         else if(kind === "journal") editJournalEntry(id);
         return;
       }
-      // Released over the unscheduled panel: the reverse gesture — the action loses its time and
-      // returns to the WHAT list. Habit/note blocks fall through to a normal time-move instead
-      // (see unscheduleAction for why they have no meaningful unscheduled state).
-      if(wasMoved && kind === "action" && pointInsideEl(unschedPanel, e.clientX, e.clientY)){
-        await unscheduleAction(id);
+      // Released over the unscheduled panel: the reverse gesture — the item loses its time and
+      // returns to the WHAT list (see canUnscheduleKind/unscheduleItem). Notes fall through to a
+      // normal time-move instead.
+      if(wasMoved && canUnscheduleKind(kind) && pointInsideEl(unschedPanel, e.clientX, e.clientY)){
+        await unscheduleItem(kind, id, date);
         return;
       }
       if(!wasMoved || !newTime) return;
@@ -17165,15 +17239,24 @@
     var track = document.getElementById("tlHabitsTrack");
     if(!track) return;
     // Habits are recurring, so unlike actions/notes there's no single fixed date to index them by —
-    // whether one occurs on a given day still has to be checked per day. But which habits even HAVE a
-    // time-of-day at all (most don't) is static, so that filter is hoisted out of the day loop instead
-    // of being re-checked against every habit on every visible day.
-    var timedHabits = state.habits.filter(function(h){ return !!h.timeOfDay; });
+    // whether one occurs on a given day still has to be checked per day. But which habits COULD ever
+    // carry a time-of-day (most never do) is static, so that filter stays hoisted out of the day loop
+    // instead of being re-checked against every habit on every visible day. "Could" spans both
+    // sources: the habit's own base time, or any single day's override carrying one — a habit with no
+    // base time that was given a time on one day (via the instance popover, or by dragging it out of
+    // an unscheduled panel) has to survive this hoist to render at all. The exact per-day answer is
+    // then resolved inside the loop, where an explicitly-unscheduled day drops back out.
+    var timedHabits = state.habits.filter(function(h){
+      if(h.timeOfDay) return true;
+      var ov = h.instanceOverrides || {};
+      return Object.keys(ov).some(function(k){ return ov[k] && ov[k].timeOfDay; });
+    });
     var html = "";
     for(var i=range.start; i<=range.end; i++){
       var dateStr = addDaysToDateStr(tlRangeStart, i);
       timedHabits.filter(function(h){ return habitOccursOnDate(h, dateStr); }).forEach(function(h){
         var fields = habitInstanceFields(h, dateStr);
+        if(!fields.timeOfDay) return;  // explicitly unscheduled on this one day
         var leftPx = i*tlPxPerDay + timeToFraction(fields.timeOfDay)*tlPxPerDay;
         var widthPx = Math.max(10, ((fields.durationMinutes || 15) / 1440) * tlPxPerDay);
         var catClass = habitCategory(h) ? " " + habitCategory(h) : "";
