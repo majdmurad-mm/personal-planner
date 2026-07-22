@@ -10163,15 +10163,47 @@
     var colorStyle = merged ? ("background:" + merged.bg + ";border-color:" + merged.c + ";") : "";
     return '<div class="gantt-bar gantt-bar-project' + (cat ? " " + cat : "") + (obj.done ? " done" : "") + (obj.id === selfId ? " gantt-bar-self" : "") + '" data-kind="' + kind + '" data-id="' + obj.id + '" style="left:' + (idx * GANTT_COL_W) + 'px;width:' + (w * GANTT_COL_W - 4) + 'px;' + colorStyle + '" title="' + escapeHtml(obj.title) + (due ? " — due " + fmtDate(due) : "") + '">' + escapeHtml(obj.title) + '</div>';
   }
-  function ganttActionBarHtml(a, start, today, selfId){
+  // topOffset (px, optional) shifts the bar down inside its track — only used when several actions
+  // share one row (see ganttActionsRowHtml) and would otherwise overlap. Omitted everywhere else, so
+  // the bar keeps .gantt-bar's own top.
+  function ganttActionBarHtml(a, start, today, selfId, topOffset){
     var cat = actionCategory(a);
     var undated = !a.date;
     var idx = Math.max(0, ganttDayIndex(start, a.date || today));
     var blocked = ganttActionBlocked(a);
-    return '<div class="gantt-bar' + (cat ? " " + cat : "") + (a.done ? " done" : "") + (undated ? " undated" : "") + (blocked ? " blocked" : "") + (a.id === selfId ? " gantt-bar-self" : "") + '" data-kind="action" data-id="' + a.id + '" data-gantt-action="' + a.id + '" style="left:' + (idx * GANTT_COL_W) + 'px;width:' + (GANTT_COL_W * 2 - 4) + 'px;" title="' + escapeHtml(a.title) + (undated ? " — no date yet (drag to schedule)" : " — " + fmtDate(a.date)) + (blocked ? " — blocked: a required action isn’t done yet" : "") + '">' +
+    var topStyle = topOffset != null ? ("top:" + (6 + topOffset) + "px;") : "";
+    return '<div class="gantt-bar' + (cat ? " " + cat : "") + (a.done ? " done" : "") + (undated ? " undated" : "") + (blocked ? " blocked" : "") + (a.id === selfId ? " gantt-bar-self" : "") + '" data-kind="action" data-id="' + a.id + '" data-gantt-action="' + a.id + '" style="left:' + (idx * GANTT_COL_W) + 'px;width:' + (GANTT_COL_W * 2 - 4) + 'px;' + topStyle + '" title="' + escapeHtml(a.title) + (undated ? " — no date yet (drag to schedule)" : " — " + fmtDate(a.date)) + (blocked ? " — blocked: a required action isn’t done yet" : "") + '">' +
       escapeHtml(a.title) +
       '<span class="gantt-link-handle" data-link-from="' + a.id + '" title="drag onto another action to create a dependency">◉</span>' +
     '</div>';
+  }
+  // One row carrying ALL of a parent's actions. Bars are packed into sub-lanes ONLY where they'd
+  // otherwise sit on top of each other and hide one another — a parent whose actions are spread
+  // across different dates (the common case) stays exactly one bar tall, so this reads as a single
+  // row rather than a stack. Greedy first-fit by start column, which is enough here: bars are a
+  // fixed 2 columns wide, so there's no packing subtlety to get wrong.
+  var GANTT_LANE_H = 26;
+  function ganttActionsRowHtml(actions, start, today, selfId, rowKind, rowId){
+    var BAR_COLS = 2; // every action bar is drawn 2 columns wide — see ganttActionBarHtml
+    var placed = actions.map(function(a){
+      var from = Math.max(0, ganttDayIndex(start, a.date || today));
+      return { a:a, from:from, to:from + BAR_COLS };
+    }).sort(function(x, y){ return x.from - y.from; });
+    var laneEnds = [];
+    placed.forEach(function(p){
+      var lane = 0;
+      while(lane < laneEnds.length && laneEnds[lane] > p.from) lane++;
+      laneEnds[lane] = p.to;
+      p.lane = lane;
+    });
+    var bars = placed.map(function(p){ return ganttActionBarHtml(p.a, start, today, selfId, p.lane * GANTT_LANE_H); }).join("");
+    var laneCount = Math.max(1, laneEnds.length);
+    // Tagged with the PARENT's kind/id (not "action"), so clicking empty space on this row opens a
+    // new action already parented to that goal/project — see wireGanttChart's add-here handler.
+    var attrs = rowKind ? ' data-row-kind="' + rowKind + '" data-row-id="' + rowId + '"' : '';
+    return '<div class="gantt-row"' + attrs + ' style="height:' + (34 + (laneCount - 1) * GANTT_LANE_H) + 'px;">' +
+      '<div class="gantt-row-label">actions · ' + placed.length + '</div>' +
+      '<div class="gantt-track">' + bars + '</div></div>';
   }
   // rowKind/rowId (when given) tag the row with which goal/project/action it represents — read back
   // by the empty-space "click to add an action" handler in wireGanttChart to pre-parent the new
@@ -10255,12 +10287,33 @@
 
     var head = ganttHeadHtml(start, days, today);
 
-    // Rows are grouped by hierarchy level — goals, then projects, then actions — each under its own
-    // small divider label, instead of one undifferentiated stack (this mixes bars from every level
-    // together on a project/goal-scoped page too, not just the Future page's whole-system chart, so
-    // the grouping is done once here rather than per call site). A level with nothing in it (e.g. no
-    // goal row on a plain project page) contributes no header at all.
+    // Two grouping modes, chosen by the caller's data (both live here rather than per call site,
+    // since every chart shares this renderer):
+    //   "parent"  — one group per goal/project, each holding that thing's own bar and a single row
+    //               of all its actions. Used by the Future page's whole-system chart, where the
+    //               useful question is "what belongs to this?".
+    //   otherwise — by hierarchy LEVEL (goals, then projects, then actions), one row per action.
+    //               Used by the goal/entity pages, which are already scoped to a single thing, so
+    //               re-grouping by parent there would just produce one group.
     var rows = "";
+    if(data.groupBy === "parent"){
+      // Per-parent grouping (the Future page's whole-system chart): one group per goal/project,
+      // headed by its name, holding its own derived span row plus a SINGLE row carrying all of its
+      // actions — so everything belonging to one thing reads together, instead of that thing's bar
+      // and its actions sitting in three separate level-based sections far apart from each other.
+      (data.groups || []).forEach(function(g){
+        rows += '<div class="gantt-group-header">' + ganttRowLabelHtml(g.kind, g.obj) + '</div>' +
+          ganttRowHtml(g.kind, ganttDerivedBarHtml(g.kind, g.obj, start, g.actions, today, data.selfId), g.kind, g.obj.id);
+        if(g.actions.length) rows += ganttActionsRowHtml(g.actions, start, today, data.selfId, g.kind, g.obj.id);
+      });
+      // Actions belonging to nothing still need somewhere to live, on the same one-row basis.
+      if((data.looseActions || []).length){
+        rows += '<div class="gantt-group-header">unassigned</div>' +
+          ganttActionsRowHtml(data.looseActions, start, today, data.selfId, null, null);
+      }
+    } else {
+    // Rows are grouped by hierarchy level — goals, then projects, then actions — each under its own
+    // small divider label, instead of one undifferentiated stack.
     function group(label, items, rowFn){
       if(!items.length) return;
       rows += '<div class="gantt-group-header">' + label + '</div>';
@@ -10275,6 +10328,7 @@
     group("actions", data.actions, function(a){
       return ganttRowHtml(escapeHtml(a.title), ganttActionBarHtml(a, start, today, data.selfId), "action", a.id);
     });
+    }
 
     // --gantt-col drives .gantt-day's width in CSS — without setting it here, the header ruler's
     // date cells stay stuck at that rule's 30px fallback regardless of zoom, drifting out of
@@ -10330,22 +10384,35 @@
       CATEGORIES.concat(["__none__"]).forEach(function(cat){ (byCat[cat] || []).forEach(function(item){ ordered.push(item); }); });
       return ordered;
     }
-    var goalActions = {}, projectActions = {};
+    var goalActions = {}, projectActions = {}, looseActions = [];
     state.actions.forEach(function(a){
       if(a.parentType === "goal" && a.parentId) (goalActions[a.parentId] = goalActions[a.parentId] || []).push(a);
       else if(a.parentType === "project" && a.parentId) (projectActions[a.parentId] = projectActions[a.parentId] || []).push(a);
+      else looseActions.push(a);
     });
     // A timeline is for things with an end — an ongoing/infinite goal (g.ongoing, the same "∞
     // ongoing" flag the goal card and area tile already show) has none by design, so it's excluded
     // here rather than drawn with some arbitrary made-up end date. Its projects/actions still show
     // normally; only the goal's own row is skipped.
     var finiteGoals = state.goals.filter(function(g){ return !g.ongoing; });
-    var rows = byAreaOrder(finiteGoals, function(g){ return g.category; }).map(function(g){
-      return { kind:"goal", obj:g, span: goalActions[g.id] || [] };
+    // One group per goal/project, still in CATEGORIES area order. A goal's group holds only actions
+    // parented DIRECTLY to it — ones nested under its projects belong to those projects' own groups,
+    // so nothing is listed twice.
+    var groups = byAreaOrder(finiteGoals, function(g){ return g.category; }).map(function(g){
+      return { kind:"goal", obj:g, actions: goalActions[g.id] || [] };
     }).concat(byAreaOrder(state.projects, function(p){ return projectCategory(p); }).map(function(p){
-      return { kind:"project", obj:p, span: projectActions[p.id] || [] };
+      return { kind:"project", obj:p, actions: projectActions[p.id] || [] };
     }));
-    return { rows: rows, actions: byAreaOrder(state.actions, actionCategory), selfId: null };
+    return {
+      groupBy: "parent",
+      groups: groups,
+      looseActions: byAreaOrder(looseActions, actionCategory),
+      // rows/actions stay populated even though the parent-grouped branch doesn't render from them:
+      // renderGanttInto still derives its date range and its "nothing to plan yet" check from these.
+      rows: groups.map(function(g){ return { kind:g.kind, obj:g.obj, span:g.actions }; }),
+      actions: state.actions,
+      selfId: null
+    };
   }
   function renderFutureSystemGantt(){
     renderGanttInto(document.getElementById("futureGanttWrap"), ganttItemsForFuture(), "system");
