@@ -4277,6 +4277,13 @@
   var CATEGORY_ICONS = { Health:"✚", Finance:"$", Career:"▲", Maintenance:"⚙", Growth:"↑", Relationships:"♥", Sol:"◐" };
   var CATEGORY_COLOR_VAR = { Health:"--cat-health", Finance:"--cat-finance", Career:"--cat-career", Maintenance:"--cat-maintenance", Growth:"--cat-growth", Relationships:"--cat-relationships", Sol:"--cat-sol" };
   function categoryColorVar(cat){ return "var(" + (CATEGORY_COLOR_VAR[cat] || "--text-dim") + ")"; }
+  // Same area color as categoryColorVar, but resolved to a real value instead of a var() reference —
+  // for the map layers, where Leaflet writes colors into SVG presentation attributes (stroke/fill)
+  // that don't understand CSS variables. Falls back for items with no area at all. Read at render
+  // time, so a theme toggle picks up the new palette on the next layer redraw.
+  function areaMapColor(cat, fallback){
+    return cat ? cssVarColor(CATEGORY_COLOR_VAR[cat] || "--text-dim") : fallback;
+  }
   function hexToRgb(hex){
     var h = (hex || "").replace("#", "");
     if(h.length === 3) h = h.split("").map(function(c){ return c + c; }).join("");
@@ -7550,7 +7557,9 @@
     // always literal "today" — see setHomeTlSelectedDate.
     var day = homeTlSelectedDate;
     var located = state.actions.filter(function(a){ return a.date === day && a.locationLat != null && a.locationLng != null; });
-    var sig = day + "|" + located.map(function(a){ return a.id + ":" + a.locationLat + ":" + a.locationLng + ":" + (a.timeOfDay || "") + ":" + a.title; }).join("|");
+    // area is part of the signature because it now drives the marker color — re-categorising an
+    // action has to trigger a redraw, not just renaming or moving it.
+    var sig = day + "|" + located.map(function(a){ return a.id + ":" + a.locationLat + ":" + a.locationLng + ":" + (a.timeOfDay || "") + ":" + (actionCategory(a) || "") + ":" + a.title; }).join("|");
     if(sig === homeMapMarkersSig) return;
     homeMapMarkersSig = sig;
     homeMapMarkers.clearLayers();
@@ -7560,7 +7569,8 @@
     // check above), so it doesn't fight a user's own manual pan/zoom on every unrelated re-render.
     var bounds = L.latLngBounds([[HOME_MAP_BASE_LAT, HOME_MAP_BASE_LON]]);
     located.forEach(function(a){
-      var marker = L.circleMarker([a.locationLat, a.locationLng], { radius:6, color:"#2DD4BF", weight:1.5, opacity:0.9, fillColor:"#2DD4BF", fillOpacity:0.55 });
+      var aColor = areaMapColor(actionCategory(a), "#2DD4BF");
+      var marker = L.circleMarker([a.locationLat, a.locationLng], { radius:6, color:aColor, weight:1.5, opacity:0.9, fillColor:aColor, fillOpacity:0.55 });
       marker.bindPopup('<div class="loc-city-popup"><b>' + escapeHtml(a.title || "Untitled") + '</b>' + (a.timeOfDay ? '<br>' + escapeHtml(fmtTimeOfDay(a.timeOfDay)) : '') + '</div>');
       marker.on("click", function(){ editAction(a.id); });
       homeMapMarkers.addLayer(marker);
@@ -13540,11 +13550,12 @@
     if(document.getElementById("locLayerActionsBtn").classList.contains("on")){
       state.actions.forEach(function(a){
         if(a.locationLat == null || a.locationLng == null) return;
-        items.push({ kind:"action", id:a.id, label:a.title || "Untitled", sub:a.date || "", lat:a.locationLat, lng:a.locationLng, color:"#2DD4BF" });
+        // Dot color mirrors the map marker's — area-derived — so the sidebar and the map agree.
+        items.push({ kind:"action", id:a.id, label:a.title || "Untitled", sub:a.date || "", lat:a.locationLat, lng:a.locationLng, color:areaMapColor(actionCategory(a), "#2DD4BF") });
       });
       state.habits.forEach(function(h){
         if(h.locationLat == null || h.locationLng == null) return;
-        items.push({ kind:"habit", id:h.id, label:h.title || "Untitled", sub:h.frequency || "habit", lat:h.locationLat, lng:h.locationLng, color:"#818CF8" });
+        items.push({ kind:"habit", id:h.id, label:h.title || "Untitled", sub:h.frequency || "habit", lat:h.locationLat, lng:h.locationLng, color:areaMapColor(habitCategory(h), "#818CF8") });
       });
     }
     if(document.getElementById("locLayerPeopleBtn").classList.contains("on")){
@@ -13707,21 +13718,27 @@
   }
 
   // One marker per located action/habit (not city-grouped like people — each is its own specific
-  // place/routine, not a population count) — actions in teal, habits in indigo so the two are
-  // distinguishable at a glance without needing separate toggles.
+  // place/routine, not a population count). COLOR now carries the item's life area, matching the
+  // area palette used everywhere else in the app, so the map answers "what part of my life is out
+  // here" at a glance. That means color can no longer distinguish action from habit, so kind moved
+  // onto the marker's STYLE instead: an action is a solid disc, a habit a dashed ring — readable
+  // together, since the two encode different things (what it is vs. what it's about).
   function locRenderActionsLayer(){
     if(!locActionsLayer) return;
     locActionsLayer.clearLayers();
     state.actions.forEach(function(a){
       if(a.locationLat == null || a.locationLng == null) return;
-      var marker = L.circleMarker([a.locationLat, a.locationLng], { radius:6, color:"#2DD4BF", weight:1.5, opacity:0.85, fillColor:"#2DD4BF", fillOpacity:0.5 });
+      var color = areaMapColor(actionCategory(a), "#2DD4BF");
+      var marker = L.circleMarker([a.locationLat, a.locationLng], { radius:6, color:color, weight:1.5, opacity:0.85, fillColor:color, fillOpacity:0.5 });
       marker.bindPopup('<div class="loc-city-popup"><b>' + escapeHtml(a.title || "Untitled") + '</b>' + (a.date ? "<br>" + escapeHtml(a.date) : "") + '</div>');
       marker.on("click", function(){ editAction(a.id); });
       locActionsLayer.addLayer(marker);
     });
     state.habits.forEach(function(h){
       if(h.locationLat == null || h.locationLng == null) return;
-      var marker = L.circleMarker([h.locationLat, h.locationLng], { radius:6, color:"#818CF8", weight:1.5, opacity:0.85, fillColor:"#818CF8", fillOpacity:0.5 });
+      // Dashed ring + light fill = habit (recurring); the solid disc above = action (one-off).
+      var hColor = areaMapColor(habitCategory(h), "#818CF8");
+      var marker = L.circleMarker([h.locationLat, h.locationLng], { radius:6, color:hColor, weight:2, opacity:0.95, dashArray:"3 2", fillColor:hColor, fillOpacity:0.15 });
       marker.bindPopup('<div class="loc-city-popup"><b>' + escapeHtml(h.title || "Untitled") + '</b><br>habit · ' + escapeHtml(h.frequency || "") + '</div>');
       marker.on("click", function(){ editHabit(h.id); });
       locActionsLayer.addLayer(marker);
