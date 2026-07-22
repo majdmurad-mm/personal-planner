@@ -2754,6 +2754,13 @@
            "projects" + "actions", never an empty "goals" band. Floating micro-label + hairline
            that fades out rightward, instead of a heavy full-width band. */
         .gantt-group-header{display:flex;align-items:center;gap:10px;padding:4px 8px 3px;font-family:var(--mono);font-size:8.5px;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-faint);position:relative;z-index:1;}
+        /* Area band — the outer grouping level on the Future chart (see renderGanttInto's "area"
+           mode), tinted with the area's own color. The rule below indents the goal/project
+           sub-headers under it; it can only match on a chart that HAS area headers, so the
+           level-grouped charts are untouched by it. */
+        .gantt-area-header{display:flex;align-items:center;gap:8px;padding:10px 8px 4px;font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:var(--text-dim);border-top:1px solid var(--border-bright);margin-top:3px;position:sticky;left:0;z-index:2;}
+        .gantt-area-header:first-of-type{border-top:none;margin-top:0;}
+        .gantt-area-header ~ .gantt-group-header{padding-left:20px;}
         .gantt-group-header::after{content:"";flex:1;height:1px;background:linear-gradient(90deg, var(--border-bright), transparent 70%);}
         .gantt-head-actions{display:flex;align-items:center;gap:6px;margin-left:auto;}
         .gantt-zoom-btn{width:28px;padding:0;text-align:center;font-weight:700;}
@@ -10289,28 +10296,35 @@
 
     // Two grouping modes, chosen by the caller's data (both live here rather than per call site,
     // since every chart shares this renderer):
-    //   "parent"  — one group per goal/project, each holding that thing's own bar and a single row
-    //               of all its actions. Used by the Future page's whole-system chart, where the
-    //               useful question is "what belongs to this?".
+    //   "area"    — area, then goal/project within it, each holding that thing's own bar and a
+    //               single row of all its actions, plus that area's unlinked actions. Used by the
+    //               Future page's whole-system chart, where the useful question is "what's going on
+    //               in this part of my life?".
     //   otherwise — by hierarchy LEVEL (goals, then projects, then actions), one row per action.
     //               Used by the goal/entity pages, which are already scoped to a single thing, so
-    //               re-grouping by parent there would just produce one group.
+    //               grouping them this way would just produce one group.
     var rows = "";
-    if(data.groupBy === "parent"){
-      // Per-parent grouping (the Future page's whole-system chart): one group per goal/project,
-      // headed by its name, holding its own derived span row plus a SINGLE row carrying all of its
-      // actions — so everything belonging to one thing reads together, instead of that thing's bar
-      // and its actions sitting in three separate level-based sections far apart from each other.
-      (data.groups || []).forEach(function(g){
-        rows += '<div class="gantt-group-header">' + ganttRowLabelHtml(g.kind, g.obj) + '</div>' +
-          ganttRowHtml(g.kind, ganttDerivedBarHtml(g.kind, g.obj, start, g.actions, today, data.selfId), g.kind, g.obj.id);
-        if(g.actions.length) rows += ganttActionsRowHtml(g.actions, start, today, data.selfId, g.kind, g.obj.id);
+    if(data.groupBy === "area"){
+      // Area is the top level, matching how the rest of the app organises everything. Inside each
+      // area: one sub-group per goal/project (its own derived span row plus a SINGLE row holding all
+      // of its actions), then a final "unlinked" row for that area's actions that belong to no goal
+      // or project at all — those are first-class here rather than exiled to one dumping ground, so
+      // "everything Health, planned or loose" reads as one block.
+      (data.areas || []).forEach(function(ar){
+        var areaLabel = ar.area ? ((CATEGORY_ICONS[ar.area] || "") + " " + ar.area) : "○ no area";
+        rows += '<div class="gantt-area-header"' + (ar.area ? ' style="color:' + categoryColorVar(ar.area) + ';"' : '') + '>' + escapeHtml(areaLabel) + '</div>';
+        ar.groups.forEach(function(g){
+          rows += '<div class="gantt-group-header">' + ganttRowLabelHtml(g.kind, g.obj) + '</div>' +
+            ganttRowHtml(g.kind, ganttDerivedBarHtml(g.kind, g.obj, start, g.actions, today, data.selfId), g.kind, g.obj.id);
+          if(g.actions.length) rows += ganttActionsRowHtml(g.actions, start, today, data.selfId, g.kind, g.obj.id);
+        });
+        if(ar.looseActions.length){
+          // Tagged rowKind "area" so clicking empty space here adds a standalone action already set
+          // to this area with no parent — see wireGanttChart's add-here handler.
+          rows += '<div class="gantt-group-header">unlinked</div>' +
+            ganttActionsRowHtml(ar.looseActions, start, today, data.selfId, "area", ar.area || "");
+        }
       });
-      // Actions belonging to nothing still need somewhere to live, on the same one-row basis.
-      if((data.looseActions || []).length){
-        rows += '<div class="gantt-group-header">unassigned</div>' +
-          ganttActionsRowHtml(data.looseActions, start, today, data.selfId, null, null);
-      }
     } else {
     // Rows are grouped by hierarchy level — goals, then projects, then actions — each under its own
     // small divider label, instead of one undifferentiated stack.
@@ -10378,16 +10392,13 @@
   // own span only counts actions parented DIRECTLY to that goal (not ones nested under its
   // projects) — those already get their own accurate span on the project's own row right below it.
   function ganttItemsForFuture(){
-    function byAreaOrder(list, catFn){
-      var byCat = {}; list.forEach(function(item){ var c = catFn(item) || "__none__"; (byCat[c] = byCat[c] || []).push(item); });
-      var ordered = [];
-      CATEGORIES.concat(["__none__"]).forEach(function(cat){ (byCat[cat] || []).forEach(function(item){ ordered.push(item); }); });
-      return ordered;
-    }
     var goalActions = {}, projectActions = {}, looseActions = [];
     state.actions.forEach(function(a){
       if(a.parentType === "goal" && a.parentId) (goalActions[a.parentId] = goalActions[a.parentId] || []).push(a);
       else if(a.parentType === "project" && a.parentId) (projectActions[a.parentId] = projectActions[a.parentId] || []).push(a);
+      // Standalone actions — no goal, no project. Not everything worth planning hangs off a goal, so
+      // these are grouped under their own area alongside that area's goals/projects rather than
+      // being dropped or piled into one catch-all.
       else looseActions.push(a);
     });
     // A timeline is for things with an end — an ongoing/infinite goal (g.ongoing, the same "∞
@@ -10395,19 +10406,26 @@
     // here rather than drawn with some arbitrary made-up end date. Its projects/actions still show
     // normally; only the goal's own row is skipped.
     var finiteGoals = state.goals.filter(function(g){ return !g.ongoing; });
-    // One group per goal/project, still in CATEGORIES area order. A goal's group holds only actions
-    // parented DIRECTLY to it — ones nested under its projects belong to those projects' own groups,
-    // so nothing is listed twice.
-    var groups = byAreaOrder(finiteGoals, function(g){ return g.category; }).map(function(g){
-      return { kind:"goal", obj:g, actions: goalActions[g.id] || [] };
-    }).concat(byAreaOrder(state.projects, function(p){ return projectCategory(p); }).map(function(p){
-      return { kind:"project", obj:p, actions: projectActions[p.id] || [] };
+    // A goal's group holds only actions parented DIRECTLY to it — ones nested under its projects
+    // belong to those projects' own groups, so nothing is listed twice.
+    var groups = finiteGoals.map(function(g){
+      return { kind:"goal", obj:g, actions: goalActions[g.id] || [], area: g.category || null };
+    }).concat(state.projects.map(function(p){
+      return { kind:"project", obj:p, actions: projectActions[p.id] || [], area: projectCategory(p) || null };
     }));
+    // CATEGORIES order (the app's canonical area order everywhere else), with the no-area bucket
+    // last. Areas holding nothing at all are dropped rather than rendered as empty headers.
+    var areas = CATEGORIES.concat([null]).map(function(area){
+      return {
+        area: area,
+        groups: groups.filter(function(g){ return g.area === area; }),
+        looseActions: looseActions.filter(function(a){ return (actionCategory(a) || null) === area; })
+      };
+    }).filter(function(ar){ return ar.groups.length || ar.looseActions.length; });
     return {
-      groupBy: "parent",
-      groups: groups,
-      looseActions: byAreaOrder(looseActions, actionCategory),
-      // rows/actions stay populated even though the parent-grouped branch doesn't render from them:
+      groupBy: "area",
+      areas: areas,
+      // rows/actions stay populated even though the area branch doesn't render from them:
       // renderGanttInto still derives its date range and its "nothing to plan yet" check from these.
       rows: groups.map(function(g){ return { kind:g.kind, obj:g.obj, span:g.actions }; }),
       actions: state.actions,
@@ -10580,6 +10598,13 @@
       var rowKind = row && row.dataset.rowKind;
       var rowId = row && row.dataset.rowId;
       if(rowKind === "project" || rowKind === "goal") openActionModalWithParent(rowKind, rowId);
+      else if(rowKind === "area"){
+        // An area's "unlinked" row: a standalone action in that area — explicitly no parent, since
+        // that row exists precisely for the actions that don't belong to a goal or project.
+        openActionModal(null, null);
+        setChip(document.getElementById("actionParentTypeSelect"), "pt", "none");
+        if(rowId) setChip(document.getElementById("actionAreaSelect"), "ar", rowId);
+      }
       else openActionModal(null, null);
       document.getElementById("actionDateInput").value = date;
     });
