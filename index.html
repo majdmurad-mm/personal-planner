@@ -3841,6 +3841,13 @@
         <div class="chip-opt" role="button" tabindex="0" data-ar="Health">✚ Health</div><div class="chip-opt" role="button" tabindex="0" data-ar="Finance">$ Finance</div><div class="chip-opt sel" role="button" tabindex="0" data-ar="Career">▲ Career</div>
         <div class="chip-opt" role="button" tabindex="0" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" role="button" tabindex="0" data-ar="Growth">↑ Growth</div><div class="chip-opt" role="button" tabindex="0" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" role="button" tabindex="0" data-ar="Sol">◐ Sol</div>
       </div></div>
+      <div class="field"><label>secondary areas (optional)</label>
+        <div class="dropdown-multi" id="actionSecondaryCatDropdown">
+          <button type="button" class="dropdown-multi-btn" id="actionSecondaryCatBtn">none selected ▾</button>
+          <div class="dropdown-multi-panel chip-select" id="actionSecondaryCatSelect" hidden></div>
+        </div>
+        <p class="panel-hint">This action also touches these areas — its primary area above is unaffected.</p>
+      </div>
       <div class="field"><label>belongs to</label><div class="chip-select" id="actionParentTypeSelect">
         <div class="chip-opt sel" role="button" tabindex="0" data-pt="goal">Goal</div><div class="chip-opt" role="button" tabindex="0" data-pt="project">Project</div><div class="chip-opt" role="button" tabindex="0" data-pt="none">None</div>
       </div></div>
@@ -5026,7 +5033,7 @@
     state.habits = (results[2].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || null, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [], extraDates:r.extra_dates || [], customIntervalDays:r.custom_interval_days||null, monthDay:r.month_day||null, icon:r.icon||null, instanceOverrides:r.instance_overrides || {},
       locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), linkedPeopleIds:r.linked_people_ids||[] }; });
     state.habits.sort(function(a,b){ return a.position - b.position; });
-    state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null,
+    state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null, secondaryCategories:r.secondary_categories || [],
       locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), notesMd:r.notes_md||"", dependencies:r.dependencies||[], linkedPeopleIds:r.linked_people_ids||[] }; });
     state.actions.sort(function(a,b){ return a.position - b.position; });
     state.journal = (results[4].data || []).map(function(r){ return { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, categories:r.categories||[], recordingId:r.recording_id||null, linkedObjects:r.linked_objects||[], sentiment:r.sentiment||[], title:r.title||"", priority:r.priority||null, createdAt:r.created_at||null }; });
@@ -6789,7 +6796,7 @@
       input.disabled = false;
       if(res.error){ dbErrorToast(res.error, "Couldn't add"); input.focus(); return; }
       var r = res.data;
-      state.actions.push({ id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null,
+      state.actions.push({ id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null, secondaryCategories:[],
         locationAddress:"", locationLat:null, locationLng:null, linkedPeopleIds:[] });
       input.value = "";
       renderAll();
@@ -9036,7 +9043,7 @@
   function actionPayload(snapshot){
     // type:"Task" is legacy padding for the not-yet-dropped NOT NULL column, so undo/trash restores
     // can re-insert — see LEGACY_SILENT_DROP_FIELDS and migration_drop_action_type.sql.
-    return { id:snapshot.id, parent_type:snapshot.parentType, parent_id:snapshot.parentId, title:snapshot.title, priority:snapshot.priority, date:snapshot.date, done:snapshot.done, position:snapshot.position, time_of_day:snapshot.timeOfDay, duration_minutes:snapshot.durationMinutes, category:snapshot.category, type:"Task",
+    return { id:snapshot.id, parent_type:snapshot.parentType, parent_id:snapshot.parentId, title:snapshot.title, priority:snapshot.priority, date:snapshot.date, done:snapshot.done, position:snapshot.position, time_of_day:snapshot.timeOfDay, duration_minutes:snapshot.durationMinutes, category:snapshot.category, secondary_categories:snapshot.secondaryCategories, type:"Task",
       location_address:snapshot.locationAddress, location_lat:snapshot.locationLat, location_lng:snapshot.locationLng, notes_md:snapshot.notesMd, dependencies:snapshot.dependencies };
   }
   async function deleteAction(id){
@@ -9393,7 +9400,7 @@
       return;
     }
     var r = res.data;
-    var newAction = { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null };
+    var newAction = { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null, secondaryCategories:[] };
     state.actions.push(newAction);
     renderAll();
     warnDroppedFields(res.droppedFields);
@@ -11077,6 +11084,16 @@
     var g = goalById(resolveGoalIdForAction(a));
     return g ? g.category : null;
   }
+  // Every area an action touches: its resolved primary area (above) first, then any secondary areas
+  // picked in the editor — deduped, primary never repeated. Mirrors how a goal exposes category +
+  // secondaryCategories. The primary still solely drives colour/grouping/section membership; the
+  // extras only add faint area-hued links on the Graph (see wbHierarchyEdges).
+  function actionCategories(a){
+    var primary = actionCategory(a);
+    var out = primary ? [primary] : [];
+    (a.secondaryCategories || []).forEach(function(cat){ if(cat && cat !== primary && out.indexOf(cat) === -1) out.push(cat); });
+    return out;
+  }
   // Habits don't yet have their own area field (unlike goals/projects/actions) — this is purely
   // derived from a linked goal, so a standalone habit with no goal has no area at all (it lands in
   // the Today timeline's "other" row).
@@ -11422,6 +11439,13 @@
       state.actions.forEach(function(a){
         if(a.parentType === "goal" && a.parentId) edges.push({ fromType:"goal", fromId:a.parentId, toType:"action", toId:a.id });
         else if(a.parentType === "project" && a.parentId) edges.push({ fromType:"project", fromId:a.parentId, toType:"action", toId:a.id });
+        // Extra areas the action touches — faint, area-hued links straight to each area hub, exactly
+        // like a goal's secondaryCategories above. The action's own primary-area pull is added
+        // separately by wbAreaLeafEdges, so skip the primary here to avoid a duplicate edge.
+        var primary = actionCategory(a);
+        (a.secondaryCategories || []).forEach(function(cat){
+          if(cat && cat !== primary) edges.push({ fromType:"area", fromId:cat, toType:"action", toId:a.id, secondary:true });
+        });
       });
     }
     return edges;
@@ -18608,7 +18632,12 @@
     }
   }
   document.getElementById("actionParentTypeSelect").addEventListener("click", function(){ fillActionParentSelect(); });
-  document.getElementById("actionAreaSelect").addEventListener("click", function(){ fillActionParentSelect(); });
+  document.getElementById("actionAreaSelect").addEventListener("click", function(){
+    fillActionParentSelect();
+    // Rebuild the secondary-area chips so the newly-chosen primary can never also sit in the
+    // secondary list — same behaviour as the goal editor's primary/secondary areas.
+    renderActionSecondaryCatChips(multiChipValues(document.getElementById("actionSecondaryCatSelect"), "c"));
+  });
 
   var editingActionId = null;
   var editingActionLat = null, editingActionLng = null;
@@ -18624,6 +18653,18 @@
   function renderActionLinkedPeopleChips(preSelectedIds){
     renderPeopleChipOptions(document.getElementById("actionLinkedPeopleSelect"), preSelectedIds);
     updateActionLinkedPeopleBtn();
+  }
+  // Secondary areas: every OTHER area as toggleable chips (the action's own primary area is excluded
+  // and unaffected). Rebuilt whenever the primary area changes so it can never appear here too — a
+  // direct mirror of renderGoalSecondaryCatChips.
+  var updateActionSecondaryCatBtn = wireDropdownMulti("actionSecondaryCatBtn", "actionSecondaryCatSelect", "actionSecondaryCatDropdown", "c");
+  function renderActionSecondaryCatChips(preSelectedIds){
+    var primaryCat = chipValue(document.getElementById("actionAreaSelect"), "ar");
+    var container = document.getElementById("actionSecondaryCatSelect");
+    var options = CATEGORIES.filter(function(cat){ return cat !== primaryCat; });
+    container.innerHTML = options.map(function(cat){ return '<div class="chip-opt" role="button" tabindex="0" data-c="' + cat + '">' + CATEGORY_ICONS[cat] + " " + cat + '</div>'; }).join("");
+    setMultiChip(container, "c", (preSelectedIds || []).filter(function(id){ return id !== primaryCat; }));
+    updateActionSecondaryCatBtn();
   }
   function openActionModal(presetGoalId, editActionObj){
     editingActionId = editActionObj ? editActionObj.id : null;
@@ -18646,6 +18687,8 @@
       if(areaGoal) presetArea = areaGoal.category;
     }
     setChip(document.getElementById("actionAreaSelect"), "ar", presetArea);
+    renderActionSecondaryCatChips(editActionObj ? (editActionObj.secondaryCategories || []) : []);
+    document.getElementById("actionSecondaryCatSelect").hidden = true;
     fillActionParentSelect();
     if(defaultPt !== "none"){
       var parentIdToSelect = editActionObj ? editActionObj.parentId : presetGoalId;
@@ -18691,6 +18734,7 @@
       time_of_day: document.getElementById("actionTimeInput").value || null,
       duration_minutes: document.getElementById("actionDurationInput").value ? Math.max(0, Math.round(Number(document.getElementById("actionDurationInput").value))) : null,
       category: chipValue(document.getElementById("actionAreaSelect"), "ar") || null,
+      secondary_categories: multiChipValues(document.getElementById("actionSecondaryCatSelect"), "c"),
       location_address: document.getElementById("actionLocationInput").value.trim() || null,
       location_lat: editingActionLat, location_lng: editingActionLng,
       linked_people_ids: multiChipValues(document.getElementById("actionLinkedPeopleSelect"), "pid")
@@ -18710,7 +18754,7 @@
     this.disabled = false;
     if(res.error){ dbErrorToast(res.error, "Couldn't save"); return; }
     var r = res.data;
-    var mapped = { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null,
+    var mapped = { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null, secondaryCategories:r.secondary_categories || payload.secondary_categories || [],
       locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), linkedPeopleIds:r.linked_people_ids||[] };
     if(isEdit){
       var idx = state.actions.findIndex(function(x){ return x.id === editingActionId; });
