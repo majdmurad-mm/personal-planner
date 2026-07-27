@@ -526,6 +526,11 @@
   .dropdown-multi-btn:hover{ border-color:var(--accent-dim); }
   .dropdown-multi-panel{ position:absolute; top:calc(100% + 4px); left:0; right:0; z-index:50; background:var(--bg-raised); border:1px solid var(--border-bright); border-radius:var(--radius); padding:8px; box-shadow:0 8px 20px rgba(0,0,0,0.35); max-height:180px; overflow-y:auto; }
   .dropdown-multi-panel[hidden]{ display:none; }
+  /* Sticky search box for the linked-people pickers — stays put at the panel's top while the chip
+     list scrolls under it, so a long roster of people is filterable instead of endlessly scrolled. */
+  .people-search-input{ position:sticky; top:-8px; z-index:1; box-sizing:border-box; width:100%; margin:-4px 0 6px; background:var(--bg-inset); border:1px solid var(--border); border-radius:var(--radius); padding:6px 8px; font-family:var(--mono); font-size:11px; color:var(--text); }
+  .people-search-input:focus{ outline:none; border-color:var(--accent-dim); }
+  .people-search-empty{ padding:4px 2px; }
 
   /* ===== SLEEP ===== */
   .goal-integration-block{ margin-top:28px; padding-top:20px; border-top:1px solid var(--border); }
@@ -9899,10 +9904,36 @@
   // reverse lookup that surfaces it on the People page itself.
   function renderPeopleChipOptions(containerEl, preSelectedIds){
     var options = state.people.slice().sort(function(a, b){ return (a.name || "").localeCompare(b.name || ""); });
-    containerEl.innerHTML = options.length
-      ? options.map(function(p){ return '<div class="chip-opt" role="button" tabindex="0" data-pid="' + p.id + '">' + escapeHtml(p.name || "Unnamed") + '</div>'; }).join("")
-      : '<span class="panel-hint" style="margin:0;">No people yet.</span>';
+    if(!options.length){
+      containerEl.innerHTML = '<span class="panel-hint" style="margin:0;">No people yet.</span>';
+      return;
+    }
+    // A search box appears once the roster is long enough to be worth filtering — below that it'd
+    // just be clutter over a couple of chips. Filtering hides non-matching chips rather than removing
+    // them, so a person selected then filtered out keeps their .sel state and still saves.
+    var withSearch = options.length > 6;
+    var chipsHtml = options.map(function(p){ return '<div class="chip-opt" role="button" tabindex="0" data-pid="' + p.id + '">' + escapeHtml(p.name || "Unnamed") + '</div>'; }).join("");
+    containerEl.innerHTML =
+      (withSearch ? '<input type="text" class="people-search-input" placeholder="search people…" autocomplete="off">' : "") +
+      '<div class="people-chip-list">' + chipsHtml + '</div>' +
+      '<span class="panel-hint people-search-empty" hidden style="margin:0;">No people match.</span>';
     setMultiChip(containerEl, "pid", preSelectedIds || []);
+    if(withSearch){
+      var search = containerEl.querySelector(".people-search-input");
+      var emptyHint = containerEl.querySelector(".people-search-empty");
+      search.addEventListener("input", function(){
+        var q = search.value.trim().toLowerCase();
+        var anyShown = false;
+        containerEl.querySelectorAll(".people-chip-list .chip-opt").forEach(function(chip){
+          var match = !q || chip.textContent.toLowerCase().indexOf(q) !== -1;
+          chip.style.display = match ? "" : "none";
+          if(match) anyShown = true;
+        });
+        emptyHint.hidden = anyShown;
+      });
+      // Enter in the search box shouldn't bubble up and trip any modal-level default.
+      search.addEventListener("keydown", function(e){ if(e.key === "Enter") e.preventDefault(); });
+    }
   }
   var LINKED_PEOPLE_KIND_LABEL = { goal:"goal", project:"project", action:"action", habit:"habit", poi:"place" };
   // Every goal/project/action/habit/POI that lists this person in its own linkedPeopleIds — id-based,
