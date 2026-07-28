@@ -1545,7 +1545,7 @@
     h1{ font-size:19px; }
     #locationSection{ margin:-56px -18px -60px; padding:12px 18px 12px; }
     #peopleSection.ppl-fullscreen-graph, #plannerSection.planner-fullscreen-graph{ margin:-56px -18px -60px; padding:12px 18px 12px; }
-    #homeSection.home-cockpit{ margin:-56px -18px -60px; }
+    /* #homeSection.home-cockpit's mobile margins can't live here — see the note beside its base rule. */
     .today-two-col{ grid-template-columns:1fr; }
     /* Mobile sidebar is an off-canvas drawer, not the desktop's inline column — hidden by default
        (regardless of the desktop-only data-sidebar-collapsed preference, which this ignores
@@ -1564,7 +1564,6 @@
     .main{ padding:44px 24px 20px; }
     #locationSection{ margin:-44px -24px -20px; padding:10px 24px 10px; }
     #peopleSection.ppl-fullscreen-graph, #plannerSection.planner-fullscreen-graph{ margin:-44px -24px -20px; padding:10px 24px 10px; }
-    #homeSection.home-cockpit{ margin:-44px -24px -20px; }
   }
 
   /* ===== Home (cockpit) ===== */
@@ -1574,6 +1573,17 @@
      .ppl-fullscreen-graph / .planner-fullscreen-graph (values mirror .main's padding, including
      its media-query variants below). */
   #homeSection.home-cockpit{ --home-dock-h:150px; margin:-32px -40px -70px; height:100vh; height:100dvh; box-sizing:border-box; display:flex; flex-direction:column; overflow:hidden; }
+  /* The small-screen margin values have to be re-stated HERE, after the base rule, rather than up with
+     the other mobile overrides — a media query contributes no specificity, so the identical
+     #homeSection.home-cockpit selector in that earlier block loses on source order alone and the
+     cockpit kept desktop's -40px side margins on a phone, making it 44px wider than the viewport and
+     shifted off the left edge. Values still mirror .main's padding at each breakpoint. */
+  @media (max-width: 820px), (max-height: 500px) and (orientation: landscape){
+    #homeSection.home-cockpit{ margin:-56px -18px -60px; }
+  }
+  @media (max-height: 500px) and (orientation: landscape){
+    #homeSection.home-cockpit{ margin:-44px -24px -20px; }
+  }
   .home-graph-wrap{ position:relative; flex:1; min-height:0; overflow:hidden; background:var(--bg-inset); }
   #homeCanvas{ position:absolute; inset:0; width:100%; height:100%; display:block; cursor:grab; touch-action:none; }
   #homeCanvas.dragging{ cursor:grabbing; }
@@ -1766,10 +1776,6 @@
   .home-sticky-resize::before{ content:""; position:absolute; right:3px; bottom:3px; width:6px; height:6px; border-right:2px solid var(--sticky-c, var(--border-bright)); border-bottom:2px solid var(--sticky-c, var(--border-bright)); opacity:0.6; }
   .home-sticky-resize:hover::before{ opacity:1; }
   .home-sticky.resized textarea{ flex:1; min-height:0; overflow-y:auto; }
-  /* Mobile-only toggle for the timeline drawer (see @media max-width:820px) — hidden entirely on
-     desktop, where the timeline is always docked. z-index above the drawer itself so it stays
-     clickable (to close again) even once the drawer is open and covering that corner. */
-  .home-mobile-tl-toggle{ display:none; }
   /* Full-bleed month strip between the split handle and the timeline dock: every day of the month
      flexes to an equal share of the entire width (no horizontal scrolling on desktop — the month
      IS the ruler), with the same intensity/day-quality coloring the Present/Future strips use.
@@ -1904,94 +1910,86 @@
   /* Small screens: a true no-scroll cockpit can't fit — fall back to a scrollable stack with the
      graph at a fixed height. Margin values mirror the mobile .main padding, same as the other
      fullscreen sections' media overrides below. */
-  @media (max-width:820px){
-    /* Mobile-only cockpit treatment: the 3D graph becomes a full-screen, view-only BACKGROUND (no
-       pan/orbit/zoom/click — see #homeCanvas below) behind the purpose-built .home-mobile layer, and
-       the timeline — previously a fixed docked strip eating ~150px of an already-short 52vh graph —
-       is an on-demand drawer that slides up from the bottom, opened via the small toggle button in
-       the corner (see wireHomeMobileTimelineToggle) instead of always taking up screen space. Back to
-       a fixed, non-scrolling viewport (height:100dvh/overflow:hidden, same as desktop) now that
-       there's no in-flow content below the graph needing scroll room — the drawer is an overlay, not
-       part of the document flow. */
+  /* Desktop: the mobile launcher doesn't exist. This sits BEFORE the ≤820px block on purpose — a
+     media query adds no specificity, so an identical `.home-mobile` rule placed after it would win
+     at every width and silently hide the launcher on phones too. */
+  .home-mobile{ display:none; }
+  /* Same condition the rest of the app treats as "mobile" — width alone isn't enough, since a phone
+     held sideways is often WIDER than 820px (a 14 Pro Max landscape is 932px) and would otherwise get
+     the desktop cockpit on the exact device this page is for. Kept in sync with homeMobileActive(). */
+  @media (max-width: 820px), (max-height: 500px) and (orientation: landscape){
+    /* On a phone the home page is not the desktop cockpit at all — it's a quick-capture launcher
+       (see .home-mobile below). Every cockpit surface is hidden here, and renderHomeDashboard skips
+       their work entirely while this breakpoint is active, so a phone never spins up Three.js,
+       Leaflet or the weather fetch just to show seven buttons. That's what keeps capture instant. */
     #homeSection.home-cockpit{ height:100vh; height:100dvh; overflow:hidden; position:relative; }
     .home-graph-wrap{ flex:1; height:auto; }
-    #homeCanvas{ pointer-events:none; opacity:0.4; }  /* ambient backdrop behind .home-mobile, not interactable */
-    .home-photos{ display:none; }
-    .home-map-widget{ display:none; }
-    /* The desktop widget cluster (draggable clock/todo-matrix/notes/areas-rail) is replaced wholesale
-       by the .home-mobile layer below — hidden here rather than squeezed down. Calendar strip too:
-       the day-progress bar's chevrons cover day switching on a phone. */
-    .home-hud-clock, .home-todo-matrix, .home-notes-widget, .home-areas-rail, .home-cal-strip{ display:none; }
-    /* The desktop drag handle doesn't apply once the timeline is an overlay drawer, not a resizable
-       in-flow dock. */
-    .home-split-handle{ display:none; }
-    /* Overlay drawer, off-screen (below the viewport) until #homeSection gets .mobile-tl-open. Height
-       is fixed rather than the desktop --home-dock-h split value — there's no split handle to set it
-       on mobile. */
-    .home-timeline-dock{ position:absolute; left:0; right:0; bottom:0; height:42vh; z-index:8; box-shadow:0 -8px 24px rgba(0,0,0,0.4); transform:translateY(100%); transition:transform var(--dur-med, 0.25s) var(--ease-out, ease); }
-    #homeSection.mobile-tl-open .home-timeline-dock{ transform:translateY(0); }
-    .home-mobile-tl-toggle{ display:flex; align-items:center; justify-content:center; position:absolute; right:14px; bottom:14px; z-index:9; width:40px; height:40px; border-radius:50%; border:1px solid var(--border-bright); background:rgba(var(--bg-raised-rgb), 0.7); backdrop-filter:blur(8px); color:var(--text); font-size:17px; cursor:pointer; box-shadow:var(--elev-2); }
-    .home-mobile-tl-toggle:active{ transform:scale(0.94); }
+    #homeCanvas, .home-graph-fallback, .home-photos, .home-map-widget, .home-hud-clock,
+    .home-todo-matrix, .home-notes-widget, .home-areas-rail, .home-cal-strip,
+    .home-split-handle, .home-timeline-dock{ display:none; }
 
-    /* ---- Mobile home layer (#homeMobile — hidden on desktop, see the base rule below the media
-       query). One vertical column over the dimmed 3D graph: clock header, day bar (label + progress
-       + chevrons), then the scrollable time-ordered flow of the day's items. z-index 5 keeps it
-       under the timeline drawer (8) and its toggle (9). ---- */
-    .home-mobile{ display:flex; flex-direction:column; position:absolute; inset:0; z-index:5; padding:calc(14px + env(safe-area-inset-top)) 16px 0; box-sizing:border-box; pointer-events:none; }
-    .home-mobile > *{ pointer-events:auto; }
-    .home-mobile-head{ flex-shrink:0; margin-bottom:14px; }
-    .home-mobile-clock{ font-family:var(--display, var(--mono)); font-size:52px; font-weight:200; line-height:1; color:var(--text); letter-spacing:-0.02em; font-variant-numeric:tabular-nums; }
-    .home-mobile-date-row{ display:flex; align-items:baseline; gap:10px; margin-top:5px; font-family:var(--mono); font-size:11px; color:var(--text-dim); }
-    .home-mobile-weather{ color:var(--text-faint); }
-    .home-mobile-daybar{ flex-shrink:0; display:flex; align-items:center; gap:6px; margin-bottom:10px; }
-    .home-mobile-day-nav{ appearance:none; border:none; background:none; color:var(--text-dim); font-family:var(--mono); font-size:22px; line-height:1; width:38px; height:38px; border-radius:50%; cursor:pointer; flex-shrink:0; }
-    .home-mobile-day-nav:active{ background:rgba(var(--bg-raised-rgb), 0.7); }
-    .home-mobile-day-mid{ flex:1; min-width:0; display:flex; flex-direction:column; gap:4px; }
-    .home-mobile-day-label{ font-family:var(--mono); font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:var(--text-dim); text-align:center; }
-    .home-mobile-progress{ height:3px; border-radius:2px; background:rgba(var(--bg-raised-rgb), 0.9); overflow:hidden; }
-    .home-mobile-progress-fill{ height:100%; width:0%; border-radius:2px; background:var(--accent); transition:width var(--dur-med, 0.25s) var(--ease-out, ease); }
-    .home-mobile-progress-text{ font-family:var(--mono); font-size:9.5px; color:var(--text-faint); text-align:center; }
-    /* The flow: one row per item, time-sorted, scrolling under the fixed header. Rows are glassy
-       (translucent + blur) so the graph stays visible behind them without hurting legibility. */
-    .home-mobile-flow{ flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; display:flex; flex-direction:column; gap:7px; padding-bottom:calc(84px + env(safe-area-inset-bottom)); }
-    .home-mobile-item{ display:flex; align-items:center; gap:11px; padding:11px 12px; border-radius:12px; border:1px solid var(--border); border-left:3px solid var(--border-bright); background:rgba(var(--bg-raised-rgb), 0.72); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); }
-    .home-mobile-item:active{ filter:brightness(1.12); }
-    .home-mobile-item.done{ opacity:0.42; }
-    .home-mobile-item.done .home-mobile-item-title{ text-decoration:line-through; }
-    .home-mobile-item.Health{ border-left-color:var(--cat-health); }
-    .home-mobile-item.Finance{ border-left-color:var(--cat-finance); }
-    .home-mobile-item.Career{ border-left-color:var(--cat-career); }
-    .home-mobile-item.Maintenance{ border-left-color:var(--cat-maintenance); }
-    .home-mobile-item.Growth{ border-left-color:var(--cat-growth); }
-    .home-mobile-item.Relationships{ border-left-color:var(--cat-relationships); }
-    .home-mobile-item.Sol{ border-left-color:var(--cat-sol); }
-    /* Tap-to-complete dot — big enough for a thumb (the visible circle is smaller than the hit area). */
-    .home-mobile-dot{ flex:0 0 auto; width:34px; height:34px; margin:-6px; border:none; background:none; padding:0; cursor:pointer; position:relative; touch-action:manipulation; }
-    .home-mobile-dot::before{ content:""; position:absolute; inset:7px; border-radius:50%; border:1.6px solid var(--text-dim); }
-    .home-mobile-item.done .home-mobile-dot::before{ background:var(--accent); border-color:var(--accent); }
-    .home-mobile-item.done .home-mobile-dot::after{ content:""; position:absolute; left:13px; top:11px; width:5px; height:9px; border-right:1.8px solid var(--bg); border-bottom:1.8px solid var(--bg); transform:rotate(40deg); }
-    .home-mobile-item-time{ flex:0 0 auto; font-family:var(--mono); font-size:10.5px; color:var(--text-faint); min-width:38px; font-variant-numeric:tabular-nums; }
-    .home-mobile-item-title{ flex:1; min-width:0; font-size:13.5px; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .home-mobile-item-kind{ flex:0 0 auto; font-family:var(--mono); font-size:8.5px; letter-spacing:0.06em; text-transform:uppercase; color:var(--text-faint); }
-    /* Live NOW marker: a thin accent line slotted between the last past item and the first upcoming
-       one (today only — see renderHomeMobile), so "where am I in the day" reads at a glance. */
-    .home-mobile-now{ display:flex; align-items:center; gap:8px; padding:1px 2px; }
-    .home-mobile-now::before{ content:""; width:7px; height:7px; border-radius:50%; background:var(--accent); box-shadow:0 0 8px var(--accent); flex-shrink:0; }
-    .home-mobile-now::after{ content:""; flex:1; height:1px; background:linear-gradient(90deg, var(--accent), transparent); }
-    .home-mobile-empty{ margin-top:26px; text-align:center; font-family:var(--mono); font-size:12px; color:var(--text-faint); }
-    /* Quick-add: a round + above the timeline toggle, opening a small stacked sheet of the three
-       creatable kinds. Sheet closes on pick or on any tap outside (see wireHomeMobile). */
-    .home-mobile-add{ position:absolute; left:16px; bottom:calc(14px + env(safe-area-inset-bottom)); z-index:6; width:52px; height:52px; border-radius:50%; border:none; background:var(--accent); color:var(--bg); font-size:28px; font-weight:300; line-height:1; cursor:pointer; box-shadow:0 6px 20px rgba(0,0,0,0.45); transition:transform var(--dur-fast, 0.15s) var(--ease-out, ease); }
-    .home-mobile-add:active{ transform:scale(0.92); }
-    .home-mobile-add.open{ transform:rotate(45deg); }
-    .home-mobile-add-sheet{ position:absolute; left:16px; bottom:calc(78px + env(safe-area-inset-bottom)); z-index:6; display:flex; flex-direction:column; gap:8px; }
-    .home-mobile-add-sheet[hidden]{ display:none; }
-    .home-mobile-add-sheet button{ display:flex; align-items:center; gap:10px; appearance:none; border:1px solid var(--border-bright); border-radius:24px; padding:11px 18px 11px 12px; background:rgba(var(--bg-raised-rgb), 0.88); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); color:var(--text); font-family:var(--mono); font-size:12.5px; cursor:pointer; box-shadow:var(--elev-2); }
-    .home-mobile-add-sheet button:active{ filter:brightness(1.15); }
-    .hm-add-glyph{ width:22px; text-align:center; color:var(--accent); font-size:14px; }
+    /* ---- Mobile launcher (#homeMobile) ----
+       Two groups — what you can capture right now, and where you can go — as one centred stack. Rows
+       are sized from viewport height rather than stretched to fill it, so the same markup gives
+       comfortable tiles on a tall portrait screen and short ones in landscape, without either
+       ballooning into empty slabs. ---- */
+    .home-mobile{ display:flex; flex-direction:column; justify-content:center; justify-content:safe center; gap:14px;
+      position:absolute; inset:0; z-index:5;
+      padding:calc(16px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom)); box-sizing:border-box; overflow-y:auto; }
+    /* Right-aligned so the top-left corner stays clear for #sidebarToggleBtn, which floats over this
+       layer — the rest of the app buys that clearance with .main's 56px top padding, but the cockpit
+       cancels that padding out, so the header steps aside horizontally instead of costing height. */
+    .hm-head{ flex:0 0 auto; display:flex; flex-direction:column; align-items:flex-end; gap:2px; }
+    .hm-clock{ font-family:var(--display, var(--mono)); font-size:32px; font-weight:200; line-height:1; letter-spacing:-0.02em; color:var(--text); font-variant-numeric:tabular-nums; }
+    .hm-date{ font-family:var(--mono); font-size:11px; color:var(--text-dim); }
+    .hm-group{ flex:0 0 auto; display:flex; flex-direction:column; gap:8px; }
+    .hm-group-label{ font-family:var(--mono); font-size:9.5px; letter-spacing:0.18em; text-transform:uppercase; color:var(--text-faint); }
+    .hm-grid{ display:grid; gap:10px; grid-auto-rows:minmax(76px, 13vh); }
+    .hm-grid-capture{ grid-template-columns:repeat(3, 1fr); }
+    /* Recording needs MediaRecorder + a mic; without them wireVoiceRecordButton hides that tile, so
+       the grid drops to two columns rather than leaving a hole where it was. */
+    .hm-grid-capture.hm-no-rec{ grid-template-columns:repeat(2, 1fr); }
+    .hm-grid-go{ grid-template-columns:repeat(2, 1fr); }
+    /* Solid, not glassy: the translucent-blur treatment existed to let the 3D graph read through, and
+       there's no graph behind this page any more — opaque surfaces just look crisper in both themes. */
+    .hm-tile{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px;
+      min-height:76px; padding:10px 6px; border-radius:16px; border:1px solid var(--border-bright);
+      background:var(--bg-raised); color:var(--text); font-family:var(--mono); text-align:center;
+      cursor:pointer; appearance:none; touch-action:manipulation;
+      transition:transform var(--dur-fast, 0.15s) var(--ease-out, ease), filter var(--dur-fast, 0.15s) var(--ease-out, ease); }
+    .hm-tile:active{ transform:scale(0.96); filter:brightness(1.12); }
+    .hm-tile-glyph{ font-size:clamp(19px, 5vh, 28px); line-height:1; color:var(--text-dim); }
+    /* The record tile draws its mic from the shared vector icon library instead of an emoji, so it
+       inherits currentColor like every other glyph here rather than punching a colour picture through. */
+    .hm-tile-glyph svg{ display:block; width:1em; height:1em; }
+    .hm-tile-label{ font-size:11px; letter-spacing:0.04em; color:var(--text); }
+    /* Capture is the primary act on this page, so those three tiles are accent-lit and the four
+       destinations stay quiet — the difference in weight is the whole navigation cue. */
+    .hm-tile-capture{ border-color:var(--accent-dim); background:rgba(var(--bg-raised-rgb), 0.85); }
+    .hm-tile-capture .hm-tile-glyph{ color:var(--accent); }
+    /* Record has the same three states as the Notes composer's mic (idle / recording / transcribing).
+       Each state swaps which label span shows, so the tile always says what a tap will do rather than
+       relying on colour alone. */
+    .hm-tile-rec .hm-label-rec, .hm-tile-rec .hm-label-busy{ display:none; }
+    .hm-tile-rec.on{ border-color:#DC2626; background:#DC2626; color:#fff; animation:agentMicPulse 1.2s ease-in-out infinite; }
+    .hm-tile-rec.on .hm-tile-glyph{ color:#fff; }
+    .hm-tile-rec.on .hm-label-idle{ display:none; }
+    .hm-tile-rec.on .hm-label-rec{ display:inline; }
+    .hm-tile-rec.transcribing{ opacity:0.6; cursor:wait; }
+    .hm-tile-rec.transcribing .hm-label-idle, .hm-tile-rec.transcribing .hm-label-rec{ display:none; }
+    .hm-tile-rec.transcribing .hm-label-busy{ display:inline; }
+    /* Landscape has far less height to divide, so the four destinations go on one row instead of a
+       2x2 block and the header collapses to a single baseline-aligned line — keeping every tile
+       reachable without scrolling. */
+    @media (orientation:landscape){
+      .home-mobile{ gap:10px; padding-top:calc(10px + env(safe-area-inset-top)); padding-bottom:calc(10px + env(safe-area-inset-bottom)); }
+      .hm-head{ flex-direction:row; align-items:baseline; justify-content:flex-end; gap:10px; }
+      .hm-grid-go{ grid-template-columns:repeat(4, 1fr); }
+      .hm-grid{ grid-auto-rows:minmax(62px, 22vh); }
+      .hm-clock{ font-size:24px; }
+      .hm-tile{ min-height:62px; gap:6px; }
+    }
   }
-  /* Desktop: the mobile home layer simply doesn't exist — everything above only applies ≤820px. */
-  .home-mobile{ display:none; }
   /* Seven tabs now — let them wrap instead of overflowing on narrow screens. */
   #plannerTabs{ flex-wrap:wrap; }
 
@@ -2168,39 +2166,40 @@
           <div class="home-map-canvas" id="homeMapCanvas"></div>
           <div class="home-map-resize" id="homeMapResize" title="Drag to resize"></div>
         </div>
-        <!-- Mobile only (see @media max-width:820px): on a phone the graph fills the whole screen as
-             a view-only background and the timeline becomes an on-demand drawer instead of a fixed
-             dock, since there isn't room for both at once. Hidden entirely on desktop. -->
-        <button class="home-mobile-tl-toggle" id="homeMobileTlToggle" type="button" title="Show today's timeline">⏱</button>
-        <!-- Mobile home layer (hidden on desktop; see the max-width:820px block for its whole design):
-             the desktop's draggable widget cluster is replaced by one purpose-built vertical layout
-             over the (dimmed, view-only) 3D graph — big clock, a time-ordered "flow" of the selected
-             day's actions+habits with tap-to-complete dots and a live NOW marker, a day-progress bar
-             with prev/next day chevrons, and a + button opening a quick-add sheet (action/note/habit).
-             Rendered by renderHomeMobile(), driven by the same homeTlSelectedDate as everything else. -->
+        <!-- Mobile home (hidden on desktop; see the max-width:820px block for its whole design). On a
+             phone the home page isn't a dashboard at all — it's a launcher: three things you can
+             capture right now, and four places to go. Everything the desktop cockpit shows still
+             exists, one tap away on its own page; a phone home screen's job is to get something out
+             of your head before you lose it, so nothing here competes with that. Rendered by
+             renderHomeMobile() (clock/date only — the tiles are static markup). -->
         <div class="home-mobile" id="homeMobile">
-          <div class="home-mobile-head">
-            <div class="home-mobile-clock" id="homeMobileClock">--:--</div>
-            <div class="home-mobile-date-row">
-              <span id="homeMobileDate"></span>
-              <span class="home-mobile-weather" id="homeMobileWeather"></span>
+          <div class="hm-head">
+            <div class="hm-clock" id="homeMobileClock">--:--</div>
+            <div class="hm-date" id="homeMobileDate"></div>
+          </div>
+          <div class="hm-group">
+            <div class="hm-group-label">capture</div>
+            <div class="hm-grid hm-grid-capture" id="homeMobileCaptureGrid">
+              <button class="hm-tile hm-tile-capture" type="button" data-hm-capture="action">
+                <span class="hm-tile-glyph" aria-hidden="true">✚</span><span class="hm-tile-label">action</span>
+              </button>
+              <button class="hm-tile hm-tile-capture" type="button" data-hm-capture="note">
+                <span class="hm-tile-glyph" aria-hidden="true">✎</span><span class="hm-tile-label">note</span>
+              </button>
+              <button class="hm-tile hm-tile-capture hm-tile-rec" type="button" id="homeMobileRecordBtn">
+                <span class="hm-tile-glyph" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0"/><line x1="12" y1="17.5" x2="12" y2="21"/></svg></span>
+                <span class="hm-tile-label"><span class="hm-label-idle">record</span><span class="hm-label-rec">stop</span><span class="hm-label-busy">…</span></span>
+              </button>
             </div>
           </div>
-          <div class="home-mobile-daybar">
-            <button type="button" class="home-mobile-day-nav" data-mob-day-delta="-1" aria-label="Previous day">‹</button>
-            <div class="home-mobile-day-mid">
-              <div class="home-mobile-day-label" id="homeMobileDayLabel">today</div>
-              <div class="home-mobile-progress"><div class="home-mobile-progress-fill" id="homeMobileProgressFill"></div></div>
-              <div class="home-mobile-progress-text" id="homeMobileProgressText"></div>
+          <div class="hm-group">
+            <div class="hm-group-label">go to</div>
+            <div class="hm-grid hm-grid-go">
+              <button class="hm-tile" type="button" data-hm-go="today"><span class="hm-tile-glyph" aria-hidden="true">◷</span><span class="hm-tile-label">today</span></button>
+              <button class="hm-tile" type="button" data-hm-go="people"><span class="hm-tile-glyph" aria-hidden="true">☺</span><span class="hm-tile-label">people</span></button>
+              <button class="hm-tile" type="button" data-hm-go="location"><span class="hm-tile-glyph" aria-hidden="true">⚲</span><span class="hm-tile-label">location</span></button>
+              <button class="hm-tile" type="button" data-hm-go="journal"><span class="hm-tile-glyph" aria-hidden="true">▤</span><span class="hm-tile-label">notes</span></button>
             </div>
-            <button type="button" class="home-mobile-day-nav" data-mob-day-delta="1" aria-label="Next day">›</button>
-          </div>
-          <div class="home-mobile-flow" id="homeMobileFlow"></div>
-          <button class="home-mobile-add" id="homeMobileAddBtn" type="button" aria-label="Add something new">+</button>
-          <div class="home-mobile-add-sheet" id="homeMobileAddSheet" hidden>
-            <button type="button" data-mob-add="action"><span class="hm-add-glyph">▪</span>action</button>
-            <button type="button" data-mob-add="note"><span class="hm-add-glyph">✎</span>note</button>
-            <button type="button" data-mob-add="habit"><span class="hm-add-glyph">↻</span>habit</button>
           </div>
         </div>
       </div>
@@ -6153,22 +6152,6 @@
     handle.addEventListener("pointercancel", end);
   })();
 
-  // Mobile-only timeline drawer toggle (see @media max-width:820px) — the button itself is
-  // display:none outside that breakpoint, so this listener is simply unreachable on desktop rather
-  // than needing its own screen-width branch. Not persisted — always starts closed on a fresh load,
-  // same as the mobile sidebar drawer.
-  (function wireHomeMobileTimelineToggle(){
-    var btn = document.getElementById("homeMobileTlToggle");
-    var section = document.getElementById("homeSection");
-    if(!btn || !section) return;
-    btn.addEventListener("click", function(){
-      var open = section.classList.toggle("mobile-tl-open");
-      btn.textContent = open ? "✕" : "⏱";
-      btn.title = open ? "Hide today's timeline" : "Show today's timeline";
-      if(open) renderHomeTimelineDock();  // make sure it's current the instant it's revealed
-    });
-  })();
-
   // Day toggle — nudges homeTlSelectedDate by one day, unclamped (see setHomeTlSelectedDate); the
   // calendar strip above the dock lets the same selection jump to any day, so this and the strip
   // just need to agree on which date is selected, not fight over a fixed window.
@@ -7733,6 +7716,12 @@
   homePhotosRenderState();
 
   function renderHomeDashboard(){
+    // On a phone the home page is the quick-capture launcher, not this cockpit — every widget below
+    // is display:none there, so running their render passes would be pure waste. Bailing here is also
+    // what keeps the launcher instant: Three.js, Leaflet and the weather fetch are all reached from
+    // this function, so on a phone none of them ever load. Checked per tick rather than once, so
+    // rotating or resizing across the breakpoint picks the cockpit back up on the next second.
+    if(homeMobileActive()){ renderHomeMobile(new Date()); return; }
     // First paint happens post-auth with the section visible and laid out — the right moment to
     // spin up the (lazy, guarded) 3D layer; ensureHomeScene() is a no-op ever after.
     ensureHomeScene();
@@ -7765,126 +7754,62 @@
   // every showSection transition.
   setInterval(function(){ if(activeSection === "home") renderHomeDashboard(); }, 1000);
 
-  /* ---------------- Mobile home layer ---------------- */
-  // The ≤820px home experience (see .home-mobile in the CSS): the desktop widget cluster is hidden
-  // and replaced by this one purpose-built layer over the dimmed 3D graph — big clock, day bar with
-  // completion progress and prev/next chevrons (driving the same homeTlSelectedDate everything else
-  // reads), a time-ordered flow of the day's actions + habit occurrences with tap-to-complete dots
-  // and a live NOW marker, and a + quick-add sheet (action/note/habit → the existing modals).
-  // Renders from renderHomeDashboard's 1s tick — a matchMedia guard plus a content signature keep
-  // that essentially free on desktop and on unchanged seconds.
-  var homeMobileMedia = window.matchMedia ? window.matchMedia("(max-width: 820px)") : null;
+  /* ---------------- Mobile home: quick-capture launcher ---------------- */
+  // At ≤820px the home page stops being the desktop cockpit and becomes a launcher (see .home-mobile
+  // in the CSS): three things you can capture right now — action, note, voice note — and four places
+  // to go — today, people, location, notes. Everything the cockpit shows is still one tap away on its
+  // own page; this page exists to get something out of your head before you lose it, so nothing else
+  // competes for the screen. renderHomeDashboard skips the whole desktop widget pass while this is
+  // active, so a phone never loads Three.js/Leaflet or fetches weather just to draw seven buttons.
+  // Must stay identical to the launcher's own @media condition, or the two disagree about which
+  // layout is on screen — a landscape phone is often wider than 820px, so width alone would leave
+  // the launcher visible while renderHomeDashboard went on driving the hidden cockpit (or worse).
+  var HOME_MOBILE_QUERY = "(max-width: 820px), (max-height: 500px) and (orientation: landscape)";
+  var homeMobileMedia = window.matchMedia ? window.matchMedia(HOME_MOBILE_QUERY) : null;
   function homeMobileActive(){ return !!(homeMobileMedia && homeMobileMedia.matches); }
-  // Merged, time-sorted item list for the selected day — same sources and rules as the desktop todo
-  // matrix (homeTodayActionsList/homeTodayHabitList follow homeTlSelectedDate + area visibility),
-  // just flattened into one flow instead of quadrants. Untimed items sink to the end of the day.
-  function homeMobileItems(){
-    var day = homeTlSelectedDate;
-    var items = [];
-    homeTodayActionsList().forEach(function(a){
-      items.push({ kind:"action", id:a.id, date:day, title:a.title || "Untitled", done:!!a.done, area:actionCategory(a), timeOfDay:a.timeOfDay });
-    });
-    homeTodayHabitList().forEach(function(h){
-      items.push({ kind:"habit-instance", id:h.id, date:day, title:h.title || "Untitled", done:habitDoneForDate(h, day), area:habitCategory(h), timeOfDay:habitInstanceFields(h, day).timeOfDay });
-    });
-    items.sort(function(a, b){ return (a.timeOfDay || "99:99").localeCompare(b.timeOfDay || "99:99"); });
-    return items;
-  }
-  function homeMobileItemHtml(it){
-    return '<div class="home-mobile-item' + (it.area ? " " + it.area : "") + (it.done ? " done" : "") + '" data-kind="' + it.kind + '" data-id="' + it.id + '" data-date="' + it.date + '">' +
-      '<button class="home-mobile-dot" type="button" aria-label="' + (it.done ? "Mark not done" : "Mark done") + '"></button>' +
-      '<span class="home-mobile-item-time">' + (it.timeOfDay ? escapeHtml(fmtTimeOfDay(it.timeOfDay)) : "–") + '</span>' +
-      '<span class="home-mobile-item-title">' + escapeHtml(it.title) + '</span>' +
-      '<span class="home-mobile-item-kind">' + (it.kind === "action" ? "act" : "hab") + '</span>' +
-    '</div>';
-  }
-  var homeMobileFlowSig = null;
+  // The tiles are static markup, so the only thing that actually re-renders is the clock line.
   function renderHomeMobile(now){
     if(!homeMobileActive()) return;
     now = now || new Date();
-    // Clock/date/weather every tick — text writes, cheap. Weather mirrors the desktop HUD's already-
-    // fetched state (fetchHomeWeather runs from renderHomeDashboard regardless of layout).
     document.getElementById("homeMobileClock").textContent = now.toLocaleTimeString(undefined, { hour:"2-digit", minute:"2-digit" });
-    document.getElementById("homeMobileDate").textContent = now.toLocaleDateString(undefined, { weekday:"long", month:"long", day:"numeric" });
-    document.getElementById("homeMobileWeather").textContent = homeWeather.state === "done" ? (homeWeather.temp + "°C · " + (homeWeather.place || "")) : "";
-    var todayKey = todayStr();
-    document.getElementById("homeMobileDayLabel").textContent = homeTlDayLabel(homeTlSelectedDate, todayKey);
-    var items = homeMobileItems();
-    var doneCount = items.filter(function(it){ return it.done; }).length;
-    document.getElementById("homeMobileProgressFill").style.width = (items.length ? (doneCount / items.length * 100) : 0) + "%";
-    document.getElementById("homeMobileProgressText").textContent = items.length ? (doneCount + " of " + items.length + " done") : "nothing scheduled";
-    // The NOW marker slots between the last past item and the first upcoming one — today only, and
-    // its position is part of the signature so it migrates down the list as the day goes on (the
-    // minute granularity of nowKey keeps that to at most one rebuild per minute).
-    var isToday = homeTlSelectedDate === todayKey;
-    var nowKey = isToday ? now.toTimeString().slice(0, 5) : "";
-    var nowIdx = -1;
-    if(isToday){
-      nowIdx = items.length;
-      for(var i = 0; i < items.length; i++){
-        if((items[i].timeOfDay || "99:99") > nowKey){ nowIdx = i; break; }
-      }
-    }
-    var sig = homeTlSelectedDate + "|" + nowIdx + "|" + items.map(function(it){ return it.kind + it.id + ":" + (it.done ? 1 : 0) + ":" + (it.timeOfDay || "") + ":" + it.area + ":" + it.title; }).join(",");
-    var flow = document.getElementById("homeMobileFlow");
-    if(flow.dataset.sig === sig) return;
-    flow.dataset.sig = sig;
-    if(!items.length){
-      flow.innerHTML = '<div class="home-mobile-empty">nothing scheduled — a clear day ◦</div>';
-      return;
-    }
-    var html = "";
-    items.forEach(function(it, i){
-      if(i === nowIdx) html += '<div class="home-mobile-now" aria-hidden="true"></div>';
-      html += homeMobileItemHtml(it);
-    });
-    if(nowIdx === items.length) html += '<div class="home-mobile-now" aria-hidden="true"></div>';
-    flow.innerHTML = html;
+    document.getElementById("homeMobileDate").textContent = now.toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" });
   }
   (function wireHomeMobile(){
     var layer = document.getElementById("homeMobile");
     if(!layer) return;
-    layer.addEventListener("click", async function(e){
-      var nav = e.target.closest("[data-mob-day-delta]");
-      if(nav){ setHomeTlSelectedDate(addDaysToDateStr(homeTlSelectedDate, Number(nav.dataset.mobDayDelta))); return; }
-      var dot = e.target.closest(".home-mobile-dot");
-      if(dot){
-        var row = dot.closest(".home-mobile-item");
-        if(row.dataset.kind === "habit-instance") await handleHabitMarkClick(row.dataset.id, row.dataset.date);
-        else await toggleActionDone(row.dataset.id);
-        renderHomeMobile();
+    layer.addEventListener("click", function(e){
+      // Capture opens the same editors the rest of the app uses — no phone-specific save path to
+      // drift out of sync, and the note/action still gets reviewed before it commits.
+      var cap = e.target.closest("[data-hm-capture]");
+      if(cap){
+        if(cap.dataset.hmCapture === "action") openActionModal(null, null);
+        else openJournalEditModal(null);
         return;
       }
-      var item = e.target.closest(".home-mobile-item");
-      if(item){
-        if(item.dataset.kind === "habit-instance") openHabitInstancePopover(e.clientX, e.clientY, item.dataset.id, item.dataset.date);
-        else editAction(item.dataset.id);
+      var go = e.target.closest("[data-hm-go]");
+      if(go){
+        showSection(go.dataset.hmGo);
+        // Same side effect the sidebar's own links have — see the #sideNav click handler.
+        document.documentElement.removeAttribute("data-mobile-menu-open");
       }
     });
-    var addBtn = document.getElementById("homeMobileAddBtn");
-    var sheet = document.getElementById("homeMobileAddSheet");
-    function closeSheet(){ sheet.hidden = true; addBtn.classList.remove("open"); }
-    addBtn.addEventListener("click", function(e){
-      e.stopPropagation();
-      sheet.hidden = !sheet.hidden;
-      addBtn.classList.toggle("open", !sheet.hidden);
-    });
-    sheet.addEventListener("click", function(e){
-      var btn = e.target.closest("[data-mob-add]");
-      if(!btn) return;
-      closeSheet();
-      if(btn.dataset.mobAdd === "action"){
-        openActionModal(null, null);
-        document.getElementById("actionDateInput").value = homeTlSelectedDate;
-      } else if(btn.dataset.mobAdd === "note"){
+    // Same quick-capture recorder as the desktop Notes widget's mic: record → transcribe locally →
+    // open the note editor pre-filled, so a mis-heard transcript is fixable before it saves. Deliberately
+    // NOT the Notes composer's full upload/waveform/storage pipeline — this is a thought caught in
+    // passing, not a recording worth keeping.
+    wireVoiceRecordButton(document.getElementById("homeMobileRecordBtn"), async function(blob){
+      try{
+        var text = await transcribeAudioLocally(blob);
+        if(!text){ toast("Couldn't make out any speech in that recording."); return; }
         openJournalEditModal(null);
-      } else if(btn.dataset.mobAdd === "habit"){
-        openHabitModal(null, null);
+        document.getElementById("journalEditTextInput").value = text;
+      } catch(err){
+        toast("Transcription failed: " + err.message);
       }
     });
-    document.addEventListener("click", function(e){
-      if(!sheet.hidden && !sheet.contains(e.target) && !addBtn.contains(e.target)) closeSheet();
-    });
+    // wireVoiceRecordButton hides its button outright when the browser can't record; tell the grid so
+    // it closes up to two columns instead of leaving a hole where that tile would have been.
+    if(!agentRecorderSupported()) document.getElementById("homeMobileCaptureGrid").classList.add("hm-no-rec");
   })();
 
   /* ---------------- Home 3D system graph (Three.js) ---------------- */
