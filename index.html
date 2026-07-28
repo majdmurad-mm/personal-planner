@@ -2139,6 +2139,9 @@
      lighter for dark), rather than needing per-tag light/dark colors. */
   .sentiment-chip{ --sent-h:255; font-family:var(--mono); font-size:10px; font-weight:600; letter-spacing:0.04em; padding:2px 8px; border-radius:var(--radius-sm); background:hsla(var(--sent-h),75%,45%,0.14); color:hsl(var(--sent-h),80%,42%); border:1px solid hsl(var(--sent-h),70%,50%); }
   :root[data-theme="dark"] .sentiment-chip{ color:hsl(var(--sent-h),80%,70%); border-color:hsl(var(--sent-h),65%,58%); }
+  /* Note-type badge on cards — only the non-default kinds (reference/idea) wear one; reflections
+     are the unmarked norm. Quiet by design: it identifies, it doesn't shout. */
+  .note-type-badge{ flex-shrink:0; font-family:var(--mono); font-size:9px; letter-spacing:0.06em; text-transform:uppercase; padding:1px 6px; border-radius:var(--radius-sm); border:1px solid var(--border-bright); background:var(--bg-inset); color:var(--text-dim); margin-left:auto; margin-right:6px; }
 </style>
 </head>
 <body>
@@ -3167,6 +3170,13 @@
               <div class="chip-opt sel" role="button" tabindex="0" data-p="">no priority</div>
               <div class="chip-opt" role="button" tabindex="0" data-p="P0">P0</div><div class="chip-opt" role="button" tabindex="0" data-p="P1">P1</div><div class="chip-opt" role="button" tabindex="0" data-p="P2">P2</div><div class="chip-opt" role="button" tabindex="0" data-p="P3">P3</div>
             </div>
+            <!-- What KIND of note this is, orthogonal to areas — the type drives behavior: only
+                 reflections get sentiment analysis (see maybeAutoAnalyzeSentiment). -->
+            <div class="chip-select" id="journalTypeSelect" title="Note type — reflections get sentiment analysis; references and ideas don't">
+              <div class="chip-opt sel" role="button" tabindex="0" data-nt="reflection">☼ reflection</div>
+              <div class="chip-opt" role="button" tabindex="0" data-nt="reference">§ reference</div>
+              <div class="chip-opt" role="button" tabindex="0" data-nt="idea">⚡ idea</div>
+            </div>
           </div>
           <button class="btn" id="journalRecordBtn" type="button" title="Record a voice note — saves the audio, then transcribes it here">🎤</button>
           <button class="btn btn-accent" id="saveJournalBtn" type="button">+ add entry</button>
@@ -3197,6 +3207,12 @@
           <button class="sub-view-tab active" data-sub="day" type="button">day</button>
           <button class="sub-view-tab" data-sub="week" type="button">week</button>
           <button class="sub-view-tab" data-sub="month" type="button">month</button>
+        </div>
+        <div class="sub-view-toggle notes-scale-toggle" id="journalTypeFilterToggle" title="Filter by note type">
+          <button class="sub-view-tab active" data-sub="all" type="button">all</button>
+          <button class="sub-view-tab" data-sub="reflection" type="button">☼ reflections</button>
+          <button class="sub-view-tab" data-sub="reference" type="button">§ references</button>
+          <button class="sub-view-tab" data-sub="idea" type="button">⚡ ideas</button>
         </div>
         <div class="notes-axis">
           <span class="notes-axis-end">positive</span>
@@ -4164,6 +4180,13 @@
           <div class="chip-opt sel" role="button" tabindex="0" data-p="">no priority</div>
           <div class="chip-opt" role="button" tabindex="0" data-p="P0">P0</div><div class="chip-opt" role="button" tabindex="0" data-p="P1">P1</div><div class="chip-opt" role="button" tabindex="0" data-p="P2">P2</div><div class="chip-opt" role="button" tabindex="0" data-p="P3">P3</div>
         </div></div>
+      </div>
+      <div class="field"><label>type — reflections get sentiment analysis; references &amp; ideas don't</label>
+        <div class="chip-select" id="journalEditTypeSelect">
+          <div class="chip-opt sel" role="button" tabindex="0" data-nt="reflection">☼ reflection</div>
+          <div class="chip-opt" role="button" tabindex="0" data-nt="reference">§ reference</div>
+          <div class="chip-opt" role="button" tabindex="0" data-nt="idea">⚡ idea</div>
+        </div>
       </div>
       <div class="field note-editor-textfield"><label for="journalEditTextInput">note</label>
         <!-- Markdown formatting toolbar — each button wraps the selection / prefixes the selected
@@ -5161,7 +5184,7 @@
     state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null, secondaryCategories:r.secondary_categories || [],
       locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), notesMd:r.notes_md||"", dependencies:r.dependencies||[], linkedPeopleIds:r.linked_people_ids||[] }; });
     state.actions.sort(function(a,b){ return a.position - b.position; });
-    state.journal = (results[4].data || []).map(function(r){ return { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, categories:r.categories||[], recordingId:r.recording_id||null, linkedObjects:r.linked_objects||[], sentiment:r.sentiment||[], title:r.title||"", priority:r.priority||null, createdAt:r.created_at||null }; });
+    state.journal = (results[4].data || []).map(function(r){ return { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, categories:r.categories||[], noteType:r.note_type||"reflection", recordingId:r.recording_id||null, linkedObjects:r.linked_objects||[], sentiment:r.sentiment||[], title:r.title||"", priority:r.priority||null, createdAt:r.created_at||null }; });
     state.people = (results[5].data || []).map(function(r){
       return { id:r.id, name:r.name, relationship:r.relationship, contact:r.contact, notes:r.notes, position:r.position||0,
         verified:!!r.verified, likeScore:(r.like_score!=null?r.like_score:null), contactScore:(r.contact_score!=null?r.contact_score:null),
@@ -8703,7 +8726,7 @@
   }
 
   [["goalPrioSelect","p"],["projectPrioSelect","p"],["habitPrioSelect","p"],["habitFreqSelect","f"],
-   ["actionPrioSelect","p"],["actionParentTypeSelect","pt"],["actionAreaSelect","ar"],["goalCatSelect","c"],["personRelSelect","r"],["tvTypeSelect","t"],["goalHealthLevelSelect","hl"],["habitTypeSelect","ty"],["habitAreaSelect","ar"],["journalPrioritySelect","p"],["journalEditPrioritySelect","p"]]
+   ["actionPrioSelect","p"],["actionParentTypeSelect","pt"],["actionAreaSelect","ar"],["goalCatSelect","c"],["personRelSelect","r"],["tvTypeSelect","t"],["goalHealthLevelSelect","hl"],["habitTypeSelect","ty"],["habitAreaSelect","ar"],["journalPrioritySelect","p"],["journalEditPrioritySelect","p"],["journalTypeSelect","nt"],["journalEditTypeSelect","nt"]]
    .forEach(function(pair){ wireChipSelect(document.getElementById(pair[0]), pair[1]); });
   // Notes can span more than one area, like projects (see projectAreaSelect) — multi-select instead
   // of the mutually-exclusive wireChipSelect used above.
@@ -9359,7 +9382,7 @@
     });
   }
   function journalPayload(snapshot){
-    return { id:snapshot.id, date:snapshot.date, text:snapshot.text, time_of_day:snapshot.timeOfDay, categories:snapshot.categories||[], recording_id:snapshot.recordingId, linked_objects:snapshot.linkedObjects||[], sentiment:snapshot.sentiment||[], title:snapshot.title||null, priority:snapshot.priority||null, created_at:snapshot.createdAt||null };
+    return { id:snapshot.id, date:snapshot.date, text:snapshot.text, time_of_day:snapshot.timeOfDay, categories:snapshot.categories||[], note_type:snapshot.noteType||"reflection", recording_id:snapshot.recordingId, linked_objects:snapshot.linkedObjects||[], sentiment:snapshot.sentiment||[], title:snapshot.title||null, priority:snapshot.priority||null, created_at:snapshot.createdAt||null };
   }
   async function deleteJournalEntry(id){
     var n = state.journal.find(function(x){ return x.id === id; });
@@ -14829,7 +14852,7 @@
     var res = await safeWrite(function(p){ return sb.from("journal").insert(p).select().single(); }, payload);
     if(res.error) return res;
     var r = res.data;
-    state.journal.push({ id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, categories:r.categories||[], recordingId:r.recording_id||null, linkedObjects:r.linked_objects||payload.linked_objects||[], sentiment:r.sentiment||[], title:r.title||payload.title||"", priority:r.priority||payload.priority||null, createdAt:r.created_at||null });
+    state.journal.push({ id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, categories:r.categories||[], noteType:r.note_type||payload.note_type||"reflection", recordingId:r.recording_id||null, linkedObjects:r.linked_objects||payload.linked_objects||[], sentiment:r.sentiment||[], title:r.title||payload.title||"", priority:r.priority||payload.priority||null, createdAt:r.created_at||null });
     warnDroppedFields(res.droppedFields);
     maybeAutoAnalyzeSentiment(r.id);  // covers both callers below: typed composer save + record-and-auto-save
     maybeAutoAnnotateNote(r.id);
@@ -14846,6 +14869,7 @@
       priority: chipValue(document.getElementById("journalPrioritySelect"), "p") || null,
       time_of_day: document.getElementById("journalTimeInput").value || null,
       categories: multiChipValues(document.getElementById("journalAreaSelect"), "ar"),
+      note_type: chipValue(document.getElementById("journalTypeSelect"), "nt") || "reflection",
       recording_id: journalPendingRecording ? journalPendingRecording.id : null
     };
     this.disabled = true;
@@ -14856,6 +14880,7 @@
     document.getElementById("journalTextInput").value = "";
     document.getElementById("journalTimeInput").value = "";
     setChip(document.getElementById("journalPrioritySelect"), "p", "");
+    setChip(document.getElementById("journalTypeSelect"), "nt", "reflection");
     journalPendingRecording = null;
     renderAll();
   });
@@ -14867,11 +14892,16 @@
     var catClass = noteCategory(entry) ? " " + noteCategory(entry) : "";
     var merged = mergedAreaColorCss(noteCategories(entry));
     var style = merged ? 'border-left-color:' + merged.c + ';border-color:' + merged.c + ';background:' + merged.bg + ';' : '';
+    // Reflections are the unmarked default — badging every one would be noise; only the two
+    // non-default kinds announce themselves. The ✨ sentiment button only exists where sentiment
+    // applies: on a reference or idea the affordance itself would be a lie.
+    var typeMeta = !noteGetsSentiment(entry) ? NOTE_TYPE_META[entry.noteType] : null;
+    var typeBadge = typeMeta ? '<span class="note-type-badge">' + typeMeta.glyph + " " + typeMeta.label + '</span>' : "";
     return '<div class="journal-entry' + catClass + '" style="' + style + '" data-kind="journal" data-id="' + entry.id + '" data-x="' + xPct + '">' +
       renderNoteTagsHtml(entry) +
-      '<div class="journal-entry-top"><span class="journal-entry-date">' + d.toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" }) + (entry.timeOfDay ? " · " + fmtTimeOfDay(entry.timeOfDay) : "") + '</span>' +
+      '<div class="journal-entry-top"><span class="journal-entry-date">' + d.toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" }) + (entry.timeOfDay ? " · " + fmtTimeOfDay(entry.timeOfDay) : "") + '</span>' + typeBadge +
       '<div class="entity-actions">' +
-        '<button class="icon-btn" data-action="analyze-sentiment" data-id="' + entry.id + '" aria-label="Analyze sentiment" title="Analyze sentiment (AI)">✨</button>' +
+        (noteGetsSentiment(entry) ? '<button class="icon-btn" data-action="analyze-sentiment" data-id="' + entry.id + '" aria-label="Analyze sentiment" title="Analyze sentiment (AI)">✨</button>' : '') +
         '<button class="icon-btn" data-action="auto-annotate" data-id="' + entry.id + '" aria-label="Auto-fill title, areas, and links" title="Auto-fill title, areas, and goal/people links (AI)">🏷</button>' +
         '<button class="icon-btn edit" data-action="edit-journal" data-id="' + entry.id + '" aria-label="Edit entry">✎</button>' +
         '<button class="icon-btn" data-action="del-journal" data-id="' + entry.id + '" aria-label="Delete entry">&times;</button>' +
@@ -14942,8 +14972,13 @@
   function renderNotesCanvas(){
     var canvas = document.getElementById("journalEntries");
     var scale = views.notesScale;
+    // Type filter first: legacy notes with no stored type count as reflections (same fallback the
+    // whole feature uses), so the reflections view never silently hides pre-migration notes.
+    var typeFilter = views.notesType || "all";
+    var pool = typeFilter === "all" ? state.journal
+      : state.journal.filter(function(n){ return (n.noteType || "reflection") === typeFilter; });
     // newest first; within a day, later times first (undated-time notes last)
-    var sorted = state.journal.slice().sort(function(a, b){
+    var sorted = pool.slice().sort(function(a, b){
       if(a.date !== b.date) return b.date.localeCompare(a.date);
       return (b.timeOfDay || "").localeCompare(a.timeOfDay || "");
     });
@@ -14982,6 +15017,10 @@
     safeSet(window.localStorage, "pp_notes_scale", views.notesScale);
     renderJournal();
   });
+  // Deliberately NOT persisted, unlike the scale toggle: a filter that silently survives reloads
+  // reads as "my notes vanished" — every session starts back at "all".
+  views.notesType = "all";
+  wireSubViewToggle("journalTypeFilterToggle", "notesType", renderJournal);
   // Every recording, independent of whether a journal entry still references it — includes ones
   // recorded but never attached to a saved note. Sorted newest first, same as the notes list.
   function renderRecordingsList(){
@@ -15067,6 +15106,21 @@
   // consistent enough to scan and (later) filter on, instead of accumulating near-duplicate
   // phrasings. Multi-tag by design: a note is often "tired" AND "hopeful" at once.
   var SENTIMENT_TAGS = ["motivated","grateful","joyful","calm","hopeful","proud","reflective","neutral","tired","anxious","stressed","frustrated","sad","angry"];
+  // ---------------- Note types ----------------
+  // A second dimension alongside areas: areas say what a note TOUCHES, the type says what KIND of
+  // note it is — and the type drives behavior, not just filing. Reflections are the only kind with
+  // an emotional tone worth measuring, so they alone get sentiment analysis (auto or manual);
+  // references (prompts, specs, snippets) and ideas are inert on that axis and sit at the mood
+  // map's neutral center. Unknown/legacy values behave as "reflection", matching every note that
+  // existed before this field did.
+  var NOTE_TYPE_META = {
+    reflection: { glyph:"☼", label:"reflection" },
+    reference:  { glyph:"§", label:"reference" },
+    idea:       { glyph:"⚡", label:"idea" }
+  };
+  function noteGetsSentiment(n){
+    return !n || !n.noteType || n.noteType === "reflection" || !NOTE_TYPE_META[n.noteType];
+  }
   // Each tag gets its own hue along a red(negative)→green(positive) spectrum, ordered by emotional
   // valence — set once here as a CSS custom property per chip (--sent-h, see .sentiment-chip) rather
   // than as 14 hardcoded hex colors, so light/dark theme only has to tune saturation/lightness once
@@ -15085,6 +15139,12 @@
   async function analyzeNoteSentiment(id, btnEl, silent){
     var n = state.journal.find(function(x){ return x.id === id; });
     if(!n || !n.text) return;
+    // Belt-and-braces behind maybeAutoAnalyzeSentiment's own guard and the hidden card button: the
+    // type decides whether sentiment applies at all, however this gets invoked.
+    if(!noteGetsSentiment(n)){
+      if(!silent) toast("This is a " + (n.noteType || "reference") + " note — sentiment analysis only runs on reflections.");
+      return;
+    }
     var apiKey = safeGet(window.localStorage, "geminiApiKey");
     if(!apiKey){ if(!silent) toast('No Gemini API key set — click "api key" in the agent tab to add one.'); return; }
     if(btnEl){ btnEl.disabled = true; btnEl.classList.add("loading"); }
@@ -15143,6 +15203,10 @@
   // explicit manual button still shows that reminder. Not awaited by callers — this shouldn't hold up
   // the note-save flow (closing a modal, clearing a composer) waiting on a network round-trip.
   async function maybeAutoAnalyzeSentiment(id){
+    // Only reflections carry a mood worth measuring — a reference (prompt, spec, snippet) or a
+    // captured idea is inert here, so skipping it isn't just saving quota, it's avoiding a
+    // meaningless tag polluting the mood map and the home widget's day color.
+    if(!noteGetsSentiment(state.journal.find(function(x){ return x.id === id; }))) return;
     if(!safeGet(window.localStorage, "geminiApiKey")) return;
     await analyzeNoteSentiment(id, null, true);
   }
@@ -15471,6 +15535,7 @@
     document.getElementById("journalEditTimeInput").value = (n && n.timeOfDay) || "";
     setMultiChip(document.getElementById("journalEditAreaSelect"), "ar", (n && n.categories && n.categories.length) ? n.categories : ["Career"]);
     setChip(document.getElementById("journalEditPrioritySelect"), "p", (n && n.priority) || "");
+    setChip(document.getElementById("journalEditTypeSelect"), "nt", (n && n.noteType) || "reflection");
     document.getElementById("journalEditTextInput").value = (n && n.text) || "";
     document.getElementById("journalEditTimePickPanel").hidden = true;
     var editorEl = document.getElementById("journalModalOverlay").querySelector(".note-editor-modal");
@@ -15573,6 +15638,7 @@
       priority: chipValue(document.getElementById("journalEditPrioritySelect"), "p") || null,
       time_of_day: document.getElementById("journalEditTimeInput").value || null,
       categories: multiChipValues(document.getElementById("journalEditAreaSelect"), "ar"),
+      note_type: chipValue(document.getElementById("journalEditTypeSelect"), "nt") || "reflection",
       // Re-resolved on every edit — tags added/removed in the text change the structured links too.
       linked_objects: extractNoteLinks(text)
     };
@@ -15583,7 +15649,7 @@
       if(res.error){ dbErrorToast(res.error, "Couldn't save"); return; }
       var r = res.data;
       var idx = state.journal.findIndex(function(x){ return x.id === editingJournalId; });
-      if(idx !== -1) state.journal[idx] = { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, categories:r.categories||[], recordingId:r.recording_id||null, linkedObjects:r.linked_objects||payload.linked_objects||[], sentiment:r.sentiment||[], title:r.title||payload.title||"", priority:r.priority||payload.priority||null, createdAt:r.created_at||null };
+      if(idx !== -1) state.journal[idx] = { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, categories:r.categories||[], noteType:r.note_type||payload.note_type||"reflection", recordingId:r.recording_id||null, linkedObjects:r.linked_objects||payload.linked_objects||[], sentiment:r.sentiment||[], title:r.title||payload.title||"", priority:r.priority||payload.priority||null, createdAt:r.created_at||null };
       renderAll(); closeModal("journalModalOverlay");
       warnDroppedFields(res.droppedFields);
     } else {
@@ -15591,7 +15657,7 @@
       this.disabled = false;
       if(res2.error){ dbErrorToast(res2.error, "Couldn't save"); return; }
       var r2 = res2.data;
-      state.journal.push({ id:r2.id, date:r2.date, text:r2.text, timeOfDay:r2.time_of_day ? r2.time_of_day.slice(0,5) : null, categories:r2.categories||[], recordingId:r2.recording_id||null, linkedObjects:r2.linked_objects||payload.linked_objects||[], sentiment:r2.sentiment||[], title:r2.title||payload.title||"", priority:r2.priority||payload.priority||null, createdAt:r2.created_at||null });
+      state.journal.push({ id:r2.id, date:r2.date, text:r2.text, timeOfDay:r2.time_of_day ? r2.time_of_day.slice(0,5) : null, categories:r2.categories||[], noteType:r2.note_type||payload.note_type||"reflection", recordingId:r2.recording_id||null, linkedObjects:r2.linked_objects||payload.linked_objects||[], sentiment:r2.sentiment||[], title:r2.title||payload.title||"", priority:r2.priority||payload.priority||null, createdAt:r2.created_at||null });
       renderAll(); closeModal("journalModalOverlay");
       warnDroppedFields(res2.droppedFields);
       maybeAutoAnalyzeSentiment(r2.id);
@@ -17625,7 +17691,7 @@
       var res = await safeWrite(function(p){ return sb.from("journal").insert(p).select().single(); }, payload);
       if(res.error){ dbErrorToast(res.error, "Couldn't save"); return; }
       var r = res.data;
-      state.journal.push({ id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, categories:r.categories||[], title:r.title||"", priority:r.priority||null, linkedObjects:extractNoteLinks(r.text||""), sentiment:[], createdAt:r.created_at||null });
+      state.journal.push({ id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, categories:r.categories||[], noteType:r.note_type||"reflection", title:r.title||"", priority:r.priority||null, linkedObjects:extractNoteLinks(r.text||""), sentiment:[], createdAt:r.created_at||null });
       renderToday();
       renderJournal();
       warnDroppedFields(res.droppedFields);
