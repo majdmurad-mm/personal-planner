@@ -78,14 +78,18 @@
        other hour. Reused as a background layer on every area row (layered under that row's own
        area tint, since a plain background-color must be the bottom-most layer). Dark lines (not the
        original white) since they now sit on a light row background. */
-    --tl-hour-grid: repeating-linear-gradient(90deg,
+    /* Stops live in their own var so the same ruler pattern can be laid along either axis: 90deg for
+       the horizontal timelines, 180deg (--tl-hour-grid-v) for the portrait-phone vertical one. */
+    --tl-hour-stops:
       rgba(0,0,0,0.28) 0, rgba(0,0,0,0.28) 2px, transparent 2px,
       transparent calc(100%/24 - 1px), rgba(0,0,0,0.12) calc(100%/24 - 1px), rgba(0,0,0,0.12) calc(100%/24 + 1px), transparent calc(100%/24 + 1px),
       transparent calc(100%/24*2 - 1px), rgba(0,0,0,0.12) calc(100%/24*2 - 1px), rgba(0,0,0,0.12) calc(100%/24*2 + 1px), transparent calc(100%/24*2 + 1px),
       transparent calc(100%/24*3 - 1.5px), rgba(0,0,0,0.2) calc(100%/24*3 - 1.5px), rgba(0,0,0,0.2) calc(100%/24*3 + 1.5px), transparent calc(100%/24*3 + 1.5px),
       transparent calc(100%/24*4 - 1px), rgba(0,0,0,0.12) calc(100%/24*4 - 1px), rgba(0,0,0,0.12) calc(100%/24*4 + 1px), transparent calc(100%/24*4 + 1px),
       transparent calc(100%/24*5 - 1px), rgba(0,0,0,0.12) calc(100%/24*5 - 1px), rgba(0,0,0,0.12) calc(100%/24*5 + 1px), transparent calc(100%/24*5 + 1px),
-      transparent calc(100%/4));
+      transparent calc(100%/4);
+    --tl-hour-grid: repeating-linear-gradient(90deg, var(--tl-hour-stops));
+    --tl-hour-grid-v: repeating-linear-gradient(180deg, var(--tl-hour-stops));
     --radius: 4px;
     --mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
     --sans: "Archivo", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -162,15 +166,16 @@
     --warn: #FF9F45; --warn-bg: rgba(255,159,69,0.12);
     --danger: #FB6666; --danger-bg: rgba(251,102,102,0.12);
     --info: #5FA8FF; --info-bg: rgba(95,168,255,0.12);
-    /* Hour gridlines flip back to light-on-dark. */
-    --tl-hour-grid: repeating-linear-gradient(90deg,
+    /* Hour gridlines flip back to light-on-dark — only the stops change; the two direction
+       variants (--tl-hour-grid / --tl-hour-grid-v) resolve against whichever stops are in scope. */
+    --tl-hour-stops:
       rgba(255,255,255,0.22) 0, rgba(255,255,255,0.22) 2px, transparent 2px,
       transparent calc(100%/24 - 1px), rgba(255,255,255,0.08) calc(100%/24 - 1px), rgba(255,255,255,0.08) calc(100%/24 + 1px), transparent calc(100%/24 + 1px),
       transparent calc(100%/24*2 - 1px), rgba(255,255,255,0.08) calc(100%/24*2 - 1px), rgba(255,255,255,0.08) calc(100%/24*2 + 1px), transparent calc(100%/24*2 + 1px),
       transparent calc(100%/24*3 - 1.5px), rgba(255,255,255,0.15) calc(100%/24*3 - 1.5px), rgba(255,255,255,0.15) calc(100%/24*3 + 1.5px), transparent calc(100%/24*3 + 1.5px),
       transparent calc(100%/24*4 - 1px), rgba(255,255,255,0.08) calc(100%/24*4 - 1px), rgba(255,255,255,0.08) calc(100%/24*4 + 1px), transparent calc(100%/24*4 + 1px),
       transparent calc(100%/24*5 - 1px), rgba(255,255,255,0.08) calc(100%/24*5 - 1px), rgba(255,255,255,0.08) calc(100%/24*5 + 1px), transparent calc(100%/24*5 + 1px),
-      transparent calc(100%/4));
+      transparent calc(100%/4);
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;height:100%;}
@@ -1023,10 +1028,100 @@
      they become pure interaction proxies + text labels over their 3D counterparts. Without WebGL
      the class never appears and the timeline looks and works exactly as it always has. */
   .today-timeline-main{ position:relative; }
-  #todayGlCanvas{ position:absolute; inset:0; z-index:0; pointer-events:none; display:none; }
+  /* Explicit 100% size, not just inset:0 — a canvas is a replaced element, so with left+right set
+     and width:auto its INTRINSIC size wins, and the intrinsic size is the render buffer, which on a
+     devicePixelRatio-2 screen is twice the CSS size (renderer.setSize(..., false) deliberately never
+     touches CSS). Without this the whole GL layer painted at 2x scale on hi-dpi screens. */
+  #todayGlCanvas{ position:absolute; inset:0; width:100%; height:100%; z-index:0; pointer-events:none; display:none; }
   .today-timeline-body.gl-on #todayGlCanvas{ display:block; }
   .today-timeline-body.gl-on .today-timeline-viewport{ z-index:1; background:transparent; }
+
+  /* ===== Present timeline on portrait phones: the landscape→portrait transposition ===== */
+  /* The day flows DOWN the screen (midnight at the top, midnight at the bottom) and the area rows
+     become side-by-side columns — a 90° turn of the desktop layout, not a squeeze of it. It works
+     through one mechanism: every timeline block carries its day-position as the custom properties
+     --tls/--tlw (fractions of the day, set by todayTimelineBlockHtml and kept current by the
+     drag/resize handlers) alongside the inline left/width desktop uses. Here those inline values are
+     neutralized with !important and the same numbers drive top/height instead — so both orientations
+     read one source of truth and can never disagree about when an item is. The Three.js skin needs
+     no orientation code at all: it mirrors live DOM rects every frame, and the rects are simply
+     transposed now. Portrait-only on purpose — a phone held SIDEWAYS is the one place the desktop's
+     horizontal timeline already fits well, so landscape keeps it. Must stay in sync with
+     TODAY_VERTICAL_QUERY in the JS. */
+  @media (max-width: 820px) and (orientation: portrait){
+    .today-timeline-body{ flex-direction:column; }
+    .today-timeline .wb-toolbar{ display:none; }   /* zoom is a horizontal-overflow tool; portrait scrolls vertically instead */
+    .today-timeline-row-labels{ display:none; }    /* row icons become sticky column headers below */
+    .today-timeline-viewport{ position:relative; height:min(62vh, 560px); overflow-y:auto; overflow-x:auto; touch-action:pan-y pan-x; }
+    /* 65px per hour: tall enough that a 30-min block is a comfortable tap target, short enough that
+       the whole day is ~4 screens. Width/height are !important because todayApplyZoomWidth writes
+       inline sizes for the desktop zoom — its portrait branch clears them, this is the backstop. */
+    /* overflow:visible, unlike desktop's hidden: the scrolling VIEWPORT clips everything anyway, and
+       any overflow!=visible ancestor here would quietly become the sticky column headers' reference
+       box — they'd anchor to the non-scrolling unified element and never actually stick. */
+    .today-timeline-unified{ height:1560px !important; width:auto !important; flex-direction:row; margin-left:36px; overflow:visible; }
+    .today-timeline-row{ touch-action:pan-y; min-width:56px; }   /* empty column space scrolls the day; blocks keep touch-action:none for their own hold-drag */
+    /* Hour gridlines re-laid along the vertical day (same stops var, 180deg) — only the image layer
+       changes, each row keeps its own area-tint background-color from the base rules. The .gl-on
+       variant of this override can't live here: the .gl-on row rule sits AFTER this media block in
+       source and would win the tie — see the companion media query beside it below. */
+    .today-timeline-row:not(.today-timeline-daynight-row){ background-image:var(--tl-hour-grid-v); }
+    .today-timeline-row + .today-timeline-row{ border-top:none; border-left:1px solid var(--border); }
+    .today-timeline-row.tl-row-empty{ display:none; }            /* only areas with something on the day get a column */
+    /* Day/night becomes a slim leftmost strip; its gradient runs down the day via --tl-grad-dir
+       (renderTodayTimelineDayNight builds direction-agnostic stops around that var). */
+    .today-timeline-daynight-row{ flex:0 0 30px; min-width:30px; }
+    .today-timeline-daynight{ --tl-grad-dir:180deg; }
+    .tl-weather-tick{ left:50% !important; top:calc(var(--wf) * 1%); }
+    /* Sticky column headers: each area column shows its icon in a little puck that stays visible
+       while the day scrolls under it. Content is set per-row below; rows without one render nothing. */
+    .today-timeline-row::before{ position:sticky; top:4px; z-index:6; display:block; width:22px; height:22px; margin:4px auto 0; border-radius:50%; background:var(--bg-inset); border:1px solid var(--border); font-size:11px; line-height:21px; text-align:center; }
+    #todayTimelineArea-Health::before{ content:"✚"; color:var(--cat-health); }
+    #todayTimelineArea-Maintenance::before{ content:"⚙"; color:var(--cat-maintenance); }
+    #todayTimelineArea-Career::before{ content:"▲"; color:var(--cat-career); }
+    #todayTimelineArea-Relationships::before{ content:"♥"; color:var(--cat-relationships); }
+    #todayTimelineArea-Growth::before{ content:"↑"; color:var(--cat-growth); }
+    #todayTimelineArea-Sol::before{ content:"◐"; color:var(--cat-sol); }
+    #todayTimelineArea-Finance::before{ content:"$"; color:var(--cat-finance); }
+    #todayTimelineAreaOther::before{ content:"○"; color:var(--text-faint); }
+    /* Blocks: the transposition itself. Start/length map to top/height; the block spans its column's
+       width. border-left stays the area color edge — now reading as the column's inner margin. */
+    #todayTimelineUnified .timeline-block{
+      left:3px !important; right:3px; width:auto !important; min-width:0;
+      top:calc(var(--tls) * 1%); bottom:auto; height:calc(var(--tlw) * 1%); min-height:24px;
+      align-items:flex-start; padding:3px 4px 3px 5px;
+    }
+    #todayTimelineUnified .timeline-block-title{ white-space:normal; line-height:1.2; font-size:9.5px; max-height:100%; }
+    #todayTimelineUnified .timeline-block-icon + .timeline-block-title{ margin-left:0; }
+    /* Resize handles move to the top/bottom edges — start above, end below, like the time axis now runs. */
+    #todayTimelineUnified .timeline-block-resize{ width:auto; left:0; right:0; height:9px; cursor:ns-resize; }
+    #todayTimelineUnified .timeline-block-resize-left{ top:0; bottom:auto; }
+    #todayTimelineUnified .timeline-block-resize-right{ top:auto; bottom:0; }
+    /* Now marker: a horizontal blade across every column at the current minute. */
+    .today-timeline-now{ left:0 !important; right:0; width:auto; top:calc(var(--nowf) * 1%); bottom:auto; height:2px; box-shadow:0 0 6px var(--p0); }
+    .today-timeline-now-label{ top:50%; left:auto; right:3px; transform:translateY(-50%); background:var(--bg); padding:0 3px; border-radius:3px; }
+    /* Hour ruler down the left edge, over the viewport's own scroll content so it moves with the day. */
+    .today-timeline-labels{ position:absolute; left:0; top:0; width:34px; height:1560px !important; flex-direction:column; align-items:flex-start; margin-top:0; padding-left:2px; box-sizing:border-box; z-index:2; }
+    /* Unscheduled: a horizontal tray under the timeline — chips scroll sideways, and a press-and-hold
+       lifts one so it can be dropped onto the day at the minute you release it (see
+       wireTodayUnscheduledTouchDrag). pan-x keeps a plain sideways swipe scrolling the tray. */
+    .today-unscheduled{ width:auto; }
+    .today-unscheduled .unsched-resize-x{ display:none; }
+    .today-unscheduled-list{ flex-direction:row; overflow-x:auto; overflow-y:hidden; }
+    .today-unscheduled-item{ touch-action:pan-x; white-space:nowrap; }
+    .today-unscheduled-item.drag-lifted{ opacity:0.35; }
+  }
+  /* The floating clone that follows the finger during a tray press-and-hold drag (portrait mobile).
+     Outside the media query on purpose: the ghost is appended to <body>, and the gesture can only
+     start in portrait mode anyway. */
+  .tl-drag-ghost{ position:fixed; z-index:3000; pointer-events:none; opacity:0.88; box-shadow:var(--elev-2); }
   .today-timeline-body.gl-on .today-timeline-row:not(.today-timeline-daynight-row){ background:var(--tl-hour-grid); }
+  /* Portrait companion to the rule above — identical specificity, so it must come AFTER it in
+     source for the vertical ruler to win while the GL skin is live (same reason the base portrait
+     override inside TODAY_VERTICAL_QUERY's block up there couldn't cover the .gl-on case). */
+  @media (max-width: 820px) and (orientation: portrait){
+    .today-timeline-body.gl-on .today-timeline-row:not(.today-timeline-daynight-row){ background:var(--tl-hour-grid-v); }
+  }
   /* The DOM blocks keep their original per-area tint (.timeline-block.Health{...} etc., defined
      above) instead of going transparent — the 3D bar renders underneath for depth/shadow/lighting,
      showing through the block's own semi-transparent background rather than replacing its color. */
@@ -5210,7 +5305,7 @@
     // .wb-canvas-wrap's flex:1 needs a real flex container to size against or the canvas collapses to
     // ~0px — this call is a no-op unless activePlannerTab is actually "graph".
     if(name === "planner") syncPlannerFullscreenGraphClass();
-    if(name === "today"){ renderToday(); todayApplyZoomWidth(); ensureTodayGl(); }
+    if(name === "today"){ renderToday(); todayApplyZoomWidth(); ensureTodayGl(); todayScrollToNow(); }
     else if(name === "timeline") activateTimeline();
     else if(name === "location") activateLocation();
     else if(name === "integrations") activateIntegrations();
@@ -6404,7 +6499,7 @@
       // just toggles the same as a quick tap.
       dragOnDoneBtn = !!e.target.closest(".home-tl-done-btn");
       armed = false; moved = false; movedBeforeArm = false; downX = e.clientX; downY = e.clientY;
-      block.setPointerCapture(e.pointerId);
+      try{ block.setPointerCapture(e.pointerId); }catch(err){} // can throw if the pointer already lifted — the press still resolves as a click
       if(!dragOvernight && !dragOnDoneBtn){
         block.classList.add("tl-holding");
         armTimer = setTimeout(function(){ armed = true; block.classList.remove("tl-holding"); block.classList.add("dragging"); }, TL_DRAG_HOLD_MS);
@@ -16360,6 +16455,23 @@
   /* ---------------- Today ---------------- */
   var todaySelectedDate = todayStr();
   var todayCalMonth = (function(){ var d = new Date(); d.setDate(1); d.setHours(0,0,0,0); return d; })();
+  // Portrait phones flip the Present timeline vertical (see the matching @media block in the CSS —
+  // the two MUST stay in sync, or the drag handlers measure along one axis while the layout runs
+  // along the other). Portrait only: a phone held sideways keeps the horizontal layout, which
+  // genuinely fits that shape better.
+  var TODAY_VERTICAL_QUERY = "(max-width: 820px) and (orientation: portrait)";
+  var todayVerticalMedia = window.matchMedia ? window.matchMedia(TODAY_VERTICAL_QUERY) : null;
+  function todayVerticalActive(){ return !!(todayVerticalMedia && todayVerticalMedia.matches); }
+  // Rotating the phone mid-session re-renders into the other orientation; the inline sizes the
+  // desktop zoom writes get cleared by todayApplyZoomWidth's own portrait branch.
+  if(todayVerticalMedia && todayVerticalMedia.addEventListener){
+    todayVerticalMedia.addEventListener("change", function(){
+      if(activeSection !== "today") return;
+      renderToday();
+      todayApplyZoomWidth();
+      todayScrollToNow();
+    });
+  }
 
   function fmtDateLong(dateStr){
     return new Date(dateStr + "T00:00:00").toLocaleDateString(undefined, { weekday:"long", month:"long", day:"numeric", year:"numeric" });
@@ -16477,7 +16589,8 @@
     // One tick every 3h — matches the medium gridline tier on the area rows below, and is as dense
     // as the day/night band (only ~54px tall) can legibly fit.
     el.innerHTML = hours.filter(function(h){ return h.hour % 3 === 0; }).map(function(h){
-      return '<span class="tl-weather-tick" style="left:' + (h.hour / 24 * 100) + '%;">' +
+      // --wf mirrors left for the portrait-phone layout, where ticks stack down the day/night strip.
+      return '<span class="tl-weather-tick" style="left:' + (h.hour / 24 * 100) + '%; --wf:' + (h.hour / 24 * 100) + ';">' +
         '<span class="tl-weather-tick-icon">' + weatherCodeIcon(h.code) + '</span>' +
         '<span class="tl-weather-tick-temp">' + h.temp + '°</span></span>';
     }).join("");
@@ -16508,7 +16621,9 @@
       night + " " + Math.min(100, sunsetFrac + tw) + "%",
       night + " 100%"
     ];
-    overlay.style.background = "linear-gradient(90deg, " + stops.join(", ") + ")";
+    // Direction comes from a custom property so the portrait-phone CSS can turn the same stops 90°
+    // (day runs downward there) without regenerating them — 90deg (left→right) everywhere else.
+    overlay.style.background = "linear-gradient(var(--tl-grad-dir, 90deg), " + stops.join(", ") + ")";
     return { sunrise:sunrise, sunset:sunset, bp:bp };
   }
   function renderTodayDayNight(){
@@ -16529,6 +16644,9 @@
     if(!marker) return;
     var now = new Date();
     marker.style.left = (berlinClockFraction(now) * 100) + "%";
+    // Same fraction as a custom property — the portrait-phone CSS neutralizes the inline left and
+    // places the marker by top:calc(var(--nowf)*1%) instead (see TODAY_VERTICAL_QUERY media block).
+    marker.style.setProperty("--nowf", String(berlinClockFraction(now) * 100));
     var label = document.getElementById("todayTimelineNowLabel");
     if(label) label.textContent = now.toLocaleTimeString(undefined, { hour:"numeric", minute:"2-digit", timeZone:"Europe/Berlin" });
     renderTodayDayNight();
@@ -16682,9 +16800,14 @@
     var list = document.getElementById("todayUnscheduledList");
     if(!list) return;
     var items = todayUnscheduledItems();
+    // draggable=false in the portrait layout: iOS Safari starts a NATIVE HTML5 drag on long-pressing
+    // a draggable element, which would race the tray's own press-and-hold pointer drag (see
+    // wireTodayUnscheduledTouchDrag) for the exact same gesture. Rotation re-renders this list (the
+    // TODAY_VERTICAL_QUERY change listener calls renderToday), so the attribute tracks orientation.
+    var chipDraggable = todayVerticalActive() ? "false" : "true";
     list.innerHTML = items.length ? items.map(function(it){
       // ↻ marks a habit occurrence, so it reads as recurring rather than a one-off task at a glance.
-      return '<div class="today-unscheduled-item' + (it.area ? ' ' + it.area : '') + '" draggable="true" data-kind="' + it.kind + '" data-id="' + it.id + '" title="' + escapeHtml(it.title) + ' — drag onto the timeline to schedule it">' +
+      return '<div class="today-unscheduled-item' + (it.area ? ' ' + it.area : '') + '" draggable="' + chipDraggable + '" data-kind="' + it.kind + '" data-id="' + it.id + '" title="' + escapeHtml(it.title) + ' — drag onto the timeline to schedule it">' +
         '<span class="prio-badge ' + it.priority + '">' + it.priority + '</span>' +
         '<span class="today-unscheduled-item-title">' + (it.kind === "habit-instance" ? "↻ " : "") + escapeHtml(it.title) + '</span>' +
       '</div>';
@@ -16726,12 +16849,84 @@
       unified.classList.remove("tl-drop-target");
       var id = draggingId, kind = draggingKind;
       draggingId = null; draggingKind = null;
-      // The unified world element IS the 24h scale (zoom just makes it wider), so clientX relative
-      // to its own rect maps straight to a time fraction regardless of zoom or scroll position.
+      // The unified world element IS the 24h scale (zoom just makes it wider), so the drop point
+      // relative to its own rect maps straight to a time fraction regardless of zoom or scroll —
+      // measured along whichever axis the day currently runs (portrait phones flip it vertical).
       var rect = unified.getBoundingClientRect();
-      var frac = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+      var frac = todayVerticalActive()
+        ? Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height))
+        : Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
       await scheduleItemAt(kind, id, todaySelectedDate, minutesToTime(Math.round((frac * 1440) / 5) * 5));
     });
+  })();
+  // Portrait phones: HTML5 drag-and-drop doesn't exist for touch, so the tray gets its own
+  // press-and-hold pointer drag — hold a chip ~a third of a second, it lifts into a floating ghost,
+  // release over the vertical timeline and the minute under your finger becomes its time. Chips are
+  // draggable=false in this layout (see renderTodayUnscheduled) so the HTML5 path can never race
+  // this one for the same gesture; chips keep touch-action:pan-x, so a plain sideways swipe still
+  // scrolls the tray (that pan CANCELS a pending hold via pointercancel, which is the right call).
+  (function wireTodayUnscheduledTouchDrag(){
+    var list = document.getElementById("todayUnscheduledList");
+    var unified = document.getElementById("todayTimelineUnified");
+    if(!list || !unified) return;
+    var HOLD_MS = 320, CANCEL_MOVE_PX = 10;
+    var item = null, dragId = null, dragKind = null, ghost = null, timer = null, armed = false;
+    var lastX = 0, lastY = 0, downX = 0, downY = 0, offX = 0, offY = 0;
+    function cleanup(){
+      if(timer){ clearTimeout(timer); timer = null; }
+      if(ghost && ghost.parentNode) ghost.parentNode.removeChild(ghost);
+      ghost = null;
+      if(item) item.classList.remove("drag-lifted");
+      unified.classList.remove("tl-drop-target");
+      item = null; dragId = null; dragKind = null; armed = false;
+    }
+    list.addEventListener("pointerdown", function(e){
+      if(!todayVerticalActive() || e.button > 0) return;
+      var it = e.target.closest(".today-unscheduled-item");
+      if(!it) return;
+      item = it; dragId = it.dataset.id; dragKind = it.dataset.kind; armed = false;
+      lastX = downX = e.clientX; lastY = downY = e.clientY;
+      var r = it.getBoundingClientRect();
+      offX = e.clientX - r.left; offY = e.clientY - r.top;
+      // Capture keeps the move/up events routed here once the finger leaves the tray for the
+      // timeline. It can throw if the pointer already lifted (or in synthetic-event tests) — the
+      // gesture still works while the pointer is over the list, so don't die on it.
+      try{ it.setPointerCapture(e.pointerId); }catch(err){}
+      timer = setTimeout(function(){
+        if(!item) return;
+        armed = true;
+        ghost = item.cloneNode(true);
+        ghost.classList.add("tl-drag-ghost");
+        ghost.style.width = item.offsetWidth + "px";
+        ghost.style.left = (lastX - offX) + "px";
+        ghost.style.top = (lastY - offY) + "px";
+        document.body.appendChild(ghost);
+        item.classList.add("drag-lifted");
+      }, HOLD_MS);
+    });
+    list.addEventListener("pointermove", function(e){
+      if(!item) return;
+      lastX = e.clientX; lastY = e.clientY;
+      if(!armed){
+        // Wandering before the hold elapses is a scroll or a fidget, not a lift — let it go.
+        if(Math.hypot(e.clientX - downX, e.clientY - downY) > CANCEL_MOVE_PX) cleanup();
+        return;
+      }
+      ghost.style.left = (e.clientX - offX) + "px";
+      ghost.style.top = (e.clientY - offY) + "px";
+      unified.classList.toggle("tl-drop-target", pointInsideEl(unified, e.clientX, e.clientY));
+    });
+    list.addEventListener("pointerup", async function(e){
+      if(!item) return;
+      var id = dragId, kind = dragKind, wasArmed = armed;
+      var overTimeline = pointInsideEl(unified, e.clientX, e.clientY);
+      cleanup();
+      if(!wasArmed || !overTimeline) return;
+      var rect = unified.getBoundingClientRect();
+      var frac = Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height));
+      await scheduleItemAt(kind, id, todaySelectedDate, minutesToTime(Math.round((frac * 1440) / 5) * 5));
+    });
+    list.addEventListener("pointercancel", cleanup);
   })();
 
   // ---- Today timeline zoom: a multiplier of the viewport's own width, not an absolute px value —
@@ -16747,13 +16942,35 @@
     var unified = document.getElementById("todayTimelineUnified");
     var labels = document.getElementById("todayTimelineLabels");
     if(!viewport || !unified) return;
+    // Portrait phones: the timeline is vertical and fully CSS-sized (fixed px-per-hour, no zoom) —
+    // clear any inline width a desktop session may have left so the media block's sizes apply, and
+    // don't write new ones. The CSS carries !important as a backstop, but stale inline styles would
+    // still linger in the DOM forever without this.
+    if(todayVerticalActive()){
+      unified.style.width = "";
+      if(labels) labels.style.width = "";
+      return;
+    }
     var width = todayZoomLevel <= 1 ? "100%" : (viewport.clientWidth * todayZoomLevel) + "px";
     unified.style.width = width;
     if(labels) labels.style.width = width;
   }
+  // Portrait phones open the day roughly centered on the current minute — the top of a 4-screen-tall
+  // day is 3am, which is never what you came to look at. Only when viewing today; other days keep
+  // whatever scroll position navigation left.
+  function todayScrollToNow(){
+    if(!todayVerticalActive() || todaySelectedDate !== todayStr()) return;
+    var viewport = document.getElementById("todayTimelineViewport");
+    var unified = document.getElementById("todayTimelineUnified");
+    if(!viewport || !unified) return;
+    // offsetHeight, NOT scrollHeight: a block running past midnight overflows the (overflow:visible)
+    // unified element, inflating scrollHeight past the 24h scale and landing the scroll late.
+    viewport.scrollTop = Math.max(0, berlinClockFraction(new Date()) * unified.offsetHeight - viewport.clientHeight / 2);
+  }
   function todaySetZoom(newLevel, viewportX){
     var viewport = document.getElementById("todayTimelineViewport");
     if(!viewport) return;
+    if(todayVerticalActive()) return; // no zoom in the portrait layout — the day has a fixed, legible px-per-hour and scrolls instead
     newLevel = Math.max(1, Math.min(TODAY_ZOOM_MAX, newLevel));
     var vx = viewportX != null ? viewportX : viewport.clientWidth / 2;
     var worldX = viewport.scrollLeft + vx;
@@ -16854,7 +17071,10 @@
       return { area: area, mesh: mesh };
     });
     var accent = new THREE.Color(cssVarColor("--accent"));
-    var nowBlade = new THREE.Mesh(new THREE.PlaneGeometry(2, 1), new THREE.MeshBasicMaterial({ color: accent, transparent: true, opacity: 0.95, depthWrite: false }));
+    // Unit plane, scaled to the DOM marker's live rect each frame — on desktop that's a 2px-wide
+    // vertical line, in the portrait phone layout a 2px-tall horizontal one; scaling both axes from
+    // the rect makes the blade orientation-agnostic with no branch at all.
+    var nowBlade = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ color: accent, transparent: true, opacity: 0.95, depthWrite: false }));
     var glowCv = document.createElement("canvas");
     glowCv.width = 64; glowCv.height = 8;
     var gctx = glowCv.getContext("2d");
@@ -16884,9 +17104,15 @@
         var lane = laneMeshes[li].mesh;
         if(!rowEl){ lane.visible = false; return; }
         var rr = rowEl.getBoundingClientRect();
+        // A hidden row (portrait mode drops empty area columns entirely) has a zero-size rect —
+        // skip its plate rather than leaving a degenerate quad in the scene.
+        if(rr.width < 1 || rr.height < 1){ lane.visible = false; return; }
         lane.visible = true;
-        lane.scale.set(W, Math.max(rr.height - 1, 1), 1);
-        lane.position.set(W / 2, -(rr.top - mrect.top + rr.height / 2), 0);
+        // Sized and placed from the row's own rect (not the full canvas width) so the plates follow
+        // the layout in either orientation — desktop rows span the full width anyway, so this is
+        // exactly the old behavior there, while portrait columns each get their own vertical plate.
+        lane.scale.set(Math.max(rr.width - 1, 1), Math.max(rr.height - 1, 1), 1);
+        lane.position.set(rr.left - mrect.left + rr.width / 2, -(rr.top - mrect.top + rr.height / 2), 0);
         rowEl.querySelectorAll(".timeline-block").forEach(function(blockEl){
           seen.add(blockEl);
           var r = blockEl.getBoundingClientRect();
@@ -16921,10 +17147,15 @@
       nowBlade.visible = nowGlow.visible = !!showNow;
       if(showNow){
         var nr = nowEl.getBoundingClientRect();
-        var nx = nr.left - mrect.left, ny = -(nr.top - mrect.top + nr.height / 2);
-        nowBlade.scale.set(1, Math.max(nr.height, 1), 1);
+        var nx = nr.left - mrect.left + nr.width / 2, ny = -(nr.top - mrect.top + nr.height / 2);
+        nowBlade.scale.set(Math.max(nr.width, 1), Math.max(nr.height, 1), 1);
         nowBlade.position.set(nx, ny, 20);
-        nowGlow.scale.set(1, Math.max(nr.height, 1), 1);
+        // The glow texture's gradient runs along the geometry's x axis. When the marker is a
+        // horizontal line (portrait layout: width > height), rotate the quad 90° so the 18px soft
+        // falloff crosses the blade vertically instead of smearing along it.
+        var markerHorizontal = nr.width > nr.height;
+        nowGlow.rotation.z = markerHorizontal ? Math.PI / 2 : 0;
+        nowGlow.scale.set(1, markerHorizontal ? Math.max(nr.width, 1) : Math.max(nr.height, 1), 1);
         nowGlow.position.set(nx, ny, 19);
       }
       renderer.render(scene, camera);
@@ -17058,8 +17289,18 @@
     // shorter-on-top stacking rule — including the overnight tail, whose width is just its spillover
     // portion, which is exactly the on-screen extent that should win the stacking comparison.
     var z = tlZIndexForDuration(width / 100 * 1440);
-    return '<div class="timeline-block' + cls + '" data-kind="' + kind + '" data-id="' + id + '" data-date="' + date + '"' + (overnight ? ' data-overnight="1"' : '') + ' style="left:' + left + '%; width:' + width + '%; z-index:' + z + ';" title="' + escapeHtml(title) + '">' +
+    // --tls/--tlw duplicate left/width as custom properties: the portrait-phone CSS neutralizes the
+    // inline left/width and maps the same fractions onto top/height instead, turning the whole
+    // timeline vertical without a second code path (see the TODAY_VERTICAL_QUERY media block).
+    return '<div class="timeline-block' + cls + '" data-kind="' + kind + '" data-id="' + id + '" data-date="' + date + '"' + (overnight ? ' data-overnight="1"' : '') + ' style="left:' + left + '%; width:' + width + '%; --tls:' + left + '; --tlw:' + width + '; z-index:' + z + ';" title="' + escapeHtml(title) + '">' +
       handles + (iconHtml || "") + doneBtn + '<span class="timeline-block-title">' + label + '</span></div>';
+  }
+  // The one way any handler moves/resizes a Present-timeline block: writes the desktop styles AND
+  // the custom properties together so the two orientations can't drift apart mid-drag. Pass null to
+  // leave an axis untouched.
+  function tlSetBlockSpan(el, startPct, lenPct){
+    if(startPct != null){ el.style.left = startPct + "%"; el.style.setProperty("--tls", String(startPct)); }
+    if(lenPct != null){ el.style.width = lenPct + "%"; el.style.setProperty("--tlw", String(lenPct)); }
   }
   function renderTodayTimelineAreaRow(area){
     var track = document.getElementById(todayTimelineRowId(area));
@@ -17105,6 +17346,10 @@
       html += todayTimelineBlockHtml("journal", n.id, todaySelectedDate, startFrac, 1.4, preview + " — " + fmtTimeOfDay(n.timeOfDay), "✎ " + escapeHtml(preview), area);
     });
     track.innerHTML = html;
+    // Portrait mode hides empty columns (.tl-row-empty is display:none only inside its media query),
+    // so a quiet day is a few wide columns instead of eight slivers. Desktop keeps every row — a
+    // fixed vertical order you can rely on is worth more there, where height isn't scarce.
+    track.classList.toggle("tl-row-empty", !html);
   }
   function renderTodayTimelineAreas(){
     TODAY_TIMELINE_AREAS.forEach(renderTodayTimelineAreaRow);
@@ -17126,6 +17371,7 @@
     var armed = false, armTimer = null, moved = false, movedBeforeArm = false, downX = 0, downY = 0;
     function clearArmTimer(){ if(armTimer){ clearTimeout(armTimer); armTimer = null; } }
     track.addEventListener("pointerdown", function(e){
+      if(e.button > 0) return; // right/middle click — leave it to the contextmenu handler instead of arming a hold-drag
       if(e.target.closest("[data-resize-handle]")) return; // handled by wireTimelineBlockResize instead
       var block = e.target.closest(".timeline-block");
       if(!block) return;
@@ -17135,7 +17381,7 @@
       // comment for why (pointer capture below overrides e.target on later events).
       dragOnDoneBtn = !!e.target.closest(".timeline-done-btn");
       armed = false; moved = false; movedBeforeArm = false; downX = e.clientX; downY = e.clientY;
-      block.setPointerCapture(e.pointerId);
+      try{ block.setPointerCapture(e.pointerId); }catch(err){} // can throw if the pointer already lifted — the press still resolves as a click
       // The overnight-spillover tail (yesterday's item continuing past midnight) has no sensible
       // "new start time" to derive from its own left edge, so it isn't draggable — it's still
       // click-through below, just never arms into a drag. Same for a press on the done-button.
@@ -17156,11 +17402,16 @@
         return;
       }
       moved = true;
+      // The time axis runs horizontally on desktop and DOWN the day on portrait phones — same
+      // fraction-of-day math either way, just measured along the other side of the track.
       var rect = track.getBoundingClientRect();
-      var x = Math.min(rect.width, Math.max(0, e.clientX - rect.left));
-      var totalMin = Math.round(((x / rect.width) * 1440) / 5) * 5;
+      var vert = todayVerticalActive();
+      var pos = vert ? Math.min(rect.height, Math.max(0, e.clientY - rect.top))
+                     : Math.min(rect.width, Math.max(0, e.clientX - rect.left));
+      var span = vert ? rect.height : rect.width;
+      var totalMin = Math.round(((pos / span) * 1440) / 5) * 5;
       var newTime = minutesToTime(totalMin);
-      dragEl.style.left = (totalMin / 1440 * 100) + "%";
+      tlSetBlockSpan(dragEl, totalMin / 1440 * 100, null);
       dragEl.dataset.pendingTime = newTime;
       // Dragging an ACTION block over the unscheduled panel highlights it as a drop zone — release
       // there clears the time instead of setting a new one (see pointerup below).
@@ -17237,25 +17488,35 @@
     var resizeEl = null, resizeId = null, resizeKind = null, resizeEdge = null;
     var fixedEdgePx = 0, moved = false;
     track.addEventListener("pointerdown", function(e){
+      if(e.button > 0) return; // right/middle click — never the start of a resize
       var handle = e.target.closest("[data-resize-handle]");
       if(!handle) return;
       var block = handle.closest(".timeline-block");
       if(!block) return;
       var rect = track.getBoundingClientRect();
-      var leftPct = parseFloat(block.style.left) || 0;
-      var widthPct = parseFloat(block.style.width) || 0;
+      // Read the fractions from the custom properties, not style.left/width — on portrait phones the
+      // inline left/width are neutralized by CSS and only --tls/--tlw reflect where the block IS.
+      // Both are always written together (todayTimelineBlockHtml / tlSetBlockSpan), so on desktop
+      // this reads the exact same numbers the old style.left parse did.
+      var leftPct = parseFloat(block.style.getPropertyValue("--tls")) || 0;
+      var widthPct = parseFloat(block.style.getPropertyValue("--tlw")) || 0;
+      var span0 = todayVerticalActive() ? rect.height : rect.width;
       resizeEl = block; resizeId = block.dataset.id; resizeKind = block.dataset.kind;
       resizeEdge = handle.dataset.resizeHandle; moved = false;
       // The edge NOT being dragged stays put — capture its pixel position once, up front.
-      fixedEdgePx = resizeEdge === "left" ? (leftPct + widthPct) / 100 * rect.width : (leftPct / 100) * rect.width;
-      handle.setPointerCapture(e.pointerId);
+      // ("left" = the start-of-time edge: the block's left edge on desktop, its TOP edge in portrait.)
+      fixedEdgePx = resizeEdge === "left" ? (leftPct + widthPct) / 100 * span0 : (leftPct / 100) * span0;
+      try{ handle.setPointerCapture(e.pointerId); }catch(err){}
       block.classList.add("resizing");
     });
     track.addEventListener("pointermove", function(e){
       if(!resizeEl) return;
       moved = true;
       var rect = track.getBoundingClientRect();
-      var x = Math.min(rect.width, Math.max(0, e.clientX - rect.left));
+      var vert = todayVerticalActive();
+      var span = vert ? rect.height : rect.width;
+      var x = vert ? Math.min(span, Math.max(0, e.clientY - rect.top))
+                   : Math.min(span, Math.max(0, e.clientX - rect.left));
       var leftPx, widthPx;
       if(resizeEdge === "left"){
         leftPx = Math.max(0, Math.min(x, fixedEdgePx - TIMELINE_RESIZE_MIN_PX));
@@ -17264,10 +17525,9 @@
         leftPx = fixedEdgePx;
         widthPx = Math.max(TIMELINE_RESIZE_MIN_PX, x - fixedEdgePx);
       }
-      var startMin = Math.round(((leftPx / rect.width) * 1440) / 5) * 5;
-      var durationMin = Math.max(TIMELINE_RESIZE_MIN_MIN, Math.round(((widthPx / rect.width) * 1440) / 5) * 5);
-      resizeEl.style.left = (leftPx / rect.width * 100) + "%";
-      resizeEl.style.width = Math.max(1.2, (widthPx / rect.width) * 100) + "%";
+      var startMin = Math.round(((leftPx / span) * 1440) / 5) * 5;
+      var durationMin = Math.max(TIMELINE_RESIZE_MIN_MIN, Math.round(((widthPx / span) * 1440) / 5) * 5);
+      tlSetBlockSpan(resizeEl, leftPx / span * 100, Math.max(1.2, (widthPx / span) * 100));
       // Kept live so the block's z-index is already correct the instant .resizing's !important
       // override drops off (pointerup), not just after the next full re-render lands.
       resizeEl.style.zIndex = tlZIndexForDuration(durationMin);
