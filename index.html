@@ -1836,8 +1836,13 @@
      up to 1440) while the unscheduled sidebar beside the strip is a static flex item, that spill
      would paint straight over the sidebar. Clipping here is also the semantically right answer — the
      part past midnight is already drawn as the "overnight tail" on the NEXT day's strip. */
-  .home-tl-lanes{ position:absolute; top:20px; bottom:16px; left:0; right:0; background:var(--tl-hour-grid); touch-action:none; z-index:1; overflow:hidden; }
-  .home-tl-lane{ position:relative; height:33.333%; border-top:1px dashed var(--border); }
+  /* Rows are built per-area at render time, so their COUNT varies day to day — they share the height
+     equally via flex rather than a hard 33.333%, down to a floor that keeps a block (and its done
+     toggle) legible. Past that floor the rows scroll vertically instead of squashing; overflow-x
+     stays hidden for the original reason — a past-midnight block can extend well beyond 100% and
+     would otherwise paint over the panels beside the strip. */
+  .home-tl-lanes{ position:absolute; top:20px; bottom:16px; left:0; right:0; background:var(--tl-hour-grid); touch-action:none; z-index:1; overflow-x:hidden; overflow-y:auto; display:flex; flex-direction:column; }
+  .home-tl-lane{ position:relative; flex:1 0 auto; min-height:24px; border-top:1px dashed var(--border); }
   .home-tl-lane:first-child{ border-top:none; }
   /* Unscheduled panel: sits BESIDE the strip as a flex sibling (same layout as the Present tab's
      panel, not an overlay) — the day's untimed tasks, draggable onto the lanes, and the drop zone
@@ -1860,6 +1865,22 @@
   .home-tl-unscheduled-item.Relationships{ border-left-color:var(--cat-relationships); }
   .home-tl-unscheduled-item.Sol{ border-left-color:var(--cat-sol); }
   .home-tl-unscheduled-empty{ padding:6px 4px; font-family:var(--mono); font-size:9.5px; color:var(--text-faint); text-align:center; }
+  /* Habit quick-add menu, beside the unscheduled panel. Fixed width (it's a menu, not a workspace —
+     nothing here needs resizing) and its own scroll, so a long habit list never stretches the dock. */
+  .home-tl-habitmenu{ position:relative; flex-shrink:0; width:132px; margin:3px 4px 3px 0; display:flex; flex-direction:column; border:1px solid var(--border); border-radius:8px; background:var(--bg-inset); overflow:hidden; }
+  .home-tl-habitmenu-list{ flex:1; min-height:0; overflow-y:auto; padding:5px; display:flex; flex-direction:column; gap:4px; }
+  .home-tl-habitmenu-item{ flex-shrink:0; display:flex; align-items:center; gap:5px; width:100%; text-align:left; padding:4px 7px; border:1px solid var(--border); border-left:3px solid var(--border-bright); border-radius:5px; background:var(--bg-raised); font-family:var(--mono); font-size:10px; color:var(--text); cursor:pointer; appearance:none; }
+  .home-tl-habitmenu-item:hover:not(:disabled){ border-color:var(--accent-dim); filter:brightness(1.08); }
+  .home-tl-habitmenu-item:disabled{ cursor:default; opacity:0.45; }
+  .home-tl-habitmenu-item .hm-tick{ flex:0 0 auto; width:9px; color:var(--accent); }
+  .home-tl-habitmenu-item .hm-name{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .home-tl-habitmenu-item.Health{ border-left-color:var(--cat-health); }
+  .home-tl-habitmenu-item.Finance{ border-left-color:var(--cat-finance); }
+  .home-tl-habitmenu-item.Career{ border-left-color:var(--cat-career); }
+  .home-tl-habitmenu-item.Maintenance{ border-left-color:var(--cat-maintenance); }
+  .home-tl-habitmenu-item.Growth{ border-left-color:var(--cat-growth); }
+  .home-tl-habitmenu-item.Relationships{ border-left-color:var(--cat-relationships); }
+  .home-tl-habitmenu-item.Sol{ border-left-color:var(--cat-sol); }
   /* Shared "release here to unschedule" highlight — lit while an eligible task block is held over
      either unscheduled panel (Present's or the dock's), and while an HTML5 drag hovers the lanes. */
   .home-tl-unscheduled.drop-hot, .today-unscheduled.drop-hot{ outline:1.5px dashed var(--accent); outline-offset:-1.5px; }
@@ -2235,16 +2256,12 @@
             <button type="button" data-tl-day-delta="1" title="next day">›</button>
           </div>
           <div class="home-tl-hours" id="homeTlHours"></div>
-          <!-- Rows group by life AREA now, not by item kind (habit/action/note) — see
-               HOME_TL_AREA_GROUPS/computeHomeTimelineBlocks. Habits/actions/notes for the same area
-               land in the same row (still distinguished by shape/color), which spreads same-time
-               items across rows by what they're actually about instead of piling every habit into
-               one row regardless of area. -->
-          <div class="home-tl-lanes" id="homeTlLanes">
-            <div class="home-tl-lane" id="homeTlLaneHealth"></div>
-            <div class="home-tl-lane" id="homeTlLaneMaintenance"></div>
-            <div class="home-tl-lane" id="homeTlLaneCareer"></div>
-          </div>
+          <!-- One row per life AREA, built at render time rather than fixed in markup: only areas
+               that actually have something on the selected day get a row (see
+               computeHomeTimelineRows), so a quiet day reads as two or three tall rows instead of
+               seven mostly-empty slivers. Habits/actions/notes for the same area share that area's
+               row, still told apart by shape and colour. -->
+          <div class="home-tl-lanes" id="homeTlLanes"></div>
           <div class="home-tl-now" id="homeTlNow"></div>
           <div class="home-tl-daynight" id="homeTlDayNight"></div>
         </div>
@@ -2256,6 +2273,15 @@
           <div class="unsched-resize-x" id="homeTlUnscheduledResize" title="Drag to resize this panel"></div>
           <div class="home-tl-unscheduled-head">unscheduled</div>
           <div class="home-tl-unscheduled-list" id="homeTlUnscheduledList"></div>
+        </div>
+        <!-- Fixed menu of every habit, sitting beside the unscheduled panel: click one to give this
+             day an occurrence of it that its own repetition pattern wouldn't otherwise produce (see
+             scheduleHabitInstance — it lands in extra_dates, the pattern itself is untouched). Habits
+             already on the day are shown ticked and inert, so the list doubles as "what's already on
+             today" without needing a second place to look. -->
+        <div class="home-tl-habitmenu" id="homeTlHabitMenu" title="Click a habit to add it to this day">
+          <div class="home-tl-unscheduled-head">add habit</div>
+          <div class="home-tl-habitmenu-list" id="homeTlHabitMenuList"></div>
         </div>
       </div>
     </section>
@@ -6354,8 +6380,9 @@
   // complete; a clean click anywhere else on the block opens its editor (the note popover for a
   // journal entry); a press-and-hold arms a drag that moves the item's time instead. Overnight-
   // spillover tails aren't draggable (their left edge isn't a real start time), only click-through.
-  // All three lanes share one 24h horizontal scale, so the pointer x is measured against
-  // #homeTlLanes (full width = a day) regardless of which lane the block sits in.
+  // Every lane shares one 24h horizontal scale, so the pointer x is measured against #homeTlLanes
+  // (full width = a day) regardless of which lane the block sits in — which is also why the lane set
+  // being rebuilt per-area each render (see computeHomeTimelineRows) doesn't affect this at all.
   (function wireHomeTimelineDock(){
     var dock = document.getElementById("homeTimelineDock");
     var lanes = document.getElementById("homeTlLanes");
@@ -7249,31 +7276,13 @@
     renderHomeMapWidget();
     renderHomeMobile();
   }
-  // Dock rows group by life AREA, not by item kind — a habit, action, and note that are all
-  // "Health" land in the same row, which spreads same-time items across rows by what they're
-  // actually about instead of piling every habit into one row regardless of area (the previous
-  // kind-based grouping's real source of visual overlap: a user's habits skew toward a handful of
-  // areas, so "all habits" was really "most of one or two areas" crowded into a single row).
-  // Covers all 7 CATEGORIES between the 3 rows; an item with no area at all falls back to the
-  // first row (Sol is this app's general/catch-all area already, so that's the natural home for it).
-  var HOME_TL_AREA_GROUPS = [
-    { key:"health", areas:["Health","Sol","Relationships"] },
-    { key:"maintenance", areas:["Maintenance","Finance"] },
-    { key:"career", areas:["Career","Growth"] }
-  ];
-  function homeTlAreaGroupKey(area){
-    for(var i = 0; i < HOME_TL_AREA_GROUPS.length; i++){
-      if(HOME_TL_AREA_GROUPS[i].areas.indexOf(area) !== -1) return HOME_TL_AREA_GROUPS[i].key;
-    }
-    return HOME_TL_AREA_GROUPS[0].key;
-  }
-  // Built once — CATEGORY_ICONS never changes at runtime — so renderHomeTimelineDock isn't
-  // rebuilding these tiny strings on every tick.
-  var HOME_TL_GROUP_LABEL = {}, HOME_TL_GROUP_TITLE = {};
-  HOME_TL_AREA_GROUPS.forEach(function(g){
-    HOME_TL_GROUP_LABEL[g.key] = g.areas.map(function(a){ return CATEGORY_ICONS[a]; }).join("");
-    HOME_TL_GROUP_TITLE[g.key] = g.areas.join(", ");
-  });
+  // Dock rows are one-per-AREA, not per item kind — a habit, action, and note that are all "Health"
+  // share the Health row, which spreads same-time items across rows by what they're actually about
+  // instead of piling every habit into one row regardless of area. Rows are built per render from
+  // what's actually on the day: an area with nothing scheduled gets no row at all, so a quiet day is
+  // two or three tall, legible rows rather than seven slivers. Items with no area at all collect in
+  // one trailing row instead of being silently folded into whichever area happened to be first.
+  var HOME_TL_NO_AREA = " no-area";
   function computeHomeTimelineBlocks(){
     var day = homeTlSelectedDate;
     var prevDay = addDaysToDateStr(day, -1);
@@ -7302,9 +7311,23 @@
     });
     // Areas toggled off in the legend rail hide their blocks here too.
     all = all.filter(function(b){ return homeAreaVisible(b.area); });
-    var blocks = { health:[], maintenance:[], career:[] };
-    all.forEach(function(b){ blocks[homeTlAreaGroupKey(b.area)].push(b); });
-    return blocks;
+    return all;
+  }
+  // Groups the day's blocks into the rows the dock actually draws. Row ORDER follows CATEGORIES
+  // rather than, say, first-seen order, so a row keeps its vertical position as items appear and
+  // disappear through the day instead of the whole stack reshuffling under the cursor.
+  function computeHomeTimelineRows(){
+    var byArea = {};
+    computeHomeTimelineBlocks().forEach(function(b){
+      var key = b.area || HOME_TL_NO_AREA;
+      (byArea[key] || (byArea[key] = [])).push(b);
+    });
+    var rows = [];
+    CATEGORIES.forEach(function(cat){
+      if(byArea[cat]) rows.push({ area:cat, label:CATEGORY_ICONS[cat] + " " + cat, title:cat, blocks:byArea[cat] });
+    });
+    if(byArea[HOME_TL_NO_AREA]) rows.push({ area:"", label:"◦ no area", title:"Items not assigned to any area", blocks:byArea[HOME_TL_NO_AREA] });
+    return rows;
   }
   function homeTlLaneHtml(label, list, labelTitle){
     return '<span class="home-tl-lane-label"' + (labelTitle ? ' title="' + escapeHtml(labelTitle) + '"' : '') + '>' + label + '</span>' + list.map(function(b){
@@ -7334,19 +7357,21 @@
     return fmtDate(day);
   }
   function renderHomeTimelineDock(){
-    var laneHealth = document.getElementById("homeTlLaneHealth");
-    if(!laneHealth) return;
+    var lanesEl = document.getElementById("homeTlLanes");
+    if(!lanesEl) return;
     var todayKey = todayStr();
-    var blocks = computeHomeTimelineBlocks();
-    var sig = homeTlSelectedDate + "|" + ["health","maintenance","career"].map(function(k){
-      return blocks[k].map(function(b){ return b.id + ":" + b.start + ":" + b.width + ":" + (b.done ? 1 : 0); }).join(",");
+    var rows = computeHomeTimelineRows();
+    // The row SET is part of the signature, not just each row's contents — scheduling the day's only
+    // Finance item has to add a whole row, which a contents-only signature wouldn't notice.
+    var sig = homeTlSelectedDate + "|" + rows.map(function(r){
+      return r.area + ">" + r.blocks.map(function(b){ return b.id + ":" + b.start + ":" + b.width + ":" + (b.done ? 1 : 0); }).join(",");
     }).join("|");
     var dock = document.getElementById("homeTimelineDock");
     if(dock.dataset.sig !== sig){
       dock.dataset.sig = sig;
-      laneHealth.innerHTML = homeTlLaneHtml(HOME_TL_GROUP_LABEL.health, blocks.health, HOME_TL_GROUP_TITLE.health);
-      document.getElementById("homeTlLaneMaintenance").innerHTML = homeTlLaneHtml(HOME_TL_GROUP_LABEL.maintenance, blocks.maintenance, HOME_TL_GROUP_TITLE.maintenance);
-      document.getElementById("homeTlLaneCareer").innerHTML = homeTlLaneHtml(HOME_TL_GROUP_LABEL.career, blocks.career, HOME_TL_GROUP_TITLE.career);
+      lanesEl.innerHTML = rows.map(function(r){
+        return '<div class="home-tl-lane" data-area="' + escapeHtml(r.area) + '">' + homeTlLaneHtml(r.label, r.blocks, r.title) + '</div>';
+      }).join("");
       var hoursEl = document.getElementById("homeTlHours");
       if(!hoursEl.childElementCount){
         var hh = "";
@@ -7378,6 +7403,10 @@
       dn.style.background = homeTlDayNightBg(selD.getFullYear(), selD.getMonth() + 1, selD.getDate(), themeKey === "dark");
     }
     renderHomeTlUnscheduled();
+    // Deliberately a sibling call, not chained off renderHomeTlUnscheduled: that function returns
+    // early when its own list is unchanged, and adding a TIMED habit changes the menu's ticks without
+    // touching the unscheduled list at all. Cheap regardless — the menu has its own signature guard.
+    renderHomeTlHabitMenu();
   }
   // The dock's own copy of the Present tab's unscheduled panel — the selected day's open tasks with
   // no time yet, sig-guarded like everything else the 1s home tick touches.
@@ -7404,6 +7433,38 @@
       return '<div class="home-tl-unscheduled-item' + (it.area ? ' ' + it.area : '') + '" draggable="true" data-kind="' + it.kind + '" data-id="' + it.id + '" title="' + escapeHtml(it.title) + ' — drag onto the timeline to schedule it">' + (it.kind === "habit-instance" ? "↻ " : "") + escapeHtml(it.title) + '</div>';
     }).join("") : '<div class="home-tl-unscheduled-empty">all timed ✓</div>';
   }
+  // The fixed habit menu beside the unscheduled panel: every habit, always in the same order, so it
+  // becomes muscle memory rather than a list that reshuffles. A habit already occurring on the
+  // selected day is ticked and inert — clicking it would be a no-op anyway (scheduleHabitInstance
+  // returns early), and showing it greyed is more useful than hiding it, since the menu then also
+  // answers "is this already on today?" without a second place to look.
+  function renderHomeTlHabitMenu(){
+    var list = document.getElementById("homeTlHabitMenuList");
+    if(!list) return;
+    var day = homeTlSelectedDate;
+    var habits = state.habits.slice().sort(function(a, b){ return (a.position || 0) - (b.position || 0); });
+    var sig = day + "|" + habits.map(function(h){ return h.id + ":" + (habitOccursOnDate(h, day) ? 1 : 0) + ":" + h.title; }).join(",");
+    if(list.dataset.sig === sig) return;
+    list.dataset.sig = sig;
+    list.innerHTML = habits.length ? habits.map(function(h){
+      var on = habitOccursOnDate(h, day);
+      var area = habitCategory(h);
+      return '<button type="button" class="home-tl-habitmenu-item' + (area ? " " + area : "") + '" data-habit-id="' + h.id + '"' + (on ? " disabled" : "") +
+        ' title="' + escapeHtml(h.title) + (on ? " — already on this day" : " — click to add to this day") + '">' +
+        '<span class="hm-tick">' + (on ? "✓" : "+") + '</span><span class="hm-name">' + escapeHtml(h.title) + '</span></button>';
+    }).join("") : '<div class="home-tl-unscheduled-empty">no habits yet</div>';
+  }
+  (function wireHomeTlHabitMenu(){
+    var list = document.getElementById("homeTlHabitMenuList");
+    if(!list) return;
+    list.addEventListener("click", function(e){
+      var btn = e.target.closest("[data-habit-id]");
+      if(!btn || btn.disabled) return;
+      // Adds the day to the habit's extra_dates and clears any skip for it — the habit's own
+      // repetition pattern is untouched, so this is a one-off occurrence, undoable like any other.
+      scheduleHabitInstance(btn.dataset.habitId, homeTlSelectedDate);
+    });
+  })();
   // Panel → lanes (HTML5 drag, same as the Present tab's): horizontal drop position over the lanes
   // becomes the task's time. The reverse direction (block → panel) rides the dock's existing
   // pointer hold-drag instead — see the release-over-panel branch in wireHomeTimelineDock.
