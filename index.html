@@ -849,6 +849,12 @@
   .day-cell-label{ font-family:var(--mono); font-size:8.5px; color:var(--text-faint); }
   .day-box{ width:20px; height:20px; border-radius:4px; border:1.5px solid var(--border); background:var(--bg-inset); cursor:pointer; }
   .day-box.on{ background:var(--accent); border-color:var(--accent); }
+  /* Auto-completed (assumed at day's end, not hand-ticked — see autoCompletePastHabits): reads as
+     done, but hollow with a dashed edge so a glance down the grid still tells you which days you
+     actually recorded. Comes after .day-box.on and beats the inline area-colour background with
+     !important, since that inline style is set for every completed cell regardless of origin. */
+  .day-box.on.auto{ background:transparent !important; border-style:dashed; opacity:0.85; }
+  .day-box.on.auto::after{ content:""; display:block; width:6px; height:6px; margin:5px auto; border-radius:50%; background:currentColor; opacity:0.55; }
   .day-box.today{ box-shadow:0 0 0 1.5px var(--violet); }
   .habit-foot{ display:flex; align-items:center; justify-content:space-between; gap:14px; margin-top:12px; flex-wrap:wrap; }
   .streak-tag{ font-family:var(--mono); font-size:11px; color:var(--text-dim); }
@@ -905,6 +911,18 @@
   .today-unscheduled-head{ flex-shrink:0; font-family:var(--mono); font-size:9px; letter-spacing:0.1em; text-transform:uppercase; color:var(--text-dim); padding:8px 10px 4px; }
   .today-unscheduled-hint{ flex-shrink:0; margin:0; padding:0 10px 7px; font-size:10px; color:var(--text-faint); border-bottom:1px solid var(--border); }
   .today-unscheduled-list{ flex:1; min-height:0; overflow-y:auto; padding:7px; display:flex; flex-direction:column; gap:6px; }
+  /* Overdue panel: same shell as the unscheduled one beside it, tinted with the P0/danger hue so
+     "already late" reads before you've parsed a single title. Narrower — it's a backlog you triage,
+     not a workspace, and the timeline deserves the width. */
+  .today-overdue{ width:165px; border-color:var(--p0); }
+  .today-overdue .today-unscheduled-head{ color:var(--p0); }
+  .today-overdue-count{ font-family:var(--mono); opacity:0.8; }
+  .today-overdue-item-date{ flex:0 0 auto; font-family:var(--mono); font-size:9.5px; color:var(--p0); }
+  .today-overdue-pull{ flex:0 0 auto; appearance:none; border:none; background:none; padding:0 2px; margin-left:auto; color:var(--text-dim); font-size:12px; line-height:1; cursor:pointer; }
+  .today-overdue-pull:hover{ color:var(--accent); }
+  .home-tl-overdue{ width:118px; border-color:var(--p0); }
+  .home-tl-overdue .home-tl-unscheduled-head{ color:var(--p0); }
+  .home-tl-overdue[hidden]{ display:none; }
   .today-unscheduled-item{ flex-shrink:0; display:flex; align-items:center; gap:6px; padding:7px 9px; border:1px solid var(--border); border-left:3px solid var(--border-bright); border-radius:6px; background:var(--bg-inset); font-size:12px; color:var(--text); cursor:grab; }
   .today-unscheduled-item:active{ cursor:grabbing; }
   .today-unscheduled-item.dragging{ opacity:0.45; }
@@ -1021,6 +1039,21 @@
   /* P0 overrides the area color entirely — defined after the area rules so it wins on equal
      specificity regardless of which area class the block also carries. */
   .timeline-block.p0{ border-left-color:var(--p0); background:rgba(251,102,102,0.32); }
+  /* ---- Habits read LIGHTER than actions on every timeline ----
+     Actions and habits share an area row and therefore an area colour, so weight — not hue — is what
+     tells them apart at a glance: an action is the solid block, a habit the washed-out one. Declared
+     after the area AND .p0 rules so it wins on equal specificity whichever of those a habit also
+     carries, and expressed as a background wash + hairline border rather than `opacity`, which would
+     fade the title text to unreadable and compound with .done's own opacity. Actions are unaffected:
+     their colour arrives as an inline style, which outranks all of this. */
+  .timeline-block[data-kind="habit-instance"]{ background:rgba(127,127,127,0.10); border-left-width:2px; border-top-style:dashed; border-right-style:dashed; border-bottom-style:dashed; }
+  .timeline-block[data-kind="habit-instance"] .timeline-block-title{ font-weight:400; color:var(--text-dim); }
+  .home-tl-block[data-kind="habit-instance"]{ background:rgba(127,127,127,0.10); border-style:dashed; }
+  .home-tl-block[data-kind="habit-instance"] .home-tl-block-title{ color:var(--text-dim); }
+  /* A habit the app completed for you at day's end (rather than one you ticked) — see
+     autoCompletePastHabits. Marked, never silently identical to a hand-tick. */
+  .timeline-block.auto-done .timeline-block-title::after,
+  .home-tl-block.auto-done .home-tl-block-title::after{ content:" ·auto"; opacity:0.65; font-size:0.85em; }
 
   /* ===== Today timeline WebGL skin ===== */
   /* Everything here applies ONLY while the Three.js layer is live (.gl-on set by ensureTodayGl):
@@ -2372,6 +2405,14 @@
           <div class="home-tl-unscheduled-head">unscheduled</div>
           <div class="home-tl-unscheduled-list" id="homeTlUnscheduledList"></div>
         </div>
+        <!-- Dock's own overdue panel — same contents and gestures as the Present tab's, but it hides
+             itself entirely when nothing is overdue (see renderHomeTlOverdue): the dock is only ~150px
+             of width per panel, and a permanently-present "nothing overdue ✓" column isn't worth that
+             space on the home page the way it is on the roomier Present tab. -->
+        <div class="home-tl-unscheduled home-tl-overdue" id="homeTlOverduePanel" hidden title="Open tasks whose date has passed — drag one onto the timeline to reschedule it into this day">
+          <div class="home-tl-unscheduled-head">overdue</div>
+          <div class="home-tl-unscheduled-list" id="homeTlOverdueList"></div>
+        </div>
         <!-- Fixed menu of every habit, sitting beside the unscheduled panel: click one to give this
              day an occurrence of it that its own repetition pattern wouldn't otherwise produce (see
              scheduleHabitInstance — it lands in extra_dates, the pattern itself is untouched). Habits
@@ -2460,6 +2501,17 @@
             <div class="today-unscheduled-head">unscheduled</div>
             <p class="today-unscheduled-hint">Drag a task onto the timeline to decide when to do it.</p>
             <div class="today-unscheduled-list" id="todayUnscheduledList"></div>
+          </div>
+          <!-- Overdue: open tasks whose date has already passed. Same drag-onto-the-timeline gesture
+               as the unscheduled panel beside it, except dropping one here also moves its DATE to
+               the day being viewed (see scheduleActionAt's newDate) — that's the whole point of the
+               panel. The ⇥ button does the same in one tap without picking a time, landing it in the
+               unscheduled list instead. Habits never appear here: a missed occurrence isn't a
+               backlog item, and past ones are auto-completed anyway (autoCompletePastHabits). -->
+          <div class="today-unscheduled today-overdue" id="todayOverduePanel">
+            <div class="today-unscheduled-head">overdue <span class="today-overdue-count" id="todayOverdueCount"></span></div>
+            <p class="today-unscheduled-hint">Past their date and still open. Drag one onto the timeline, or ⇥ to pull it into this day.</p>
+            <div class="today-unscheduled-list" id="todayOverdueList"></div>
           </div>
         </div>
         <div class="today-daynight" id="todayDayNight"></div>
@@ -5238,6 +5290,9 @@
     state.financeTransactions = (results[16].data || []).map(function(r){ return { id:r.id, accountId:r.account_id, date:r.date, description:r.description||"", amount:Number(r.amount)||0, area:r.area||null, subcategory:r.subcategory||"", source:r.source||"manual", aiCategorized:!!r.ai_categorized }; });
     await backfillLegacyHabitTrackers();
     await backfillHabitIcons();
+    // After the tracker backfill above, so habits that only just got their linked variable are
+    // auto-completed through that variable rather than the legacy days fallback.
+    await autoCompletePastHabits();
   }
   // One-time-per-session upgrade path: any habit that doesn't have its own icon yet (created before
   // this feature existed, or before migration_habit_icon.sql has been run) gets one auto-assigned
@@ -7435,14 +7490,14 @@
     state.habits.filter(function(h){ return habitOccursOnDate(h, day); }).forEach(function(h){
       var f = habitInstanceFields(h, day);
       if(!f.timeOfDay) return;
-      all.push({ kind:"habit-instance", id:h.id, date:day, title:h.title, start:timeToFraction(f.timeOfDay), width:Math.max((f.durationMinutes || 15) / 1440, 0.006), area:habitCategory(h), done:habitDoneForDate(h, day), overnight:false });
+      all.push({ kind:"habit-instance", id:h.id, date:day, title:h.title, start:timeToFraction(f.timeOfDay), width:Math.max((f.durationMinutes || 15) / 1440, 0.006), area:habitCategory(h), done:habitDoneForDate(h, day), autoDone:habitAutoDoneForDate(h, day), overnight:false });
     });
     state.habits.filter(function(h){ return habitOccursOnDate(h, prevDay); }).forEach(function(h){
       var f = habitInstanceFields(h, prevDay);
       if(!f.timeOfDay) return;
       var spill = overnightSpilloverMinutes(f.timeOfDay, f.durationMinutes);
       if(!spill) return;
-      all.push({ kind:"habit-instance", id:h.id, date:prevDay, title:"‹ " + h.title, start:0, width:spill / 1440, area:habitCategory(h), done:habitDoneForDate(h, prevDay), overnight:true });
+      all.push({ kind:"habit-instance", id:h.id, date:prevDay, title:"‹ " + h.title, start:0, width:spill / 1440, area:habitCategory(h), done:habitDoneForDate(h, prevDay), autoDone:habitAutoDoneForDate(h, prevDay), overnight:true });
     });
     state.actions.filter(function(a){ return a.date === day && a.timeOfDay; }).forEach(function(a){
       // area stays the single PRIMARY category (it's what decides which row this lands in); colorRgb
@@ -7489,10 +7544,12 @@
       if(resizable) handles += '<span class="home-tl-block-resize home-tl-block-resize-right" data-resize-handle="right"></span>';
       // rgba(r,g,b,a), NOT rgb(r,g,b / a): mixing the comma and slash forms is malformed CSS, so the
       // whole background declaration was being dropped and the blend never reached these blocks.
-      var colorStyle = b.colorRgb ? ("background:rgba(" + b.colorRgb.r + "," + b.colorRgb.g + "," + b.colorRgb.b + ",0.12);border-color:rgb(" + b.colorRgb.r + "," + b.colorRgb.g + "," + b.colorRgb.b + ");") : "";
+      // 0.22 sits deliberately above the 0.12 the --cat-*-bg class rules give, so an action reads
+      // stronger than a habit here too (see the habit-block lightening rules in the CSS).
+      var colorStyle = b.colorRgb ? ("background:rgba(" + b.colorRgb.r + "," + b.colorRgb.g + "," + b.colorRgb.b + ",0.22);border-color:rgb(" + b.colorRgb.r + "," + b.colorRgb.g + "," + b.colorRgb.b + ");") : "";
       // Only actions/habit-instances have a "done" concept — notes never get the toggle button.
       var doneBtn = b.kind !== "journal" ? '<button class="home-tl-done-btn' + (b.done ? " done" : "") + '" type="button" title="' + (b.done ? "Mark not done" : "Mark done") + '" aria-label="' + (b.done ? "Mark not done" : "Mark done") + '"></button>' : "";
-      return '<div class="home-tl-block' + (b.area ? " " + b.area : "") + (b.done ? " done" : "") + '" data-kind="' + b.kind + '" data-id="' + b.id + '" data-date="' + b.date + '"' + (b.overnight ? ' data-overnight="1"' : '') +
+      return '<div class="home-tl-block' + (b.area ? " " + b.area : "") + (b.done ? " done" : "") + (b.autoDone ? " auto-done" : "") + '" data-kind="' + b.kind + '" data-id="' + b.id + '" data-date="' + b.date + '"' + (b.overnight ? ' data-overnight="1"' : '') +
         ' style="left:' + (b.start * 100) + '%; width:' + Math.max(b.width * 100, 0.7) + '%; z-index:' + z + ';' + colorStyle + '" title="' + escapeHtml(b.title) + '">' + handles + doneBtn + '<span class="home-tl-block-title">' + escapeHtml(b.title) + '</span></div>';
     }).join("");
   }
@@ -7516,7 +7573,7 @@
     var sig = homeTlSelectedDate + "|" + rows.map(function(r){
       // colorRgb is in the signature so re-tagging an item's SECONDARY areas — which changes its
       // blended colour without moving it — still forces a repaint.
-      return r.area + ">" + r.blocks.map(function(b){ return b.id + ":" + b.start + ":" + b.width + ":" + (b.done ? 1 : 0) + ":" + (b.colorRgb ? b.colorRgb.r + "," + b.colorRgb.g + "," + b.colorRgb.b : ""); }).join(",");
+      return r.area + ">" + r.blocks.map(function(b){ return b.id + ":" + b.start + ":" + b.width + ":" + (b.done ? 1 : 0) + (b.autoDone ? "a" : "") + ":" + (b.colorRgb ? b.colorRgb.r + "," + b.colorRgb.g + "," + b.colorRgb.b : ""); }).join(",");
     }).join("|");
     var dock = document.getElementById("homeTimelineDock");
     if(dock.dataset.sig !== sig){
@@ -7555,6 +7612,7 @@
       dn.style.background = homeTlDayNightBg(selD.getFullYear(), selD.getMonth() + 1, selD.getDate(), themeKey === "dark");
     }
     renderHomeTlUnscheduled();
+    renderHomeTlOverdue();
     // Deliberately a sibling call, not chained off renderHomeTlUnscheduled: that function returns
     // early when its own list is unchanged, and adding a TIMED habit changes the menu's ticks without
     // touching the unscheduled list at all. Cheap regardless — the menu has its own signature guard.
@@ -7585,6 +7643,24 @@
       var s = it.areaColor ? ' style="border-left-color:' + it.areaColor + ';"' : '';
       return '<div class="home-tl-unscheduled-item' + (it.area ? ' ' + it.area : '') + '"' + s + ' draggable="true" data-kind="' + it.kind + '" data-id="' + it.id + '" title="' + escapeHtml(it.title) + ' — drag onto the timeline to schedule it">' + (it.kind === "habit-instance" ? "↻ " : "") + escapeHtml(it.title) + '</div>';
     }).join("") : '<div class="home-tl-unscheduled-empty">all timed ✓</div>';
+  }
+  // Dock twin of renderTodayOverdue — same items (todayOverdueItems reads the real today, not either
+  // page's selected day, so both panels agree), but the whole panel hides when the list is empty
+  // rather than holding ~120px of dock width open to say "nothing overdue".
+  function renderHomeTlOverdue(){
+    var panel = document.getElementById("homeTlOverduePanel");
+    var list = document.getElementById("homeTlOverdueList");
+    if(!panel || !list) return;
+    var items = todayOverdueItems();
+    panel.hidden = !items.length;
+    var sig = items.map(function(it){ return it.id + ":" + it.date + ":" + (it.areaColor || "") + ":" + it.title; }).join(",");
+    if(list.dataset.sig === sig) return;
+    list.dataset.sig = sig;
+    list.innerHTML = items.map(function(it){
+      return '<div class="home-tl-unscheduled-item' + (it.area ? ' ' + it.area : '') + '"' + (it.areaColor ? ' style="border-left-color:' + it.areaColor + ';"' : '') +
+        ' draggable="true" data-kind="action" data-id="' + it.id + '" data-overdue="1" title="' + escapeHtml(it.title) + ' — was due ' + escapeHtml(fmtDate(it.date)) + ', drag onto the timeline to reschedule">' +
+        escapeHtml(it.title) + '</div>';
+    }).join("");
   }
   // The fixed habit menu beside the unscheduled panel: every habit, always in the same order, so it
   // becomes muscle memory rather than a list that reshuffles. A habit already occurring on the
@@ -7621,8 +7697,10 @@
   // Panel → lanes (HTML5 drag, same as the Present tab's): horizontal drop position over the lanes
   // becomes the task's time. The reverse direction (block → panel) rides the dock's existing
   // pointer hold-drag instead — see the release-over-panel branch in wireHomeTimelineDock.
-  (function wireHomeTlUnscheduledDnD(){
-    var list = document.getElementById("homeTlUnscheduledList");
+  // Bound to both dock source lists — unscheduled and overdue — exactly as on the Present tab.
+  ["homeTlUnscheduledList", "homeTlOverdueList"].forEach(function(id){ wireHomeTlUnscheduledDnD(id); });
+  function wireHomeTlUnscheduledDnD(listId){
+    var list = document.getElementById(listId);
     var lanes = document.getElementById("homeTlLanes");
     if(!list || !lanes) return;
     var draggingId = null, draggingKind = null;
@@ -7660,7 +7738,7 @@
       var frac = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
       await scheduleItemAt(kind, id, homeTlSelectedDate, minutesToTime(Math.round((frac * 1440) / 5) * 5));
     });
-  })();
+  }
 
   // ---- Calendar strip above the timeline dock — a compact, one-row cousin of Present/Future's own
   // .today-month-strip day-picker (same cell shape, same calStripColorsForDates intensity/quality
@@ -7967,6 +8045,16 @@
   // cost while elsewhere is a single string compare — simpler than start/stop bookkeeping in
   // every showSection transition.
   setInterval(function(){ if(activeSection === "home") renderHomeDashboard(); }, 1000);
+  // A session left open across midnight has to notice the day turned over on its own — otherwise
+  // auto-completion (and everything else keyed off "today") stays stuck on yesterday until a reload.
+  var lastSeenDay = todayStr();
+  setInterval(function(){
+    var now = todayStr();
+    if(now === lastSeenDay) return;
+    lastSeenDay = now;
+    autoCompletePastHabits();
+    renderAll();
+  }, 30000);
 
   /* ---------------- Mobile home: quick-capture launcher ---------------- */
   // At ≤820px the home page stops being the desktop cockpit and becomes a launcher (see .home-mobile
@@ -8883,6 +8971,52 @@
   }
   function habitDoneForDate(h, date){
     return !!habitValueForDate(h, date);
+  }
+  // ---------------- Habit auto-completion ----------------
+  // Once a day is over, a habit occurrence you never ticked is assumed done — habits become opt-out
+  // (you interact to record a MISS) instead of opt-in. Crucially these are written with the value
+  // "auto" rather than "true", so an assumed completion stays distinguishable from one you actually
+  // ticked everywhere it's shown: the Tracker grid, the habit cards, and the timelines. Both values
+  // are truthy, so habitDoneForDate — and therefore streaks, day-quality, and every existing
+  // consumer — treat them as done without a single change.
+  var HABIT_AUTO_VALUE = "auto";
+  function habitAutoDoneForDate(h, date){ return habitValueForDate(h, date) === HABIT_AUTO_VALUE; }
+  // Deliberately NOT retroactive. On first run this only records how far it has caught up, without
+  // writing anything: back-filling months of genuinely untracked history as "done" would be a large,
+  // silent rewrite of the user's own record, and no one asked for their past to change. Only days
+  // that elapse from here on get auto-completed.
+  var HABIT_AUTOCOMPLETE_KEY = "pp_habit_autocomplete_through";
+  async function autoCompletePastHabits(){
+    var yesterday = addDaysToDateStr(todayStr(), -1);
+    var through = safeGet(window.localStorage, HABIT_AUTOCOMPLETE_KEY);
+    if(!through){ safeSet(window.localStorage, HABIT_AUTOCOMPLETE_KEY, yesterday); return; }
+    if(through >= yesterday) return;
+    // A long absence shouldn't trigger an unbounded backfill either — catch up at most a fortnight.
+    var from = addDaysToDateStr(through, 1);
+    var floor = addDaysToDateStr(yesterday, -13);
+    if(from < floor) from = floor;
+    var filled = 0;
+    for(var d = from; d <= yesterday; d = addDaysToDateStr(d, 1)){
+      for(var i = 0; i < state.habits.length; i++){
+        var h = state.habits[i];
+        // Boolean habits only: "auto-complete" has no meaning for a habit that records a scale or a
+        // number — there's no value the app could honestly invent on your behalf.
+        if(habitVarType(h) !== "boolean") continue;
+        if(!habitOccursOnDate(h, d)) continue;
+        if(habitValueForDate(h, d)) continue;   // already recorded, by hand or by a previous run
+        if(h.trackerVariableId) await trackerSaveValue(h.trackerVariableId, d, HABIT_AUTO_VALUE);
+        else {
+          h.days[d] = HABIT_AUTO_VALUE;
+          await safeUpdate("habits", h.id, { days: h.days });
+        }
+        filled++;
+      }
+    }
+    safeSet(window.localStorage, HABIT_AUTOCOMPLETE_KEY, yesterday);
+    if(filled){
+      renderAll();
+      toast(filled + " habit " + (filled === 1 ? "occurrence" : "occurrences") + " auto-completed for previous days — shown marked as ·auto, untick any you actually missed.");
+    }
   }
   async function handleHabitMarkClick(habitId, date){
     var h = state.habits.find(function(x){ return x.id === habitId; });
@@ -11202,9 +11336,10 @@
         var wd = new Date(dt + "T00:00:00").toLocaleDateString(undefined, { weekday:"narrow" });
         var val = habitValueForDate(h, dt);
         var on = !!val;
-        var label = dt + (on ? (val === "true" ? " done" : " — " + val) : " not done");
+        var isAuto = val === HABIT_AUTO_VALUE;
+        var label = dt + (on ? (val === "true" ? " done" : (isAuto ? " auto-completed at day's end" : " — " + val)) : " not done");
         return '<div class="day-cell"><span class="day-cell-label">' + wd + '</span>' +
-          '<button type="button" class="day-box' + (on?' on':'') + (dt===today?' today':'') + '" data-habit="' + h.id + '" data-date="' + dt + '" title="' + escapeHtml(label) + '" aria-label="' + escapeHtml(label) + '"></button></div>';
+          '<button type="button" class="day-box' + (on?' on':'') + (isAuto?' auto':'') + (dt===today?' today':'') + '" data-habit="' + h.id + '" data-date="' + dt + '" title="' + escapeHtml(label) + '" aria-label="' + escapeHtml(label) + '"></button></div>';
       }).join("");
       return '<div class="goal-card" data-kind="habit" data-id="' + h.id + '" draggable="true">' +
         '<div class="card-tab">' +
@@ -15897,14 +16032,19 @@
   // lives" holds literally: both surfaces edit the exact same tracker_entries row.
   function trackerCellControlHtml(v, date, value){
     if(v.type === "boolean"){
-      var on = value === "true";
+      // Any truthy value counts as on, not just the literal "true" — an auto-completed habit stores
+      // "auto" (see autoCompletePastHabits) and would otherwise render as an empty, un-done cell
+      // while every other surface showed it done.
+      var on = !!value;
+      var isAuto = value === HABIT_AUTO_VALUE;
       // A boolean variable linked to a habit completes in that habit's own area color instead of the
       // generic accent — unlinked/manual boolean variables (and habits with no area of their own)
       // keep the default accent-colored button.
       var h = state.habits.find(function(x){ return x.trackerVariableId === v.id; });
       var cat = h ? habitCategory(h) : null;
       var styleAttr = (on && cat) ? ' style="background:' + categoryColorVar(cat) + ';border-color:' + categoryColorVar(cat) + ';"' : '';
-      return '<button class="day-box' + (on?' on':'') + '" data-action="tracker-toggle-bool" data-var="' + v.id + '" data-date="' + date + '"' + styleAttr + ' aria-label="Toggle"></button>';
+      var autoLabel = isAuto ? "Auto-completed at day's end — click to clear if you actually missed it" : "Toggle";
+      return '<button class="day-box' + (on?' on':'') + (isAuto?' auto':'') + '" data-action="tracker-toggle-bool" data-var="' + v.id + '" data-date="' + date + '"' + styleAttr + ' title="' + autoLabel + '" aria-label="' + autoLabel + '"></button>';
     }
     if(v.type === "scale"){
       var max = v.scaleMax || 5;
@@ -16835,8 +16975,11 @@
   // has to be recomputed once the panel beside it takes/gives back space. The home dock needs no
   // equivalent: its lanes are absolutely positioned left:0/right:0 inside the strip and every block
   // is a % of that, so they re-fit on their own.
-  wirePanelWidthResize({ panelId:"todayUnscheduledPanel", handleId:"todayUnscheduledResize", key:"pp_today_unsched_w", min:130, minTimeline:340, onResize: todayApplyZoomWidth });
-  wirePanelWidthResize({ panelId:"homeTlUnscheduledPanel", handleId:"homeTlUnscheduledResize", key:"pp_home_unsched_w", min:110, minTimeline:280 });
+  // minTimeline reserves room for the timeline AND the fixed-width siblings that now sit beyond this
+  // panel (the overdue panel on both surfaces, plus the dock's habit menu) — without counting them,
+  // widening this panel to its "max" would push those off the row rather than stopping in time.
+  wirePanelWidthResize({ panelId:"todayUnscheduledPanel", handleId:"todayUnscheduledResize", key:"pp_today_unsched_w", min:130, minTimeline:340 + 165, onResize: todayApplyZoomWidth });
+  wirePanelWidthResize({ panelId:"homeTlUnscheduledPanel", handleId:"homeTlUnscheduledResize", key:"pp_home_unsched_w", min:110, minTimeline:280 + 118 + 132 });
   function pointInsideEl(el, x, y){
     if(!el) return false;
     var r = el.getBoundingClientRect();
@@ -16845,22 +16988,52 @@
   // The two halves of the schedule/unschedule round-trip, shared by the Present tab and the Home
   // dock (both have an unscheduled panel + a timeline): give an action a time (drag from panel onto
   // the timeline) or take it away again (drag its block onto the panel). Optimistic with rollback.
-  async function scheduleActionAt(id, newTime){
+  // newDate (optional) moves the action's DAY as well as its time. Dropping something onto a day's
+  // timeline means "do it that day, at that time" — for an item already dated there it's a no-op, and
+  // for an overdue one dragged in from the overdue panel it's the whole point.
+  async function scheduleActionAt(id, newTime, newDate){
     var a = state.actions.find(function(x){ return x.id === id; });
     if(!a) return;
-    var prevTime = a.timeOfDay;
+    var prevTime = a.timeOfDay, prevDate = a.date;
+    var moved = !!(newDate && newDate !== a.date);
     a.timeOfDay = newTime;
+    if(moved) a.date = newDate;
     renderAll();
-    var r = await safeUpdate("actions", id, { time_of_day: newTime });
+    var payload = moved ? { time_of_day: newTime, date: newDate } : { time_of_day: newTime };
+    var r = await safeUpdate("actions", id, payload);
     if(r.error){
       console.error(r.error);
-      a.timeOfDay = prevTime;
+      a.timeOfDay = prevTime; a.date = prevDate;
       renderAll();
       toast("Could not schedule: " + r.error.message);
       return;
     }
     warnDroppedFields(r.droppedFields);
-    toast('"' + a.title + '" scheduled at ' + fmtTimeOfDay(newTime));
+    toast('"' + a.title + '" scheduled at ' + fmtTimeOfDay(newTime) + (moved ? " on " + fmtDate(newDate) : ""));
+  }
+  // Move an action to a day without giving it a time — it lands in that day's unscheduled panel,
+  // waiting for a WHEN. Used by the overdue panel's one-tap "pull into this day" button.
+  async function moveActionToDate(id, newDate){
+    var a = state.actions.find(function(x){ return x.id === id; });
+    if(!a || a.date === newDate) return;
+    var prevDate = a.date, prevTime = a.timeOfDay;
+    a.date = newDate; a.timeOfDay = null;
+    renderAll();
+    var r = await safeUpdate("actions", id, { date: newDate, time_of_day: null });
+    if(r.error){
+      console.error(r.error);
+      a.date = prevDate; a.timeOfDay = prevTime;
+      renderAll();
+      toast("Could not move: " + r.error.message);
+      return;
+    }
+    warnDroppedFields(r.droppedFields);
+    toast('"' + a.title + '" moved to ' + fmtDate(newDate));
+    pushUndo('move "' + a.title + '" to ' + fmtDate(newDate), async function(){
+      a.date = prevDate; a.timeOfDay = prevTime;
+      renderAll();
+      await safeUpdate("actions", id, { date: prevDate, time_of_day: prevTime });
+    });
   }
   // Actions only: a habit occurrence always has its recurring schedule to fall back to, and a
   // note's time is simply when it was written — neither has a meaningful "unscheduled" state.
@@ -16893,7 +17066,7 @@
       if(h) toast('"' + h.title + '" scheduled at ' + fmtTimeOfDay(newTime) + ' for this day');
       return;
     }
-    await scheduleActionAt(id, newTime);
+    await scheduleActionAt(id, newTime, date);
   }
   async function unscheduleItem(kind, id, date){
     if(kind === "habit-instance"){
@@ -16921,9 +17094,47 @@
         '<span class="today-unscheduled-item-title">' + (it.kind === "habit-instance" ? "↻ " : "") + escapeHtml(it.title) + '</span>' +
       '</div>';
     }).join("") : '<div class="today-unscheduled-empty">nothing waiting — everything for this day has a time</div>';
+    renderTodayOverdue();
   }
-  (function wireTodayUnscheduledDrag(){
-    var list = document.getElementById("todayUnscheduledList");
+  // Every open action whose date has already passed, oldest first — the oldest is the one most worth
+  // confronting, so it sits at the top rather than being buried under this week's slippage. Scoped
+  // against the REAL today, not todaySelectedDate: browsing to a past day shouldn't reclassify that
+  // day's own tasks (or half the list) as suddenly on time.
+  function todayOverdueItems(){
+    var today = todayStr();
+    return state.actions
+      .filter(function(a){ return !a.done && a.date && a.date < today; })
+      .map(function(a){ return { id:a.id, title:a.title, date:a.date, area:actionCategory(a), areaColor:actionMapColor(a, null), priority:a.priority }; })
+      .sort(function(x, y){ return x.date.localeCompare(y.date); });
+  }
+  function renderTodayOverdue(){
+    var list = document.getElementById("todayOverdueList");
+    if(!list) return;
+    var items = todayOverdueItems();
+    var countEl = document.getElementById("todayOverdueCount");
+    if(countEl) countEl.textContent = items.length ? "(" + items.length + ")" : "";
+    var chipDraggable = todayVerticalActive() ? "false" : "true";
+    list.innerHTML = items.length ? items.map(function(it){
+      return '<div class="today-unscheduled-item' + (it.area ? ' ' + it.area : '') + '"' + (it.areaColor ? ' style="border-left-color:' + it.areaColor + ';"' : '') +
+        ' draggable="' + chipDraggable + '" data-kind="action" data-id="' + it.id + '" data-overdue="1" title="' + escapeHtml(it.title) + ' — was due ' + escapeHtml(fmtDate(it.date)) + '">' +
+        '<span class="today-overdue-item-date">' + escapeHtml(fmtDate(it.date)) + '</span>' +
+        '<span class="today-unscheduled-item-title">' + escapeHtml(it.title) + '</span>' +
+        '<button type="button" class="today-overdue-pull" data-overdue-pull="' + it.id + '" title="Pull into this day (no time yet)" aria-label="Pull into this day">⇥</button>' +
+      '</div>';
+    }).join("") : '<div class="today-unscheduled-empty">nothing overdue ✓</div>';
+  }
+  document.getElementById("todayOverdueList").addEventListener("click", async function(e){
+    var pull = e.target.closest("[data-overdue-pull]");
+    if(!pull) return;
+    e.stopPropagation();   // don't also open the action's editor via the row
+    await moveActionToDate(pull.dataset.overduePull, todaySelectedDate);
+  });
+  // Bound to BOTH source lists — unscheduled and overdue. They share one gesture and one drop
+  // handler; the only difference is that an overdue item's drop also moves its date, which
+  // scheduleItemAt does for every action anyway (see scheduleActionAt's newDate).
+  ["todayUnscheduledList", "todayOverdueList"].forEach(function(listId){ wireTodayUnscheduledDrag(listId); });
+  function wireTodayUnscheduledDrag(listId){
+    var list = document.getElementById(listId);
     var unified = document.getElementById("todayTimelineUnified");
     if(!list || !unified) return;
     var draggingId = null, draggingKind = null;
@@ -16967,15 +17178,16 @@
         : Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
       await scheduleItemAt(kind, id, todaySelectedDate, minutesToTime(Math.round((frac * 1440) / 5) * 5));
     });
-  })();
+  }
   // Portrait phones: HTML5 drag-and-drop doesn't exist for touch, so the tray gets its own
   // press-and-hold pointer drag — hold a chip ~a third of a second, it lifts into a floating ghost,
   // release over the vertical timeline and the minute under your finger becomes its time. Chips are
   // draggable=false in this layout (see renderTodayUnscheduled) so the HTML5 path can never race
   // this one for the same gesture; chips keep touch-action:pan-x, so a plain sideways swipe still
   // scrolls the tray (that pan CANCELS a pending hold via pointercancel, which is the right call).
-  (function wireTodayUnscheduledTouchDrag(){
-    var list = document.getElementById("todayUnscheduledList");
+  ["todayUnscheduledList", "todayOverdueList"].forEach(function(id){ wireTodayUnscheduledTouchDrag(id); });
+  function wireTodayUnscheduledTouchDrag(listId){
+    var list = document.getElementById(listId);
     var unified = document.getElementById("todayTimelineUnified");
     if(!list || !unified) return;
     var HOLD_MS = 320, CANCEL_MOVE_PX = 10;
@@ -17036,7 +17248,7 @@
       await scheduleItemAt(kind, id, todaySelectedDate, minutesToTime(Math.round((frac * 1440) / 5) * 5));
     });
     list.addEventListener("pointercancel", cleanup);
-  })();
+  }
 
   // ---- Today timeline zoom: a multiplier of the viewport's own width, not an absolute px value —
   // 1x always means "fit the container, no scroll" (matches the pre-zoom look/behavior exactly),
@@ -17391,7 +17603,10 @@
   // Omitted by callers whose item only ever has one area, which then keep the class's colour exactly.
   function todayTimelineBlockHtml(kind, id, date, left, width, title, label, area, extraClass, overnight, resizable, iconHtml, colorRgb){
     var cls = (area ? " " + area : "") + (extraClass || "");
-    var colorStyle = colorRgb ? ("background:rgba(" + colorRgb.r + "," + colorRgb.g + "," + colorRgb.b + ",0.14);border-color:rgb(" + colorRgb.r + "," + colorRgb.g + "," + colorRgb.b + ");") : "";
+    // 0.30 matches the weight the .timeline-block.<Area> class rules give — an action must not come
+    // out LIGHTER than the class-coloured habits, since lightness is now what distinguishes the two
+    // (see the habit-block rules in the CSS).
+    var colorStyle = colorRgb ? ("background:rgba(" + colorRgb.r + "," + colorRgb.g + "," + colorRgb.b + ",0.30);border-color:rgb(" + colorRgb.r + "," + colorRgb.g + "," + colorRgb.b + ");") : "";
     var isDone = (" " + (extraClass || "") + " ").indexOf(" done ") !== -1;
     var handles = "";
     if(resizable === true) handles = '<span class="timeline-block-resize timeline-block-resize-left" data-resize-handle="left"></span>';
@@ -17424,7 +17639,7 @@
       var fields = habitInstanceFields(h, todaySelectedDate);
       var startFrac = timeToFraction(fields.timeOfDay) * 100;
       var widthFrac = Math.max(1.2, ((fields.durationMinutes || 15) / 1440) * 100);
-      html += todayTimelineBlockHtml("habit-instance", h.id, todaySelectedDate, startFrac, widthFrac, h.title + " — " + fmtTimeOfDay(fields.timeOfDay), escapeHtml(h.title), area, (habitDoneForDate(h, todaySelectedDate) ? " done" : "") + (h.priority === "P0" ? " p0" : ""), false, true);
+      html += todayTimelineBlockHtml("habit-instance", h.id, todaySelectedDate, startFrac, widthFrac, h.title + " — " + fmtTimeOfDay(fields.timeOfDay), escapeHtml(h.title), area, (habitDoneForDate(h, todaySelectedDate) ? " done" : "") + (habitAutoDoneForDate(h, todaySelectedDate) ? " auto-done" : "") + (h.priority === "P0" ? " p0" : ""), false, true);
     });
     // Habits that started yesterday and run past midnight (sleep being the obvious one — 11:30pm to
     // 7:30am) show their overnight tail here too, continued from the very start of today. Not
@@ -17436,7 +17651,7 @@
       var spillMin = overnightSpilloverMinutes(fields.timeOfDay, fields.durationMinutes);
       if(!spillMin) return;
       var widthFrac = spillMin / 1440 * 100;
-      html += todayTimelineBlockHtml("habit-instance", h.id, yesterday, 0, widthFrac, h.title + " — continued from " + fmtTimeOfDay(fields.timeOfDay) + " yesterday", "‹ " + escapeHtml(h.title), area, (habitDoneForDate(h, yesterday) ? " done" : "") + (h.priority === "P0" ? " p0" : ""), true, "right");
+      html += todayTimelineBlockHtml("habit-instance", h.id, yesterday, 0, widthFrac, h.title + " — continued from " + fmtTimeOfDay(fields.timeOfDay) + " yesterday", "‹ " + escapeHtml(h.title), area, (habitDoneForDate(h, yesterday) ? " done" : "") + (habitAutoDoneForDate(h, yesterday) ? " auto-done" : "") + (h.priority === "P0" ? " p0" : ""), true, "right");
     });
     state.actions.filter(function(a){ return a.date === todaySelectedDate && !!a.timeOfDay && actionCategory(a) === area; }).forEach(function(a){
       var startFrac = timeToFraction(a.timeOfDay) * 100;
