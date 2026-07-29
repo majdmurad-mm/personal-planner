@@ -3224,10 +3224,11 @@
             </div>
             <!-- What KIND of note this is, orthogonal to areas — the type drives behavior: only
                  reflections get sentiment analysis (see maybeAutoAnalyzeSentiment). -->
-            <div class="chip-select" id="journalTypeSelect" title="Note type — reflections get sentiment analysis; references and ideas don't">
+            <div class="chip-select" id="journalTypeSelect" title="Note type — only reflections get sentiment analysis">
               <div class="chip-opt sel" role="button" tabindex="0" data-nt="reflection">☼ reflection</div>
               <div class="chip-opt" role="button" tabindex="0" data-nt="reference">§ reference</div>
               <div class="chip-opt" role="button" tabindex="0" data-nt="idea">⚡ idea</div>
+              <div class="chip-opt" role="button" tabindex="0" data-nt="decision">⚖ decision</div>
             </div>
           </div>
           <button class="btn" id="journalRecordBtn" type="button" title="Record a voice note — saves the audio, then transcribes it here">🎤</button>
@@ -3265,6 +3266,7 @@
           <button class="sub-view-tab" data-sub="reflection" type="button">☼ reflections</button>
           <button class="sub-view-tab" data-sub="reference" type="button">§ references</button>
           <button class="sub-view-tab" data-sub="idea" type="button">⚡ ideas</button>
+          <button class="sub-view-tab" data-sub="decision" type="button">⚖ decisions</button>
         </div>
         <div class="notes-axis">
           <span class="notes-axis-end">positive</span>
@@ -4233,11 +4235,12 @@
           <div class="chip-opt" role="button" tabindex="0" data-p="P0">P0</div><div class="chip-opt" role="button" tabindex="0" data-p="P1">P1</div><div class="chip-opt" role="button" tabindex="0" data-p="P2">P2</div><div class="chip-opt" role="button" tabindex="0" data-p="P3">P3</div>
         </div></div>
       </div>
-      <div class="field"><label>type — reflections get sentiment analysis; references &amp; ideas don't</label>
+      <div class="field"><label>type — only reflections get sentiment analysis</label>
         <div class="chip-select" id="journalEditTypeSelect">
           <div class="chip-opt sel" role="button" tabindex="0" data-nt="reflection">☼ reflection</div>
           <div class="chip-opt" role="button" tabindex="0" data-nt="reference">§ reference</div>
           <div class="chip-opt" role="button" tabindex="0" data-nt="idea">⚡ idea</div>
+          <div class="chip-opt" role="button" tabindex="0" data-nt="decision">⚖ decision</div>
         </div>
       </div>
       <div class="field note-editor-textfield"><label for="journalEditTextInput">note</label>
@@ -15288,13 +15291,19 @@
   // A second dimension alongside areas: areas say what a note TOUCHES, the type says what KIND of
   // note it is — and the type drives behavior, not just filing. Reflections are the only kind with
   // an emotional tone worth measuring, so they alone get sentiment analysis (auto or manual);
-  // references (prompts, specs, snippets) and ideas are inert on that axis and sit at the mood
-  // map's neutral center. Unknown/legacy values behave as "reflection", matching every note that
+  // references (prompts, specs, snippets), ideas, and decisions are all records rather than moods,
+  // so they're inert on that axis and sit at the mood map's neutral center. Adding a type to
+  // NOTE_TYPE_META below is all it takes — the sentiment gate, the badge, and the filter tab's
+  // behavior all key off that one table. Unknown/legacy values behave as "reflection", matching every note that
   // existed before this field did.
   var NOTE_TYPE_META = {
     reflection: { glyph:"☼", label:"reflection" },
     reference:  { glyph:"§", label:"reference" },
-    idea:       { glyph:"⚡", label:"idea" }
+    idea:       { glyph:"⚡", label:"idea" },
+    // A decision and its reasoning — what you chose, and why, so the "why" is still there months
+    // later when only the outcome is obvious. Like references and ideas it's a record, not a mood,
+    // so it skips sentiment automatically (noteGetsSentiment keys off this table).
+    decision:   { glyph:"⚖", label:"decision" }
   };
   function noteGetsSentiment(n){
     return !n || !n.noteType || n.noteType === "reflection" || !NOTE_TYPE_META[n.noteType];
