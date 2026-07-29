@@ -4463,10 +4463,33 @@
   // The two CSS-ready strings almost every call site actually wants — a solid accent (borders, SVG
   // stroke/fill, Three.js materials) and a soft ~13%-alpha wash (backgrounds), matching the existing
   // var(--cat-*) / var(--cat-*-bg) pairing convention everywhere else in the app.
-  function mergedAreaColorCss(areas){
-    var rgb = mergedAreaColorRgb(areas);
+  function areaColorCssPair(rgb){
     if(!rgb) return null;
     return { c: "rgb(" + rgb.r + "," + rgb.g + "," + rgb.b + ")", bg: "rgba(" + rgb.r + "," + rgb.g + "," + rgb.b + ",0.13)" };
+  }
+  function mergedAreaColorCss(areas){ return areaColorCssPair(mergedAreaColorRgb(areas)); }
+  // An action's own accent colour: every area it touches blended together, with its PRIMARY area
+  // weighted DOUBLE — so a Career action that also touches Health still reads as mostly Career
+  // rather than drifting to the midpoint between them. The doubling is just the primary listed
+  // twice, since mergedAreaColorRgb averages whatever list it's handed. A single-area action gets
+  // exactly that area's own colour (the average of a colour with itself), so the overwhelmingly
+  // common case is unchanged; an action with no area at all returns null and every caller keeps the
+  // neutral default it already had.
+  function actionAreaColorRgb(a){
+    if(!a) return null;
+    var primary = actionCategory(a);
+    if(!primary) return null;
+    var list = [primary, primary];
+    (a.secondaryCategories || []).forEach(function(cat){ if(cat && cat !== primary) list.push(cat); });
+    return mergedAreaColorRgb(list);
+  }
+  function actionAreaColorCss(a){ return areaColorCssPair(actionAreaColorRgb(a)); }
+  // Map-layer variant, matching areaMapColor's contract: Leaflet writes colours into SVG presentation
+  // attributes, and an "rgb(r,g,b)" string is a real value there (unlike a var() reference), so the
+  // blend can be handed straight over.
+  function actionMapColor(a, fallback){
+    var merged = actionAreaColorCss(a);
+    return merged ? merged.c : fallback;
   }
   // ---- Calendar-strip color views (Present + Future's shared .today-month-strip day-picker, see
   // views.calStrip / renderTodayCalGrid / renderFutureCalGrid) — "intensity" and "day quality" both
@@ -6812,7 +6835,7 @@
     var day = homeTlSelectedDate;
     var q = { P0:[], P1:[], P2:[], P3:[] };
     homeTodayActionsList().forEach(function(a){
-      (q[a.priority] || q.P2).push({ kind:"action", id:a.id, date:day, title:a.title, done:!!a.done, area:actionCategory(a), priority:a.priority });
+      (q[a.priority] || q.P2).push({ kind:"action", id:a.id, date:day, title:a.title, done:!!a.done, area:actionCategory(a), areaColor:actionMapColor(a, null), priority:a.priority });
     });
     homeTodayHabitList().forEach(function(h){
       (q[h.priority] || q.P2).push({ kind:"habit-instance", id:h.id, date:day, title:h.title, done:habitDoneForDate(h, day), area:habitCategory(h), priority:h.priority });
@@ -6823,7 +6846,7 @@
     var day = homeTlSelectedDate;
     var personalActions = [], careerActions = [], personalHabits = [], careerHabits = [];
     homeTodayActionsList().forEach(function(a){
-      var item = { kind:"action", id:a.id, date:day, title:a.title, done:!!a.done, area:actionCategory(a), priority:a.priority, timeOfDay:a.timeOfDay };
+      var item = { kind:"action", id:a.id, date:day, title:a.title, done:!!a.done, area:actionCategory(a), areaColor:actionMapColor(a, null), priority:a.priority, timeOfDay:a.timeOfDay };
       (item.area === "Career" ? careerActions : personalActions).push(item);
     });
     homeTodayHabitList().forEach(function(h){
@@ -6841,7 +6864,11 @@
     // Text is colored by area, unless the item is P0 — that always wins, regardless of area (see
     // the .home-todo-item.p0 CSS rule, which is declared after the area rules for the same reason).
     var cls = (it.area ? " " + it.area : "") + (it.priority === "P0" ? " p0" : "") + (it.done ? " done" : "");
-    return '<div class="home-todo-item' + cls + '" data-kind="' + it.kind + '" data-id="' + it.id + '" data-date="' + it.date + '" title="' + escapeHtml(it.title) + '">' +
+    // An action's colour is the blend across its areas (areaColor) rather than the single class-based
+    // one — but deliberately NOT for a P0, where the inline style would beat .home-todo-item.p0 and
+    // silently undo the "P0 always wins" rule the class ordering above exists to enforce.
+    var colorStyle = (it.areaColor && it.priority !== "P0") ? ' style="color:' + it.areaColor + ';"' : '';
+    return '<div class="home-todo-item' + cls + '"' + colorStyle + ' data-kind="' + it.kind + '" data-id="' + it.id + '" data-date="' + it.date + '" title="' + escapeHtml(it.title) + '">' +
       '<span class="home-todo-item-dot' + (it.done ? " done" : "") + '"></span>' +
       '<span class="home-todo-item-text">' + escapeHtml(it.title) + '</span></div>';
   }
@@ -7418,7 +7445,10 @@
       all.push({ kind:"habit-instance", id:h.id, date:prevDay, title:"‹ " + h.title, start:0, width:spill / 1440, area:habitCategory(h), done:habitDoneForDate(h, prevDay), overnight:true });
     });
     state.actions.filter(function(a){ return a.date === day && a.timeOfDay; }).forEach(function(a){
-      all.push({ kind:"action", id:a.id, date:day, title:a.title, start:timeToFraction(a.timeOfDay), width:Math.max((a.durationMinutes || 15) / 1440, 0.006), area:actionCategory(a), done:!!a.done, overnight:false });
+      // area stays the single PRIMARY category (it's what decides which row this lands in); colorRgb
+      // is the additive blend across every area it touches, used only for the block's own colour —
+      // same split the note blocks below already use.
+      all.push({ kind:"action", id:a.id, date:day, title:a.title, start:timeToFraction(a.timeOfDay), width:Math.max((a.durationMinutes || 15) / 1440, 0.006), area:actionCategory(a), colorRgb:actionAreaColorRgb(a), done:!!a.done, overnight:false });
     });
     state.journal.filter(function(n){ return n.date === day && n.timeOfDay; }).forEach(function(n){
       var preview = (n.title || n.text || "").slice(0, 40);
@@ -7457,7 +7487,9 @@
       var handles = "";
       if(resizable === true) handles = '<span class="home-tl-block-resize home-tl-block-resize-left" data-resize-handle="left"></span>';
       if(resizable) handles += '<span class="home-tl-block-resize home-tl-block-resize-right" data-resize-handle="right"></span>';
-      var colorStyle = b.colorRgb ? ("background:rgb(" + b.colorRgb.r + "," + b.colorRgb.g + "," + b.colorRgb.b + " / 0.12);border-color:rgb(" + b.colorRgb.r + "," + b.colorRgb.g + "," + b.colorRgb.b + ");") : "";
+      // rgba(r,g,b,a), NOT rgb(r,g,b / a): mixing the comma and slash forms is malformed CSS, so the
+      // whole background declaration was being dropped and the blend never reached these blocks.
+      var colorStyle = b.colorRgb ? ("background:rgba(" + b.colorRgb.r + "," + b.colorRgb.g + "," + b.colorRgb.b + ",0.12);border-color:rgb(" + b.colorRgb.r + "," + b.colorRgb.g + "," + b.colorRgb.b + ");") : "";
       // Only actions/habit-instances have a "done" concept — notes never get the toggle button.
       var doneBtn = b.kind !== "journal" ? '<button class="home-tl-done-btn' + (b.done ? " done" : "") + '" type="button" title="' + (b.done ? "Mark not done" : "Mark done") + '" aria-label="' + (b.done ? "Mark not done" : "Mark done") + '"></button>' : "";
       return '<div class="home-tl-block' + (b.area ? " " + b.area : "") + (b.done ? " done" : "") + '" data-kind="' + b.kind + '" data-id="' + b.id + '" data-date="' + b.date + '"' + (b.overnight ? ' data-overnight="1"' : '') +
@@ -7482,7 +7514,9 @@
     // The row SET is part of the signature, not just each row's contents — scheduling the day's only
     // Finance item has to add a whole row, which a contents-only signature wouldn't notice.
     var sig = homeTlSelectedDate + "|" + rows.map(function(r){
-      return r.area + ">" + r.blocks.map(function(b){ return b.id + ":" + b.start + ":" + b.width + ":" + (b.done ? 1 : 0); }).join(",");
+      // colorRgb is in the signature so re-tagging an item's SECONDARY areas — which changes its
+      // blended colour without moving it — still forces a repaint.
+      return r.area + ">" + r.blocks.map(function(b){ return b.id + ":" + b.start + ":" + b.width + ":" + (b.done ? 1 : 0) + ":" + (b.colorRgb ? b.colorRgb.r + "," + b.colorRgb.g + "," + b.colorRgb.b : ""); }).join(",");
     }).join("|");
     var dock = document.getElementById("homeTimelineDock");
     if(dock.dataset.sig !== sig){
@@ -7533,7 +7567,7 @@
   function homeTlUnscheduledItems(){
     var items = state.actions
       .filter(function(a){ return a.date === homeTlSelectedDate && !a.timeOfDay && !a.done; })
-      .map(function(a){ return { kind:"action", id:a.id, title:a.title, area:actionCategory(a) }; });
+      .map(function(a){ return { kind:"action", id:a.id, title:a.title, area:actionCategory(a), areaColor:actionMapColor(a, null) }; });
     state.habits.forEach(function(h){
       if(!habitInstanceUnscheduled(h, homeTlSelectedDate)) return;
       items.push({ kind:"habit-instance", id:h.id, title:h.title, area:habitCategory(h) });
@@ -7544,11 +7578,12 @@
     var list = document.getElementById("homeTlUnscheduledList");
     if(!list) return;
     var items = homeTlUnscheduledItems();
-    var sig = homeTlSelectedDate + "|" + items.map(function(it){ return it.kind + it.id + ":" + (it.area || "") + ":" + it.title; }).join(",");
+    var sig = homeTlSelectedDate + "|" + items.map(function(it){ return it.kind + it.id + ":" + (it.area || "") + ":" + (it.areaColor || "") + ":" + it.title; }).join(",");
     if(list.dataset.sig === sig) return;
     list.dataset.sig = sig;
     list.innerHTML = items.length ? items.map(function(it){
-      return '<div class="home-tl-unscheduled-item' + (it.area ? ' ' + it.area : '') + '" draggable="true" data-kind="' + it.kind + '" data-id="' + it.id + '" title="' + escapeHtml(it.title) + ' — drag onto the timeline to schedule it">' + (it.kind === "habit-instance" ? "↻ " : "") + escapeHtml(it.title) + '</div>';
+      var s = it.areaColor ? ' style="border-left-color:' + it.areaColor + ';"' : '';
+      return '<div class="home-tl-unscheduled-item' + (it.area ? ' ' + it.area : '') + '"' + s + ' draggable="true" data-kind="' + it.kind + '" data-id="' + it.id + '" title="' + escapeHtml(it.title) + ' — drag onto the timeline to schedule it">' + (it.kind === "habit-instance" ? "↻ " : "") + escapeHtml(it.title) + '</div>';
     }).join("") : '<div class="home-tl-unscheduled-empty">all timed ✓</div>';
   }
   // The fixed habit menu beside the unscheduled panel: every habit, always in the same order, so it
@@ -7733,7 +7768,7 @@
     var located = state.actions.filter(function(a){ return a.date === day && a.locationLat != null && a.locationLng != null; });
     // area is part of the signature because it now drives the marker color — re-categorising an
     // action has to trigger a redraw, not just renaming or moving it.
-    var sig = day + "|" + located.map(function(a){ return a.id + ":" + a.locationLat + ":" + a.locationLng + ":" + (a.timeOfDay || "") + ":" + (actionCategory(a) || "") + ":" + a.title; }).join("|");
+    var sig = day + "|" + located.map(function(a){ return a.id + ":" + a.locationLat + ":" + a.locationLng + ":" + (a.timeOfDay || "") + ":" + actionCategories(a).join("+") + ":" + a.title; }).join("|");
     if(sig === homeMapMarkersSig) return;
     homeMapMarkersSig = sig;
     homeMapMarkers.clearLayers();
@@ -7743,7 +7778,7 @@
     // check above), so it doesn't fight a user's own manual pan/zoom on every unrelated re-render.
     var bounds = L.latLngBounds([[HOME_MAP_BASE_LAT, HOME_MAP_BASE_LON]]);
     located.forEach(function(a){
-      var aColor = areaMapColor(actionCategory(a), "#2DD4BF");
+      var aColor = actionMapColor(a, "#2DD4BF");
       var marker = L.circleMarker([a.locationLat, a.locationLng], { radius:6, color:aColor, weight:1.5, opacity:0.9, fillColor:aColor, fillOpacity:0.55 });
       marker.bindPopup('<div class="loc-city-popup"><b>' + escapeHtml(a.title || "Untitled") + '</b>' + (a.timeOfDay ? '<br>' + escapeHtml(fmtTimeOfDay(a.timeOfDay)) : '') + '</div>');
       marker.on("click", function(){ editAction(a.id); });
@@ -8047,7 +8082,7 @@
     // own material color (see rebuildGraph) when the item has more than one.
     state.projects.forEach(function(p){ nodes.push({ type:"project", id:p.id, label:p.title, area:projectCategory(p), colorRgb:mergedAreaColorRgb(projectCategories(p)) }); });
     state.habits.forEach(function(h){ nodes.push({ type:"habit", id:h.id, label:h.title, area:habitCategory(h) }); });
-    if(homeShowActions) state.actions.forEach(function(a){ nodes.push({ type:"action", id:a.id, label:a.title, area:actionCategory(a) }); });
+    if(homeShowActions) state.actions.forEach(function(a){ nodes.push({ type:"action", id:a.id, label:a.title, area:actionCategory(a), colorRgb:actionAreaColorRgb(a) }); });
     if(homeShowNotes) state.journal.forEach(function(n){ nodes.push({ type:"journal", id:n.id, label:(n.title || n.text || "").slice(0,40) || "note", area:noteCategory(n), colorRgb:mergedAreaColorRgb(noteCategories(n)) }); });
     var index = {};
     nodes.forEach(function(n, i){ index[n.type + ":" + n.id] = i; });
@@ -8096,7 +8131,7 @@
       state.projects.map(function(p){ return p.id + projectCategories(p).join("+") + p.title; }).join(","),
       state.habits.map(function(h){ return h.id + (habitCategory(h) || "") + h.title; }).join(","),
       (state.wbConnections || []).length,
-      homeShowActions ? state.actions.map(function(a){ return a.id + (actionCategory(a) || "") + a.title; }).join(",") : "0",
+      homeShowActions ? state.actions.map(function(a){ return a.id + actionCategories(a).join("+") + a.title; }).join(",") : "0",
       homeShowNotes ? state.journal.map(function(n){ return n.id + noteCategories(n).join("+"); }).join(",") : "0",
       homeGraphSizeMode
     ].join("|");
@@ -10136,9 +10171,9 @@
     var obj = entityPageObj();
     if(!obj){ closeEntityPage(); return; }
     var cat = entityPageCategory(obj);
-    // A project can have more than one area — its header icon gets the true blend across all of
-    // them (an action has just one, so this is a no-op there).
-    var merged = entityPage.kind === "project" ? mergedAreaColorCss(projectCategories(obj)) : null;
+    // Both kinds can span several areas now — the header icon gets the true blend, which for an
+    // action weights its primary area double (actionAreaColorCss).
+    var merged = entityPage.kind === "project" ? mergedAreaColorCss(projectCategories(obj)) : actionAreaColorCss(obj);
     var iconStyle = "width:34px;max-width:34px;" + (merged ? "background:" + merged.bg + ";border-color:" + merged.c + ";" : "");
     document.getElementById("entityPageTitleRow").innerHTML =
       '<span class="future-gallery-icon-wrap' + (cat ? " " + cat : "") + '" style="' + iconStyle + '">' +
@@ -10331,7 +10366,9 @@
     var idx = Math.max(0, ganttDayIndex(start, a.date || today));
     var blocked = ganttActionBlocked(a);
     var topStyle = topOffset != null ? ("top:" + (6 + topOffset) + "px;") : "";
-    return '<div class="gantt-bar' + (cat ? " " + cat : "") + (a.done ? " done" : "") + (undated ? " undated" : "") + (blocked ? " blocked" : "") + (a.id === selfId ? " gantt-bar-self" : "") + '" data-kind="action" data-id="' + a.id + '" data-gantt-action="' + a.id + '" style="left:' + (idx * GANTT_COL_W) + 'px;width:' + (GANTT_COL_W * 2 - 4) + 'px;' + topStyle + '" title="' + escapeHtml(a.title) + (undated ? " — no date yet (drag to schedule)" : " — " + fmtDate(a.date)) + (blocked ? " — blocked: a required action isn’t done yet" : "") + '">' +
+    var aMerged = actionAreaColorCss(a);
+    var colorStyle = aMerged ? ("background:" + aMerged.bg + ";border-color:" + aMerged.c + ";") : "";
+    return '<div class="gantt-bar' + (cat ? " " + cat : "") + (a.done ? " done" : "") + (undated ? " undated" : "") + (blocked ? " blocked" : "") + (a.id === selfId ? " gantt-bar-self" : "") + '" data-kind="action" data-id="' + a.id + '" data-gantt-action="' + a.id + '" style="left:' + (idx * GANTT_COL_W) + 'px;width:' + (GANTT_COL_W * 2 - 4) + 'px;' + topStyle + colorStyle + '" title="' + escapeHtml(a.title) + (undated ? " — no date yet (drag to schedule)" : " — " + fmtDate(a.date)) + (blocked ? " — blocked: a required action isn’t done yet" : "") + '">' +
       escapeHtml(a.title) +
       '<span class="gantt-link-handle" data-link-from="' + a.id + '" title="drag onto another action to create a dependency">◉</span>' +
     '</div>';
@@ -11260,7 +11297,11 @@
       var tiles = items.map(function(a){
         var overdue = !a.done && a.date && a.date < todayStr();
         var tCat = actionCategory(a);
-        return '<div class="ms-tile' + (tCat ? ' ' + tCat : '') + '" data-kind="action" data-id="' + a.id + '">' +
+        // Class stays (it still names the primary area, which is what the section grouping and any
+        // other selector keys off); the inline style carries the real blended colour and wins.
+        var tMerged = actionAreaColorCss(a);
+        var tStyle = tMerged ? ' style="border-left-color:' + tMerged.c + ';background:' + tMerged.bg + ';"' : '';
+        return '<div class="ms-tile' + (tCat ? ' ' + tCat : '') + '"' + tStyle + ' data-kind="action" data-id="' + a.id + '">' +
           '<div class="ms-tile-top">' +
             '<button class="ms-check' + (a.done?' done':'') + '" data-action="toggle-action" data-id="' + a.id + '" aria-label="Toggle done"></button>' +
             '<span class="ms-tile-title' + (a.done?' done':'') + '">' + escapeHtml(a.title) + '</span>' +
@@ -11284,7 +11325,9 @@
     document.getElementById("actionList").innerHTML = list.map(function(a){
       var overdue = !a.done && a.date && a.date < todayStr();
       var cat = actionCategory(a);
-      return '<div class="goal-card' + (cat ? ' ' + cat : '') + '" data-kind="action" data-id="' + a.id + '" draggable="true">' +
+      var aMerged = actionAreaColorCss(a);
+      var aStyle = aMerged ? ' style="border-left-color:' + aMerged.c + ';background:linear-gradient(135deg, ' + aMerged.bg + ', var(--bg-raised) 55%);"' : '';
+      return '<div class="goal-card' + (cat ? ' ' + cat : '') + '"' + aStyle + ' data-kind="action" data-id="' + a.id + '" draggable="true">' +
         '<div class="card-tab">' +
           '<span class="prio-badge ' + a.priority + '">' + a.priority + '</span><span class="sep">·</span>' +
           '<span class="parent-tag">' + (a.parentType === "none" ? "standalone" : (a.parentType + ': <b>' + escapeHtml(parentTitle(a)) + '</b>')) + '</span>' +
@@ -11775,7 +11818,7 @@
     html += state.goals.map(function(g){ return wbNodeHtml("goal", g, g.category); }).join("");
     html += state.projects.map(function(p){ return wbNodeHtml("project", p, projectCategory(p), mergedAreaColorCss(projectCategories(p))); }).join("");
     html += state.habits.map(function(h){ return wbNodeHtml("habit", h, habitCategory(h)); }).join("");
-    if(wbShowActions) html += state.actions.map(function(a){ return wbNodeHtml("action", a, actionCategory(a)); }).join("");
+    if(wbShowActions) html += state.actions.map(function(a){ return wbNodeHtml("action", a, actionCategory(a), actionAreaColorCss(a)); }).join("");
     overlay.innerHTML = html;
     rebuildWbNodeElCache(overlay);
     renderWbConnections();
@@ -13710,7 +13753,7 @@
       state.actions.forEach(function(a){
         if(a.locationLat == null || a.locationLng == null) return;
         // Dot color mirrors the map marker's — area-derived — so the sidebar and the map agree.
-        items.push({ kind:"action", id:a.id, label:a.title || "Untitled", sub:a.date || "", lat:a.locationLat, lng:a.locationLng, color:areaMapColor(actionCategory(a), "#2DD4BF") });
+        items.push({ kind:"action", id:a.id, label:a.title || "Untitled", sub:a.date || "", lat:a.locationLat, lng:a.locationLng, color:actionMapColor(a, "#2DD4BF") });
       });
       state.habits.forEach(function(h){
         if(h.locationLat == null || h.locationLng == null) return;
@@ -13887,7 +13930,7 @@
     locActionsLayer.clearLayers();
     state.actions.forEach(function(a){
       if(a.locationLat == null || a.locationLng == null) return;
-      var color = areaMapColor(actionCategory(a), "#2DD4BF");
+      var color = actionMapColor(a, "#2DD4BF");
       var marker = L.circleMarker([a.locationLat, a.locationLng], { radius:6, color:color, weight:1.5, opacity:0.85, fillColor:color, fillOpacity:0.5 });
       marker.bindPopup('<div class="loc-city-popup"><b>' + escapeHtml(a.title || "Untitled") + '</b>' + (a.date ? "<br>" + escapeHtml(a.date) : "") + '</div>');
       marker.on("click", function(){ editAction(a.id); });
@@ -16732,7 +16775,7 @@
   function todayUnscheduledItems(){
     var items = state.actions
       .filter(function(a){ return a.date === todaySelectedDate && !a.timeOfDay && !a.done; })
-      .map(function(a){ return { kind:"action", id:a.id, title:a.title, area:actionCategory(a), priority:a.priority }; });
+      .map(function(a){ return { kind:"action", id:a.id, title:a.title, area:actionCategory(a), areaColor:actionMapColor(a, null), priority:a.priority }; });
     state.habits.forEach(function(h){
       if(!habitInstanceUnscheduled(h, todaySelectedDate)) return;
       items.push({ kind:"habit-instance", id:h.id, title:h.title, area:habitCategory(h), priority:h.priority });
@@ -16873,7 +16916,7 @@
     var chipDraggable = todayVerticalActive() ? "false" : "true";
     list.innerHTML = items.length ? items.map(function(it){
       // ↻ marks a habit occurrence, so it reads as recurring rather than a one-off task at a glance.
-      return '<div class="today-unscheduled-item' + (it.area ? ' ' + it.area : '') + '" draggable="' + chipDraggable + '" data-kind="' + it.kind + '" data-id="' + it.id + '" title="' + escapeHtml(it.title) + ' — drag onto the timeline to schedule it">' +
+      return '<div class="today-unscheduled-item' + (it.area ? ' ' + it.area : '') + '"' + (it.areaColor ? ' style="border-left-color:' + it.areaColor + ';"' : '') + ' draggable="' + chipDraggable + '" data-kind="' + it.kind + '" data-id="' + it.id + '" title="' + escapeHtml(it.title) + ' — drag onto the timeline to schedule it">' +
         '<span class="prio-badge ' + it.priority + '">' + it.priority + '</span>' +
         '<span class="today-unscheduled-item-title">' + (it.kind === "habit-instance" ? "↻ " : "") + escapeHtml(it.title) + '</span>' +
       '</div>';
@@ -17343,8 +17386,12 @@
   // resizable: true = both edges, "right" = right edge only (used for the overnight tail — its left
   // edge is pinned to midnight, not a real edge of the item, so only the wake/end side is
   // draggable), falsy = no handle at all (notes have no duration field).
-  function todayTimelineBlockHtml(kind, id, date, left, width, title, label, area, extraClass, overnight, resizable, iconHtml){
+  // colorRgb (optional, last): the item's own blended area colour, overriding the class-based single-
+  // area one — an action weights its primary area double across its secondaries (actionAreaColorRgb).
+  // Omitted by callers whose item only ever has one area, which then keep the class's colour exactly.
+  function todayTimelineBlockHtml(kind, id, date, left, width, title, label, area, extraClass, overnight, resizable, iconHtml, colorRgb){
     var cls = (area ? " " + area : "") + (extraClass || "");
+    var colorStyle = colorRgb ? ("background:rgba(" + colorRgb.r + "," + colorRgb.g + "," + colorRgb.b + ",0.14);border-color:rgb(" + colorRgb.r + "," + colorRgb.g + "," + colorRgb.b + ");") : "";
     var isDone = (" " + (extraClass || "") + " ").indexOf(" done ") !== -1;
     var handles = "";
     if(resizable === true) handles = '<span class="timeline-block-resize timeline-block-resize-left" data-resize-handle="left"></span>';
@@ -17358,7 +17405,7 @@
     // --tls/--tlw duplicate left/width as custom properties: the portrait-phone CSS neutralizes the
     // inline left/width and maps the same fractions onto top/height instead, turning the whole
     // timeline vertical without a second code path (see the TODAY_VERTICAL_QUERY media block).
-    return '<div class="timeline-block' + cls + '" data-kind="' + kind + '" data-id="' + id + '" data-date="' + date + '"' + (overnight ? ' data-overnight="1"' : '') + ' style="left:' + left + '%; width:' + width + '%; --tls:' + left + '; --tlw:' + width + '; z-index:' + z + ';" title="' + escapeHtml(title) + '">' +
+    return '<div class="timeline-block' + cls + '" data-kind="' + kind + '" data-id="' + id + '" data-date="' + date + '"' + (overnight ? ' data-overnight="1"' : '') + ' style="left:' + left + '%; width:' + width + '%; --tls:' + left + '; --tlw:' + width + '; z-index:' + z + ';' + colorStyle + '" title="' + escapeHtml(title) + '">' +
       handles + (iconHtml || "") + doneBtn + '<span class="timeline-block-title">' + label + '</span></div>';
   }
   // The one way any handler moves/resizes a Present-timeline block: writes the desktop styles AND
@@ -17394,7 +17441,7 @@
     state.actions.filter(function(a){ return a.date === todaySelectedDate && !!a.timeOfDay && actionCategory(a) === area; }).forEach(function(a){
       var startFrac = timeToFraction(a.timeOfDay) * 100;
       var widthFrac = Math.max(1.2, ((a.durationMinutes || 15) / 1440) * 100);
-      html += todayTimelineBlockHtml("action", a.id, todaySelectedDate, startFrac, widthFrac, a.title + " — " + fmtTimeOfDay(a.timeOfDay), escapeHtml(a.title), area, (a.done ? " done" : "") + (a.priority === "P0" ? " p0" : ""), false, true);
+      html += todayTimelineBlockHtml("action", a.id, todaySelectedDate, startFrac, widthFrac, a.title + " — " + fmtTimeOfDay(a.timeOfDay), escapeHtml(a.title), area, (a.done ? " done" : "") + (a.priority === "P0" ? " p0" : ""), false, true, null, actionAreaColorRgb(a));
     });
     // Same overnight-spillover treatment as habits, for actions scheduled yesterday with a duration
     // that runs past midnight.
@@ -17402,7 +17449,7 @@
       var spillMin = overnightSpilloverMinutes(a.timeOfDay, a.durationMinutes);
       if(!spillMin) return;
       var widthFrac = spillMin / 1440 * 100;
-      html += todayTimelineBlockHtml("action", a.id, yesterday, 0, widthFrac, a.title + " — continued from " + fmtTimeOfDay(a.timeOfDay) + " yesterday", "‹ " + escapeHtml(a.title), area, (a.done ? " done" : "") + (a.priority === "P0" ? " p0" : ""), true, "right");
+      html += todayTimelineBlockHtml("action", a.id, yesterday, 0, widthFrac, a.title + " — continued from " + fmtTimeOfDay(a.timeOfDay) + " yesterday", "‹ " + escapeHtml(a.title), area, (a.done ? " done" : "") + (a.priority === "P0" ? " p0" : ""), true, "right", null, actionAreaColorRgb(a));
     });
     // Notes are a point in time, not a span — no duration field, so every block is the same small
     // fixed width, positioned by time_of_day.
@@ -18149,7 +18196,9 @@
     document.getElementById("todayActionsList").innerHTML = actionsToday.map(function(a){
       var aCat = actionCategory(a);
       var aCatClass = aCat ? " " + aCat : "";
-      return '<div class="today-row' + aCatClass + '" data-kind="action" data-id="' + a.id + '">' +
+      var aMerged = actionAreaColorCss(a);
+      var aStyle = aMerged ? ' style="border-left-color:' + aMerged.c + ';"' : '';
+      return '<div class="today-row' + aCatClass + '"' + aStyle + ' data-kind="action" data-id="' + a.id + '">' +
         '<button class="ms-check' + (a.done?' done':'') + '" data-action="toggle-action" data-id="' + a.id + '" aria-label="Toggle done"></button>' +
         '<span class="today-row-title' + (a.done?' done':'') + '">' + escapeHtml(a.title) + '</span>' +
         '<span class="prio-badge ' + a.priority + '">' + a.priority + '</span>' +
@@ -20814,17 +20863,18 @@
     var items = [];
     state.projects.forEach(function(p){
       if(!p.done) return;
-      items.push({ kind:"project", id:p.id, title:p.title || "Untitled", area:projectCategory(p), sub:p.due ? ("due " + fmtDate(p.due)) : "" });
+      var pMerged = mergedAreaColorCss(projectCategories(p));
+      items.push({ kind:"project", id:p.id, title:p.title || "Untitled", area:projectCategory(p), areaColor:pMerged ? pMerged.c : null, sub:p.due ? ("due " + fmtDate(p.due)) : "" });
     });
     state.actions.forEach(function(a){
       if(!a.done) return;
-      items.push({ kind:"action", id:a.id, title:a.title || "Untitled", area:actionCategory(a), sub:a.date ? fmtDate(a.date) : "" });
+      items.push({ kind:"action", id:a.id, title:a.title || "Untitled", area:actionCategory(a), areaColor:actionMapColor(a, null), sub:a.date ? fmtDate(a.date) : "" });
     });
     items.sort(function(a, b){ return a.title.localeCompare(b.title); });
     return items;
   }
   function archiveRowHtml(it){
-    return '<div class="archive-row' + (it.area ? " " + it.area : "") + '" data-kind="' + it.kind + '" data-id="' + it.id + '">' +
+    return '<div class="archive-row' + (it.area ? " " + it.area : "") + '"' + (it.areaColor ? ' style="border-left-color:' + it.areaColor + ';"' : '') + ' data-kind="' + it.kind + '" data-id="' + it.id + '">' +
       '<span class="archive-row-kind">' + it.kind + '</span>' +
       '<div class="archive-row-main"><span class="archive-row-title">' + escapeHtml(it.title) + '</span>' +
       (it.sub ? '<span class="archive-row-sub">' + escapeHtml(it.sub) + '</span>' : '') + '</div>' +
