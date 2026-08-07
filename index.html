@@ -2175,6 +2175,37 @@
   /* Note-type badge on cards — only the non-default kinds (reference/idea) wear one; reflections
      are the unmarked norm. Quiet by design: it identifies, it doesn't shout. */
   .note-type-badge{ flex-shrink:0; font-family:var(--mono); font-size:9px; letter-spacing:0.06em; text-transform:uppercase; padding:1px 6px; border-radius:var(--radius-sm); border:1px solid var(--border-bright); background:var(--bg-inset); color:var(--text-dim); margin-left:auto; margin-right:6px; }
+  /* ===== AI project planner modal ===== */
+  .ai-plan-modal{ width:min(780px, 94vw); max-height:88vh; display:flex; flex-direction:column; }
+  .ai-plan-modal .modal-inner{ overflow-y:auto; }
+  .ai-plan-modal textarea{ width:100%; box-sizing:border-box; resize:vertical; background:var(--bg-inset); border:1px solid var(--border-bright); border-radius:var(--radius); padding:8px 10px; font-family:var(--sans); font-size:13px; color:var(--text); }
+  .ai-plan-verdict{ font-family:var(--mono); font-size:11.5px; padding:8px 12px; border-radius:var(--radius); border:1px solid var(--border-bright); margin-bottom:10px; }
+  .ai-plan-verdict.comfortable{ background:var(--ok-bg); border-color:var(--ok); color:var(--ok); }
+  .ai-plan-verdict.tight{ background:var(--warn-bg); border-color:var(--warn); color:var(--warn); }
+  .ai-plan-verdict.unrealistic{ background:var(--danger-bg); border-color:var(--danger); color:var(--danger); }
+  .ai-plan-summary{ font-size:12.5px; color:var(--text-dim); margin:0 0 10px; }
+  .ai-plan-question{ font-family:var(--mono); font-size:11px; color:var(--warn); margin:0 0 6px; }
+  .ai-plan-group{ margin-bottom:12px; }
+  .ai-plan-group-head{ font-family:var(--mono); font-size:9.5px; letter-spacing:0.14em; text-transform:uppercase; color:var(--text-dim); margin-bottom:5px; }
+  .ai-plan-row{ display:flex; align-items:center; gap:7px; padding:5px 7px; border:1px solid var(--border); border-left:3px solid var(--border-bright); border-radius:6px; background:var(--bg-inset); margin-bottom:5px; }
+  .ai-plan-row input[type="checkbox"]{ flex:0 0 auto; }
+  .ai-plan-row .apr-title{ flex:1; min-width:120px; background:none; border:none; border-bottom:1px dashed transparent; font-family:var(--sans); font-size:12.5px; color:var(--text); padding:2px 0; }
+  .ai-plan-row .apr-title:focus{ outline:none; border-bottom-color:var(--accent-dim); }
+  .ai-plan-row input[type="date"]{ flex:0 0 auto; width:118px; background:var(--bg-raised); border:1px solid var(--border); border-radius:4px; font-family:var(--mono); font-size:10.5px; color:var(--text); padding:2px 4px; }
+  .ai-plan-row .apr-dur{ flex:0 0 auto; width:52px; background:var(--bg-raised); border:1px solid var(--border); border-radius:4px; font-family:var(--mono); font-size:10.5px; color:var(--text); padding:2px 4px; }
+  .ai-plan-row .apr-meta{ flex:0 0 auto; font-family:var(--mono); font-size:9.5px; color:var(--text-faint); }
+  .ai-plan-row.milestone{ border-left-color:var(--accent); }
+  .ai-plan-row.unchecked{ opacity:0.5; }
+  .ai-plan-why{ flex-basis:100%; font-size:10.5px; color:var(--text-faint); margin:2px 0 0 24px; }
+  .ai-plan-row{ flex-wrap:wrap; }
+  .ai-plan-side-item{ font-family:var(--mono); font-size:10.5px; color:var(--text-dim); padding:2px 0; }
+  .ai-plan-side-item b{ color:var(--text); }
+  .ai-plan-side-item.sev-high{ color:var(--danger); }
+  .ai-plan-side-item.sev-medium{ color:var(--warn); }
+  .ai-plan-dropped{ font-family:var(--mono); font-size:10px; color:var(--text-faint); border-top:1px dashed var(--border); margin-top:6px; padding-top:6px; }
+  #aiPlanGenerateBtn.loading{ opacity:0.6; cursor:wait; }
+  /* Milestones everywhere else: the diamond prefix is added in JS (◆), this just tints Gantt bars. */
+  .gantt-bar.gantt-milestone{ border-style:double; border-width:3px; font-weight:600; }
 </style>
 </head>
 <body>
@@ -2554,7 +2585,10 @@
           <h1 id="plannerH1">planner<span class="path-sep">/</span>areas</h1>
           <p class="subhead" id="plannerSubhead">Every goal, project, habit, and action — grouped by the life area it belongs to.</p>
         </div>
-        <button class="btn btn-accent" id="panelAddBtn" style="display:none;">+ new goal</button>
+        <div style="display:flex; gap:8px;">
+          <button class="btn" id="aiPlanOpenBtn" type="button" title="Describe a project and let the AI draft milestones, actions and dates around your existing commitments — nothing is created until you approve it">✨ plan with AI</button>
+          <button class="btn btn-accent" id="panelAddBtn" style="display:none;">+ new goal</button>
+        </div>
       </div>
 
       <div class="view-toggle" id="plannerTabs">
@@ -4077,6 +4111,49 @@
   </div>
 </div>
 
+<!-- ===== AI PROJECT PLANNER MODAL ===== -->
+<!-- Two phases in one modal: the brief (what/when/how much time you actually have), then the
+     model's proposal as a review sheet — capacity verdict up top, every proposed row individually
+     tickable and editable, habits UNTICKED by default (a recurring claim on the user's life needs
+     opting into, not out of). Nothing is written until "create selected". -->
+<div class="modal-overlay" id="aiPlanModalOverlay" hidden>
+  <div class="modal ai-plan-modal">
+    <div class="modal-head"><span class="dot g"></span><h2 id="aiPlanModalTitle">plan_with_ai.json</h2></div>
+    <div class="modal-inner">
+      <div id="aiPlanBriefPhase">
+        <div class="field"><label for="aiPlanBriefInput">describe the project — what, why, constraints, anything that matters</label>
+          <textarea id="aiPlanBriefInput" rows="6" placeholder="e.g. Rebuild my portfolio site and launch it before the conference. Needs a case-study page per project, and I want feedback from Sam before it goes live."></textarea>
+        </div>
+        <div class="field-row">
+          <div class="field"><label for="aiPlanDueInput">target date (optional)</label><input type="date" id="aiPlanDueInput"></div>
+          <div class="field"><label for="aiPlanHoursInput">hours you can realistically give per day</label><input type="number" id="aiPlanHoursInput" min="0.5" max="16" step="0.5" value="3"></div>
+          <div class="field"><label for="aiPlanGoalSelect">parent goal (optional)</label><select id="aiPlanGoalSelect"></select></div>
+        </div>
+        <p class="panel-hint" id="aiPlanCapacityPreview"></p>
+        <div class="modal-actions">
+          <button class="btn" id="aiPlanCancelBtn" type="button">cancel</button>
+          <button class="btn btn-accent" id="aiPlanGenerateBtn" type="button">✨ draft a plan</button>
+        </div>
+      </div>
+      <div id="aiPlanReviewPhase" hidden>
+        <div class="ai-plan-verdict" id="aiPlanVerdict"></div>
+        <p class="ai-plan-summary" id="aiPlanSummary"></p>
+        <div id="aiPlanQuestions"></div>
+        <div class="ai-plan-group" id="aiPlanProjectRow"></div>
+        <div class="ai-plan-group"><div class="ai-plan-group-head">milestones</div><div id="aiPlanMilestoneRows"></div></div>
+        <div class="ai-plan-group"><div class="ai-plan-group-head">actions</div><div id="aiPlanActionRows"></div></div>
+        <div class="ai-plan-group" id="aiPlanHabitGroup"><div class="ai-plan-group-head">proposed habits — a recurring commitment, so unticked until you opt in</div><div id="aiPlanHabitRows"></div></div>
+        <div class="ai-plan-group" id="aiPlanSide"></div>
+        <div class="modal-actions">
+          <button class="btn" id="aiPlanBackBtn" type="button">‹ edit brief</button>
+          <button class="btn" id="aiPlanDiscardBtn" type="button">discard</button>
+          <button class="btn btn-accent" id="aiPlanCommitBtn" type="button">create selected</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ===== PERSON MODAL ===== -->
 <div class="modal-overlay" id="personModalOverlay" hidden>
   <div class="modal">
@@ -4994,6 +5071,7 @@
     if(forgetBtn && confirm("Permanently delete this from trash? This cannot be undone.")) await forgetTrashItem(forgetBtn.dataset.id);
   });
   var DROPPED_FIELD_LABELS = {
+    is_milestone: "milestone flag", plan_json: "stored AI plan",
     health_override: "health status", health_pct_override: "health %",
     icon: "icon image", position: "custom order",
     whiteboard_x: "graph position", whiteboard_y: "graph position",
@@ -5254,12 +5332,12 @@
     // the migration runs and real position values exist.
     state.goals = (results[0].data || []).map(function(r){ return { id:r.id, title:r.title, priority:r.priority, category:r.category, secondaryCategories:r.secondary_categories || [], secondaryGoalIds:r.secondary_goal_ids || [], due:r.due, ongoing:r.ongoing, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), notesMd:r.notes_md||"", linkedPeopleIds:r.linked_people_ids||[], filesSlug:r.files_slug||"" }; });
     state.goals.sort(function(a,b){ return a.position - b.position; });
-    state.projects = (results[1].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), categories:r.categories||[], notesMd:r.notes_md||"", linkedPeopleIds:r.linked_people_ids||[], filesSlug:r.files_slug||"" }; });
+    state.projects = (results[1].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), categories:r.categories||[], planJson:r.plan_json||null, notesMd:r.notes_md||"", linkedPeopleIds:r.linked_people_ids||[], filesSlug:r.files_slug||"" }; });
     state.projects.sort(function(a,b){ return a.position - b.position; });
     state.habits = (results[2].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || null, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [], extraDates:r.extra_dates || [], customIntervalDays:r.custom_interval_days||null, monthDay:r.month_day||null, icon:r.icon||null, instanceOverrides:r.instance_overrides || {},
       locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), linkedPeopleIds:r.linked_people_ids||[] }; });
     state.habits.sort(function(a,b){ return a.position - b.position; });
-    state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null, secondaryCategories:r.secondary_categories || [],
+    state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null, secondaryCategories:r.secondary_categories || [], isMilestone:!!r.is_milestone,
       locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), notesMd:r.notes_md||"", dependencies:r.dependencies||[], linkedPeopleIds:r.linked_people_ids||[] }; });
     state.actions.sort(function(a,b){ return a.position - b.position; });
     state.journal = (results[4].data || []).map(function(r){ return { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, categories:r.categories||[], noteType:r.note_type||"reflection", recordingId:r.recording_id||null, linkedObjects:r.linked_objects||[], sentiment:r.sentiment||[], title:r.title||"", priority:r.priority||null, createdAt:r.created_at||null }; });
@@ -9274,7 +9352,7 @@
   }
   function wbConnPayload(c){ return { id:c.id, from_type:c.fromType, from_id:c.fromId, to_type:c.toType, to_id:c.toId }; }
   function projectPayload(snapshot){
-    return { id:snapshot.id, goal_id:snapshot.goalId, secondary_goal_ids:snapshot.secondaryGoalIds, title:snapshot.title, priority:snapshot.priority, due:snapshot.due, hours:snapshot.hours, done:snapshot.done, position:snapshot.position, health_override:snapshot.healthOverride, health_pct_override:snapshot.healthPctOverride, icon:snapshot.icon, whiteboard_x:snapshot.wbX, whiteboard_y:snapshot.wbY, categories:snapshot.categories, notes_md:snapshot.notesMd, files_slug:snapshot.filesSlug };
+    return { id:snapshot.id, goal_id:snapshot.goalId, secondary_goal_ids:snapshot.secondaryGoalIds, title:snapshot.title, priority:snapshot.priority, due:snapshot.due, hours:snapshot.hours, done:snapshot.done, position:snapshot.position, health_override:snapshot.healthOverride, health_pct_override:snapshot.healthPctOverride, icon:snapshot.icon, whiteboard_x:snapshot.wbX, whiteboard_y:snapshot.wbY, categories:snapshot.categories, plan_json:snapshot.planJson||null, notes_md:snapshot.notesMd, files_slug:snapshot.filesSlug };
   }
   async function deleteProject(id){
     var p = state.projects.find(function(x){ return x.id === id; });
@@ -9324,7 +9402,7 @@
   function actionPayload(snapshot){
     // type:"Task" is legacy padding for the not-yet-dropped NOT NULL column, so undo/trash restores
     // can re-insert — see LEGACY_SILENT_DROP_FIELDS and migration_drop_action_type.sql.
-    return { id:snapshot.id, parent_type:snapshot.parentType, parent_id:snapshot.parentId, title:snapshot.title, priority:snapshot.priority, date:snapshot.date, done:snapshot.done, position:snapshot.position, time_of_day:snapshot.timeOfDay, duration_minutes:snapshot.durationMinutes, category:snapshot.category, secondary_categories:snapshot.secondaryCategories, type:"Task",
+    return { id:snapshot.id, parent_type:snapshot.parentType, parent_id:snapshot.parentId, title:snapshot.title, priority:snapshot.priority, date:snapshot.date, done:snapshot.done, position:snapshot.position, time_of_day:snapshot.timeOfDay, duration_minutes:snapshot.durationMinutes, category:snapshot.category, secondary_categories:snapshot.secondaryCategories, is_milestone:!!snapshot.isMilestone, type:"Task",
       location_address:snapshot.locationAddress, location_lat:snapshot.locationLat, location_lng:snapshot.locationLng, notes_md:snapshot.notesMd, dependencies:snapshot.dependencies };
   }
   async function deleteAction(id){
@@ -10505,8 +10583,8 @@
     var topStyle = topOffset != null ? ("top:" + (6 + topOffset) + "px;") : "";
     var aMerged = actionAreaColorCss(a);
     var colorStyle = aMerged ? ("background:" + aMerged.bg + ";border-color:" + aMerged.c + ";") : "";
-    return '<div class="gantt-bar' + (cat ? " " + cat : "") + (a.done ? " done" : "") + (undated ? " undated" : "") + (blocked ? " blocked" : "") + (a.id === selfId ? " gantt-bar-self" : "") + '" data-kind="action" data-id="' + a.id + '" data-gantt-action="' + a.id + '" style="left:' + (idx * GANTT_COL_W) + 'px;width:' + (GANTT_COL_W * 2 - 4) + 'px;' + topStyle + colorStyle + '" title="' + escapeHtml(a.title) + (undated ? " — no date yet (drag to schedule)" : " — " + fmtDate(a.date)) + (blocked ? " — blocked: a required action isn’t done yet" : "") + '">' +
-      escapeHtml(a.title) +
+    return '<div class="gantt-bar' + (cat ? " " + cat : "") + (a.isMilestone ? " gantt-milestone" : "") + (a.done ? " done" : "") + (undated ? " undated" : "") + (blocked ? " blocked" : "") + (a.id === selfId ? " gantt-bar-self" : "") + '" data-kind="action" data-id="' + a.id + '" data-gantt-action="' + a.id + '" style="left:' + (idx * GANTT_COL_W) + 'px;width:' + (GANTT_COL_W * 2 - 4) + 'px;' + topStyle + colorStyle + '" title="' + (a.isMilestone ? "milestone: " : "") + escapeHtml(a.title) + (undated ? " — no date yet (drag to schedule)" : " — " + fmtDate(a.date)) + (blocked ? " — blocked: a required action isn’t done yet" : "") + '">' +
+      (a.isMilestone ? "◆ " : "") + escapeHtml(a.title) +
       '<span class="gantt-link-handle" data-link-from="' + a.id + '" title="drag onto another action to create a dependency">◉</span>' +
     '</div>';
   }
@@ -11442,7 +11520,7 @@
         return '<div class="ms-tile' + (tCat ? ' ' + tCat : '') + '"' + tStyle + ' data-kind="action" data-id="' + a.id + '">' +
           '<div class="ms-tile-top">' +
             '<button class="ms-check' + (a.done?' done':'') + '" data-action="toggle-action" data-id="' + a.id + '" aria-label="Toggle done"></button>' +
-            '<span class="ms-tile-title' + (a.done?' done':'') + '">' + escapeHtml(a.title) + '</span>' +
+            '<span class="ms-tile-title' + (a.done?' done':'') + '">' + (a.isMilestone ? "◆ " : "") + escapeHtml(a.title) + '</span>' +
             '<button class="icon-btn edit" data-action="edit-action" data-id="' + a.id + '" aria-label="Edit action">✎</button>' +
             '<button class="icon-btn" data-action="del-action" data-id="' + a.id + '" aria-label="Delete action">&times;</button>' +
           '</div>' +
@@ -11474,7 +11552,7 @@
         '</div>' +
         '<div class="card-body">' +
           '<div class="goal-body-head">' +
-            '<h3 class="goal-title" style="' + (a.done?'color:var(--text-faint);text-decoration:line-through;':'') + '">' + escapeHtml(a.title) + '</h3>' +
+            '<h3 class="goal-title" style="' + (a.done?'color:var(--text-faint);text-decoration:line-through;':'') + '">' + (a.isMilestone ? "◆ " : "") + escapeHtml(a.title) + '</h3>' +
             '<div class="entity-actions">' +
               '<button class="icon-btn toggle" data-action="toggle-action" data-id="' + a.id + '" aria-label="Toggle done">' + (a.done?'↺':'✓') + '</button>' +
               '<button class="icon-btn edit" data-action="edit-action" data-id="' + a.id + '" aria-label="Edit action">✎</button>' +
@@ -15281,6 +15359,508 @@
   function geminiUrl(model, apiKey){
     return "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + encodeURIComponent(apiKey);
   }
+
+  // ---------------- AI project planner ----------------
+  // Turns a plain-language brief into a dated proposal — project, milestones, actions, optional
+  // habits — grounded in existing commitments. Design contract (see _Memory/ai_project_planner.md):
+  // the AI only ever PROPOSES; nothing touches the database until the user ticks rows and commits.
+  // Capacity numbers are computed here in JS and handed to the model as given facts — the model
+  // reasons about them but never derives them, because arithmetic is the one part it's bad at and
+  // the one part we can do perfectly.
+  // Shares GEMINI_MODEL_MAIN's bucket on purpose (unlike sentiment/auto-fill, which auto-fire per
+  // note): planning is rare, user-triggered, and quality-critical — the strongest model wins over
+  // quota isolation here. Still its own constant so re-pointing stays a one-line change.
+  var GEMINI_MODEL_PLANNER = "gemini-3.5-flash";
+  var PLANNER_RELATION_KINDS = { project:1, goal:1, action:1, habit:1 };
+  var PLANNER_RELATION_TYPES = { supports:1, competes:1, overlaps:1, blocks:1 };
+  // Committed minutes per day over the next 7 days: every habit occurrence (timed or not — an
+  // untimed habit still costs its duration) plus every open action dated that day. Free time is
+  // whatever remains of the user-stated hours/day — a setting, not a magic constant, because the
+  // capacity verdicts are only as honest as this input.
+  function computeWeeklyCapacity(assumedHoursPerDay){
+    var byWeekday = {}, habitMin = 0, actionMin = 0, freeMin = 0;
+    for(var i = 0; i < 7; i++){
+      var d = addDaysToDateStr(todayStr(), i);
+      var wd = new Date(d + "T00:00:00").toLocaleDateString("en-US", { weekday:"short" }).toLowerCase();
+      var committed = 0;
+      state.habits.forEach(function(h){
+        if(!habitOccursOnDate(h, d)) return;
+        var min = habitInstanceFields(h, d).durationMinutes || 15;
+        committed += min; habitMin += min;
+      });
+      state.actions.forEach(function(a){
+        if(a.date !== d || a.done) return;
+        var min = a.durationMinutes || 15;
+        committed += min; actionMin += min;
+      });
+      var free = Math.max(0, assumedHoursPerDay * 60 - committed);
+      byWeekday[wd] = Math.round(free / 6) / 10;
+      freeMin += free;
+    }
+    return {
+      freeHoursPerWeek: Math.round(freeMin / 6) / 10,
+      byWeekday: byWeekday,
+      committedHoursPerWeek: { habits: Math.round(habitMin / 6) / 10, scheduledActions: Math.round(actionMin / 6) / 10 },
+      assumedAvailableHoursPerDay: assumedHoursPerDay
+    };
+  }
+  // Token-bounded snapshot of existing commitments — open items only, hard caps, nothing the
+  // planner can't act on (no note bodies, no sentiment, no locations, no finance).
+  function buildPlannerContext(assumedHoursPerDay){
+    var today = todayStr();
+    var in14 = addDaysToDateStr(today, 14);
+    return {
+      today: today,
+      areas: CATEGORIES.map(function(cat){
+        return { name: cat,
+          openProjects: state.projects.filter(function(p){ return !p.done && projectCategories(p).indexOf(cat) !== -1; }).length,
+          openActions: state.actions.filter(function(a){ return !a.done && actionCategory(a) === cat; }).length,
+          habits: state.habits.filter(function(h){ return habitCategory(h) === cat; }).length };
+      }),
+      goals: state.goals.slice(0, 40).map(function(g){
+        return { id:g.id, title:g.title, area:g.category, due:g.due, ongoing:!!g.ongoing };
+      }),
+      projects: state.projects.filter(function(p){ return !p.done; }).slice(0, 40).map(function(p){
+        return { id:p.id, title:p.title, areas:projectCategories(p), goalId:p.goalId || null, due:p.due,
+          healthPct: projectHealth(p).pct,
+          openActions: state.actions.filter(function(a){ return a.parentType === "project" && a.parentId === p.id && !a.done; }).length };
+      }),
+      habits: state.habits.slice(0, 60).map(function(h){
+        return { id:h.id, title:h.title, area:habitCategory(h), frequency:h.frequency, weekdays:h.weekdays || [],
+          timeOfDay:h.timeOfDay, durationMinutes:h.durationMinutes };
+      }),
+      capacity: computeWeeklyCapacity(assumedHoursPerDay),
+      load: {
+        overdueActions: state.actions.filter(function(a){ return !a.done && a.date && a.date < today; }).length,
+        openActionsNext14Days: state.actions.filter(function(a){ return !a.done && a.date && a.date >= today && a.date <= in14; }).length,
+        p0OpenActions: state.actions.filter(function(a){ return !a.done && a.priority === "P0"; }).length
+      },
+      people: state.people.slice(0, 60).map(function(p){ return { id:p.id, name:p.name }; })
+    };
+  }
+  function buildPlannerPrompt(brief, context){
+    return [
+      "You are the planning collaborator inside a personal planning app. The person using you is planning ONE new project. Your job is to turn their description into a concrete, dated plan that fits the life they already have — not a generic project template.",
+      "You will be given a CONTEXT snapshot of their existing commitments and a BRIEF describing the project. Everything you propose must be consistent with CONTEXT.",
+      "",
+      "## Hard rules",
+      "1. Reply with ONE JSON object and nothing else. No prose, no markdown, no code fences.",
+      "2. Use ONLY these area names: " + CATEGORIES.join(", ") + ".",
+      "3. Reference existing goals, projects, actions, habits and people ONLY by an `id` that appears verbatim in CONTEXT. Never invent an id. If you can't find one, omit the reference.",
+      "4. Do not compute capacity yourself. CONTEXT gives you `capacity.freeHoursPerWeek` and the per-weekday breakdown — treat those numbers as given and reason from them.",
+      "5. Every date is `YYYY-MM-DD`, on or after `today` in CONTEXT.",
+      "",
+      "## How to plan",
+      "- Milestones: 3-7, each a verifiable checkpoint, not a phase label. \"Draft reviewed by Sam\" is a milestone; \"Research phase\" is not. Each needs a date and a one-line `why` explaining what it de-risks.",
+      "- Actions are a day's work or less. If something needs more than ~6 hours, split it. Give each a `durationMinutes` estimate you'd defend.",
+      "- Only real ordering goes in `dependsOn`. Two things that merely happen in sequence are not dependent. Over-linking makes the whole plan look blocked.",
+      "- Anchor to existing rhythm. If CONTEXT shows a habit at a fixed time, schedule around it. Weekends and heavily-booked days should carry less new work than empty ones.",
+      "- Respect the area's existing load. If the project's area already has several open projects, say so in `risks` rather than quietly adding a fourth.",
+      "- You MAY propose at most 2 new recurring habits, and only when the project genuinely needs a rhythm rather than a task (e.g. daily practice for a skill project). Every proposal — habits included — is shown to the user for explicit approval before anything is created; nothing you output is ever added automatically.",
+      "",
+      "## Honesty requirements",
+      "- If the requested deadline does not fit `capacity.freeHoursPerWeek`, DO NOT silently agree. Set `capacityCheck.verdict` to \"unrealistic\", put the earliest date you'd actually defend in `capacityCheck.earliestRealisticDue`, and explain the gap in one sentence.",
+      "- If the brief is too vague to plan honestly, return your best partial plan AND put the specific blocking questions in `clarifyingQuestions`. Do not invent scope to fill the gap.",
+      "- Prefer fewer, larger, honest actions over a long list of padding.",
+      "",
+      "## Output shape",
+      JSON.stringify({
+        summary: "2-3 sentences: what this plan does and the one judgement call you made.",
+        clarifyingQuestions: ["..."],
+        project: { title:"...", area:"Career", secondaryAreas:["Growth"], goalId:"<id from CONTEXT.goals, or null>", due:"YYYY-MM-DD", estimatedHours:40 },
+        milestones: [ { key:"m1", title:"...", date:"YYYY-MM-DD", why:"what this de-risks" } ],
+        actions: [ { key:"a1", title:"...", milestoneKey:"m1", date:"YYYY-MM-DD", durationMinutes:90, priority:"P2", area:"Career", dependsOn:["a0"], why:"only when non-obvious" } ],
+        habits: [ { key:"h1", title:"...", area:"Career", frequency:"daily | weekly", weekdays:["Mon","Wed"], timeOfDay:"HH:MM or null", durationMinutes:30, why:"why a rhythm and not a task" } ],
+        relations: [ { kind:"project | goal | action | habit", id:"<id from CONTEXT>", relation:"supports | competes | overlaps | blocks", note:"one line" } ],
+        risks: [ { severity:"low | medium | high", note:"..." } ],
+        capacityCheck: { weeklyHoursNeeded:6.5, verdict:"comfortable | tight | unrealistic", earliestRealisticDue:"YYYY-MM-DD", note:"one sentence" }
+      }, null, 1),
+      "",
+      "CONTEXT:",
+      JSON.stringify(context),
+      "",
+      "BRIEF:",
+      brief
+    ].join("\n");
+  }
+  async function requestProjectPlan(brief, context){
+    var apiKey = safeGet(window.localStorage, "geminiApiKey");
+    if(!apiKey) throw new Error('No Gemini API key set — add one via "api key" on the Brains page.');
+    var model = GEMINI_MODEL_PLANNER;
+    var body = JSON.stringify({ contents: [{ role:"user", parts: [{ text: buildPlannerPrompt(brief, context) }] }] });
+    var resp, attempt;
+    for(attempt = 1; attempt <= 3; attempt++){
+      resp = await fetch(geminiUrl(model, apiKey), { method:"POST", headers:{ "Content-Type":"application/json" }, body: body });
+      if(resp.ok) break;
+      if((resp.status === 404 || resp.status === 400) && model !== GEMINI_MODEL_MAIN){ model = GEMINI_MODEL_MAIN; continue; }
+      if((resp.status === 503 || resp.status === 429) && attempt < 3){ await new Promise(function(r){ setTimeout(r, attempt * 1500); }); continue; }
+      throw new Error("Gemini API error " + resp.status + ": " + (await resp.text()).slice(0, 200));
+    }
+    var data = await resp.json();
+    var text = ((((data.candidates || [])[0] || {}).content || {}).parts || [])
+      .filter(function(p){ return typeof p.text === "string"; }).map(function(p){ return p.text; }).join(" ");
+    // Models sometimes wrap JSON in fences despite instructions — take the outermost object.
+    var start = text.indexOf("{"), end = text.lastIndexOf("}");
+    if(start === -1 || end <= start) throw new Error("The model didn't return a usable plan.");
+    return JSON.parse(text.slice(start, end + 1));
+  }
+  // Strict validation: anything referencing an id or vocabulary word not in CONTEXT is dropped
+  // rather than trusted, so a weaker model degrades to "proposed less", never "proposed wrong".
+  // Returns { plan, dropped[] } — dropped is shown in the review UI, not hidden.
+  function validateProjectPlan(raw){
+    var dropped = [];
+    var today = todayStr();
+    function cleanDate(d, label){
+      if(typeof d !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(d) || isNaN(new Date(d + "T00:00:00"))){ if(d != null) dropped.push(label + ": unusable date \"" + d + "\""); return null; }
+      return d < today ? today : d;
+    }
+    function cleanArea(a, fallback){ return CATEGORIES.indexOf(a) !== -1 ? a : fallback; }
+    function idExists(kind, id){
+      var arr = kind === "goal" ? state.goals : kind === "project" ? state.projects : kind === "action" ? state.actions : kind === "habit" ? state.habits : state.people;
+      return arr.some(function(x){ return x.id === id; });
+    }
+    if(!raw || typeof raw !== "object" || !raw.project || !raw.project.title) throw new Error("The model's plan had no project in it.");
+    var p = raw.project;
+    if(p.area && CATEGORIES.indexOf(p.area) === -1) dropped.push("project area \"" + p.area + "\" isn't one of this app's areas");
+    var area = cleanArea(p.area, "Career");
+    var goalId = (p.goalId && idExists("goal", p.goalId)) ? p.goalId : null;
+    if(p.goalId && !goalId) dropped.push("project referenced unknown goal id \"" + p.goalId + "\"");
+    var plan = {
+      summary: typeof raw.summary === "string" ? raw.summary : "",
+      clarifyingQuestions: (raw.clarifyingQuestions || []).filter(function(q){ return typeof q === "string"; }).slice(0, 5),
+      project: {
+        title: String(p.title).slice(0, 200), area: area,
+        secondaryAreas: (p.secondaryAreas || []).filter(function(a){ return CATEGORIES.indexOf(a) !== -1 && a !== area; }).slice(0, 4),
+        goalId: goalId, due: cleanDate(p.due, "project due"),
+        estimatedHours: (typeof p.estimatedHours === "number" && p.estimatedHours > 0) ? Math.min(2000, Math.round(p.estimatedHours)) : null
+      },
+      milestones: [], actions: [], habits: [], relations: [], risks: [], capacityCheck: null
+    };
+    var keys = {};
+    (raw.milestones || []).slice(0, 7).forEach(function(m, i){
+      if(!m || !m.title) return;
+      var key = (typeof m.key === "string" && m.key && !keys[m.key]) ? m.key : ("m_" + i);
+      keys[key] = "milestone";
+      plan.milestones.push({ key:key, title:String(m.title).slice(0, 200), date:cleanDate(m.date, "milestone \"" + m.title + "\""), why:typeof m.why === "string" ? m.why : "" });
+    });
+    (raw.actions || []).slice(0, 40).forEach(function(a, i){
+      if(!a || !a.title) return;
+      var key = (typeof a.key === "string" && a.key && !keys[a.key]) ? a.key : ("a_" + i);
+      keys[key] = "action";
+      var mk = (a.milestoneKey && keys[a.milestoneKey] === "milestone") ? a.milestoneKey : null;
+      if(a.milestoneKey && !mk) dropped.push("action \"" + a.title + "\" pointed at unknown milestone \"" + a.milestoneKey + "\"");
+      plan.actions.push({
+        key:key, title:String(a.title).slice(0, 200), milestoneKey:mk,
+        date:cleanDate(a.date, "action \"" + a.title + "\""),
+        durationMinutes:(typeof a.durationMinutes === "number") ? Math.max(5, Math.min(480, Math.round(a.durationMinutes))) : 60,
+        priority: PRIORITIES.indexOf(a.priority) !== -1 ? a.priority : "P2",
+        area: cleanArea(a.area, area),
+        dependsOn: (a.dependsOn || []).filter(function(k){ return typeof k === "string"; }),
+        why: typeof a.why === "string" ? a.why : ""
+      });
+    });
+    // dependsOn keys must exist; then the whole graph (incl. implicit milestone→member edges) must
+    // be acyclic — on a cycle every ordering link is removed rather than guessing which edge lied.
+    plan.actions.forEach(function(a){
+      a.dependsOn = a.dependsOn.filter(function(k){
+        if(keys[k] && k !== a.key) return true;
+        dropped.push("action \"" + a.title + "\" depended on unknown key \"" + k + "\"");
+        return false;
+      });
+    });
+    var adj = {};
+    plan.actions.forEach(function(a){ adj[a.key] = a.dependsOn.slice(); });
+    plan.milestones.forEach(function(m){
+      adj[m.key] = plan.actions.filter(function(a){ return a.milestoneKey === m.key; }).map(function(a){ return a.key; });
+    });
+    var seen = {}, inStack = {}, cyclic = false;
+    function visit(k){
+      if(cyclic || seen[k]) return;
+      inStack[k] = true;
+      (adj[k] || []).forEach(function(n){ if(inStack[n]){ cyclic = true; } else visit(n); });
+      inStack[k] = false; seen[k] = true;
+    }
+    Object.keys(adj).forEach(visit);
+    if(cyclic){
+      plan.actions.forEach(function(a){ a.dependsOn = []; });
+      dropped.push("dependency cycle detected — all ordering links were removed");
+    }
+    (raw.habits || []).slice(0, 3).forEach(function(h, i){
+      if(!h || !h.title) return;
+      var freq = (h.frequency === "daily" || h.frequency === "weekly") ? h.frequency : null;
+      if(!freq){ dropped.push("proposed habit \"" + h.title + "\" had frequency \"" + h.frequency + "\" (only daily/weekly can be proposed)"); return; }
+      plan.habits.push({
+        key: (typeof h.key === "string" && h.key) ? h.key : ("h_" + i),
+        title:String(h.title).slice(0, 200), area:cleanArea(h.area, area), frequency:freq,
+        weekdays: freq === "weekly" ? (h.weekdays || []).filter(function(w){ return WEEKDAY_ABBR.indexOf(w) !== -1; }) : [],
+        timeOfDay: (typeof h.timeOfDay === "string" && /^\d{2}:\d{2}$/.test(h.timeOfDay)) ? h.timeOfDay : null,
+        durationMinutes:(typeof h.durationMinutes === "number") ? Math.max(5, Math.min(240, Math.round(h.durationMinutes))) : 30,
+        why: typeof h.why === "string" ? h.why : ""
+      });
+    });
+    (raw.relations || []).slice(0, 10).forEach(function(rel){
+      if(!rel || !PLANNER_RELATION_KINDS[rel.kind] || !PLANNER_RELATION_TYPES[rel.relation]) return;
+      if(!idExists(rel.kind, rel.id)){ dropped.push("relation referenced unknown " + rel.kind + " id \"" + rel.id + "\""); return; }
+      plan.relations.push({ kind:rel.kind, id:rel.id, relation:rel.relation, note:typeof rel.note === "string" ? rel.note : "" });
+    });
+    (raw.risks || []).slice(0, 6).forEach(function(r){
+      if(!r || !r.note) return;
+      plan.risks.push({ severity: ["low","medium","high"].indexOf(r.severity) !== -1 ? r.severity : "medium", note:String(r.note).slice(0, 300) });
+    });
+    var cc = raw.capacityCheck || {};
+    plan.capacityCheck = {
+      weeklyHoursNeeded: typeof cc.weeklyHoursNeeded === "number" ? Math.round(cc.weeklyHoursNeeded * 10) / 10 : null,
+      verdict: ["comfortable","tight","unrealistic"].indexOf(cc.verdict) !== -1 ? cc.verdict : "tight",
+      earliestRealisticDue: cleanDate(cc.earliestRealisticDue, "capacity earliestRealisticDue"),
+      note: typeof cc.note === "string" ? cc.note : ""
+    };
+    return { plan: plan, dropped: dropped };
+  }
+  // ---- Planner UI: brief → proposal review → explicit commit ----
+  (function wireAiPlanner(){
+    var openBtn = document.getElementById("aiPlanOpenBtn");
+    if(!openBtn) return;
+    var currentPlan = null, currentDropped = [], currentContext = null;
+    function el(id){ return document.getElementById(id); }
+    function updateCapacityPreview(){
+      var hrs = Math.max(0.5, Number(el("aiPlanHoursInput").value) || 3);
+      var cap = computeWeeklyCapacity(hrs);
+      el("aiPlanCapacityPreview").textContent = "Next 7 days: " + cap.committedHoursPerWeek.habits + "h of habits + " +
+        cap.committedHoursPerWeek.scheduledActions + "h of scheduled actions already committed → about " +
+        cap.freeHoursPerWeek + "h genuinely free at " + hrs + "h/day. The AI plans against these numbers.";
+    }
+    openBtn.addEventListener("click", function(){
+      el("aiPlanBriefPhase").hidden = false;
+      el("aiPlanReviewPhase").hidden = true;
+      el("aiPlanGoalSelect").innerHTML = '<option value="">— none —</option>' +
+        state.goals.map(function(g){ return '<option value="' + g.id + '">' + escapeHtml(g.title) + '</option>'; }).join("");
+      updateCapacityPreview();
+      openModal("aiPlanModalOverlay");
+      el("aiPlanBriefInput").focus();
+    });
+    el("aiPlanHoursInput").addEventListener("input", updateCapacityPreview);
+    el("aiPlanCancelBtn").addEventListener("click", function(){ closeModal("aiPlanModalOverlay"); });
+    el("aiPlanDiscardBtn").addEventListener("click", function(){ currentPlan = null; closeModal("aiPlanModalOverlay"); });
+    el("aiPlanBackBtn").addEventListener("click", function(){ el("aiPlanReviewPhase").hidden = true; el("aiPlanBriefPhase").hidden = false; });
+    el("aiPlanGenerateBtn").addEventListener("click", async function(){
+      var brief = el("aiPlanBriefInput").value.trim();
+      if(!brief){ toast("Describe the project first."); return; }
+      // The explicit due/goal pickers ride into the brief as plain statements — one channel for
+      // intent keeps the prompt simple, and the goal id is CONTEXT vocabulary the model may echo.
+      var due = el("aiPlanDueInput").value;
+      if(due) brief += "\nRequested completion date: " + due + ".";
+      var goalId = el("aiPlanGoalSelect").value;
+      var pickedGoal = goalId ? goalById(goalId) : null;
+      if(pickedGoal) brief += '\nThis project belongs to the existing goal "' + pickedGoal.title + '" (id: ' + pickedGoal.id + ").";
+      var hrs = Math.max(0.5, Number(el("aiPlanHoursInput").value) || 3);
+      this.disabled = true; this.classList.add("loading"); this.textContent = "thinking…";
+      try{
+        currentContext = buildPlannerContext(hrs);
+        var raw = await requestProjectPlan(brief, currentContext);
+        var v = validateProjectPlan(raw);
+        currentPlan = v.plan; currentDropped = v.dropped;
+        // The user picked the goal by hand — that outranks the model forgetting to echo it.
+        if(pickedGoal && !currentPlan.project.goalId) currentPlan.project.goalId = pickedGoal.id;
+        renderPlanReview();
+        el("aiPlanBriefPhase").hidden = true;
+        el("aiPlanReviewPhase").hidden = false;
+      } catch(err){
+        toast("Planning failed: " + err.message);
+      } finally {
+        this.disabled = false; this.classList.remove("loading"); this.textContent = "✨ draft a plan";
+      }
+    });
+    function planRowHtml(kind, item, checked, metaHtml, withDuration){
+      return '<div class="ai-plan-row' + (kind === "milestone" ? " milestone" : "") + (checked ? "" : " unchecked") + '" data-plan-kind="' + kind + '" data-plan-key="' + escapeHtml(item.key) + '">' +
+        '<input type="checkbox" class="apr-check"' + (checked ? " checked" : "") + ' aria-label="Include this item">' +
+        (kind === "milestone" ? '<span title="milestone">◆</span>' : '') +
+        '<input class="apr-title" value="' + escapeHtml(item.title) + '">' +
+        (kind === "habit" ? '' : '<input type="date" class="apr-date" value="' + (item.date || "") + '">') +
+        (withDuration ? '<input type="number" class="apr-dur" min="5" step="5" value="' + item.durationMinutes + '" title="minutes">' : '') +
+        (metaHtml ? '<span class="apr-meta">' + metaHtml + '</span>' : '') +
+        (item.why ? '<span class="ai-plan-why">' + escapeHtml(item.why) + '</span>' : '') +
+      '</div>';
+    }
+    function renderPlanReview(){
+      var p = currentPlan, cc = p.capacityCheck;
+      var verdictEl = el("aiPlanVerdict");
+      verdictEl.className = "ai-plan-verdict " + cc.verdict;
+      verdictEl.textContent = "capacity: " + cc.verdict +
+        (cc.weeklyHoursNeeded != null ? " — needs ~" + cc.weeklyHoursNeeded + "h/week against ~" + currentContext.capacity.freeHoursPerWeek + "h free" : "") +
+        (cc.verdict === "unrealistic" && cc.earliestRealisticDue ? " · earliest defensible date: " + fmtDate(cc.earliestRealisticDue) : "") +
+        (cc.note ? " · " + cc.note : "");
+      el("aiPlanSummary").textContent = p.summary || "";
+      el("aiPlanQuestions").innerHTML = p.clarifyingQuestions.map(function(q){
+        return '<p class="ai-plan-question">? ' + escapeHtml(q) + '</p>';
+      }).join("");
+      var proj = p.project;
+      el("aiPlanProjectRow").innerHTML = '<div class="ai-plan-group-head">project</div>' +
+        '<div class="ai-plan-row" data-plan-kind="project" data-plan-key="__project">' +
+          '<input type="checkbox" class="apr-check" checked disabled title="The plan\'s items need the project to exist">' +
+          '<input class="apr-title" value="' + escapeHtml(proj.title) + '">' +
+          '<input type="date" class="apr-date" value="' + (proj.due || "") + '">' +
+          '<span class="apr-meta">' + escapeHtml(proj.area) + (proj.secondaryAreas.length ? " +" + proj.secondaryAreas.join("+") : "") +
+            (proj.goalId && goalById(proj.goalId) ? ' · goal: ' + escapeHtml(goalById(proj.goalId).title) : '') +
+            (proj.estimatedHours ? ' · ~' + proj.estimatedHours + 'h' : '') + '</span>' +
+        '</div>';
+      el("aiPlanMilestoneRows").innerHTML = p.milestones.map(function(m){ return planRowHtml("milestone", m, true, "", false); }).join("") ||
+        '<p class="panel-hint" style="margin:0;">none proposed</p>';
+      el("aiPlanActionRows").innerHTML = p.actions.map(function(a){
+        var meta = a.priority + (a.milestoneKey ? " · →" + escapeHtml(a.milestoneKey) : "") + (a.dependsOn.length ? " · after " + a.dependsOn.map(escapeHtml).join(",") : "");
+        return planRowHtml("action", a, true, meta, true);
+      }).join("") || '<p class="panel-hint" style="margin:0;">none proposed</p>';
+      el("aiPlanHabitGroup").style.display = p.habits.length ? "" : "none";
+      el("aiPlanHabitRows").innerHTML = p.habits.map(function(h){
+        var meta = h.frequency + (h.weekdays.length ? " · " + h.weekdays.join(",") : "") + (h.timeOfDay ? " · " + h.timeOfDay : "") + " · " + h.durationMinutes + "min";
+        return planRowHtml("habit", h, false, meta, false);   // UNTICKED: a recurring commitment is opted into, never out of
+      }).join("");
+      var side = "";
+      if(p.relations.length){
+        side += '<div class="ai-plan-group-head">how this sits among existing commitments</div>' + p.relations.map(function(rel){
+          var arr = rel.kind === "goal" ? state.goals : rel.kind === "project" ? state.projects : rel.kind === "action" ? state.actions : state.habits;
+          var obj = arr.find(function(x){ return x.id === rel.id; });
+          return '<div class="ai-plan-side-item">' + rel.relation + ' <b>' + escapeHtml(obj ? (obj.title || obj.name || rel.id) : rel.id) + '</b> (' + rel.kind + ')' + (rel.note ? ' — ' + escapeHtml(rel.note) : '') + '</div>';
+        }).join("");
+      }
+      if(p.risks.length){
+        side += '<div class="ai-plan-group-head" style="margin-top:8px;">risks</div>' + p.risks.map(function(r){
+          return '<div class="ai-plan-side-item sev-' + r.severity + '">[' + r.severity + '] ' + escapeHtml(r.note) + '</div>';
+        }).join("");
+      }
+      if(currentDropped.length){
+        side += '<div class="ai-plan-dropped">ignored from the model\'s reply: ' + currentDropped.map(escapeHtml).join(" · ") + '</div>';
+      }
+      el("aiPlanSide").innerHTML = side;
+    }
+    // Ticking/unticking dims the row so the commit set is legible at a glance.
+    el("aiPlanReviewPhase").addEventListener("change", function(e){
+      var check = e.target.closest(".apr-check");
+      if(check && !check.disabled) check.closest(".ai-plan-row").classList.toggle("unchecked", !check.checked);
+    });
+    // Commit, in dependency order: project first (everything parents to it), then milestones and
+    // actions (collecting key → real id), then a SECOND pass writing dependencies once ids exist —
+    // a milestone's dependencies are its selected member actions, so ganttActionBlocked renders it
+    // blocked until they're done. Habits last. One pushUndo covers the whole batch.
+    el("aiPlanCommitBtn").addEventListener("click", async function(){
+      if(!currentPlan) return;
+      var rows = {};
+      document.querySelectorAll('#aiPlanReviewPhase .ai-plan-row').forEach(function(rowEl){
+        var dateEl = rowEl.querySelector(".apr-date"), durEl = rowEl.querySelector(".apr-dur");
+        rows[rowEl.dataset.planKey] = {
+          kind: rowEl.dataset.planKind,
+          checked: rowEl.querySelector(".apr-check").checked,
+          title: rowEl.querySelector(".apr-title").value.trim(),
+          date: dateEl ? (dateEl.value || null) : null,
+          durationMinutes: durEl ? Math.max(5, Math.round(Number(durEl.value)) || 60) : null
+        };
+      });
+      var selMilestones = currentPlan.milestones.filter(function(m){ return rows[m.key] && rows[m.key].checked; });
+      var selActions = currentPlan.actions.filter(function(a){ return rows[a.key] && rows[a.key].checked; });
+      var selHabits = currentPlan.habits.filter(function(h){ return rows[h.key] && rows[h.key].checked; });
+      if(!selMilestones.length && !selActions.length && !selHabits.length){ toast("Nothing is ticked — select at least one item to create."); return; }
+      this.disabled = true;
+      var projRow = rows["__project"] || {};
+      var proj = currentPlan.project;
+      var created = { projectId:null, actionIds:[], habitIds:[], varIds:[] };
+      try{
+        var pRes = await safeInsert("projects", {
+          goal_id: proj.goalId, secondary_goal_ids: [], linked_people_ids: [],
+          title: projRow.title || proj.title, priority: "P1",
+          due: projRow.date || proj.due, hours: proj.estimatedHours || 0, done: false,
+          categories: [proj.area].concat(proj.secondaryAreas),
+          plan_json: currentPlan
+        }, state.projects);
+        if(pRes.error) throw new Error(pRes.error.message);
+        var pr = pRes.data;
+        created.projectId = pr.id;
+        state.projects.push({ id:pr.id, goalId:pr.goal_id, secondaryGoalIds:[], title:pr.title, priority:pr.priority, due:pr.due, hours:Number(pr.hours)||0, done:false, position:pr.position||0, healthOverride:null, healthPctOverride:null, icon:null, wbX:null, wbY:null, categories:pr.categories||[proj.area], planJson:currentPlan, notesMd:"", linkedPeopleIds:[], filesSlug:"" });
+        var keyToId = {};
+        async function createPlanAction(item, isMilestone, priority, durationMinutes, area){
+          var res = await safeInsert("actions", {
+            parent_type:"project", parent_id: created.projectId,
+            title: rows[item.key].title || item.title, priority: priority,
+            date: rows[item.key].date, time_of_day: null,
+            duration_minutes: durationMinutes, done: false,
+            category: area, is_milestone: isMilestone, type: "Task"
+          }, state.actions);
+          if(res.error) throw new Error(res.error.message);
+          var r = res.data;
+          keyToId[item.key] = r.id;
+          created.actionIds.push(r.id);
+          state.actions.push({ id:r.id, parentType:"project", parentId:created.projectId, title:r.title, priority:r.priority, date:r.date, done:false, position:r.position||0, timeOfDay:null, durationMinutes:r.duration_minutes||durationMinutes, category:r.category||area, secondaryCategories:[], isMilestone:isMilestone, locationAddress:"", locationLat:null, locationLng:null, notesMd:"", dependencies:[], linkedPeopleIds:[] });
+        }
+        for(var i = 0; i < selMilestones.length; i++) await createPlanAction(selMilestones[i], true, "P1", null, proj.area);
+        for(var j = 0; j < selActions.length; j++){
+          var a = selActions[j];
+          await createPlanAction(a, false, a.priority, rows[a.key].durationMinutes || a.durationMinutes, a.area);
+        }
+        // Second pass — dependencies can only be written once every referenced id exists.
+        for(var k = 0; k < selMilestones.length; k++){
+          var m = selMilestones[k];
+          var memberIds = selActions.filter(function(a){ return a.milestoneKey === m.key; })
+            .map(function(a){ return keyToId[a.key]; }).filter(Boolean);
+          if(!memberIds.length) continue;
+          var deps = memberIds.map(function(id){ return { id:id, requiresDone:true }; });
+          await safeUpdate("actions", keyToId[m.key], { dependencies: deps });
+          var localM = state.actions.find(function(x){ return x.id === keyToId[m.key]; });
+          if(localM) localM.dependencies = deps;
+        }
+        for(var l = 0; l < selActions.length; l++){
+          var a2 = selActions[l];
+          var depIds = a2.dependsOn.map(function(key){ return keyToId[key]; }).filter(Boolean);
+          if(!depIds.length) continue;
+          var deps2 = depIds.map(function(id){ return { id:id, requiresDone:true }; });
+          await safeUpdate("actions", keyToId[a2.key], { dependencies: deps2 });
+          var localA = state.actions.find(function(x){ return x.id === keyToId[a2.key]; });
+          if(localA) localA.dependencies = deps2;
+        }
+        // Habits — only ever the explicitly ticked ones (they start unticked). Each owns a boolean
+        // tracker variable, same contract the habit modal establishes.
+        for(var hIdx = 0; hIdx < selHabits.length; hIdx++){
+          var h = selHabits[hIdx];
+          var vRes = await safeInsert("tracker_variables", { name: rows[h.key].title || h.title, type:"boolean", scale_max:null }, state.trackerVars);
+          if(vRes.error) throw new Error(vRes.error.message);
+          var vr = vRes.data;
+          created.varIds.push(vr.id);
+          state.trackerVars.push({ id:vr.id, name:vr.name, type:"boolean", unit:vr.unit, scaleMax:null, categories:vr.categories||[], position:vr.position });
+          var hRes = await safeInsert("habits", {
+            goal_id: proj.goalId, secondary_goal_ids: [], linked_people_ids: [],
+            title: rows[h.key].title || h.title, priority: "P2",
+            frequency: h.frequency, weekdays: h.weekdays,
+            tracker_variable_id: vr.id, time_of_day: h.timeOfDay, duration_minutes: h.durationMinutes,
+            month_day: null, custom_interval_days: null, days: {},
+            icon: pickHabitIconKey(h.title, state.habits.map(function(x){ return x.icon; }).filter(Boolean))
+          }, state.habits);
+          if(hRes.error) throw new Error(hRes.error.message);
+          var hr = hRes.data;
+          created.habitIds.push(hr.id);
+          state.habits.push({ id:hr.id, goalId:hr.goal_id, secondaryGoalIds:[], title:hr.title, priority:"P2", frequency:h.frequency, weekdays:h.weekdays, trackerVariableId:vr.id, timeOfDay:h.timeOfDay, durationMinutes:h.durationMinutes, days:{}, position:hr.position||0, createdAt:hr.created_at ? hr.created_at.slice(0,10) : todayStr(), skipDates:[], extraDates:[], customIntervalDays:null, monthDay:null, icon:hr.icon||null, instanceOverrides:{}, locationAddress:"", locationLat:null, locationLng:null, linkedPeopleIds:[] });
+        }
+      } catch(err){
+        this.disabled = false;
+        toast("Plan creation stopped: " + err.message + " — items created so far are kept; undo removes them.");
+      }
+      this.disabled = false;
+      var madeCount = (created.projectId ? 1 : 0) + created.actionIds.length + created.habitIds.length;
+      if(!created.projectId) return;
+      // One undo for the whole batch — a 25-item plan must be reversible in one gesture.
+      pushUndo('AI plan "' + (projRow.title || proj.title) + '" (' + madeCount + ' items)', async function(){
+        for(var i = 0; i < created.actionIds.length; i++) await sb.from("actions").delete().eq("id", created.actionIds[i]);
+        for(var j = 0; j < created.habitIds.length; j++) await sb.from("habits").delete().eq("id", created.habitIds[j]);
+        for(var k = 0; k < created.varIds.length; k++) await sb.from("tracker_variables").delete().eq("id", created.varIds[k]);
+        await sb.from("projects").delete().eq("id", created.projectId);
+        state.actions = state.actions.filter(function(x){ return created.actionIds.indexOf(x.id) === -1; });
+        state.habits = state.habits.filter(function(x){ return created.habitIds.indexOf(x.id) === -1; });
+        state.trackerVars = state.trackerVars.filter(function(x){ return created.varIds.indexOf(x.id) === -1; });
+        state.projects = state.projects.filter(function(x){ return x.id !== created.projectId; });
+        renderAll();
+      });
+      currentPlan = null;
+      renderAll();
+      closeModal("aiPlanModalOverlay");
+      toast("Created 1 project, " + created.actionIds.length + " actions" + (created.habitIds.length ? ", " + created.habitIds.length + " habits" : "") + " — undo reverses all of it.");
+    });
+  })();
 
   // ---------------- AI tool: sentiment analyzer ----------------
   // Fixed vocabulary rather than free-form tags — a controlled set keeps the "sentiment" attribute
@@ -19370,7 +19950,7 @@
     this.disabled = false;
     if(res.error){ dbErrorToast(res.error, "Couldn't save"); return; }
     var r = res.data;
-    var mapped = { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null, secondaryCategories:r.secondary_categories || payload.secondary_categories || [],
+    var mapped = { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null, secondaryCategories:r.secondary_categories || payload.secondary_categories || [], isMilestone:!!r.is_milestone,
       locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), linkedPeopleIds:r.linked_people_ids||[] };
     if(isEdit){
       var idx = state.actions.findIndex(function(x){ return x.id === editingActionId; });
