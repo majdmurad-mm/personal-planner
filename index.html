@@ -1252,17 +1252,33 @@
   .tm-cell.today.selected{ box-shadow:inset 0 0 0 1.5px var(--violet), inset 0 0 0 3px var(--accent); }
   .tm-grid-outer.gl-on .tm-cell{ background:transparent; border-color:transparent; }
   .tm-grid-outer.gl-on .tm-cell.weekend{ background:transparent; }
-  .tm-cell-num{ flex-shrink:0; font-size:10px; color:var(--text-dim); }
-  .tm-cell.today .tm-cell-num{ color:var(--violet); font-weight:700; }
-  .tm-cell.selected .tm-cell-num{ color:var(--accent); font-weight:700; }
+  /* Text is fixed black rather than the theme-adaptive var(--text) — the tile behind it is always a
+     coloured (usually light/mid-tone) blend regardless of light/dark theme, so a literal black reads
+     reliably on top of it where a theme-flipping colour wouldn't. today/selected state is carried
+     entirely by the existing box-shadow ring now, so the number itself doesn't need its own colour
+     override to also communicate that. */
+  .tm-cell-num{ flex-shrink:0; font-size:10px; font-weight:600; color:#000; }
+  .tm-cell.today .tm-cell-num, .tm-cell.selected .tm-cell-num{ font-weight:800; }
+  /* The one exception: a day with no events at all has no colour blend behind it — just the plain
+     (dark-in-dark-theme) neutral tile background — so black would be unreadable there specifically.
+     Every day WITH at least one event is guaranteed a light/mid-tone tile (the --cat-* palette is
+     chosen to read against each theme's own background), which is what makes black safe everywhere
+     else. See tm-cell-empty, set in tmRenderGrid alongside data-color. */
+  .tm-cell.tm-cell-empty .tm-cell-num{ color:var(--text-dim); }
   /* Event text — the whole point of the redesign: what's actually scheduled, right on the tile,
      legible over both the flat fallback colour and the lit 3D tile beneath it. Done items are struck
      through rather than hidden, same convention as .today-row-title.done, so a finished day still
      reads as "here's what happened" instead of going visually blank. */
   .tm-cell-items{ flex:1; min-height:0; display:flex; flex-direction:column; gap:1px; justify-content:flex-start; }
-  .tm-cell-item{ font-size:8px; line-height:1.25; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-shadow:0 1px 2px rgba(0,0,0,0.35); }
+  .tm-cell-item{ font-size:8px; line-height:1.25; color:#000; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-shadow:0 1px 1px rgba(255,255,255,0.5); }
   .tm-cell-item.done{ opacity:0.55; text-decoration:line-through; }
-  .tm-cell-more{ flex-shrink:0; font-size:7.5px; color:var(--text-faint); }
+  .tm-cell-more{ flex-shrink:0; font-size:7.5px; color:#000; opacity:0.65; }
+  /* The day-items popover .ctx-menu already gives it position:fixed/background/border/shadow — this
+     just widens it (the base .ctx-menu is a narrow menu shape, min-width:140px) and caps its own
+     height with internal scrolling, since a full day's list can run well past what fits on screen. */
+  .tm-day-popover{ width:300px; max-width:88vw; max-height:min(420px, 70vh); display:flex; flex-direction:column; padding:8px; }
+  .tm-day-popover-head{ flex-shrink:0; display:flex; align-items:center; justify-content:space-between; gap:8px; padding:0 2px 6px; margin-bottom:6px; border-bottom:1px solid var(--border); font-family:var(--mono); font-size:11px; font-weight:700; color:var(--text); }
+  .tm-day-popover #tmDayPopoverList{ overflow-y:auto; min-height:0; }
   .cal-dot-mini-row{ display:flex; gap:2px; flex-wrap:wrap; }
   .cal-dot-mini{ width:4px; height:4px; border-radius:50%; background:var(--accent); }
   .cal-entry.google .cal-dot{ background:var(--accent); }
@@ -4544,6 +4560,19 @@
   <div class="ctx-menu-sep"></div>
   <button class="ctx-menu-item" id="habitInstanceSaveBtn" type="button">save (this day only)</button>
   <button class="ctx-menu-item" id="habitInstanceResetBtn" type="button">reset to habit default</button>
+</div>
+
+<!-- ===== TIME MATRIX: day-items popover — pressing a cell opens this, right where you clicked,
+     listing EVERY item on that day (the cell itself only ever shows a couple of truncated chips).
+     Same floating-popover shell (.ctx-menu) as the postpone/habit-instance popovers above, just
+     wider and independently scrollable since a full day's list can run long. ===== -->
+<div class="ctx-menu tm-day-popover" id="tmDayPopover" hidden>
+  <div class="tm-day-popover-head">
+    <span id="tmDayPopoverTitle"></span>
+    <button type="button" class="icon-btn" id="tmDayPopoverCloseBtn" aria-label="Close">&times;</button>
+  </div>
+  <div class="today-row-list" id="tmDayPopoverList"></div>
+  <p class="panel-hint" id="tmDayPopoverEmpty" style="margin:6px 2px 2px;">Nothing scheduled this day.</p>
 </div>
 
 <!-- ===== TODAY TIMELINE "ADD" MENU (click empty row space) ===== -->
@@ -20661,7 +20690,7 @@
           return '<span class="tm-cell-item' + (it.done ? ' done' : '') + '">' + (it.kind === "habit-instance" ? "↻ " : "") + escapeHtml(it.title) + '</span>';
         }).join("");
         var more = items.length > TM_CELL_MAX_CHIPS ? '<span class="tm-cell-more">+' + (items.length - TM_CELL_MAX_CHIPS) + ' more</span>' : '';
-        html += '<button type="button" class="tm-cell' + (isWeekend ? " weekend" : "") + (cellKey === todayKey ? " today" : "") + (cellKey === tmSelectedDate ? " selected" : "") +
+        html += '<button type="button" class="tm-cell' + (isWeekend ? " weekend" : "") + (cellKey === todayKey ? " today" : "") + (cellKey === tmSelectedDate ? " selected" : "") + (rgb ? "" : " tm-cell-empty") +
           '" data-date="' + cellKey + '" data-color="' + (rgb ? (rgb.r + "," + rgb.g + "," + rgb.b) : "") + '" style="' + posStyle + colorStyle + '" title="' + escapeHtml(fmtDateLong(cellKey)) + (items.length ? " — " + items.length + " item" + (items.length === 1 ? "" : "s") : " — nothing scheduled") + '">' +
           '<span class="tm-cell-num">' + Number(cellKey.slice(8, 10)) + '</span>' +
           '<span class="tm-cell-items">' + chips + more + '</span>' +
@@ -20676,6 +20705,44 @@
   // action/note lists, plus habit occurrences (which the Present list doesn't carry — the matrix is a
   // broader overview, so habits belong here). data-kind/data-id/data-date on every row is what wires
   // up the global right-click menu (edit/postpone/skip) for free — see DELETE_HANDLERS/EDIT_HANDLERS.
+  // One row's markup, shared by the bottom detail panel AND the day-items popover (see
+  // openTmDayPopover) — same today-row shell every other action/note list in the app uses, so
+  // data-kind/data-id/data-date still wires up the global right-click menu for free either place
+  // this ends up rendered.
+  function tmItemRowHtml(it){
+    var catClass = it.area ? " " + it.area : "";
+    var style = it.colorCss ? ' style="border-left-color:' + it.colorCss.c + ';"' : '';
+    var checkAction = it.kind === "habit-instance" ? "toggle-habit-mark" : "toggle-action";
+    return '<div class="today-row' + catClass + '"' + style + ' data-kind="' + it.kind + '" data-id="' + it.id + '" data-date="' + it.date + '">' +
+      '<button class="ms-check' + (it.done ? ' done' : '') + '" data-action="' + checkAction + '" data-id="' + it.id + '" data-date="' + it.date + '" aria-label="Toggle done"></button>' +
+      '<span class="today-row-title' + (it.done ? ' done' : '') + '">' + (it.kind === "habit-instance" ? "↻ " : "") + escapeHtml(it.title) + '</span>' +
+      '<span class="prio-badge ' + it.priority + '">' + it.priority + '</span>' +
+      (it.timeOfDay ? '<span class="today-row-meta">' + fmtTimeOfDay(it.timeOfDay) + '</span>' : '') +
+      (it.kind === "action" ? '<button class="icon-btn edit" data-action="edit-action" data-id="' + it.id + '" aria-label="Edit action">✎</button>' +
+        '<button class="icon-btn" data-action="del-action" data-id="' + it.id + '" aria-label="Delete action">&times;</button>' :
+        '<button class="icon-btn edit" data-action="edit-habit" data-id="' + it.id + '" aria-label="Edit habit">✎</button>') +
+    '</div>';
+  }
+  // The click behavior for either item list (bottom panel or popover) is identical — one handler,
+  // bound twice, rather than the same four-branch dispatch duplicated in two listeners.
+  async function tmHandleItemListClick(e){
+    var t = e.target.closest("[data-action]");
+    if(!t) return;
+    // Toggling/editing from inside the popover triggers renderAll() -> renderTmDayPopover(), which
+    // rebuilds this very list's innerHTML SYNCHRONOUSLY (toggleActionDone re-renders before its own
+    // await). That detaches `t` from the tree mid-bubble — the click event's `target` stays pointing
+    // at the now-orphaned old node, so document's "click outside the popover closes it" listener
+    // sees a target the popover no longer contains and closes it out from under the very click that's
+    // still being handled. Stopping propagation here (same fix the postpone popover already uses)
+    // keeps this click from ever reaching that listener. Harmless for the bottom detail panel, the
+    // other caller of this same handler — nothing listens for clicks outside it.
+    e.stopPropagation();
+    if(t.dataset.action === "toggle-action") await toggleActionDone(t.dataset.id);
+    else if(t.dataset.action === "toggle-habit-mark") await handleHabitMarkClick(t.dataset.id, t.dataset.date);
+    else if(t.dataset.action === "edit-action") editAction(t.dataset.id);
+    else if(t.dataset.action === "edit-habit") editHabit(t.dataset.id);
+    else if(t.dataset.action === "del-action") await deleteAction(t.dataset.id);
+  }
   function tmRenderDetail(){
     var listEl = document.getElementById("tmDetailList");
     if(!listEl) return;
@@ -20683,22 +20750,42 @@
     if(headingEl) headingEl.textContent = fmtDateLong(tmSelectedDate) + (tmSelectedDate === todayStr() ? " (today)" : "");
     var items = tmDayItems(tmSelectedDate);
     document.getElementById("tmDetailEmpty").style.display = items.length ? "none" : "";
-    listEl.innerHTML = items.map(function(it){
-      var catClass = it.area ? " " + it.area : "";
-      var style = it.colorCss ? ' style="border-left-color:' + it.colorCss.c + ';"' : '';
-      var checkAction = it.kind === "habit-instance" ? "toggle-habit-mark" : "toggle-action";
-      return '<div class="today-row' + catClass + '"' + style + ' data-kind="' + it.kind + '" data-id="' + it.id + '" data-date="' + it.date + '">' +
-        '<button class="ms-check' + (it.done ? ' done' : '') + '" data-action="' + checkAction + '" data-id="' + it.id + '" data-date="' + it.date + '" aria-label="Toggle done"></button>' +
-        '<span class="today-row-title' + (it.done ? ' done' : '') + '">' + (it.kind === "habit-instance" ? "↻ " : "") + escapeHtml(it.title) + '</span>' +
-        '<span class="prio-badge ' + it.priority + '">' + it.priority + '</span>' +
-        (it.timeOfDay ? '<span class="today-row-meta">' + fmtTimeOfDay(it.timeOfDay) + '</span>' : '') +
-        (it.kind === "action" ? '<button class="icon-btn edit" data-action="edit-action" data-id="' + it.id + '" aria-label="Edit action">✎</button>' +
-          '<button class="icon-btn" data-action="del-action" data-id="' + it.id + '" aria-label="Delete action">&times;</button>' :
-          '<button class="icon-btn edit" data-action="edit-habit" data-id="' + it.id + '" aria-label="Edit habit">✎</button>') +
-      '</div>';
-    }).join("");
+    listEl.innerHTML = items.map(tmItemRowHtml).join("");
   }
-  function renderTimeMatrix(){ tmRenderGrid(); tmRenderDetail(); ensureTmGl(); }
+  // ---- Day-items popover: pressing a cell opens this immediately, right where the press landed,
+  // with the day's FULL list — the cell itself only ever shows a couple of truncated chips (see
+  // TM_CELL_MAX_CHIPS), so this is where "all of it" actually lives. Independent of, and in addition
+  // to, the persistent bottom panel (which stays in sync too, for the "+ action" button and anyone
+  // who'd rather not have a popover in the way).
+  var tmPopoverDate = null;
+  function renderTmDayPopover(){
+    if(!tmPopoverDate) return;
+    document.getElementById("tmDayPopoverTitle").textContent = fmtDateLong(tmPopoverDate) + (tmPopoverDate === todayStr() ? " (today)" : "");
+    var items = tmDayItems(tmPopoverDate);
+    document.getElementById("tmDayPopoverEmpty").style.display = items.length ? "none" : "";
+    document.getElementById("tmDayPopoverList").innerHTML = items.map(tmItemRowHtml).join("");
+  }
+  function openTmDayPopover(x, y, dateStr){
+    tmPopoverDate = dateStr;
+    renderTmDayPopover();
+    var pop = document.getElementById("tmDayPopover");
+    pop.hidden = false;
+    positionFloatingEl(pop, x, y);
+  }
+  function closeTmDayPopover(){
+    document.getElementById("tmDayPopover").hidden = true;
+    tmPopoverDate = null;
+  }
+  document.addEventListener("click", function(e){
+    var pop = document.getElementById("tmDayPopover");
+    // The cell that OPENS the popover is also outside it, so a naive "outside click closes it" would
+    // immediately re-close whatever the grid's own click handler just opened — excluded explicitly,
+    // same as every other click-outside-closes popover in this app guards against its own trigger.
+    if(!pop.hidden && !pop.contains(e.target) && !e.target.closest(".tm-cell[data-date]")) closeTmDayPopover();
+  });
+  document.getElementById("tmDayPopoverCloseBtn").addEventListener("click", closeTmDayPopover);
+  document.getElementById("tmDayPopoverList").addEventListener("click", tmHandleItemListClick);
+  function renderTimeMatrix(){ tmRenderGrid(); tmRenderDetail(); if(tmPopoverDate) renderTmDayPopover(); ensureTmGl(); }
   (function wireTimeMatrix(){
     var gridEl = document.getElementById("tmGrid");
     if(!gridEl) return;
@@ -20707,6 +20794,7 @@
       if(!cell) return;
       tmSelectedDate = cell.dataset.date;
       renderTimeMatrix();
+      openTmDayPopover(e.clientX, e.clientY, cell.dataset.date);
     });
     document.getElementById("tmPrevBtn").addEventListener("click", function(){
       tmWindowStart = addDaysToDateStr(tmWindowStart, -TM_COLS * 7);
@@ -20725,15 +20813,7 @@
       openActionModal(null, null);
       document.getElementById("actionDateInput").value = tmSelectedDate;
     });
-    document.getElementById("tmDetailList").addEventListener("click", async function(e){
-      var t = e.target.closest("[data-action]");
-      if(!t) return;
-      if(t.dataset.action === "toggle-action") await toggleActionDone(t.dataset.id);
-      else if(t.dataset.action === "toggle-habit-mark") await handleHabitMarkClick(t.dataset.id, t.dataset.date);
-      else if(t.dataset.action === "edit-action") editAction(t.dataset.id);
-      else if(t.dataset.action === "edit-habit") editHabit(t.dataset.id);
-      else if(t.dataset.action === "del-action") await deleteAction(t.dataset.id);
-    });
+    document.getElementById("tmDetailList").addEventListener("click", tmHandleItemListClick);
   })();
 
   /* ---- Time Matrix WebGL skin ---- */
