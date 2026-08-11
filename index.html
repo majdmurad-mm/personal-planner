@@ -1226,19 +1226,43 @@
      rows. Every cell (header labels included) is placed by explicit inline grid-column/grid-row from
      JS, so the row/column count lives in one place (tmRenderGrid) instead of being baked into markup
      here — changing the matrix shape later is a JS-only change. */
-  .tm-grid-wrap{ margin:18px 0 26px; overflow-x:auto; }
-  .tm-grid{ display:grid; grid-template-columns:34px repeat(13, minmax(46px, 1fr)); grid-template-rows:18px repeat(7, minmax(40px, 1fr)); gap:4px; min-width:640px; }
+  .tm-grid-outer{ position:relative; margin:18px 0 26px; }
+  .tm-grid-wrap{ overflow-x:auto; }
+  /* The WebGL canvas sits in the OUTER (non-scrolling) wrapper, under the grid, filling it exactly —
+     sized in JS from this same element's rect every frame (see initTmGl). Explicit width/height:100%,
+     not just inset:0 — a canvas is a replaced element, so with only left/right set its INTRINSIC size
+     (the render buffer) would win, which on a devicePixelRatio-2 screen is double the CSS size (the
+     same bug already fixed once for the Present timeline's GL canvas — see #todayGlCanvas). */
+  #tmGlCanvas{ position:absolute; inset:0; width:100%; height:100%; z-index:0; pointer-events:none; display:none; }
+  .tm-grid-outer.gl-on #tmGlCanvas{ display:block; }
+  .tm-grid{ position:relative; z-index:1; display:grid; grid-template-columns:34px repeat(13, minmax(64px, 1fr)); grid-template-rows:20px repeat(7, minmax(72px, 1fr)); gap:5px; min-width:880px; }
   .tm-col-label{ display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:8.5px; color:var(--text-faint); white-space:nowrap; }
   .tm-col-label.tm-col-current{ color:var(--accent); font-weight:700; }
   .tm-row-label{ display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:9.5px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.04em; }
-  .tm-cell{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; border:1px solid var(--border); border-radius:6px; background:var(--bg-raised); cursor:pointer; padding:2px; font-family:var(--mono); appearance:none; }
+  /* Base (no-WebGL / GL-failed) look: a flat coloured tile, exactly the shape the matrix always had —
+     this is the genuine fallback, not a loading state, so it has to stand on its own. Once .gl-on
+     lands on the wrapper the tile's own background/border go transparent (rule further down) and the
+     3D layer becomes the only thing painting colour; the DOM keeps doing everything else (text, hit
+     target, hover ring, focus, right-click). */
+  .tm-cell{ display:flex; flex-direction:column; align-items:stretch; justify-content:flex-start; gap:2px; border:1px solid var(--border); border-radius:8px; background:var(--bg-raised); cursor:pointer; padding:4px 5px; font-family:var(--mono); appearance:none; text-align:left; overflow:hidden; }
   .tm-cell:hover{ box-shadow:inset 0 0 0 1px var(--border-bright); }
   .tm-cell.weekend{ background:var(--bg-inset); }
   .tm-cell.today{ box-shadow:inset 0 0 0 1.5px var(--violet); }
   .tm-cell.selected{ box-shadow:inset 0 0 0 1.5px var(--accent); }
-  .tm-cell.selected .tm-cell-num{ color:var(--accent); font-weight:700; }
-  .tm-cell-num{ font-size:11.5px; color:var(--text-dim); }
+  .tm-cell.today.selected{ box-shadow:inset 0 0 0 1.5px var(--violet), inset 0 0 0 3px var(--accent); }
+  .tm-grid-outer.gl-on .tm-cell{ background:transparent; border-color:transparent; }
+  .tm-grid-outer.gl-on .tm-cell.weekend{ background:transparent; }
+  .tm-cell-num{ flex-shrink:0; font-size:10px; color:var(--text-dim); }
   .tm-cell.today .tm-cell-num{ color:var(--violet); font-weight:700; }
+  .tm-cell.selected .tm-cell-num{ color:var(--accent); font-weight:700; }
+  /* Event text — the whole point of the redesign: what's actually scheduled, right on the tile,
+     legible over both the flat fallback colour and the lit 3D tile beneath it. Done items are struck
+     through rather than hidden, same convention as .today-row-title.done, so a finished day still
+     reads as "here's what happened" instead of going visually blank. */
+  .tm-cell-items{ flex:1; min-height:0; display:flex; flex-direction:column; gap:1px; justify-content:flex-start; }
+  .tm-cell-item{ font-size:8px; line-height:1.25; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-shadow:0 1px 2px rgba(0,0,0,0.35); }
+  .tm-cell-item.done{ opacity:0.55; text-decoration:line-through; }
+  .tm-cell-more{ flex-shrink:0; font-size:7.5px; color:var(--text-faint); }
   .cal-dot-mini-row{ display:flex; gap:2px; flex-wrap:wrap; }
   .cal-dot-mini{ width:4px; height:4px; border-radius:50%; background:var(--accent); }
   .cal-entry.google .cal-dot{ background:var(--accent); }
@@ -3614,7 +3638,7 @@
       <div class="main-header">
         <div>
           <h1>time matrix</h1>
-          <p class="subhead">One quarter, laid flat — 7 weekdays × 13 weeks. Colour and click work exactly like the Present/Future calendar strips.</p>
+          <p class="subhead">One quarter, laid flat — 7 weekdays × 13 weeks. Each tile is lit and coloured by the blend of every event on that day; click one to see what's on it.</p>
         </div>
       </div>
 
@@ -3625,15 +3649,24 @@
           <button class="cal-nav-btn" id="tmNextBtn" type="button" aria-label="Next quarter" title="Forward 13 weeks">›</button>
           <button class="btn" id="tmTodayBtn" type="button">today</button>
         </div>
-        <div class="sub-view-toggle cal-view-toggle" id="tmCalViewToggle">
-          <button class="sub-view-tab active" data-sub="plain" type="button">plain</button>
-          <button class="sub-view-tab" data-sub="intensity" type="button">intensity</button>
-          <button class="sub-view-tab" data-sub="quality" type="button">day quality</button>
-        </div>
       </div>
 
-      <div class="tm-grid-wrap">
-        <div class="tm-grid" id="tmGrid"></div>
+      <!-- WebGL skin, same architecture as the Present timeline's (see initTodayGl): the canvas draws
+           lit, extruded, coloured tiles underneath; the DOM buttons stay exactly as functional as
+           before (click/select/right-click/keyboard) and carry the actual text, now transparent so
+           the 3D tile shows through. No WebGL / failed CDN import → tmGlFailed stays true, .gl-on
+           never gets added, and #tmGrid renders flat-coloured exactly like it did before this.
+           Two nested wrappers, not one — same split Today's timeline uses (.today-timeline-main
+           outside, .today-timeline-viewport inside): the canvas is sized to and lives in the OUTER,
+           non-scrolling element, while only the INNER element scrolls horizontally on a narrow
+           screen. An absolutely-positioned canvas placed directly inside the scrolling element would
+           itself be part of what scrolls in some layout situations — nesting it outside removes any
+           doubt, rather than relying on it happening to work. -->
+      <div class="tm-grid-outer" id="tmGridOuter">
+        <canvas id="tmGlCanvas" aria-hidden="true"></canvas>
+        <div class="tm-grid-wrap" id="tmGridWrap">
+          <div class="tm-grid" id="tmGrid"></div>
+        </div>
       </div>
 
       <div class="today-section-block">
@@ -5540,6 +5573,7 @@
     });
     homeSceneSetActive(name === "home");
     todayGlSetActive(name === "today");
+    tmGlSetActive(name === "timematrix");
     // The graph lives inside the Planner now — entering the planner needs the same full-viewport
     // layout class the tab switcher applies (see plannerTabs' click handler below and
     // #plannerSection.planner-fullscreen-graph) kept in sync regardless of which tab is active, since
@@ -20559,33 +20593,46 @@
   wireFutureCalGrid();
 
   /* ================= TIME MATRIX PAGE ================= */
-  // One quarter as a fixed 7 (weekday) x 13 (week) grid — every cell is a day, colored by the same
-  // plain/intensity/day-quality scheme the Present/Future month strips already share (views.calStrip
-  // — reusing it on purpose: flipping the view here flips those pages too, same relationship those
-  // two already have with each other). Where the month strips scroll through one month at a time,
-  // this lays 13 whole weeks flat at once — a look-back-and-ahead shape neither of them gives you.
+  // One quarter as a fixed 7 (weekday) x 13 (week) grid — every cell is a day. Unlike the Present/
+  // Future month strips (which share a plain/intensity/day-quality toggle via views.calStrip), a
+  // Time Matrix tile's colour is ALWAYS the duration-weighted blend of that day's own events
+  // (calDayQualityRgb — the same "day quality" math those strips already had, just made this page's
+  // one and only identity instead of an option). A toggle that only sometimes did anything once the
+  // WebGL layer is on would be more confusing than useful, so this page doesn't have one.
   // Selecting a cell shows that day's actions + habit occurrences below, reusing the exact same
   // markup/click-dispatch/right-click-context-menu conventions as the Present page's own day list
   // (todayActionsList) — see the container's own click listener below and the GLOBAL contextmenu
   // listener keyed on [data-kind][data-id], which already covers "action" and "habit-instance".
   var TM_COLS = 13, TM_ROWS = 7;
   var TM_WEEKDAY_LABELS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  var TM_CELL_MAX_CHIPS = 2;
   function tmSundayOf(dateStr){ return addDaysToDateStr(dateStr, -(new Date(dateStr + "T00:00:00").getDay())); }
   // Centered on the CURRENT week by default: column 6 (of 0..12) is this week, so the grid opens
   // showing 6 weeks back and 6 weeks ahead at once.
   function tmDefaultWindowStart(){ return addDaysToDateStr(tmSundayOf(todayStr()), -6 * 7); }
   var tmWindowStart = tmDefaultWindowStart();
   var tmSelectedDate = todayStr();
+  // Shared by the cell chips AND the detail panel below, so there's exactly one definition of "what
+  // counts as this day's events" — sorted by time, untimed last. Detail rows need the extra fields
+  // (id/priority/area colour) the cell chips don't use; cheap enough to always compute the full set.
+  function tmDayItems(dateStr){
+    var items = [];
+    state.actions.filter(function(a){ return a.date === dateStr; }).forEach(function(a){
+      items.push({ kind:"action", id:a.id, date:a.date, title:a.title, done:!!a.done, priority:a.priority,
+        area:actionCategory(a), colorCss:actionAreaColorCss(a), timeOfDay:a.timeOfDay });
+    });
+    state.habits.filter(function(h){ return habitOccursOnDate(h, dateStr); }).forEach(function(h){
+      var f = habitInstanceFields(h, dateStr);
+      items.push({ kind:"habit-instance", id:h.id, date:dateStr, title:h.title, done:habitDoneForDate(h, dateStr), priority:h.priority,
+        area:habitCategory(h), colorCss:null, timeOfDay:f.timeOfDay });
+    });
+    items.sort(function(x, y){ return (x.timeOfDay || "99:99").localeCompare(y.timeOfDay || "99:99"); });
+    return items;
+  }
   function tmRenderGrid(){
     var gridEl = document.getElementById("tmGrid");
     if(!gridEl) return;
     var todayKey = todayStr();
-    var dateKeys = [];
-    for(var col = 0; col < TM_COLS; col++){
-      var weekStart = addDaysToDateStr(tmWindowStart, col * 7);
-      for(var row = 0; row < TM_ROWS; row++) dateKeys.push(addDaysToDateStr(weekStart, row));
-    }
-    var colorMap = calStripColorsForDates(views.calStrip, dateKeys);
     var html = "";
     for(var c = 0; c < TM_COLS; c++){
       var wStart = addDaysToDateStr(tmWindowStart, c * 7);
@@ -20594,26 +20641,36 @@
     for(var r = 0; r < TM_ROWS; r++){
       html += '<div class="tm-row-label" style="grid-column:1;grid-row:' + (r + 2) + ';">' + TM_WEEKDAY_LABELS[r] + '</div>';
     }
+    // Whether the GL layer is actually running decides who paints the colour: GL live → the tile's
+    // own inline background/border are left off entirely (CSS neutralizes them via .gl-on, and the
+    // WebGL frame loop reads the raw numbers straight off data-color); GL absent/failed → the same
+    // inline background/border this cell has always used, so the fallback is a real, complete look
+    // on its own, not a degraded one.
+    var glOn = tmGlActive();
     for(var ci = 0; ci < TM_COLS; ci++){
       var wkStart = addDaysToDateStr(tmWindowStart, ci * 7);
       for(var ri = 0; ri < TM_ROWS; ri++){
         var cellKey = addDaysToDateStr(wkStart, ri);
         var isWeekend = ri === 0 || ri === 6;
-        var hasStuff = state.actions.some(function(a){ return a.date === cellKey; }) ||
-          state.habits.some(function(h){ return habitOccursOnDate(h, cellKey); });
-        var col = colorMap[cellKey];
-        var colStyle = col ? ' style="grid-column:' + (ci + 2) + ';grid-row:' + (ri + 2) + ';background:' + col.bg + ';border-color:' + col.c + ';"' : ' style="grid-column:' + (ci + 2) + ';grid-row:' + (ri + 2) + ';"';
-        html += '<button type="button" class="tm-cell' + (isWeekend ? " weekend" : "") + (cellKey === todayKey ? " today" : "") + (cellKey === tmSelectedDate ? " selected" : "") + '" data-date="' + cellKey + '"' + colStyle + ' title="' + escapeHtml(fmtDateLong(cellKey)) + '">' +
+        var items = tmDayItems(cellKey);
+        var rgb = calDayQualityRgb(cellKey);
+        var css = areaColorCssPair(rgb);
+        var posStyle = 'grid-column:' + (ci + 2) + ';grid-row:' + (ri + 2) + ';';
+        var colorStyle = (!glOn && css) ? 'background:' + css.bg + ';border-color:' + css.c + ';' : '';
+        var chips = items.slice(0, TM_CELL_MAX_CHIPS).map(function(it){
+          return '<span class="tm-cell-item' + (it.done ? ' done' : '') + '">' + (it.kind === "habit-instance" ? "↻ " : "") + escapeHtml(it.title) + '</span>';
+        }).join("");
+        var more = items.length > TM_CELL_MAX_CHIPS ? '<span class="tm-cell-more">+' + (items.length - TM_CELL_MAX_CHIPS) + ' more</span>' : '';
+        html += '<button type="button" class="tm-cell' + (isWeekend ? " weekend" : "") + (cellKey === todayKey ? " today" : "") + (cellKey === tmSelectedDate ? " selected" : "") +
+          '" data-date="' + cellKey + '" data-color="' + (rgb ? (rgb.r + "," + rgb.g + "," + rgb.b) : "") + '" style="' + posStyle + colorStyle + '" title="' + escapeHtml(fmtDateLong(cellKey)) + (items.length ? " — " + items.length + " item" + (items.length === 1 ? "" : "s") : " — nothing scheduled") + '">' +
           '<span class="tm-cell-num">' + Number(cellKey.slice(8, 10)) + '</span>' +
-          (hasStuff ? '<span class="today-month-strip-day-dot"></span>' : '<span class="today-month-strip-day-dot-empty"></span>') +
+          '<span class="tm-cell-items">' + chips + more + '</span>' +
         '</button>';
       }
     }
     gridEl.innerHTML = html;
     var rangeEl = document.getElementById("tmRangeLabel");
     if(rangeEl) rangeEl.textContent = fmtDate(tmWindowStart) + " – " + fmtDate(addDaysToDateStr(tmWindowStart, TM_COLS * 7 - 1));
-    var toggleEl = document.getElementById("tmCalViewToggle");
-    if(toggleEl) toggleEl.querySelectorAll(".sub-view-tab").forEach(function(b){ b.classList.toggle("active", b.dataset.sub === views.calStrip); });
   }
   // The day-detail list below the grid: today-row markup shared verbatim with the Present page's own
   // action/note lists, plus habit occurrences (which the Present list doesn't carry — the matrix is a
@@ -20624,17 +20681,7 @@
     if(!listEl) return;
     var headingEl = document.getElementById("tmDetailHeading");
     if(headingEl) headingEl.textContent = fmtDateLong(tmSelectedDate) + (tmSelectedDate === todayStr() ? " (today)" : "");
-    var items = [];
-    state.actions.filter(function(a){ return a.date === tmSelectedDate; }).forEach(function(a){
-      items.push({ kind:"action", id:a.id, date:a.date, title:a.title, done:!!a.done, priority:a.priority,
-        area:actionCategory(a), colorCss:actionAreaColorCss(a), timeOfDay:a.timeOfDay });
-    });
-    state.habits.filter(function(h){ return habitOccursOnDate(h, tmSelectedDate); }).forEach(function(h){
-      var f = habitInstanceFields(h, tmSelectedDate);
-      items.push({ kind:"habit-instance", id:h.id, date:tmSelectedDate, title:h.title, done:habitDoneForDate(h, tmSelectedDate), priority:h.priority,
-        area:habitCategory(h), colorCss:null, timeOfDay:f.timeOfDay });
-    });
-    items.sort(function(x, y){ return (x.timeOfDay || "99:99").localeCompare(y.timeOfDay || "99:99"); });
+    var items = tmDayItems(tmSelectedDate);
     document.getElementById("tmDetailEmpty").style.display = items.length ? "none" : "";
     listEl.innerHTML = items.map(function(it){
       var catClass = it.area ? " " + it.area : "";
@@ -20651,7 +20698,7 @@
       '</div>';
     }).join("");
   }
-  function renderTimeMatrix(){ tmRenderGrid(); tmRenderDetail(); }
+  function renderTimeMatrix(){ tmRenderGrid(); tmRenderDetail(); ensureTmGl(); }
   (function wireTimeMatrix(){
     var gridEl = document.getElementById("tmGrid");
     if(!gridEl) return;
@@ -20674,7 +20721,6 @@
       tmSelectedDate = todayStr();
       renderTimeMatrix();
     });
-    wireSubViewToggle("tmCalViewToggle", "calStrip", tmRenderGrid);
     document.getElementById("tmAddActionBtn").addEventListener("click", function(){
       openActionModal(null, null);
       document.getElementById("actionDateInput").value = tmSelectedDate;
@@ -20689,6 +20735,165 @@
       else if(t.dataset.action === "del-action") await deleteAction(t.dataset.id);
     });
   })();
+
+  /* ---- Time Matrix WebGL skin ---- */
+  // Same architecture as the Present timeline's (see initTodayGl, the first GL skin this app shipped):
+  // the canvas re-renders the VISUALS — lit, extruded, coloured tiles — while the existing DOM keeps
+  // doing everything else (layout, click, right-click, the event-title text). The DOM cells go
+  // transparent (see .tm-grid-outer.gl-on) and become pure interaction proxies + text labels;
+  // every frame this layer reads their live getBoundingClientRect() and places a 3D tile exactly
+  // underneath, so navigating weeks, selecting a day, and the horizontal scroll on a narrow screen
+  // all mirror for free with zero changes to those handlers. No WebGL / failed CDN import → the
+  // class never goes on and the grid renders exactly as it did before this (see tmRenderGrid's own
+  // glOn branch for the inline colour it falls back to).
+  var tmGl = null, tmGlIniting = false, tmGlFailed = false;
+  function tmGlActive(){ return !!tmGl; }
+  function ensureTmGl(){
+    if(tmGl || tmGlIniting || tmGlFailed) return;
+    if(!homeWebGLUsable()){ tmGlFailed = true; return; }
+    tmGlIniting = true;
+    initTmGl().catch(function(err){
+      tmGlFailed = true;
+      console.warn("time matrix 3D skin unavailable:", err.message);
+    }).finally(function(){ tmGlIniting = false; });
+  }
+  async function initTmGl(){
+    var THREE = await loadThree();
+    var outerEl = document.getElementById("tmGridOuter");
+    var canvas = document.getElementById("tmGlCanvas");
+    var renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    var scene = new THREE.Scene();
+    // Orthographic, pixel-true: world x/y map 1:1 onto the container's CSS pixels (y negated so
+    // "down the page" is down) — makes mirroring DOM rects trivial, same convention as every other
+    // GL skin in this app.
+    var camera = new THREE.OrthographicCamera(0, 100, 0, -100, -200, 200);
+    camera.position.z = 100;
+    scene.add(new THREE.AmbientLight(0xffffff, 0.85));
+    var key = new THREE.DirectionalLight(0xffffff, 1.05);
+    key.position.set(-120, 160, 220);
+    scene.add(key);
+
+    function roundedTileGeometry(w, h){
+      var r = Math.min(10, h / 2, Math.max(2, w / 2));
+      var s = new THREE.Shape();
+      var x = -w / 2, y = -h / 2;
+      s.moveTo(x + r, y);
+      s.lineTo(x + w - r, y); s.quadraticCurveTo(x + w, y, x + w, y + r);
+      s.lineTo(x + w, y + h - r); s.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      s.lineTo(x + r, y + h); s.quadraticCurveTo(x, y + h, x, y + h - r);
+      s.lineTo(x, y + r); s.quadraticCurveTo(x, y, x + r, y);
+      // A chunkier bevel than the Present timeline's thin bars (that one's depth:7/bevel:1.4) — these
+      // are squarish tiles, not slivers, so a bigger bevel is what actually reads as "a lit square"
+      // at this scale instead of just a flat-looking slab.
+      return new THREE.ExtrudeGeometry(s, { depth: 9, bevelEnabled: true, bevelThickness: 2, bevelSize: 2, bevelSegments: 3 });
+    }
+    // Neutral fill for a day with no events — every day is still a real, present tile (per the
+    // brief: "each day is a square"), just an unlit-looking one, so the coloured days stand out
+    // instead of the grid reading as a hole where nothing's scheduled.
+    var neutralColor = new THREE.Color(cssVarColor("--bg-raised"));
+    function colorFromCsv(csv){
+      var p = csv.split(",");
+      return new THREE.Color(Number(p[0]) / 255, Number(p[1]) / 255, Number(p[2]) / 255);
+    }
+
+    var tileMeshes = new Map(); // date string -> { mesh, w, h, colorKey }
+    var W = 0, H = 0;
+    function syncSize(rect){
+      if(Math.abs(rect.width - W) < 1 && Math.abs(rect.height - H) < 1) return;
+      W = rect.width; H = rect.height;
+      renderer.setSize(W, H, false);
+      camera.right = W; camera.bottom = -H;
+      camera.updateProjectionMatrix();
+    }
+    function frame(){
+      var orect = outerEl.getBoundingClientRect();
+      if(orect.width < 2 || orect.height < 2){ renderer.render(scene, camera); return; }
+      syncSize(orect);
+      var seen = new Set();
+      document.querySelectorAll("#tmGrid .tm-cell").forEach(function(cellEl){
+        var dateKey = cellEl.dataset.date;
+        if(!dateKey) return;
+        seen.add(dateKey);
+        var r = cellEl.getBoundingClientRect();
+        // A cell scrolled outside the (non-scrolling) outer wrapper's own visible bounds still
+        // reports a real DOM rect — mirroring it as-is is exactly right: the tile ends up positioned
+        // off-canvas, which the orthographic camera simply doesn't render, matching what a plain DOM
+        // scroll would show anyway. No special-casing needed for the horizontal scroll on narrow
+        // screens; this is the same mechanism the Present timeline's zoom/pan already relies on.
+        var w = Math.max(r.width - 2, 4), h = Math.max(r.height - 2, 4);
+        var colorKey = cellEl.dataset.color || "";
+        var entry = tileMeshes.get(dateKey);
+        if(!entry){
+          var color = colorKey ? colorFromCsv(colorKey) : neutralColor.clone();
+          var mat = new THREE.MeshStandardMaterial({ color: color, emissive: color, emissiveIntensity: colorKey ? 0.26 : 0.06, roughness: 0.55, metalness: 0.1, transparent: true, opacity: 0.97 });
+          entry = { mesh: new THREE.Mesh(roundedTileGeometry(w, h), mat), w: w, h: h, colorKey: colorKey };
+          scene.add(entry.mesh);
+          tileMeshes.set(dateKey, entry);
+        } else {
+          if(Math.abs(entry.w - w) > 1.5 || Math.abs(entry.h - h) > 1.5){
+            entry.mesh.geometry.dispose();
+            entry.mesh.geometry = roundedTileGeometry(w, h);
+            entry.w = w; entry.h = h;
+          }
+          if(entry.colorKey !== colorKey){
+            entry.colorKey = colorKey;
+            var c2 = colorKey ? colorFromCsv(colorKey) : neutralColor.clone();
+            entry.mesh.material.color.copy(c2);
+            entry.mesh.material.emissive.copy(c2);
+          }
+        }
+        var isToday = cellEl.classList.contains("today");
+        var isSelected = cellEl.classList.contains("selected");
+        // A gentle emissive pulse on today's own tile only — the one deliberate touch of motion in
+        // an otherwise static scene, so "where am I" reads at a glance without the grid feeling busy.
+        var pulse = isToday ? 0.08 * (0.5 + 0.5 * Math.sin(Date.now() / 900)) : 0;
+        entry.mesh.material.emissiveIntensity = (colorKey ? 0.26 : 0.06) + (isSelected ? 0.16 : 0) + (isToday ? 0.08 : 0) + pulse;
+        entry.mesh.position.set(r.left - orect.left + w / 2, -(r.top - orect.top + h / 2), isSelected ? 10 : (isToday ? 7 : 4));
+      });
+      tileMeshes.forEach(function(entry, key){
+        if(seen.has(key)) return;
+        entry.mesh.geometry.dispose();
+        entry.mesh.material.dispose();
+        scene.remove(entry.mesh);
+        tileMeshes.delete(key);
+      });
+      renderer.render(scene, camera);
+    }
+    renderer.setAnimationLoop(frame);
+    outerEl.classList.add("gl-on");
+    tmGl = {
+      setRunning: function(on){ renderer.setAnimationLoop(on ? frame : null); },
+      dispose: function(){
+        renderer.setAnimationLoop(null);
+        outerEl.classList.remove("gl-on");
+        scene.traverse(function(o){
+          if(o.geometry) o.geometry.dispose();
+          if(o.material){
+            if(o.material.map) o.material.map.dispose();
+            o.material.dispose();
+          }
+        });
+        renderer.dispose();
+        tileMeshes.clear();
+      }
+    };
+    // The GL layer replaced this render's inline colours with transparency the instant .gl-on landed
+    // (the CSS rule is unconditional) — but tmRenderGrid had already run and baked in the flat-
+    // fallback colours from BEFORE tmGl existed. One more pass with tmGlActive() now true removes
+    // them, so the fallback colour never visibly flashes underneath the new 3D tiles.
+    tmRenderGrid();
+  }
+  function tmGlSetActive(on){ if(tmGl) tmGl.setRunning(on); }
+  document.addEventListener("visibilitychange", function(){
+    tmGlSetActive(!document.hidden && activeSection === "timematrix");
+  });
+  // Theme flip: every baked colour is stale — tear down and rebuild immediately if the matrix is
+  // what's on screen (otherwise the next entry to Time Matrix re-creates it lazily via ensureTmGl).
+  document.getElementById("themeToggleBtn").addEventListener("click", function(){
+    if(tmGl){ tmGl.dispose(); tmGl = null; tmGlFailed = false; }
+    if(activeSection === "timematrix"){ ensureTmGl(); tmRenderGrid(); }
+  });
 
   /* ================= TOOLS PAGE ================= */
 
