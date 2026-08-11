@@ -1221,6 +1221,24 @@
   .today-row-title.done{ color:var(--text-faint); text-decoration:line-through; }
   .today-row-meta{ font-family:var(--mono); font-size:10px; color:var(--text-faint); flex-shrink:0; }
   .today-empty-note{ font-family:var(--mono); font-size:11px; color:var(--text-faint); display:none; }
+  /* ===== Time matrix: 7 (weekday) x 13 (week) grid of day cells ===== */
+  /* One CSS grid: a 34px label column + 13 equal week columns, an 18px label row + 7 equal weekday
+     rows. Every cell (header labels included) is placed by explicit inline grid-column/grid-row from
+     JS, so the row/column count lives in one place (tmRenderGrid) instead of being baked into markup
+     here — changing the matrix shape later is a JS-only change. */
+  .tm-grid-wrap{ margin:18px 0 26px; overflow-x:auto; }
+  .tm-grid{ display:grid; grid-template-columns:34px repeat(13, minmax(46px, 1fr)); grid-template-rows:18px repeat(7, minmax(40px, 1fr)); gap:4px; min-width:640px; }
+  .tm-col-label{ display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:8.5px; color:var(--text-faint); white-space:nowrap; }
+  .tm-col-label.tm-col-current{ color:var(--accent); font-weight:700; }
+  .tm-row-label{ display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:9.5px; color:var(--text-faint); text-transform:uppercase; letter-spacing:0.04em; }
+  .tm-cell{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; border:1px solid var(--border); border-radius:6px; background:var(--bg-raised); cursor:pointer; padding:2px; font-family:var(--mono); appearance:none; }
+  .tm-cell:hover{ box-shadow:inset 0 0 0 1px var(--border-bright); }
+  .tm-cell.weekend{ background:var(--bg-inset); }
+  .tm-cell.today{ box-shadow:inset 0 0 0 1.5px var(--violet); }
+  .tm-cell.selected{ box-shadow:inset 0 0 0 1.5px var(--accent); }
+  .tm-cell.selected .tm-cell-num{ color:var(--accent); font-weight:700; }
+  .tm-cell-num{ font-size:11.5px; color:var(--text-dim); }
+  .tm-cell.today .tm-cell-num{ color:var(--violet); font-weight:700; }
   .cal-dot-mini-row{ display:flex; gap:2px; flex-wrap:wrap; }
   .cal-dot-mini{ width:4px; height:4px; border-radius:50%; background:var(--accent); }
   .cal-entry.google .cal-dot{ background:var(--accent); }
@@ -2251,6 +2269,7 @@
           <button class="side-link side-sublink" data-section="today" type="button"><span class="sl-glyph">◷</span>Present</button>
           <button class="side-link side-sublink" data-section="timeline" type="button"><span class="sl-glyph">↔</span>History</button>
           <button class="side-link side-sublink" data-section="future" type="button"><span class="sl-glyph">»</span>Future</button>
+          <button class="side-link side-sublink" data-section="timematrix" type="button"><span class="sl-glyph">▦</span>Time matrix</button>
         </div>
         <button class="side-link side-link-parent" id="sideLinkPersonalToggle" data-toggle-submenu="sideSubmenuPersonal" type="button" aria-expanded="false">
           <span class="sl-glyph">◆</span>Personal<span class="side-link-caret">▾</span>
@@ -3583,6 +3602,46 @@
         <h2 class="future-section-title">unscheduled</h2>
         <p class="panel-hint">Actions with no date yet, grouped by area — give one a date to move it into the list above, or leave it here until you're ready.</p>
         <div id="futureUnscheduledList"></div>
+      </div>
+    </section>
+
+    <!-- ===== TIME MATRIX SECTION — one quarter as a 7 (weekday) x 13 (week) grid of day cells,
+         same plain/intensity/day-quality coloring the Present/Future month strips already share
+         (views.calStrip), just laid out as a fixed matrix instead of a scrolling single-month row.
+         Centered on the current week by default: 6 weeks back, this week, 6 weeks ahead — a look-
+         back-and-ahead view the month strips don't give you a single one of. ===== -->
+    <section id="timematrixSection" style="display:none;">
+      <div class="main-header">
+        <div>
+          <h1>time matrix</h1>
+          <p class="subhead">One quarter, laid flat — 7 weekdays × 13 weeks. Colour and click work exactly like the Present/Future calendar strips.</p>
+        </div>
+      </div>
+
+      <div class="cal-toolbar">
+        <div class="cal-nav-group">
+          <button class="cal-nav-btn" id="tmPrevBtn" type="button" aria-label="Previous quarter" title="Back 13 weeks">‹</button>
+          <span class="cal-month-label" id="tmRangeLabel"></span>
+          <button class="cal-nav-btn" id="tmNextBtn" type="button" aria-label="Next quarter" title="Forward 13 weeks">›</button>
+          <button class="btn" id="tmTodayBtn" type="button">today</button>
+        </div>
+        <div class="sub-view-toggle cal-view-toggle" id="tmCalViewToggle">
+          <button class="sub-view-tab active" data-sub="plain" type="button">plain</button>
+          <button class="sub-view-tab" data-sub="intensity" type="button">intensity</button>
+          <button class="sub-view-tab" data-sub="quality" type="button">day quality</button>
+        </div>
+      </div>
+
+      <div class="tm-grid-wrap">
+        <div class="tm-grid" id="tmGrid"></div>
+      </div>
+
+      <div class="today-section-block">
+        <div class="today-section-block-head"><h2 id="tmDetailHeading">today</h2>
+          <button class="btn" id="tmAddActionBtn" type="button">+ action</button>
+        </div>
+        <div class="today-row-list" id="tmDetailList"></div>
+        <p class="today-empty-note" id="tmDetailEmpty">Nothing on this day.</p>
       </div>
     </section>
 
@@ -5450,12 +5509,12 @@
     });
   }
 
-  var ALL_SECTION_IDS = ["homeSection","todaySection","plannerSection","trackerSection","agentSection","timelineSection","journalSection","peopleSection","locationSection","knowledgeSection","integrationsSection","futureSection","toolsSection","archiveSection","goalDetailSection","areaDetailSection","entityPageSection"];
+  var ALL_SECTION_IDS = ["homeSection","todaySection","plannerSection","trackerSection","agentSection","timelineSection","journalSection","peopleSection","locationSection","knowledgeSection","integrationsSection","futureSection","timematrixSection","toolsSection","archiveSection","goalDetailSection","areaDetailSection","entityPageSection"];
   // Sidebar dropdown groups — a parent nav item with no page of its own, bundling a set of section
   // names under one submenu. See showSection() (active/auto-open) and the sideNav click handler
   // (data-toggle-submenu, open/close).
   var NAV_GROUPS = [
-    { toggleId:"sideLinkTimeToggle", submenuId:"sideSubmenuTime", children:["today","timeline","future"] },
+    { toggleId:"sideLinkTimeToggle", submenuId:"sideSubmenuTime", children:["today","timeline","future","timematrix"] },
     { toggleId:"sideLinkPersonalToggle", submenuId:"sideSubmenuPersonal", children:["planner","tracker","journal"] }
   ];
   function showSection(name){
@@ -20499,6 +20558,138 @@
   }
   wireFutureCalGrid();
 
+  /* ================= TIME MATRIX PAGE ================= */
+  // One quarter as a fixed 7 (weekday) x 13 (week) grid — every cell is a day, colored by the same
+  // plain/intensity/day-quality scheme the Present/Future month strips already share (views.calStrip
+  // — reusing it on purpose: flipping the view here flips those pages too, same relationship those
+  // two already have with each other). Where the month strips scroll through one month at a time,
+  // this lays 13 whole weeks flat at once — a look-back-and-ahead shape neither of them gives you.
+  // Selecting a cell shows that day's actions + habit occurrences below, reusing the exact same
+  // markup/click-dispatch/right-click-context-menu conventions as the Present page's own day list
+  // (todayActionsList) — see the container's own click listener below and the GLOBAL contextmenu
+  // listener keyed on [data-kind][data-id], which already covers "action" and "habit-instance".
+  var TM_COLS = 13, TM_ROWS = 7;
+  var TM_WEEKDAY_LABELS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+  function tmSundayOf(dateStr){ return addDaysToDateStr(dateStr, -(new Date(dateStr + "T00:00:00").getDay())); }
+  // Centered on the CURRENT week by default: column 6 (of 0..12) is this week, so the grid opens
+  // showing 6 weeks back and 6 weeks ahead at once.
+  function tmDefaultWindowStart(){ return addDaysToDateStr(tmSundayOf(todayStr()), -6 * 7); }
+  var tmWindowStart = tmDefaultWindowStart();
+  var tmSelectedDate = todayStr();
+  function tmRenderGrid(){
+    var gridEl = document.getElementById("tmGrid");
+    if(!gridEl) return;
+    var todayKey = todayStr();
+    var dateKeys = [];
+    for(var col = 0; col < TM_COLS; col++){
+      var weekStart = addDaysToDateStr(tmWindowStart, col * 7);
+      for(var row = 0; row < TM_ROWS; row++) dateKeys.push(addDaysToDateStr(weekStart, row));
+    }
+    var colorMap = calStripColorsForDates(views.calStrip, dateKeys);
+    var html = "";
+    for(var c = 0; c < TM_COLS; c++){
+      var wStart = addDaysToDateStr(tmWindowStart, c * 7);
+      html += '<div class="tm-col-label' + (wStart <= todayKey && todayKey < addDaysToDateStr(wStart, 7) ? " tm-col-current" : "") + '" style="grid-column:' + (c + 2) + ';grid-row:1;">' + escapeHtml(fmtDate(wStart)) + '</div>';
+    }
+    for(var r = 0; r < TM_ROWS; r++){
+      html += '<div class="tm-row-label" style="grid-column:1;grid-row:' + (r + 2) + ';">' + TM_WEEKDAY_LABELS[r] + '</div>';
+    }
+    for(var ci = 0; ci < TM_COLS; ci++){
+      var wkStart = addDaysToDateStr(tmWindowStart, ci * 7);
+      for(var ri = 0; ri < TM_ROWS; ri++){
+        var cellKey = addDaysToDateStr(wkStart, ri);
+        var isWeekend = ri === 0 || ri === 6;
+        var hasStuff = state.actions.some(function(a){ return a.date === cellKey; }) ||
+          state.habits.some(function(h){ return habitOccursOnDate(h, cellKey); });
+        var col = colorMap[cellKey];
+        var colStyle = col ? ' style="grid-column:' + (ci + 2) + ';grid-row:' + (ri + 2) + ';background:' + col.bg + ';border-color:' + col.c + ';"' : ' style="grid-column:' + (ci + 2) + ';grid-row:' + (ri + 2) + ';"';
+        html += '<button type="button" class="tm-cell' + (isWeekend ? " weekend" : "") + (cellKey === todayKey ? " today" : "") + (cellKey === tmSelectedDate ? " selected" : "") + '" data-date="' + cellKey + '"' + colStyle + ' title="' + escapeHtml(fmtDateLong(cellKey)) + '">' +
+          '<span class="tm-cell-num">' + Number(cellKey.slice(8, 10)) + '</span>' +
+          (hasStuff ? '<span class="today-month-strip-day-dot"></span>' : '<span class="today-month-strip-day-dot-empty"></span>') +
+        '</button>';
+      }
+    }
+    gridEl.innerHTML = html;
+    var rangeEl = document.getElementById("tmRangeLabel");
+    if(rangeEl) rangeEl.textContent = fmtDate(tmWindowStart) + " – " + fmtDate(addDaysToDateStr(tmWindowStart, TM_COLS * 7 - 1));
+    var toggleEl = document.getElementById("tmCalViewToggle");
+    if(toggleEl) toggleEl.querySelectorAll(".sub-view-tab").forEach(function(b){ b.classList.toggle("active", b.dataset.sub === views.calStrip); });
+  }
+  // The day-detail list below the grid: today-row markup shared verbatim with the Present page's own
+  // action/note lists, plus habit occurrences (which the Present list doesn't carry — the matrix is a
+  // broader overview, so habits belong here). data-kind/data-id/data-date on every row is what wires
+  // up the global right-click menu (edit/postpone/skip) for free — see DELETE_HANDLERS/EDIT_HANDLERS.
+  function tmRenderDetail(){
+    var listEl = document.getElementById("tmDetailList");
+    if(!listEl) return;
+    var headingEl = document.getElementById("tmDetailHeading");
+    if(headingEl) headingEl.textContent = fmtDateLong(tmSelectedDate) + (tmSelectedDate === todayStr() ? " (today)" : "");
+    var items = [];
+    state.actions.filter(function(a){ return a.date === tmSelectedDate; }).forEach(function(a){
+      items.push({ kind:"action", id:a.id, date:a.date, title:a.title, done:!!a.done, priority:a.priority,
+        area:actionCategory(a), colorCss:actionAreaColorCss(a), timeOfDay:a.timeOfDay });
+    });
+    state.habits.filter(function(h){ return habitOccursOnDate(h, tmSelectedDate); }).forEach(function(h){
+      var f = habitInstanceFields(h, tmSelectedDate);
+      items.push({ kind:"habit-instance", id:h.id, date:tmSelectedDate, title:h.title, done:habitDoneForDate(h, tmSelectedDate), priority:h.priority,
+        area:habitCategory(h), colorCss:null, timeOfDay:f.timeOfDay });
+    });
+    items.sort(function(x, y){ return (x.timeOfDay || "99:99").localeCompare(y.timeOfDay || "99:99"); });
+    document.getElementById("tmDetailEmpty").style.display = items.length ? "none" : "";
+    listEl.innerHTML = items.map(function(it){
+      var catClass = it.area ? " " + it.area : "";
+      var style = it.colorCss ? ' style="border-left-color:' + it.colorCss.c + ';"' : '';
+      var checkAction = it.kind === "habit-instance" ? "toggle-habit-mark" : "toggle-action";
+      return '<div class="today-row' + catClass + '"' + style + ' data-kind="' + it.kind + '" data-id="' + it.id + '" data-date="' + it.date + '">' +
+        '<button class="ms-check' + (it.done ? ' done' : '') + '" data-action="' + checkAction + '" data-id="' + it.id + '" data-date="' + it.date + '" aria-label="Toggle done"></button>' +
+        '<span class="today-row-title' + (it.done ? ' done' : '') + '">' + (it.kind === "habit-instance" ? "↻ " : "") + escapeHtml(it.title) + '</span>' +
+        '<span class="prio-badge ' + it.priority + '">' + it.priority + '</span>' +
+        (it.timeOfDay ? '<span class="today-row-meta">' + fmtTimeOfDay(it.timeOfDay) + '</span>' : '') +
+        (it.kind === "action" ? '<button class="icon-btn edit" data-action="edit-action" data-id="' + it.id + '" aria-label="Edit action">✎</button>' +
+          '<button class="icon-btn" data-action="del-action" data-id="' + it.id + '" aria-label="Delete action">&times;</button>' :
+          '<button class="icon-btn edit" data-action="edit-habit" data-id="' + it.id + '" aria-label="Edit habit">✎</button>') +
+      '</div>';
+    }).join("");
+  }
+  function renderTimeMatrix(){ tmRenderGrid(); tmRenderDetail(); }
+  (function wireTimeMatrix(){
+    var gridEl = document.getElementById("tmGrid");
+    if(!gridEl) return;
+    gridEl.addEventListener("click", function(e){
+      var cell = e.target.closest(".tm-cell[data-date]");
+      if(!cell) return;
+      tmSelectedDate = cell.dataset.date;
+      renderTimeMatrix();
+    });
+    document.getElementById("tmPrevBtn").addEventListener("click", function(){
+      tmWindowStart = addDaysToDateStr(tmWindowStart, -TM_COLS * 7);
+      tmRenderGrid();
+    });
+    document.getElementById("tmNextBtn").addEventListener("click", function(){
+      tmWindowStart = addDaysToDateStr(tmWindowStart, TM_COLS * 7);
+      tmRenderGrid();
+    });
+    document.getElementById("tmTodayBtn").addEventListener("click", function(){
+      tmWindowStart = tmDefaultWindowStart();
+      tmSelectedDate = todayStr();
+      renderTimeMatrix();
+    });
+    wireSubViewToggle("tmCalViewToggle", "calStrip", tmRenderGrid);
+    document.getElementById("tmAddActionBtn").addEventListener("click", function(){
+      openActionModal(null, null);
+      document.getElementById("actionDateInput").value = tmSelectedDate;
+    });
+    document.getElementById("tmDetailList").addEventListener("click", async function(e){
+      var t = e.target.closest("[data-action]");
+      if(!t) return;
+      if(t.dataset.action === "toggle-action") await toggleActionDone(t.dataset.id);
+      else if(t.dataset.action === "toggle-habit-mark") await handleHabitMarkClick(t.dataset.id, t.dataset.date);
+      else if(t.dataset.action === "edit-action") editAction(t.dataset.id);
+      else if(t.dataset.action === "edit-habit") editHabit(t.dataset.id);
+      else if(t.dataset.action === "del-action") await deleteAction(t.dataset.id);
+    });
+  })();
+
   /* ================= TOOLS PAGE ================= */
 
   // Small color-math helpers so mode-builder functions can lerp between the app's own CSS-var
@@ -21719,6 +21910,7 @@
     agent: [],
     today: [renderToday],
     future: [renderFuture],
+    timematrix: [renderTimeMatrix],
     // Areas and Calendar render alongside the four lists now that they're planner panels — cheap
     // innerHTML builds, same as the lists. The Graph panel is deliberately absent: its physics
     // activation is handled on tab entry / showSection, not by blanket re-renders.
