@@ -2656,6 +2656,7 @@
         <button class="view-tab" data-tab="projects" type="button">Projects</button>
         <button class="view-tab" data-tab="habits" type="button">Habits</button>
         <button class="view-tab" data-tab="actions" type="button">Actions</button>
+        <button class="view-tab" data-tab="events" type="button">Events</button>
         <button class="view-tab" data-tab="graph" type="button">Graph</button>
         <button class="view-tab" data-tab="calendar" type="button">Calendar</button>
       </div>
@@ -2748,6 +2749,24 @@
         <div class="entity-list" id="actionList"></div>
         <div class="empty-state" id="actionEmptyState" style="display:none;">
           <div class="glyph">▸</div><h3>no actions yet</h3><p>Quick, single-shot tasks attached to a goal or a project.</p>
+        </div>
+      </div>
+
+      <!-- EVENTS — no done state, no priority: an event just happens at a time, parallel to
+           actions/habits rather than nested under a goal or project. -->
+      <div id="eventsPanel" style="display:none;">
+        <div class="sub-view-toggle" id="eventsSubToggle">
+          <button class="sub-view-tab" data-sub="list" type="button">list</button>
+          <button class="sub-view-tab active" data-sub="matrix" type="button">matrix</button>
+        </div>
+        <div class="filter-row" id="eventFilterRow">
+          <button class="filter-chip active" data-filter="all" type="button">all</button>
+          <button class="filter-chip" data-filter="upcoming" type="button">upcoming</button>
+          <button class="filter-chip" data-filter="past" type="button">past</button>
+        </div>
+        <div class="entity-list" id="eventList"></div>
+        <div class="empty-state" id="eventEmptyState" style="display:none;">
+          <div class="glyph">▸</div><h3>no events yet</h3><p>Meetings, appointments, trips — things that happen at a time, not tasks to complete.</p>
         </div>
       </div>
 
@@ -3211,7 +3230,7 @@
         <div class="tl-row-labels">
           <span class="tl-h-daylabels"></span><span class="tl-h-daynight"></span>
           <span class="tl-h-track">habits</span><span class="tl-h-track">actions</span>
-          <span class="tl-h-track">notes</span>
+          <span class="tl-h-track">events</span><span class="tl-h-track">notes</span>
         </div>
         <div class="tl-viewport" id="tlViewport">
           <div class="tl-world" id="tlWorld">
@@ -3219,6 +3238,7 @@
             <div class="tl-h-daynight" id="tlDayNightRow"></div>
             <div class="tl-h-track" id="tlHabitsTrack"></div>
             <div class="tl-h-track" id="tlActionsTrack"></div>
+            <div class="tl-h-track" id="tlEventsTrack"></div>
             <div class="tl-h-track" id="tlNotesTrack"></div>
             <div class="tl-now" id="tlNowMarker"></div>
           </div>
@@ -4219,6 +4239,57 @@
   </div>
 </div>
 
+<!-- ===== EVENT MODAL ===== -->
+<!-- Deliberately no priority/done/parent chip — an event doesn't belong to a goal or project and
+     isn't "completed" the way an action is; it just happens at a time (see eventPayload and the
+     comment beside eventCategory). Everything else — area(s), date/time/duration, location, linked
+     people — mirrors the action modal's own fields exactly, same widgets, same behavior. -->
+<div class="modal-overlay" id="eventModalOverlay" hidden>
+  <div class="modal">
+    <div class="modal-head"><span class="dot g"></span><h2 id="eventModalTitle">new_event.json</h2></div>
+    <div class="modal-inner">
+      <div class="field"><label for="eventTitleInput">event</label><input type="text" id="eventTitleInput" placeholder="e.g. Dentist appointment"></div>
+      <div class="field"><label>area</label><div class="chip-select" id="eventAreaSelect">
+        <div class="chip-opt" role="button" tabindex="0" data-ar="Health">✚ Health</div><div class="chip-opt" role="button" tabindex="0" data-ar="Finance">$ Finance</div><div class="chip-opt" role="button" tabindex="0" data-ar="Career">▲ Career</div>
+        <div class="chip-opt" role="button" tabindex="0" data-ar="Maintenance">⚙ Maintenance</div><div class="chip-opt" role="button" tabindex="0" data-ar="Growth">↑ Growth</div><div class="chip-opt sel" role="button" tabindex="0" data-ar="Relationships">♥ Relationships</div><div class="chip-opt" role="button" tabindex="0" data-ar="Sol">◐ Sol</div>
+      </div></div>
+      <div class="field"><label>secondary areas (optional)</label>
+        <div class="dropdown-multi" id="eventSecondaryCatDropdown">
+          <button type="button" class="dropdown-multi-btn" id="eventSecondaryCatBtn">none selected ▾</button>
+          <div class="dropdown-multi-panel chip-select" id="eventSecondaryCatSelect" hidden></div>
+        </div>
+        <p class="panel-hint">This event also touches these areas — its primary area above is unaffected.</p>
+      </div>
+      <div class="field-row">
+        <div class="field"><label for="eventDateInput">date</label><input type="date" id="eventDateInput"></div>
+        <div class="field"><label for="eventTimeInput">time (optional)</label>
+          <div class="time-pick-row">
+            <input type="time" id="eventTimeInput">
+            <button class="btn" id="eventTimePickBtn" type="button">pick ▾</button>
+          </div>
+          <div class="time-pick-panel" id="eventTimePickPanel" hidden></div>
+        </div>
+        <div class="field"><label for="eventDurationInput">duration (min)</label><input type="number" min="0" step="5" id="eventDurationInput" placeholder="e.g. 60"></div>
+      </div>
+      <div class="field">
+        <label for="eventLocationInput">location (optional)</label>
+        <div class="loc-geocode-row addr-autocomplete-wrap">
+          <input type="text" id="eventLocationInput" placeholder="start typing an address or place…" autocomplete="off">
+          <div class="addr-suggest-dropdown" id="eventLocationSuggest" hidden></div>
+        </div>
+        <div class="loc-geocode-status" id="eventLocationStatus"></div>
+      </div>
+      <div class="field"><label>linked people (optional)</label>
+        <div class="dropdown-multi" id="eventLinkedPeopleDropdown">
+          <button type="button" class="dropdown-multi-btn" id="eventLinkedPeopleBtn">none selected ▾</button>
+          <div class="dropdown-multi-panel chip-select" id="eventLinkedPeopleSelect" hidden></div>
+        </div>
+      </div>
+      <div class="modal-actions"><button class="btn" id="cancelEventModalBtn" type="button">cancel</button><button class="btn btn-accent" id="saveEventBtn" type="button">save event</button></div>
+    </div>
+  </div>
+</div>
+
 <!-- ===== AI PROJECT PLANNER MODAL ===== -->
 <!-- Two phases in one modal: the brief (what/when/how much time you actually have), then the
      model's proposal as a review sheet — capacity verdict up top, every proposed row individually
@@ -4744,6 +4815,30 @@
     var merged = actionAreaColorCss(a);
     return merged ? merged.c : fallback;
   }
+  // ---- Events: a parallel entity to actions/habits — no parent goal/project, no done state or
+  // priority (see _Memory/migration_events.sql and eventPayload for the full contract). Area
+  // handling mirrors actions' exactly (primary + optional secondaries, primary weighted double in
+  // the blend) so events read consistently everywhere actions already do.
+  function eventCategory(e){ return e && e.category || null; }
+  function eventCategories(e){
+    var primary = eventCategory(e);
+    var out = primary ? [primary] : [];
+    (e && e.secondaryCategories || []).forEach(function(cat){ if(cat && cat !== primary && out.indexOf(cat) === -1) out.push(cat); });
+    return out;
+  }
+  function eventAreaColorRgb(e){
+    if(!e) return null;
+    var primary = eventCategory(e);
+    if(!primary) return null;
+    var list = [primary, primary];
+    (e.secondaryCategories || []).forEach(function(cat){ if(cat && cat !== primary) list.push(cat); });
+    return mergedAreaColorRgb(list);
+  }
+  function eventAreaColorCss(e){ return areaColorCssPair(eventAreaColorRgb(e)); }
+  function eventMapColor(e, fallback){
+    var merged = eventAreaColorCss(e);
+    return merged ? merged.c : fallback;
+  }
   // ---- Calendar-strip color views (Present + Future's shared .today-month-strip day-picker, see
   // views.calStrip / renderTodayCalGrid / renderFutureCalGrid) — "intensity" and "day quality" both
   // read the same underlying per-day item list, just aggregate it differently.
@@ -4761,6 +4856,13 @@
       if(!habitOccursOnDate(h, dateStr)) return;
       var f = habitInstanceFields(h, dateStr);
       items.push({ durationMinutes: f.durationMinutes || 15, priority: h.priority, area: habitCategory(h) });
+    });
+    // Events have no priority — CAL_PRIORITY_WEIGHT's own `|| CAL_PRIORITY_WEIGHT.P2` fallback
+    // (see calDayIntensityRaw) already treats an undefined priority as medium weight, so this needs
+    // no special-casing here to avoid skewing the intensity view.
+    state.events.forEach(function(e){
+      if(e.date !== dateStr) return;
+      items.push({ durationMinutes: e.durationMinutes || 15, priority: e.priority, area: eventCategory(e) });
     });
     return items;
   }
@@ -5101,7 +5203,7 @@
   // by the original deletion (e.g. a deleted goal's projects) since that context can go stale by the
   // time someone restores from trash — only the deleted object itself comes back.
   var TRASH_RETENTION_DAYS = 30;
-  var TRASH_TABLE_MAP = { goal:"goals", project:"projects", habit:"habits", action:"actions", journal:"journal", person:"people", tracker_variable:"tracker_variables" };
+  var TRASH_TABLE_MAP = { goal:"goals", project:"projects", habit:"habits", action:"actions", event:"events", journal:"journal", person:"people", tracker_variable:"tracker_variables" };
   var trashLoaded = false;
   async function writeTrash(kind, label, payload, extra){
     var row = { kind: kind, label: label, snapshot: { table: TRASH_TABLE_MAP[kind], payload: payload, extra: extra || [] } };
@@ -5319,7 +5421,7 @@
     return setPreview;
   }
 
-  var state = { goals:[], projects:[], habits:[], actions:[], journal:[], people:[], trackerVars:[], trackerEntries:[], trackerDays:[], wbConnections:[], sleepScores:[], trash:[], socialGroupColors:[], gpsPings:[], pois:[], recordings:[], financeAccounts:[], financeTransactions:[] };
+  var state = { goals:[], projects:[], habits:[], actions:[], events:[], journal:[], people:[], trackerVars:[], trackerEntries:[], trackerDays:[], wbConnections:[], sleepScores:[], trash:[], socialGroupColors:[], gpsPings:[], pois:[], recordings:[], financeAccounts:[], financeTransactions:[] };
   var currentUser = null;
 
   function goalById(id){ return state.goals.find(function(g){ return g.id === id; }); }
@@ -5445,7 +5547,8 @@
       sb.from("points_of_interest").select("*").order("created_at"),
       sb.from("recordings").select("*").order("created_at"),
       sb.from("finance_accounts").select("*").order("position", { ascending:true }),
-      sb.from("finance_transactions").select("*").order("date", { ascending:false })
+      sb.from("finance_transactions").select("*").order("date", { ascending:false }),
+      sb.from("events").select("*").order("created_at")
     ]);
     results.forEach(function(r){ if(r.error) console.error(r.error); });
     // position defaults to 0 (via ||0) when the migration_positions.sql column doesn't exist yet —
@@ -5490,6 +5593,12 @@
     state.financeAccounts = (results[15].data || []).map(function(r){ return { id:r.id, name:r.name, type:r.type, linkedAccountId:r.linked_account_id||null, balance:Number(r.balance)||0, currency:r.currency||"EUR", loanMonthlyPayment:(r.loan_monthly_payment!=null?Number(r.loan_monthly_payment):null), loanInterestRate:(r.loan_interest_rate!=null?Number(r.loan_interest_rate):null), loanOriginalAmount:(r.loan_original_amount!=null?Number(r.loan_original_amount):null), loanPurpose:r.loan_purpose||"", position:r.position||0, archived:!!r.archived }; });
     state.financeAccounts.sort(function(a,b){ return a.position - b.position; });
     state.financeTransactions = (results[16].data || []).map(function(r){ return { id:r.id, accountId:r.account_id, date:r.date, description:r.description||"", amount:Number(r.amount)||0, area:r.area||null, subcategory:r.subcategory||"", source:r.source||"manual", aiCategorized:!!r.ai_categorized }; });
+    // Empty until migration_events.sql has been run (a whole missing table, not just a column, so
+    // the query itself errors — same graceful-degradation shape as every other not-yet-migrated
+    // surface above: caught by the blanket console.error loop, || [] keeps state.events usable).
+    state.events = (results[17].data || []).map(function(r){ return { id:r.id, title:r.title, date:r.date, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null, secondaryCategories:r.secondary_categories||[],
+      locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), linkedPeopleIds:r.linked_people_ids||[], notesMd:r.notes_md||"", position:r.position||0 }; });
+    state.events.sort(function(a,b){ return a.position - b.position; });
     await backfillLegacyHabitTrackers();
     await backfillHabitIcons();
     // After the tracker backfill above, so habits that only just got their linked variable are
@@ -5557,8 +5666,8 @@
   var activeSection = "home";
   var activePlannerTab = "areas";
   var activeKnowledgeTab = "pinned";
-  var filters = { goals:"all", projects:"all", habits:"all", actions:"all", people:"all" };
-  var views = { goals:"list", projects:"matrix", habits:"matrix", actions:"matrix", sleep:"daily", people:"cards", journal:"notes", calStrip:"plain", finance:"overview" };
+  var filters = { goals:"all", projects:"all", habits:"all", actions:"all", events:"all", people:"all" };
+  var views = { goals:"list", projects:"matrix", habits:"matrix", actions:"matrix", events:"matrix", sleep:"daily", people:"cards", journal:"notes", calStrip:"plain", finance:"overview" };
 
   function wireSubViewToggle(containerId, panelKey, renderFn){
     var el = document.getElementById(containerId);
@@ -6845,6 +6954,7 @@
         }
         if(kind === "habit-instance") openHabitInstancePopover(e.clientX, e.clientY, id, date);
         else if(kind === "action") editAction(id);
+        else if(kind === "event") editEvent(id);
         else if(kind === "journal") editJournalEntry(id);
         return;
       }
@@ -6858,6 +6968,12 @@
       if(!wasMoved || !newTime) return;
       if(kind === "habit-instance"){
         await setHabitInstanceOverride(id, date, { timeOfDay: newTime });
+      } else if(kind === "event"){
+        var ev = state.events.find(function(x){ return x.id === id; });
+        if(ev) ev.timeOfDay = newTime;
+        var r4 = await safeUpdate("events", id, { time_of_day: newTime });
+        if(r4.error) console.error(r4.error); else warnDroppedFields(r4.droppedFields);
+        renderAll();
       } else if(kind === "journal"){
         var n = state.journal.find(function(x){ return x.id === id; });
         if(n) n.timeOfDay = newTime;
@@ -6971,6 +7087,23 @@
         // timeOfDay/durationMinutes, which every other day's occurrence still reads. It calls
         // renderAll() itself, so no extra render call is needed here.
         await setHabitInstanceOverride(id, date, patch);
+        return;
+      }
+      if(kind === "event"){
+        var ev = state.events.find(function(x){ return x.id === id; });
+        if(!ev) return;
+        var finalDurationE = durationMin;
+        if(isOvernight){
+          var startMinE = timeToFraction(ev.timeOfDay) * 1440;
+          finalDurationE = Math.max(TIMELINE_RESIZE_MIN_MIN, Math.round((1440 - startMinE) + durationMin));
+        }
+        var payloadE = { duration_minutes: finalDurationE };
+        if(edge === "left" && newTime) payloadE.time_of_day = newTime;
+        ev.durationMinutes = finalDurationE;
+        if(payloadE.time_of_day) ev.timeOfDay = payloadE.time_of_day;
+        var rE = await safeUpdate("events", id, payloadE);
+        if(rE.error) console.error(rE.error); else warnDroppedFields(rE.droppedFields);
+        renderAll();
         return;
       }
       var a = state.actions.find(function(x){ return x.id === id; });
@@ -7715,6 +7848,14 @@
       // area, used only for the block's own color.
       all.push({ kind:"journal", id:n.id, date:day, title:"✎ " + preview, start:timeToFraction(n.timeOfDay), width:0.008, area:noteCategory(n), colorRgb:mergedAreaColorRgb(noteCategories(n)), done:false, overnight:false });
     });
+    state.events.filter(function(ev){ return ev.date === day && ev.timeOfDay; }).forEach(function(ev){
+      all.push({ kind:"event", id:ev.id, date:day, title:ev.title, start:timeToFraction(ev.timeOfDay), width:Math.max((ev.durationMinutes || 15) / 1440, 0.006), area:eventCategory(ev), colorRgb:eventAreaColorRgb(ev), done:false, overnight:false });
+    });
+    state.events.filter(function(ev){ return ev.date === prevDay && ev.timeOfDay; }).forEach(function(ev){
+      var spillE = overnightSpilloverMinutes(ev.timeOfDay, ev.durationMinutes);
+      if(!spillE) return;
+      all.push({ kind:"event", id:ev.id, date:prevDay, title:"‹ " + ev.title, start:0, width:spillE / 1440, area:eventCategory(ev), colorRgb:eventAreaColorRgb(ev), done:false, overnight:true });
+    });
     // Areas toggled off in the legend rail hide their blocks here too.
     all = all.filter(function(b){ return homeAreaVisible(b.area); });
     return all;
@@ -7750,8 +7891,8 @@
       // 0.22 sits deliberately above the 0.12 the --cat-*-bg class rules give, so an action reads
       // stronger than a habit here too (see the habit-block lightening rules in the CSS).
       var colorStyle = b.colorRgb ? ("background:rgba(" + b.colorRgb.r + "," + b.colorRgb.g + "," + b.colorRgb.b + ",0.22);border-color:rgb(" + b.colorRgb.r + "," + b.colorRgb.g + "," + b.colorRgb.b + ");") : "";
-      // Only actions/habit-instances have a "done" concept — notes never get the toggle button.
-      var doneBtn = b.kind !== "journal" ? '<button class="home-tl-done-btn' + (b.done ? " done" : "") + '" type="button" title="' + (b.done ? "Mark not done" : "Mark done") + '" aria-label="' + (b.done ? "Mark not done" : "Mark done") + '"></button>' : "";
+      // Only actions/habit-instances have a "done" concept — notes and events never get the toggle button.
+      var doneBtn = (b.kind !== "journal" && b.kind !== "event") ? '<button class="home-tl-done-btn' + (b.done ? " done" : "") + '" type="button" title="' + (b.done ? "Mark not done" : "Mark done") + '" aria-label="' + (b.done ? "Mark not done" : "Mark done") + '"></button>' : "";
       return '<div class="home-tl-block' + (b.area ? " " + b.area : "") + (b.done ? " done" : "") + (b.autoDone ? " auto-done" : "") + '" data-kind="' + b.kind + '" data-id="' + b.id + '" data-date="' + b.date + '"' + (b.overnight ? ' data-overnight="1"' : '') +
         ' style="left:' + (b.start * 100) + '%; width:' + Math.max(b.width * 100, 0.7) + '%; z-index:' + z + ';' + colorStyle + '" title="' + escapeHtml(b.title) + '">' + handles + doneBtn + '<span class="home-tl-block-title">' + escapeHtml(b.title) + '</span></div>';
     }).join("");
@@ -7833,6 +7974,9 @@
       if(!habitInstanceUnscheduled(h, homeTlSelectedDate)) return;
       items.push({ kind:"habit-instance", id:h.id, title:h.title, area:habitCategory(h) });
     });
+    state.events
+      .filter(function(ev){ return ev.date === homeTlSelectedDate && !ev.timeOfDay; })
+      .forEach(function(ev){ items.push({ kind:"event", id:ev.id, title:ev.title, area:eventCategory(ev), areaColor:eventMapColor(ev, null) }); });
     return items;
   }
   function renderHomeTlUnscheduled(){
@@ -8895,10 +9039,11 @@
     projects: { h1:"planner/projects", sub:"Projects belong to a goal — multi-step work with a deadline and a budget of hours.", add:"+ new project" },
     habits: { h1:"planner/habits", sub:"Habits belong to a goal — recurring commitments you check off over time.", add:"+ new habit" },
     actions: { h1:"planner/actions", sub:"Actions belong to a goal or a project — quick, single-shot tasks with a type.", add:"+ new action" },
+    events: { h1:"planner/events", sub:"Things that happen at a time — meetings, appointments, trips. No done state, no priority.", add:"+ new event" },
     graph: { h1:"planner/graph", sub:"Your whole system as a force-directed graph — drag, zoom, connect.", add:null },
     calendar: { h1:"planner/calendar", sub:"Project due dates and action dates, alongside your connected Google Calendar.", add:null }
   };
-  var PLANNER_PANEL_IDS = ["areasPanel","goalsPanel","projectsPanel","habitsPanel","actionsPanel","graphPanel","calendarPanel"];
+  var PLANNER_PANEL_IDS = ["areasPanel","goalsPanel","projectsPanel","habitsPanel","actionsPanel","eventsPanel","graphPanel","calendarPanel"];
   document.getElementById("plannerTabs").addEventListener("click", function(e){
     var btn = e.target.closest(".view-tab");
     if(!btn) return;
@@ -8925,7 +9070,8 @@
     if(activePlannerTab === "goals") openGoalModal();
     else if(activePlannerTab === "projects") openProjectModal();
     else if(activePlannerTab === "habits") openHabitModal();
-    else openActionModal();
+    else if(activePlannerTab === "events") openEventModal();
+    else if(activePlannerTab === "actions") openActionModal();
   });
 
   function wireFilterRow(rowId, key){
@@ -8941,12 +9087,14 @@
   wireFilterRow("projFilterRow","projects");
   wireFilterRow("habitFilterRow","habits");
   wireFilterRow("actionFilterRow","actions");
+  wireFilterRow("eventFilterRow","events");
   wireFilterRow("peopleFilterRow","people");
 
   wireSubViewToggle("goalsSubToggle", "goals", renderGoals);
   wireSubViewToggle("projectsSubToggle", "projects", renderProjects);
   wireSubViewToggle("habitsSubToggle", "habits", renderHabits);
   wireSubViewToggle("actionsSubToggle", "actions", renderActions);
+  wireSubViewToggle("eventsSubToggle", "events", renderEvents);
   wireSubViewToggle("peopleSubToggle", "people", renderPeople);
   wireSubViewToggle("journalSubToggle", "journal", renderJournal);
 
@@ -9052,7 +9200,7 @@
   }
 
   [["goalPrioSelect","p"],["projectPrioSelect","p"],["habitPrioSelect","p"],["habitFreqSelect","f"],
-   ["actionPrioSelect","p"],["actionParentTypeSelect","pt"],["actionAreaSelect","ar"],["goalCatSelect","c"],["personRelSelect","r"],["tvTypeSelect","t"],["goalHealthLevelSelect","hl"],["habitTypeSelect","ty"],["habitAreaSelect","ar"],["journalPrioritySelect","p"],["journalEditPrioritySelect","p"],["journalTypeSelect","nt"],["journalEditTypeSelect","nt"]]
+   ["actionPrioSelect","p"],["actionParentTypeSelect","pt"],["actionAreaSelect","ar"],["eventAreaSelect","ar"],["goalCatSelect","c"],["personRelSelect","r"],["tvTypeSelect","t"],["goalHealthLevelSelect","hl"],["habitTypeSelect","ty"],["habitAreaSelect","ar"],["journalPrioritySelect","p"],["journalEditPrioritySelect","p"],["journalTypeSelect","nt"],["journalEditTypeSelect","nt"]]
    .forEach(function(pair){ wireChipSelect(document.getElementById(pair[0]), pair[1]); });
   // Notes can span more than one area, like projects (see projectAreaSelect) — multi-select instead
   // of the mutually-exclusive wireChipSelect used above.
@@ -9545,6 +9693,26 @@
       renderAll();
     });
   }
+  function eventPayload(snapshot){
+    return { id:snapshot.id, title:snapshot.title, date:snapshot.date, time_of_day:snapshot.timeOfDay, duration_minutes:snapshot.durationMinutes, category:snapshot.category, secondary_categories:snapshot.secondaryCategories, position:snapshot.position,
+      location_address:snapshot.locationAddress, location_lat:snapshot.locationLat, location_lng:snapshot.locationLng, linked_people_ids:snapshot.linkedPeopleIds, notes_md:snapshot.notesMd };
+  }
+  async function deleteEvent(id){
+    var e = state.events.find(function(x){ return x.id === id; });
+    if(!e) return;
+    var snapshot = Object.assign({}, e);
+    state.events = state.events.filter(function(x){ return x.id !== id; });
+    renderAll();
+    var r = await sb.from("events").delete().eq("id", id);
+    if(r.error){ console.error(r.error); return; }
+    await writeTrash("event", snapshot.title, eventPayload(snapshot));
+    pushUndo("delete event \"" + snapshot.title + "\"", async function(){
+      var ri = await safeWrite(function(p){ return sb.from("events").insert(p).select().single(); }, eventPayload(snapshot));
+      if(ri.error){ console.error(ri.error); toast("Could not restore event: " + ri.error.message); return; }
+      state.events.push(snapshot);
+      renderAll();
+    });
+  }
   function habitPayload(snapshot){
     return { id:snapshot.id, goal_id:snapshot.goalId, secondary_goal_ids:snapshot.secondaryGoalIds, title:snapshot.title, priority:snapshot.priority, frequency:snapshot.frequency, weekdays:snapshot.weekdays, tracker_variable_id:snapshot.trackerVariableId, time_of_day:snapshot.timeOfDay, duration_minutes:snapshot.durationMinutes, days:snapshot.days, position:snapshot.position, skip_dates:snapshot.skipDates, extra_dates:snapshot.extraDates, created_at:snapshot.createdAt, custom_interval_days:snapshot.customIntervalDays, icon:snapshot.icon, instance_overrides:snapshot.instanceOverrides || {},
       location_address:snapshot.locationAddress, location_lat:snapshot.locationLat, location_lng:snapshot.locationLng };
@@ -9817,6 +9985,7 @@
   function editProject(id){ var p = projectById(id); if(p) openProjectModal(null, p); }
   function editHabit(id){ var h = state.habits.find(function(x){ return x.id === id; }); if(h) openHabitModal(null, h); }
   function editAction(id){ var a = state.actions.find(function(x){ return x.id === id; }); if(a) openActionModal(null, a); }
+  function editEvent(id){ var e = state.events.find(function(x){ return x.id === id; }); if(e) openEventModal(e); }
 
   /* ---------------- Generic right-click edit/delete (goals, projects, habits, actions, journal, people) ---------------- */
   // "habit-instance" is a distinct kind from "habit": it's what Today/Timeline render for a single
@@ -9829,6 +9998,7 @@
     habit: deleteHabit,
     "habit-instance": function(id, date){ return skipHabitInstance(id, date); },
     action: deleteAction,
+    event: deleteEvent,
     journal: deleteJournalEntry,
     person: deletePerson
   };
@@ -9843,6 +10013,7 @@
     habit: editHabit,
     "habit-instance": true,
     action: editAction,
+    event: editEvent,
     journal: editJournalEntry,
     person: editPerson
   };
@@ -9851,7 +10022,7 @@
   // habit-instance) and spins it off as a one-off standalone action on the target date, since a
   // recurring habit has no notion of "this one occurrence now lives on a different day" of its own.
   // The habit itself keeps recurring on its normal schedule; only that one day's copy moved.
-  var POSTPONE_KINDS = { action:true, "habit-instance":true };
+  var POSTPONE_KINDS = { action:true, event:true, "habit-instance":true };
   async function postponeAction(id, toDate){
     var a = state.actions.find(function(x){ return x.id === id; });
     if(!a || !toDate || a.date === toDate) return;
@@ -9863,6 +10034,19 @@
     pushUndo("postpone \"" + a.title + "\" to " + toDate, async function(){
       a.date = prevDate; renderAll();
       await safeUpdate("actions", id, { date: prevDate });
+    });
+  }
+  async function postponeEvent(id, toDate){
+    var e = state.events.find(function(x){ return x.id === id; });
+    if(!e || !toDate || e.date === toDate) return;
+    var prevDate = e.date;
+    e.date = toDate; renderAll();
+    var r = await safeUpdate("events", id, { date: toDate });
+    if(r.error){ console.error(r.error); e.date = prevDate; renderAll(); return; }
+    warnDroppedFields(r.droppedFields);
+    pushUndo("postpone \"" + e.title + "\" to " + toDate, async function(){
+      e.date = prevDate; renderAll();
+      await safeUpdate("events", id, { date: prevDate });
     });
   }
   async function postponeHabitInstance(id, fromDate, toDate){
@@ -9896,6 +10080,7 @@
   }
   async function postponeItem(kind, id, fromDate, toDate){
     if(kind === "action") await postponeAction(id, toDate);
+    else if(kind === "event") await postponeEvent(id, toDate);
     else if(kind === "habit-instance") await postponeHabitInstance(id, fromDate, toDate);
   }
   // Clamps a just-shown floating popover/context-menu so it never renders past the viewport edge —
@@ -10411,14 +10596,15 @@
       search.addEventListener("keydown", function(e){ if(e.key === "Enter") e.preventDefault(); });
     }
   }
-  var LINKED_PEOPLE_KIND_LABEL = { goal:"goal", project:"project", action:"action", habit:"habit", poi:"place" };
-  // Every goal/project/action/habit/POI that lists this person in its own linkedPeopleIds — id-based,
-  // same reasoning as notesLinkedTo above (keeps working through renames).
+  var LINKED_PEOPLE_KIND_LABEL = { goal:"goal", project:"project", action:"action", event:"event", habit:"habit", poi:"place" };
+  // Every goal/project/action/event/habit/POI that lists this person in its own linkedPeopleIds —
+  // id-based, same reasoning as notesLinkedTo above (keeps working through renames).
   function entitiesLinkedToPerson(personId){
     var out = [];
     state.goals.forEach(function(g){ if((g.linkedPeopleIds || []).indexOf(personId) !== -1) out.push({ kind:"goal", id:g.id, title:g.title }); });
     state.projects.forEach(function(p){ if((p.linkedPeopleIds || []).indexOf(personId) !== -1) out.push({ kind:"project", id:p.id, title:p.title }); });
     state.actions.forEach(function(a){ if((a.linkedPeopleIds || []).indexOf(personId) !== -1) out.push({ kind:"action", id:a.id, title:a.title }); });
+    state.events.forEach(function(e){ if((e.linkedPeopleIds || []).indexOf(personId) !== -1) out.push({ kind:"event", id:e.id, title:e.title }); });
     state.habits.forEach(function(h){ if((h.linkedPeopleIds || []).indexOf(personId) !== -1) out.push({ kind:"habit", id:h.id, title:h.title }); });
     state.pois.forEach(function(poi){ if((poi.linkedPeopleIds || []).indexOf(personId) !== -1) out.push({ kind:"poi", id:poi.id, title:poi.name }); });
     return out;
@@ -11691,6 +11877,71 @@
     if(t.dataset.action === "toggle-action") await toggleActionDone(t.dataset.id);
     else if(t.dataset.action === "edit-action") editAction(t.dataset.id);
     else if(t.dataset.action === "del-action") await deleteAction(t.dataset.id);
+  });
+
+  /* ---------------- Events — parallel to actions, no done state or priority ---------------- */
+  function renderEvents(){
+    var f = filters.events;
+    var today = todayStr();
+    var list = state.events.filter(function(ev){
+      if(f === "upcoming") return ev.date && ev.date >= today;
+      if(f === "past") return ev.date && ev.date < today;
+      return true;
+    });
+    if(views.events === "matrix") renderEventsMatrix(list); else renderEventsList(list);
+    document.getElementById("eventEmptyState").style.display = list.length ? "none" : "";
+  }
+
+  function renderEventsMatrix(list){
+    var sections = renderByCategorySections(list, eventCategory, function(cat, label, items){
+      var tiles = items.map(function(ev){
+        var tCat = eventCategory(ev);
+        var tMerged = eventAreaColorCss(ev);
+        var tStyle = tMerged ? ' style="border-left-color:' + tMerged.c + ';background:' + tMerged.bg + ';"' : '';
+        return '<div class="ms-tile' + (tCat ? ' ' + tCat : '') + '"' + tStyle + ' data-kind="event" data-id="' + ev.id + '">' +
+          '<div class="ms-tile-top">' +
+            '<span class="ms-tile-title">' + escapeHtml(ev.title) + '</span>' +
+            '<button class="icon-btn edit" data-action="edit-event" data-id="' + ev.id + '" aria-label="Edit event">✎</button>' +
+            '<button class="icon-btn" data-action="del-event" data-id="' + ev.id + '" aria-label="Delete event">&times;</button>' +
+          '</div>' +
+          '<div class="ms-tile-meta">' +
+          (ev.date ? '<span>' + fmtDate(ev.date) + (ev.timeOfDay ? ' ' + ev.timeOfDay : '') + '</span>' : '') +
+          '</div>' +
+        '</div>';
+      }).join("");
+      return '<div class="matrix-section"><div class="matrix-section-head"><span class="matrix-section-title">' + label + '</span>' +
+        '<span class="matrix-section-count">' + items.length + '</span><span class="matrix-section-line"></span></div>' +
+        '<div class="ms-grid">' + tiles + '</div></div>';
+    });
+    document.getElementById("eventList").innerHTML = sections;
+  }
+
+  function renderEventsList(list){
+    document.getElementById("eventList").innerHTML = list.map(function(ev){
+      var cat = eventCategory(ev);
+      var eMerged = eventAreaColorCss(ev);
+      var eStyle = eMerged ? ' style="border-left-color:' + eMerged.c + ';background:linear-gradient(135deg, ' + eMerged.bg + ', var(--bg-raised) 55%);"' : '';
+      return '<div class="goal-card' + (cat ? ' ' + cat : '') + '"' + eStyle + ' data-kind="event" data-id="' + ev.id + '" draggable="true">' +
+        '<div class="card-tab">' +
+          '<span class="due-tag">' + (ev.date ? '<span style="color:var(--text-dim);">' + fmtDate(ev.date) + (ev.timeOfDay ? ' ' + ev.timeOfDay : '') + '</span>' : '') + '</span>' +
+        '</div>' +
+        '<div class="card-body">' +
+          '<div class="goal-body-head">' +
+            '<h3 class="goal-title">' + escapeHtml(ev.title) + '</h3>' +
+            '<div class="entity-actions">' +
+              '<button class="icon-btn edit" data-action="edit-event" data-id="' + ev.id + '" aria-label="Edit event">✎</button>' +
+              '<button class="icon-btn" data-action="del-event" data-id="' + ev.id + '" aria-label="Delete event">&times;</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    }).join("");
+  }
+  document.getElementById("eventList").addEventListener("click", async function(e){
+    var t = e.target.closest("[data-action]");
+    if(!t) return;
+    if(t.dataset.action === "edit-event") editEvent(t.dataset.id);
+    else if(t.dataset.action === "del-event") await deleteEvent(t.dataset.id);
   });
 
   /* ---------------- Sleep (a goal integration — see renderGoalDetail) ---------------- */
@@ -17631,13 +17882,17 @@
       if(!habitInstanceUnscheduled(h, todaySelectedDate)) return;
       items.push({ kind:"habit-instance", id:h.id, title:h.title, area:habitCategory(h), priority:h.priority });
     });
+    state.events
+      .filter(function(ev){ return ev.date === todaySelectedDate && !ev.timeOfDay; })
+      .forEach(function(ev){ items.push({ kind:"event", id:ev.id, title:ev.title, area:eventCategory(ev), areaColor:eventMapColor(ev, null) }); });
     return items;
   }
   // Which timeline blocks can be dragged back OUT to an unscheduled panel. Actions lose their
   // time_of_day; habit occurrences get this one day's timeOfDay:"" override (never touching the
-  // recurring habit itself). Notes are excluded — a note's time is when it was written, not a plan,
-  // so there's nothing meaningful to unschedule.
-  function canUnscheduleKind(kind){ return kind === "action" || kind === "habit-instance"; }
+  // recurring habit itself); events lose their time_of_day the same way actions do. Notes are
+  // excluded — a note's time is when it was written, not a plan, so there's nothing meaningful to
+  // unschedule.
+  function canUnscheduleKind(kind){ return kind === "action" || kind === "habit-instance" || kind === "event"; }
   // Shared horizontal resizer for the unscheduled panels (Present tab + home dock). Each panel sits
   // to the RIGHT of its timeline, so the edge bordering the timeline is its LEFT one — that's where
   // the handle lives, and dragging it leftward widens the panel while narrowing the timeline. Same
@@ -17765,7 +18020,46 @@
     warnDroppedFields(r.droppedFields);
     toast('"' + a.title + '" moved back to unscheduled');
   }
-  // Kind-dispatching wrappers over the pair above, so both unscheduled panels (Present + home dock)
+  // Event equivalents of scheduleActionAt/unscheduleAction — an event has no parent, so no "moved"
+  // bookkeeping beyond date+time, but otherwise the same optimistic-with-rollback shape.
+  async function scheduleEventAt(id, newTime, newDate){
+    var ev = state.events.find(function(x){ return x.id === id; });
+    if(!ev) return;
+    var prevTime = ev.timeOfDay, prevDate = ev.date;
+    var moved = !!(newDate && newDate !== ev.date);
+    ev.timeOfDay = newTime;
+    if(moved) ev.date = newDate;
+    renderAll();
+    var payload = moved ? { time_of_day: newTime, date: newDate } : { time_of_day: newTime };
+    var r = await safeUpdate("events", id, payload);
+    if(r.error){
+      console.error(r.error);
+      ev.timeOfDay = prevTime; ev.date = prevDate;
+      renderAll();
+      toast("Could not schedule: " + r.error.message);
+      return;
+    }
+    warnDroppedFields(r.droppedFields);
+    toast('"' + ev.title + '" scheduled at ' + fmtTimeOfDay(newTime) + (moved ? " on " + fmtDate(newDate) : ""));
+  }
+  async function unscheduleEvent(id){
+    var ev = state.events.find(function(x){ return x.id === id; });
+    if(!ev || !ev.timeOfDay) return;
+    var prevTime = ev.timeOfDay;
+    ev.timeOfDay = null;
+    renderAll();
+    var r = await safeUpdate("events", id, { time_of_day: null });
+    if(r.error){
+      console.error(r.error);
+      ev.timeOfDay = prevTime;
+      renderAll();
+      toast("Could not unschedule: " + r.error.message);
+      return;
+    }
+    warnDroppedFields(r.droppedFields);
+    toast('"' + ev.title + '" moved back to unscheduled');
+  }
+  // Kind-dispatching wrappers over the pairs above, so both unscheduled panels (Present + home dock)
   // and both drag directions speak one vocabulary. A habit occurrence isn't an action: giving it a
   // time writes a per-day override rather than touching the habit's own recurring time, and taking
   // one away writes the timeOfDay:"" sentinel (see habitInstanceFields) rather than nulling a column
@@ -17777,6 +18071,7 @@
       if(h) toast('"' + h.title + '" scheduled at ' + fmtTimeOfDay(newTime) + ' for this day');
       return;
     }
+    if(kind === "event"){ await scheduleEventAt(id, newTime, date); return; }
     await scheduleActionAt(id, newTime, date);
   }
   async function unscheduleItem(kind, id, date){
@@ -17787,6 +18082,7 @@
       toast('"' + h.title + '" unscheduled for this day');
       return;
     }
+    if(kind === "event"){ await unscheduleEvent(id); return; }
     await unscheduleAction(id);
   }
   function renderTodayUnscheduled(){
@@ -17801,7 +18097,7 @@
     list.innerHTML = items.length ? items.map(function(it){
       // ↻ marks a habit occurrence, so it reads as recurring rather than a one-off task at a glance.
       return '<div class="today-unscheduled-item' + (it.area ? ' ' + it.area : '') + '"' + (it.areaColor ? ' style="border-left-color:' + it.areaColor + ';"' : '') + ' draggable="' + chipDraggable + '" data-kind="' + it.kind + '" data-id="' + it.id + '" title="' + escapeHtml(it.title) + ' — drag onto the timeline to schedule it">' +
-        '<span class="prio-badge ' + it.priority + '">' + it.priority + '</span>' +
+        (it.priority ? '<span class="prio-badge ' + it.priority + '">' + it.priority + '</span>' : '') +
         '<span class="today-unscheduled-item-title">' + (it.kind === "habit-instance" ? "↻ " : "") + escapeHtml(it.title) + '</span>' +
       '</div>';
     }).join("") : '<div class="today-unscheduled-empty">nothing waiting — everything for this day has a time</div>';
@@ -18322,8 +18618,8 @@
     var handles = "";
     if(resizable === true) handles = '<span class="timeline-block-resize timeline-block-resize-left" data-resize-handle="left"></span>';
     if(resizable) handles += '<span class="timeline-block-resize timeline-block-resize-right" data-resize-handle="right"></span>';
-    // Only actions/habit-instances have a "done" concept — notes never get the toggle button.
-    var doneBtn = kind !== "journal" ? '<button class="timeline-done-btn' + (isDone ? " done" : "") + '" type="button" title="' + (isDone ? "Mark not done" : "Mark done") + '" aria-label="' + (isDone ? "Mark not done" : "Mark done") + '"></button>' : "";
+    // Only actions/habit-instances have a "done" concept — notes and events never get the toggle button.
+    var doneBtn = (kind !== "journal" && kind !== "event") ? '<button class="timeline-done-btn' + (isDone ? " done" : "") + '" type="button" title="' + (isDone ? "Mark not done" : "Mark done") + '" aria-label="' + (isDone ? "Mark not done" : "Mark done") + '"></button>' : "";
     // width is already percent-of-day (see call sites), so it converts straight to minutes for the
     // shorter-on-top stacking rule — including the overnight tail, whose width is just its spillover
     // portion, which is exactly the on-screen extent that should win the stacking comparison.
@@ -18376,6 +18672,18 @@
       if(!spillMin) return;
       var widthFrac = spillMin / 1440 * 100;
       html += todayTimelineBlockHtml("action", a.id, yesterday, 0, widthFrac, a.title + " — continued from " + fmtTimeOfDay(a.timeOfDay) + " yesterday", "‹ " + escapeHtml(a.title), area, (a.done ? " done" : "") + (a.priority === "P0" ? " p0" : ""), true, "right", null, actionAreaColorRgb(a));
+    });
+    // Events: same span rendering as actions, minus the done/priority styling they don't have.
+    state.events.filter(function(ev){ return ev.date === todaySelectedDate && !!ev.timeOfDay && eventCategory(ev) === area; }).forEach(function(ev){
+      var startFrac = timeToFraction(ev.timeOfDay) * 100;
+      var widthFrac = Math.max(1.2, ((ev.durationMinutes || 15) / 1440) * 100);
+      html += todayTimelineBlockHtml("event", ev.id, todaySelectedDate, startFrac, widthFrac, ev.title + " — " + fmtTimeOfDay(ev.timeOfDay), escapeHtml(ev.title), area, "", false, true, null, eventAreaColorRgb(ev));
+    });
+    state.events.filter(function(ev){ return ev.date === yesterday && !!ev.timeOfDay && eventCategory(ev) === area; }).forEach(function(ev){
+      var spillMin = overnightSpilloverMinutes(ev.timeOfDay, ev.durationMinutes);
+      if(!spillMin) return;
+      var widthFrac = spillMin / 1440 * 100;
+      html += todayTimelineBlockHtml("event", ev.id, yesterday, 0, widthFrac, ev.title + " — continued from " + fmtTimeOfDay(ev.timeOfDay) + " yesterday", "‹ " + escapeHtml(ev.title), area, "", true, "right", null, eventAreaColorRgb(ev));
     });
     // Notes are a point in time, not a span — no duration field, so every block is the same small
     // fixed width, positioned by time_of_day.
@@ -18475,6 +18783,7 @@
         }
         if(kind === "habit-instance") openHabitInstancePopover(e.clientX, e.clientY, id, date);
         else if(kind === "action") editAction(id);
+        else if(kind === "event") editEvent(id);
         else if(kind === "journal") editJournalEntry(id);
         return;
       }
@@ -18490,6 +18799,11 @@
         // Dragging on Today only ever touches THIS one day's occurrence — see setHabitInstanceOverride
         // — never the habit's own timeOfDay, which every other day still reads.
         await setHabitInstanceOverride(id, date, { timeOfDay: newTime });
+      } else if(kind === "event"){
+        var ev = state.events.find(function(x){ return x.id === id; });
+        if(ev) ev.timeOfDay = newTime;
+        var r4 = await safeUpdate("events", id, { time_of_day: newTime });
+        if(r4.error) console.error(r4.error); else warnDroppedFields(r4.droppedFields);
       } else if(kind === "journal"){
         var n = state.journal.find(function(x){ return x.id === id; });
         if(n) n.timeOfDay = newTime;
@@ -18600,6 +18914,23 @@
         // This one day's occurrence only — see setHabitInstanceOverride — never the habit's own
         // timeOfDay/durationMinutes, which every other day's occurrence still reads.
         await setHabitInstanceOverride(id, date, patch);
+        return;
+      }
+      if(kind === "event"){
+        var ev = state.events.find(function(x){ return x.id === id; });
+        if(!ev) return;
+        var finalDurationE = durationMin;
+        if(isOvernight){
+          var startMinE = timeToFraction(ev.timeOfDay) * 1440;
+          finalDurationE = Math.max(TIMELINE_RESIZE_MIN_MIN, Math.round((1440 - startMinE) + durationMin));
+        }
+        var payloadE = { duration_minutes: finalDurationE };
+        if(edge === "left" && newTime) payloadE.time_of_day = newTime;
+        ev.durationMinutes = finalDurationE;
+        if(payloadE.time_of_day) ev.timeOfDay = payloadE.time_of_day;
+        var rE = await safeUpdate("events", id, payloadE);
+        if(rE.error) console.error(rE.error); else warnDroppedFields(rE.droppedFields);
+        renderToday();
         return;
       }
       var a = state.actions.find(function(x){ return x.id === id; });
@@ -18838,6 +19169,26 @@
     }
     track.innerHTML = html;
   }
+  function renderTlEventsTrack(range){
+    var track = document.getElementById("tlEventsTrack");
+    if(!track) return;
+    var byDate = {};
+    state.events.forEach(function(ev){ if(ev.timeOfDay && ev.date) (byDate[ev.date] = byDate[ev.date] || []).push(ev); });
+    var html = "";
+    for(var i=range.start; i<=range.end; i++){
+      var dateStr = addDaysToDateStr(tlRangeStart, i);
+      (byDate[dateStr] || []).forEach(function(ev){
+        var leftPx = i*tlPxPerDay + timeToFraction(ev.timeOfDay)*tlPxPerDay;
+        var widthPx = Math.max(10, ((ev.durationMinutes || 15) / 1440) * tlPxPerDay);
+        var cat = eventCategory(ev);
+        var catClass = cat ? " " + cat : "";
+        var z = tlZIndexForDuration(ev.durationMinutes || 15);
+        html += '<div class="timeline-block' + catClass + '" data-kind="event" data-id="' + ev.id + '" data-day-index="' + i + '" style="left:' + leftPx + 'px; width:' + widthPx + 'px; z-index:' + z + ';" title="' + escapeHtml(ev.title) + ' — ' + fmtTimeOfDay(ev.timeOfDay) + '">' +
+          '<span class="timeline-block-title">' + escapeHtml(ev.title) + '</span></div>';
+      });
+    }
+    track.innerHTML = html;
+  }
   function renderTlNotesTrack(range){
     var track = document.getElementById("tlNotesTrack");
     if(!track) return;
@@ -18894,6 +19245,7 @@
     renderTlDayNight(range);
     renderTlHabitsTrack(range);
     renderTlActionsTrack(range);
+    renderTlEventsTrack(range);
     renderTlNotesTrack(range);
     renderTlNowMarker();
     tlRenderedStartPx = range.start * tlPxPerDay;
@@ -19092,8 +19444,8 @@
         await setHabitInstanceOverride(id, date, { timeOfDay: newTime });
       } else {
         var newDateStr = addDaysToDateStr(tlRangeStart, Number(newDayIndex));
-        var table = kind === "journal" ? "journal" : "actions";
-        var arr = kind === "journal" ? state.journal : state.actions;
+        var table = kind === "journal" ? "journal" : (kind === "event" ? "events" : "actions");
+        var arr = kind === "journal" ? state.journal : (kind === "event" ? state.events : state.actions);
         var item = arr.find(function(x){ return x.id === id; });
         if(item){ item.timeOfDay = newTime; item.date = newDateStr; }
         var r2 = await safeUpdate(table, id, { time_of_day: newTime, date: newDateStr });
@@ -19108,6 +19460,7 @@
   }
   wireTlLayerDrag("tlHabitsTrack", "habit");
   wireTlLayerDrag("tlActionsTrack", "action");
+  wireTlLayerDrag("tlEventsTrack", "event");
   wireTlLayerDrag("tlNotesTrack", "journal");
 
   function renderToday(){
@@ -20084,6 +20437,90 @@
     warnDroppedFields(res.droppedFields);
   });
 
+  // ---- Event modal — same field wiring as the action modal (location autocomplete, linked-people
+  // chips, secondary-area chips), just without the priority/parent fields events don't have.
+  var editingEventId = null;
+  var editingEventLat = null, editingEventLng = null;
+  var eventLocationAC = wireAddressAutocomplete({
+    inputEl: document.getElementById("eventLocationInput"),
+    dropdownEl: document.getElementById("eventLocationSuggest"),
+    statusEl: document.getElementById("eventLocationStatus"),
+    getLat: function(){ return editingEventLat; }, getLng: function(){ return editingEventLng; },
+    onPick: function(lat, lng){ editingEventLat = lat; editingEventLng = lng; },
+    onClear: function(){ editingEventLat = null; editingEventLng = null; }
+  });
+  var updateEventLinkedPeopleBtn = wireDropdownMulti("eventLinkedPeopleBtn", "eventLinkedPeopleSelect", "eventLinkedPeopleDropdown", "pid");
+  function renderEventLinkedPeopleChips(preSelectedIds){
+    renderPeopleChipOptions(document.getElementById("eventLinkedPeopleSelect"), preSelectedIds);
+    updateEventLinkedPeopleBtn();
+  }
+  var updateEventSecondaryCatBtn = wireDropdownMulti("eventSecondaryCatBtn", "eventSecondaryCatSelect", "eventSecondaryCatDropdown", "c");
+  function renderEventSecondaryCatChips(preSelectedIds){
+    var primaryCat = chipValue(document.getElementById("eventAreaSelect"), "ar");
+    var container = document.getElementById("eventSecondaryCatSelect");
+    var options = CATEGORIES.filter(function(cat){ return cat !== primaryCat; });
+    container.innerHTML = options.map(function(cat){ return '<div class="chip-opt" role="button" tabindex="0" data-c="' + cat + '">' + CATEGORY_ICONS[cat] + " " + cat + '</div>'; }).join("");
+    setMultiChip(container, "c", (preSelectedIds || []).filter(function(id){ return id !== primaryCat; }));
+    updateEventSecondaryCatBtn();
+  }
+  document.getElementById("eventAreaSelect").addEventListener("click", function(){
+    renderEventSecondaryCatChips(multiChipValues(document.getElementById("eventSecondaryCatSelect"), "c"));
+  });
+  function openEventModal(editEventObj){
+    editingEventId = editEventObj ? editEventObj.id : null;
+    editingEventLat = (editEventObj && editEventObj.locationLat != null) ? editEventObj.locationLat : null;
+    editingEventLng = (editEventObj && editEventObj.locationLng != null) ? editEventObj.locationLng : null;
+    document.getElementById("eventLocationInput").value = (editEventObj && editEventObj.locationAddress) || "";
+    eventLocationAC.renderStatus();
+    document.getElementById("eventModalTitle").textContent = editEventObj ? "edit_event.json" : "new_event.json";
+    document.getElementById("eventTitleInput").value = editEventObj ? editEventObj.title : "";
+    document.getElementById("eventDateInput").value = editEventObj ? (editEventObj.date || "") : todayStr();
+    setChip(document.getElementById("eventAreaSelect"), "ar", (editEventObj && editEventObj.category) || "Relationships");
+    renderEventSecondaryCatChips(editEventObj ? (editEventObj.secondaryCategories || []) : []);
+    document.getElementById("eventSecondaryCatSelect").hidden = true;
+    document.getElementById("eventTimeInput").value = editEventObj ? (editEventObj.timeOfDay || "") : "";
+    document.getElementById("eventDurationInput").value = editEventObj && editEventObj.durationMinutes != null ? editEventObj.durationMinutes : "";
+    document.getElementById("eventTimePickPanel").hidden = true;
+    renderEventLinkedPeopleChips(editEventObj ? (editEventObj.linkedPeopleIds || []) : []);
+    document.getElementById("eventLinkedPeopleSelect").hidden = true;
+    openModal("eventModalOverlay");
+    document.getElementById("eventTitleInput").focus();
+  }
+  document.getElementById("cancelEventModalBtn").addEventListener("click", function(){ closeModal("eventModalOverlay"); });
+  document.getElementById("saveEventBtn").addEventListener("click", async function(){
+    var title = document.getElementById("eventTitleInput").value.trim();
+    if(!title) return;
+    var payload = {
+      title: title,
+      date: document.getElementById("eventDateInput").value || null,
+      time_of_day: document.getElementById("eventTimeInput").value || null,
+      duration_minutes: document.getElementById("eventDurationInput").value ? Math.max(0, Math.round(Number(document.getElementById("eventDurationInput").value))) : null,
+      category: chipValue(document.getElementById("eventAreaSelect"), "ar") || null,
+      secondary_categories: multiChipValues(document.getElementById("eventSecondaryCatSelect"), "c"),
+      location_address: document.getElementById("eventLocationInput").value.trim() || null,
+      location_lat: editingEventLat, location_lng: editingEventLng,
+      linked_people_ids: multiChipValues(document.getElementById("eventLinkedPeopleSelect"), "pid")
+    };
+    this.disabled = true;
+    var isEdit = !!editingEventId;
+    var res = isEdit
+      ? await safeUpdate("events", editingEventId, payload)
+      : await safeInsert("events", payload, state.events);
+    this.disabled = false;
+    if(res.error){ dbErrorToast(res.error, "Couldn't save"); return; }
+    var r = res.data;
+    var mapped = { id:r.id, title:r.title, date:r.date, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null, secondaryCategories:r.secondary_categories || payload.secondary_categories || [],
+      locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), linkedPeopleIds:r.linked_people_ids||[], notesMd:r.notes_md||"", position:r.position||0 };
+    if(isEdit){
+      var idx = state.events.findIndex(function(x){ return x.id === editingEventId; });
+      if(idx !== -1) state.events[idx] = mapped;
+    } else {
+      state.events.push(mapped);
+    }
+    renderAll(); closeModal("eventModalOverlay");
+    warnDroppedFields(res.droppedFields);
+  });
+
   // Person modal
   // editingPersonId = null means create (same pattern the goal/project/habit/action/journal modals
   // already use) — the button, journal-style dynamic title, and single save handler below all branch
@@ -20655,6 +21092,10 @@
       items.push({ kind:"habit-instance", id:h.id, date:dateStr, title:h.title, done:habitDoneForDate(h, dateStr), priority:h.priority,
         area:habitCategory(h), colorCss:null, timeOfDay:f.timeOfDay });
     });
+    state.events.filter(function(ev){ return ev.date === dateStr; }).forEach(function(ev){
+      items.push({ kind:"event", id:ev.id, date:ev.date, title:ev.title, done:false, priority:null,
+        area:eventCategory(ev), colorCss:eventAreaColorCss(ev), timeOfDay:ev.timeOfDay });
+    });
     items.sort(function(x, y){ return (x.timeOfDay || "99:99").localeCompare(y.timeOfDay || "99:99"); });
     return items;
   }
@@ -20714,12 +21155,14 @@
     var style = it.colorCss ? ' style="border-left-color:' + it.colorCss.c + ';"' : '';
     var checkAction = it.kind === "habit-instance" ? "toggle-habit-mark" : "toggle-action";
     return '<div class="today-row' + catClass + '"' + style + ' data-kind="' + it.kind + '" data-id="' + it.id + '" data-date="' + it.date + '">' +
-      '<button class="ms-check' + (it.done ? ' done' : '') + '" data-action="' + checkAction + '" data-id="' + it.id + '" data-date="' + it.date + '" aria-label="Toggle done"></button>' +
+      (it.kind !== "event" ? '<button class="ms-check' + (it.done ? ' done' : '') + '" data-action="' + checkAction + '" data-id="' + it.id + '" data-date="' + it.date + '" aria-label="Toggle done"></button>' : '') +
       '<span class="today-row-title' + (it.done ? ' done' : '') + '">' + (it.kind === "habit-instance" ? "↻ " : "") + escapeHtml(it.title) + '</span>' +
-      '<span class="prio-badge ' + it.priority + '">' + it.priority + '</span>' +
+      (it.priority ? '<span class="prio-badge ' + it.priority + '">' + it.priority + '</span>' : '') +
       (it.timeOfDay ? '<span class="today-row-meta">' + fmtTimeOfDay(it.timeOfDay) + '</span>' : '') +
       (it.kind === "action" ? '<button class="icon-btn edit" data-action="edit-action" data-id="' + it.id + '" aria-label="Edit action">✎</button>' +
         '<button class="icon-btn" data-action="del-action" data-id="' + it.id + '" aria-label="Delete action">&times;</button>' :
+        it.kind === "event" ? '<button class="icon-btn edit" data-action="edit-event" data-id="' + it.id + '" aria-label="Edit event">✎</button>' +
+          '<button class="icon-btn" data-action="del-event" data-id="' + it.id + '" aria-label="Delete event">&times;</button>' :
         '<button class="icon-btn edit" data-action="edit-habit" data-id="' + it.id + '" aria-label="Edit habit">✎</button>') +
     '</div>';
   }
@@ -20741,7 +21184,9 @@
     else if(t.dataset.action === "toggle-habit-mark") await handleHabitMarkClick(t.dataset.id, t.dataset.date);
     else if(t.dataset.action === "edit-action") editAction(t.dataset.id);
     else if(t.dataset.action === "edit-habit") editHabit(t.dataset.id);
+    else if(t.dataset.action === "edit-event") editEvent(t.dataset.id);
     else if(t.dataset.action === "del-action") await deleteAction(t.dataset.id);
+    else if(t.dataset.action === "del-event") await deleteEvent(t.dataset.id);
   }
   function tmRenderDetail(){
     var listEl = document.getElementById("tmDetailList");
@@ -22199,7 +22644,7 @@
     // Areas and Calendar render alongside the four lists now that they're planner panels — cheap
     // innerHTML builds, same as the lists. The Graph panel is deliberately absent: its physics
     // activation is handled on tab entry / showSection, not by blanket re-renders.
-    planner: [renderAreas, renderGoals, renderProjects, renderHabits, renderActions, renderCalendar],
+    planner: [renderAreas, renderGoals, renderProjects, renderHabits, renderActions, renderEvents, renderCalendar],
     tracker: [renderTracker],
     timeline: [renderTimeline],
     journal: [renderJournal],
