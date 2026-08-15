@@ -3056,6 +3056,68 @@
         .gantt-group-header::after{content:"";flex:1;height:1px;background:linear-gradient(90deg, var(--border-bright), transparent 70%);}
         .gantt-head-actions{display:flex;align-items:center;gap:6px;margin-left:auto;}
         .gantt-zoom-btn{width:28px;padding:0;text-align:center;font-weight:700;}
+
+        /* ---- Decision canvas: the scenarios of an action flagged as a decision, laid out as a
+           branching hierarchy. Deliberately borrows the Gantt's visual language directly above it
+           — violet arrows, the same ◉ link handle, click-an-arrow-to-remove — so the page's two
+           planning surfaces read as one system; the difference is that this one is free 2D space
+           rather than a date scale, because a plausible future has no date yet. ---- */
+        .sc-wrap{position:relative;height:520px;border:1px solid var(--border);border-radius:12px;background:var(--bg-inset);overflow:hidden;touch-action:none;cursor:grab;}
+        .sc-wrap.panning{cursor:grabbing;}
+        .sc-world{position:absolute;top:0;left:0;width:4000px;height:3000px;transform-origin:0 0;}
+        /* overflow:visible so a curve leaving the svg's own box still draws; pointer-events:none on
+           the layer with stroke-only hits on the paths, so arrows are clickable but never swallow a
+           drag aimed at the canvas underneath. */
+        .sc-arrow-svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none;z-index:1;}
+        /* Only opacity is transitioned, never stroke — same as .gantt-arrow above. Transitioning an
+           SVG paint property whose value comes from a custom property makes Chromium latch the
+           colour it first computed, so the arrows kept their light-theme violet after a flip to
+           dark while every other --violet consumer updated. */
+        .sc-arrow{fill:none;stroke:var(--violet);stroke-width:1.8;opacity:.6;pointer-events:stroke;cursor:pointer;transition:opacity var(--dur-fast) ease;}
+        .sc-arrow:hover{stroke:var(--danger);opacity:1;}
+        .sc-arrow-head{fill:var(--violet);opacity:.6;pointer-events:none;}
+        .sc-link-preview{fill:none;stroke:var(--violet);stroke-width:1.8;stroke-dasharray:4,3;opacity:.9;pointer-events:none;}
+        .sc-node{position:absolute;width:228px;box-sizing:border-box;z-index:2;background:var(--bg-raised);border:1px solid var(--border-bright);border-left:3px solid var(--violet);border-radius:10px;padding:8px 10px 9px;box-shadow:var(--elev-2);cursor:grab;user-select:none;}
+        .sc-node.dragging{cursor:grabbing;box-shadow:var(--elev-3);z-index:5;}
+        .sc-node.link-target{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent);}
+        .sc-node-head{display:flex;align-items:center;gap:6px;}
+        .sc-node-title{font-weight:600;font-size:.88rem;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+        .sc-rank{font-size:.62rem;letter-spacing:.06em;font-weight:700;padding:1px 6px;border-radius:999px;background:var(--bg-inset);color:var(--text-dim);flex:none;}
+        .sc-rank.top{background:var(--ok-bg);color:var(--ok);}
+        .sc-net{font-size:.72rem;font-weight:700;font-variant-numeric:tabular-nums;flex:none;}
+        .sc-net.pos{color:var(--ok);} .sc-net.neg{color:var(--danger);} .sc-net.zero{color:var(--text-faint);}
+        .sc-node-notes{font-size:.74rem;color:var(--text-dim);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+        .sc-node-lists{margin-top:6px;display:flex;flex-direction:column;gap:2px;}
+        .sc-mini{font-size:.72rem;display:flex;gap:5px;align-items:baseline;line-height:1.35;}
+        .sc-mini .g{flex:none;font-weight:700;width:9px;}
+        .sc-mini.pro .g{color:var(--ok);} .sc-mini.con .g{color:var(--danger);}
+        .sc-mini .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-dim);}
+        .sc-mini .w{flex:none;font-variant-numeric:tabular-nums;color:var(--text-faint);font-size:.68rem;}
+        .sc-node-more{font-size:.68rem;color:var(--text-faint);margin-top:2px;}
+        .sc-node-empty{font-size:.72rem;color:var(--text-faint);margin-top:5px;font-style:italic;}
+        .sc-node-actions{display:flex;gap:2px;margin-top:7px;padding-top:6px;border-top:1px solid var(--border);}
+        .sc-node-actions .btn{padding:2px 8px;font-size:.7rem;}
+        /* Same affordance and glyph as the Gantt's dependency handle — one gesture to learn. */
+        .sc-link-handle{position:absolute;right:-9px;top:50%;transform:translateY(-50%);cursor:crosshair;color:var(--violet);font-size:.8rem;line-height:1;opacity:.55;z-index:3;}
+        .sc-link-handle:hover{opacity:1;}
+        .sc-compare{margin-top:16px;display:flex;flex-direction:column;gap:5px;}
+        .sc-compare-row{display:flex;align-items:center;gap:10px;font-size:.82rem;}
+        .sc-compare-name{width:180px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+        .sc-compare-name.unscored{color:var(--text-faint);font-style:italic;}
+        /* One shared zero line down the middle, so a negative branch reads as visibly below water
+           rather than just as a shorter bar. */
+        .sc-compare-track{flex:1;height:9px;border-radius:999px;background:var(--bg-inset);position:relative;overflow:hidden;}
+        .sc-compare-track::before{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--border-bright);}
+        .sc-compare-fill{position:absolute;top:0;height:100%;border-radius:999px;}
+        .sc-compare-fill.pos{background:var(--ok);} .sc-compare-fill.neg{background:var(--danger);}
+        .sc-compare-score{width:42px;flex:none;text-align:right;font-variant-numeric:tabular-nums;font-weight:600;}
+        /* ---- Weighted pro/con editor rows (scenario modal) ---- */
+        .sc-weight-list{display:flex;flex-direction:column;gap:6px;margin-bottom:7px;}
+        .sc-weight-row{display:flex;gap:6px;align-items:center;}
+        .sc-weight-row input[type=text]{flex:1;min-width:0;}
+        .sc-weight-row select{width:74px;flex:none;}
+        .sc-weight-empty{font-size:.78rem;color:var(--text-faint);font-style:italic;}
+        .sc-net-preview{margin:2px 0 4px;font-size:.85rem;font-weight:600;}
       </style>
       <div class="main-header">
         <div>
@@ -3087,6 +3149,31 @@
         </div>
         <p class="panel-hint">Drag a bar left/right to reschedule it. Drag the ◉ handle from one action onto another to make the second depend on the first — you'll be asked whether it's a hard "must be done first" requirement (dashed arrow) or just an ordering link (solid arrow). Click an arrow to remove it.</p>
         <div class="gantt-wrap" id="entityGanttWrap"></div>
+      </div>
+      <!-- DECISION — only rendered for an action whose "decision" toggle is on (actions.is_decision).
+           Each scenario is a plausible future for this action, weighted so the branches can actually
+           be compared rather than just listed; see scenarioNetScore / renderScenarioCompare. -->
+      <div class="goal-integration-block" id="entityDecisionBlock" style="display:none;">
+        <div class="integration-block-head">
+          <h2>decision</h2>
+          <div class="gantt-head-actions">
+            <button class="btn" id="scAddBtn" type="button">+ scenario</button>
+            <button class="btn gantt-zoom-btn" id="scZoomOutBtn" type="button" title="Zoom out">−</button>
+            <button class="btn gantt-zoom-btn" id="scZoomInBtn" type="button" title="Zoom in">+</button>
+            <button class="btn" id="scResetViewBtn" type="button">reset view</button>
+          </div>
+        </div>
+        <p class="panel-hint">Each card is a plausible future for this action. Use <b>⑂ branch</b> on a card to grow the tree from it, or drag the ◉ handle from one card onto another to link them — click an arrow to remove it. Drag a card to rearrange, drag empty space to pan. Weight each advantage and disadvantage 1–5; the net score and ranking below are computed from those weights.</p>
+        <div class="sc-wrap" id="scCanvasWrap">
+          <div class="sc-world" id="scWorld">
+            <svg class="sc-arrow-svg" id="scArrowSvg"></svg>
+            <div id="scNodes"></div>
+          </div>
+        </div>
+        <div class="sc-compare" id="scCompare"></div>
+        <div class="empty-state" id="scEmptyState" style="display:none;">
+          <div class="glyph">◈</div><h3>no scenarios yet</h3><p>Add the first plausible future for this action, then branch from it.</p>
+        </div>
       </div>
       <div class="goal-integration-block">
         <div class="integration-block-head">
@@ -4234,7 +4321,45 @@
           <div class="dropdown-multi-panel chip-select" id="actionLinkedPeopleSelect" hidden></div>
         </div>
       </div>
+      <!-- Flags the action as a DECISION, which gives it a scenario canvas on its own page. Sits at
+           the bottom because it isn't another property of the task — it changes what the action IS,
+           from one thing you'll do into a fork you haven't settled yet. -->
+      <div class="field">
+        <label>decision</label>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+          <button type="button" class="btn" id="actionDecisionToggle" aria-pressed="false">◈ not a decision</button>
+          <button type="button" class="btn" id="actionDecisionOpenBtn" style="display:none;">open canvas →</button>
+        </div>
+        <p class="panel-hint" id="actionDecisionHint">Turn this on when the action isn't settled yet — you'll get a canvas on its page for mapping out the plausible futures and weighing them against each other.</p>
+      </div>
       <div class="modal-actions"><button class="btn" id="cancelActionModalBtn" type="button">cancel</button><button class="btn btn-accent" id="saveActionBtn" type="button">save action</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SCENARIO MODAL (one branch of a decision) =====
+     Advantages and disadvantages are weighted 1–5 rather than being plain bullets: the weights are
+     what let the canvas rank the branches against each other (scenarioNetScore), which is the whole
+     reason this is a comparison surface and not just a diagram. -->
+<div class="modal-overlay" id="scenarioModalOverlay" hidden>
+  <div class="modal">
+    <div class="modal-head"><span class="dot g"></span><h2 id="scenarioModalTitle">new_scenario.json</h2></div>
+    <div class="modal-inner">
+      <div class="field"><label for="scenarioTitleInput">scenario</label><input type="text" id="scenarioTitleInput" placeholder="e.g. Take the contract"></div>
+      <div class="field"><label for="scenarioNotesInput">what this future looks like (optional)</label>
+        <textarea id="scenarioNotesInput" class="journal-textarea" rows="3" placeholder="A sentence or two on what actually happens if it goes this way."></textarea>
+      </div>
+      <div class="field"><label>advantages</label>
+        <div class="sc-weight-list" id="scenarioProsList"></div>
+        <button class="btn" id="scenarioAddProBtn" type="button">+ advantage</button>
+      </div>
+      <div class="field"><label>disadvantages</label>
+        <div class="sc-weight-list" id="scenarioConsList"></div>
+        <button class="btn" id="scenarioAddConBtn" type="button">+ disadvantage</button>
+      </div>
+      <div class="sc-net-preview" id="scenarioNetPreview"></div>
+      <p class="panel-hint">Weight is how much it matters, 1 (minor) to 5 (decisive) — not how likely it is.</p>
+      <div class="modal-actions"><button class="btn" id="cancelScenarioModalBtn" type="button">cancel</button><button class="btn btn-accent" id="saveScenarioBtn" type="button">save scenario</button></div>
     </div>
   </div>
 </div>
@@ -5203,7 +5328,7 @@
   // by the original deletion (e.g. a deleted goal's projects) since that context can go stale by the
   // time someone restores from trash — only the deleted object itself comes back.
   var TRASH_RETENTION_DAYS = 30;
-  var TRASH_TABLE_MAP = { goal:"goals", project:"projects", habit:"habits", action:"actions", event:"events", journal:"journal", person:"people", tracker_variable:"tracker_variables" };
+  var TRASH_TABLE_MAP = { goal:"goals", project:"projects", habit:"habits", action:"actions", event:"events", journal:"journal", person:"people", tracker_variable:"tracker_variables", scenario:"action_scenarios" };
   var trashLoaded = false;
   async function writeTrash(kind, label, payload, extra){
     var row = { kind: kind, label: label, snapshot: { table: TRASH_TABLE_MAP[kind], payload: payload, extra: extra || [] } };
@@ -5421,7 +5546,7 @@
     return setPreview;
   }
 
-  var state = { goals:[], projects:[], habits:[], actions:[], events:[], journal:[], people:[], trackerVars:[], trackerEntries:[], trackerDays:[], wbConnections:[], sleepScores:[], trash:[], socialGroupColors:[], gpsPings:[], pois:[], recordings:[], financeAccounts:[], financeTransactions:[] };
+  var state = { goals:[], projects:[], habits:[], actions:[], events:[], journal:[], people:[], trackerVars:[], trackerEntries:[], trackerDays:[], wbConnections:[], sleepScores:[], trash:[], socialGroupColors:[], gpsPings:[], pois:[], recordings:[], financeAccounts:[], financeTransactions:[], actionScenarios:[] };
   var currentUser = null;
 
   function goalById(id){ return state.goals.find(function(g){ return g.id === id; }); }
@@ -5548,7 +5673,8 @@
       sb.from("recordings").select("*").order("created_at"),
       sb.from("finance_accounts").select("*").order("position", { ascending:true }),
       sb.from("finance_transactions").select("*").order("date", { ascending:false }),
-      sb.from("events").select("*").order("created_at")
+      sb.from("events").select("*").order("created_at"),
+      sb.from("action_scenarios").select("*").order("position", { ascending:true })
     ]);
     results.forEach(function(r){ if(r.error) console.error(r.error); });
     // position defaults to 0 (via ||0) when the migration_positions.sql column doesn't exist yet —
@@ -5561,7 +5687,7 @@
     state.habits = (results[2].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || null, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [], extraDates:r.extra_dates || [], customIntervalDays:r.custom_interval_days||null, monthDay:r.month_day||null, icon:r.icon||null, instanceOverrides:r.instance_overrides || {},
       locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), linkedPeopleIds:r.linked_people_ids||[] }; });
     state.habits.sort(function(a,b){ return a.position - b.position; });
-    state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null, secondaryCategories:r.secondary_categories || [], isMilestone:!!r.is_milestone,
+    state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null, secondaryCategories:r.secondary_categories || [], isMilestone:!!r.is_milestone, isDecision:!!r.is_decision,
       locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), notesMd:r.notes_md||"", dependencies:r.dependencies||[], linkedPeopleIds:r.linked_people_ids||[] }; });
     state.actions.sort(function(a,b){ return a.position - b.position; });
     state.journal = (results[4].data || []).map(function(r){ return { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, categories:r.categories||[], noteType:r.note_type||"reflection", recordingId:r.recording_id||null, linkedObjects:r.linked_objects||[], sentiment:r.sentiment||[], title:r.title||"", priority:r.priority||null, createdAt:r.created_at||null }; });
@@ -5599,6 +5725,12 @@
     state.events = (results[17].data || []).map(function(r){ return { id:r.id, title:r.title, date:r.date, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null, secondaryCategories:r.secondary_categories||[],
       locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), linkedPeopleIds:r.linked_people_ids||[], notesMd:r.notes_md||"", position:r.position||0 }; });
     state.events.sort(function(a,b){ return a.position - b.position; });
+    // Empty until migration_action_scenarios.sql has been run — same graceful-degradation shape as
+    // every other not-yet-migrated table here. Actions just can't be flagged as decisions until then.
+    state.actionScenarios = (results[18].data || []).map(function(r){ return { id:r.id, actionId:r.action_id, title:r.title, notes:r.notes||"",
+      advantages:r.advantages||[], disadvantages:r.disadvantages||[], links:r.links||[],
+      x:(r.x!=null?r.x:0), y:(r.y!=null?r.y:0), position:r.position||0 }; });
+    state.actionScenarios.sort(function(a,b){ return a.position - b.position; });
     await backfillLegacyHabitTrackers();
     await backfillHabitIcons();
     // After the tracker backfill above, so habits that only just got their linked variable are
@@ -9672,7 +9804,7 @@
   function actionPayload(snapshot){
     // type:"Task" is legacy padding for the not-yet-dropped NOT NULL column, so undo/trash restores
     // can re-insert — see LEGACY_SILENT_DROP_FIELDS and migration_drop_action_type.sql.
-    return { id:snapshot.id, parent_type:snapshot.parentType, parent_id:snapshot.parentId, title:snapshot.title, priority:snapshot.priority, date:snapshot.date, done:snapshot.done, position:snapshot.position, time_of_day:snapshot.timeOfDay, duration_minutes:snapshot.durationMinutes, category:snapshot.category, secondary_categories:snapshot.secondaryCategories, is_milestone:!!snapshot.isMilestone, type:"Task",
+    return { id:snapshot.id, parent_type:snapshot.parentType, parent_id:snapshot.parentId, title:snapshot.title, priority:snapshot.priority, date:snapshot.date, done:snapshot.done, position:snapshot.position, time_of_day:snapshot.timeOfDay, duration_minutes:snapshot.durationMinutes, category:snapshot.category, secondary_categories:snapshot.secondaryCategories, is_milestone:!!snapshot.isMilestone, is_decision:!!snapshot.isDecision, type:"Task",
       location_address:snapshot.locationAddress, location_lat:snapshot.locationLat, location_lng:snapshot.locationLng, notes_md:snapshot.notesMd, dependencies:snapshot.dependencies };
   }
   async function deleteAction(id){
@@ -9680,6 +9812,10 @@
     if(!a) return;
     var snapshot = Object.assign({}, a);
     state.actions = state.actions.filter(function(x){ return x.id !== id; });
+    // action_scenarios cascades on the database side; drop the local copies to match, so a decision's
+    // scenarios don't linger in memory pointing at an action that no longer exists. Undo restores the
+    // action, not its scenarios — those are gone with the cascade.
+    state.actionScenarios = state.actionScenarios.filter(function(s){ return s.actionId !== id; });
     renderAll();
     var r = await sb.from("actions").delete().eq("id", id);
     if(r.error){ console.error(r.error); return; }
@@ -9999,6 +10135,7 @@
     "habit-instance": function(id, date){ return skipHabitInstance(id, date); },
     action: deleteAction,
     event: deleteEvent,
+    scenario: deleteScenario,
     journal: deleteJournalEntry,
     person: deletePerson
   };
@@ -10014,6 +10151,7 @@
     "habit-instance": true,
     action: editAction,
     event: editEvent,
+    scenario: editScenario,
     journal: editJournalEntry,
     person: editPerson
   };
@@ -10716,6 +10854,7 @@
       document.getElementById("entityMdPreview").innerHTML = renderNoteBodyHtml(obj.notesMd || "") || '<span class="panel-hint">Nothing written yet.</span>';
     }
     renderEntityGantt();
+    renderDecisionBlock();
   }
   // ---- Markdown notes: debounced autosave straight to the row's notes_md column ----
   var entityMdSaveTimer = null;
@@ -10892,7 +11031,7 @@
     var aMerged = actionAreaColorCss(a);
     var colorStyle = aMerged ? ("background:" + aMerged.bg + ";border-color:" + aMerged.c + ";") : "";
     return '<div class="gantt-bar' + (cat ? " " + cat : "") + (a.isMilestone ? " gantt-milestone" : "") + (a.done ? " done" : "") + (undated ? " undated" : "") + (blocked ? " blocked" : "") + (a.id === selfId ? " gantt-bar-self" : "") + '" data-kind="action" data-id="' + a.id + '" data-gantt-action="' + a.id + '" style="left:' + (idx * GANTT_COL_W) + 'px;width:' + (GANTT_COL_W * 2 - 4) + 'px;' + topStyle + colorStyle + '" title="' + (a.isMilestone ? "milestone: " : "") + escapeHtml(a.title) + (undated ? " — no date yet (drag to schedule)" : " — " + fmtDate(a.date)) + (blocked ? " — blocked: a required action isn’t done yet" : "") + '">' +
-      (a.isMilestone ? "◆ " : "") + escapeHtml(a.title) +
+      (a.isMilestone ? "◆ " : "") + (a.isDecision ? "◈ " : "") + escapeHtml(a.title) +
       '<span class="gantt-link-handle" data-link-from="' + a.id + '" title="drag onto another action to create a dependency">◉</span>' +
     '</div>';
   }
@@ -11364,6 +11503,547 @@
       : "Every goal, project, and action across the whole system on one timeline. Drag a bar to reschedule it, drag the ◉ handle between actions to link a dependency, click an arrow to remove one.";
   });
 
+  /* ---------------- Decisions: a scenario canvas for an action ----------------
+     An action flagged as a decision (actions.is_decision) stops being one thing you'll do and
+     becomes a fork. Its scenarios are the plausible futures, laid out as a branching hierarchy and
+     scored so they can actually be compared.
+
+     Arrow direction is the opposite of the Gantt's: a scenario stores its OUTGOING links (this path
+     leads to these), because a future reads forward, whereas a dependency lives on the dependent
+     because a prerequisite reads backward. Same ◉ drag gesture and click-to-remove either way. */
+  var SC_WORLD_W = 4000, SC_WORLD_H = 3000;
+  var SC_ORIGIN_X = 1500, SC_ORIGIN_Y = 1000;
+  var SC_COL_W = 260, SC_ROW_H = 200;
+  var SC_NODE_W = 228;
+
+  function scenarioById(id){ return state.actionScenarios.find(function(s){ return s.id === id; }); }
+  function scenariosForAction(actionId){
+    return state.actionScenarios.filter(function(s){ return s.actionId === actionId; })
+      .sort(function(a, b){ return a.position - b.position; });
+  }
+  function scenarioWeightSum(list){
+    return (list || []).reduce(function(t, e){ return t + (Number(e && e.weight) || 0); }, 0);
+  }
+  // Net = weighted advantages minus weighted disadvantages. Weight is "how much it matters", so this
+  // is a considered-ness score, not a probability — see the modal's own hint.
+  function scenarioNetScore(s){
+    return scenarioWeightSum(s.advantages) - scenarioWeightSum(s.disadvantages);
+  }
+  // A scenario with nothing weighed yet scores 0, which would otherwise let an empty card outrank a
+  // genuinely negative one purely by saying nothing. Unscored cards are ranked separately (no badge,
+  // listed last in the comparison) rather than competing on a score they never earned.
+  function scenarioIsScored(s){
+    return ((s.advantages || []).length + (s.disadvantages || []).length) > 0;
+  }
+  function scenarioRankMap(list){
+    var scored = list.filter(scenarioIsScored)
+      .sort(function(a, b){ return scenarioNetScore(b) - scenarioNetScore(a); });
+    var map = {}, lastScore = null, lastRank = 0;
+    scored.forEach(function(s, i){
+      var sc = scenarioNetScore(s);
+      // Ties share a rank — two branches that weigh out identically genuinely are tied, and picking
+      // an arbitrary winner between them would be the chart lying about its own confidence.
+      if(lastScore === null || sc !== lastScore){ lastRank = i + 1; lastScore = sc; }
+      map[s.id] = { rank: lastRank, of: scored.length };
+    });
+    return map;
+  }
+  // Does `fromId` already reach `toId` by following links? Guards against a cycle turning the
+  // hierarchy into a loop — same shape as ganttDependsOn.
+  function scenarioLinksTo(fromId, toId, seen){
+    seen = seen || {};
+    if(seen[fromId]) return false;
+    seen[fromId] = true;
+    var s = scenarioById(fromId);
+    return !!s && (s.links || []).some(function(id){ return id === toId || scenarioLinksTo(id, toId, seen); });
+  }
+  function scenarioPayload(s){
+    return { id:s.id, action_id:s.actionId, title:s.title, notes:s.notes, advantages:s.advantages,
+      disadvantages:s.disadvantages, links:s.links, x:s.x, y:s.y, position:s.position };
+  }
+  // A branch lands directly under its parent, then to the right of each sibling already there, so
+  // building a tree top-down needs no dragging at all. A root scenario fills the top row instead.
+  function scenarioAutoPlace(actionId, parent){
+    if(parent) return { x: parent.x + (parent.links || []).length * SC_COL_W, y: parent.y + SC_ROW_H };
+    var all = scenariosForAction(actionId);
+    var linked = {};
+    all.forEach(function(s){ (s.links || []).forEach(function(id){ linked[id] = true; }); });
+    var roots = all.filter(function(s){ return !linked[s.id]; });
+    return { x: SC_ORIGIN_X + roots.length * SC_COL_W, y: SC_ORIGIN_Y };
+  }
+
+  async function addScenario(actionId, parent){
+    var pos = scenarioAutoPlace(actionId, parent);
+    var payload = { action_id: actionId, title: parent ? "New branch" : "New scenario", notes: "",
+      advantages: [], disadvantages: [], links: [], x: pos.x, y: pos.y };
+    var res = await safeInsert("action_scenarios", payload, state.actionScenarios);
+    if(res.error){ dbErrorToast(res.error, "Couldn't add scenario"); return null; }
+    var r = res.data;
+    var mapped = { id:r.id, actionId:r.action_id, title:r.title, notes:r.notes||"", advantages:r.advantages||[],
+      disadvantages:r.disadvantages||[], links:r.links||[], x:(r.x!=null?r.x:pos.x), y:(r.y!=null?r.y:pos.y), position:r.position||0 };
+    state.actionScenarios.push(mapped);
+    if(parent){
+      parent.links = (parent.links || []).concat([mapped.id]);
+      await saveScenarioLinks(parent);
+    }
+    renderDecisionBlock();
+    warnDroppedFields(res.droppedFields);
+    openScenarioModal(mapped.id);
+    return mapped;
+  }
+  async function saveScenarioLinks(s){
+    var r = await safeUpdate("action_scenarios", s.id, { links: s.links });
+    if(r.error) console.error(r.error); else warnDroppedFields(r.droppedFields);
+  }
+  async function saveScenarioPos(s){
+    var r = await safeUpdate("action_scenarios", s.id, { x: s.x, y: s.y });
+    if(r.error) console.error(r.error); else warnDroppedFields(r.droppedFields);
+  }
+  async function deleteScenario(id){
+    var s = scenarioById(id);
+    if(!s) return;
+    var snapshot = Object.assign({}, s);
+    // Every arrow POINTING AT this scenario lives on a different row, so those rows have to be
+    // rewritten too — captured first so undo can restore the exact link sets, not just the card.
+    var inbound = state.actionScenarios.filter(function(o){ return o.id !== id && (o.links || []).indexOf(id) !== -1; });
+    var inboundSnap = inbound.map(function(o){ return { id:o.id, links:(o.links || []).slice() }; });
+    state.actionScenarios = state.actionScenarios.filter(function(o){ return o.id !== id; });
+    inbound.forEach(function(o){ o.links = (o.links || []).filter(function(x){ return x !== id; }); });
+    renderDecisionBlock();
+    var r = await sb.from("action_scenarios").delete().eq("id", id);
+    if(r.error){ console.error(r.error); toast("Could not delete: " + r.error.message); return; }
+    for(var i = 0; i < inbound.length; i++) await saveScenarioLinks(inbound[i]);
+    await writeTrash("scenario", snapshot.title, scenarioPayload(snapshot));
+    pushUndo('delete scenario "' + snapshot.title + '"', async function(){
+      var ri = await safeWrite(function(p){ return sb.from("action_scenarios").insert(p).select().single(); }, scenarioPayload(snapshot));
+      if(ri.error){ console.error(ri.error); toast("Could not restore scenario: " + ri.error.message); return; }
+      state.actionScenarios.push(snapshot);
+      for(var j = 0; j < inboundSnap.length; j++){
+        var o = scenarioById(inboundSnap[j].id);
+        if(o){ o.links = inboundSnap[j].links.slice(); await saveScenarioLinks(o); }
+      }
+      renderDecisionBlock();
+    });
+  }
+  function editScenario(id){ openScenarioModal(id); }
+
+  /* ---- Canvas view transform (pan/zoom), same shape as the whiteboard's ---- */
+  var scPanX = 0, scPanY = 0, scZoom = 1;
+  function applyScTransform(){
+    var world = document.getElementById("scWorld");
+    if(world) world.style.transform = "translate(" + scPanX + "px, " + scPanY + "px) scale(" + scZoom + ")";
+  }
+  function scZoomAt(newZoom, viewportX, viewportY){
+    newZoom = Math.max(0.3, Math.min(2.2, newZoom));
+    var worldX = (viewportX - scPanX) / scZoom;
+    var worldY = (viewportY - scPanY) / scZoom;
+    scZoom = newZoom;
+    scPanX = viewportX - worldX * scZoom;
+    scPanY = viewportY - worldY * scZoom;
+    applyScTransform();
+  }
+  function scZoomStep(dir){
+    var wrap = document.getElementById("scCanvasWrap");
+    if(!wrap) return;
+    scZoomAt(scZoom * (dir > 0 ? 1.2 : 1 / 1.2), wrap.clientWidth / 2, wrap.clientHeight / 2);
+  }
+  // Centers on the scenarios themselves rather than on the world's midpoint — the world is far
+  // bigger than any real tree, so a fixed centre would usually frame empty space.
+  function scResetView(){
+    var wrap = document.getElementById("scCanvasWrap");
+    if(!wrap) return;
+    var list = entityPage.kind === "action" ? scenariosForAction(entityPage.id) : [];
+    scZoom = 1;
+    var cx = SC_ORIGIN_X + SC_NODE_W / 2, cy = SC_ORIGIN_Y + 60;
+    if(list.length){
+      var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      list.forEach(function(s){
+        minX = Math.min(minX, s.x); maxX = Math.max(maxX, s.x + SC_NODE_W);
+        minY = Math.min(minY, s.y); maxY = Math.max(maxY, s.y + 120);
+      });
+      cx = (minX + maxX) / 2; cy = (minY + maxY) / 2;
+      var need = Math.max((maxX - minX) / Math.max(1, wrap.clientWidth - 60), (maxY - minY) / Math.max(1, wrap.clientHeight - 60));
+      if(need > 1) scZoom = Math.max(0.3, 1 / need);
+    }
+    scPanX = wrap.clientWidth / 2 - cx * scZoom;
+    scPanY = wrap.clientHeight / 2 - cy * scZoom;
+    applyScTransform();
+  }
+
+  /* ---- Rendering ---- */
+  function scMiniListHtml(entries, kind){
+    var glyph = kind === "pro" ? "+" : "−";
+    return (entries || []).slice(0, 3).map(function(e){
+      return '<div class="sc-mini ' + kind + '"><span class="g">' + glyph + '</span>' +
+        '<span class="t">' + escapeHtml(e.text || "") + '</span>' +
+        '<span class="w">' + (Number(e.weight) || 0) + '</span></div>';
+    }).join("");
+  }
+  function scenarioNodeHtml(s, ranked){
+    var net = scenarioNetScore(s);
+    var scored = scenarioIsScored(s);
+    var r = ranked[s.id];
+    var netCls = net > 0 ? "pos" : (net < 0 ? "neg" : "zero");
+    var total = (s.advantages || []).length + (s.disadvantages || []).length;
+    return '<div class="sc-node" data-kind="scenario" data-id="' + s.id + '" data-sc-node="' + s.id + '" style="left:' + s.x + 'px; top:' + s.y + 'px;">' +
+      '<span class="sc-link-handle" data-sc-link-from="' + s.id + '" title="drag onto another scenario to link them">◉</span>' +
+      '<div class="sc-node-head">' +
+        (r ? '<span class="sc-rank' + (r.rank === 1 ? " top" : "") + '">#' + r.rank + '</span>' : '') +
+        '<span class="sc-node-title">' + escapeHtml(s.title) + '</span>' +
+        (scored ? '<span class="sc-net ' + netCls + '">' + (net > 0 ? "+" : "") + net + '</span>' : '') +
+      '</div>' +
+      (s.notes ? '<div class="sc-node-notes">' + escapeHtml(s.notes) + '</div>' : '') +
+      (total
+        ? '<div class="sc-node-lists">' + scMiniListHtml(s.advantages, "pro") + scMiniListHtml(s.disadvantages, "con") +
+          (total > 6 ? '<div class="sc-node-more">+' + (total - 6) + ' more</div>' : '') + '</div>'
+        : '<div class="sc-node-empty">nothing weighed yet</div>') +
+      '<div class="sc-node-actions">' +
+        '<button class="btn" type="button" data-action="branch-scenario" data-id="' + s.id + '" title="Add a scenario branching from this one">⑂ branch</button>' +
+        '<button class="btn" type="button" data-action="edit-scenario" data-id="' + s.id + '" aria-label="Edit scenario">✎</button>' +
+        '<button class="btn" type="button" data-action="del-scenario" data-id="' + s.id + '" aria-label="Delete scenario">&times;</button>' +
+      '</div>' +
+    '</div>';
+  }
+  function renderScenarioNodes(list, ranked){
+    var host = document.getElementById("scNodes");
+    if(host) host.innerHTML = list.map(function(s){ return scenarioNodeHtml(s, ranked); }).join("");
+  }
+  // Geometry is read back off the laid-out DOM (offsetWidth/Height are in world coordinates, so the
+  // wrapper's CSS transform doesn't distort them) — a card's height depends on how much is written
+  // in it, which only the browser knows.
+  function renderScenarioArrows(list){
+    var svg = document.getElementById("scArrowSvg");
+    if(!svg) return;
+    var boxes = {};
+    list.forEach(function(s){
+      var el = document.querySelector('[data-sc-node="' + s.id + '"]');
+      // `|| CONST` rather than a null check: an element that exists but hasn't been laid out yet
+      // reports 0, which would collapse every arrow onto a single point.
+      boxes[s.id] = { x: s.x, y: s.y, w: (el && el.offsetWidth) || SC_NODE_W, h: (el && el.offsetHeight) || 110 };
+    });
+    var paths = "";
+    list.forEach(function(s){
+      (s.links || []).forEach(function(toId){
+        var a = boxes[s.id], b = boxes[toId];
+        if(!a || !b) return;
+        var x1, y1, x2, y2, d, bend;
+        if(b.y > a.y + a.h * 0.5){
+          // Child sits below — leave the bottom, enter the top, which is how a tree reads.
+          x1 = a.x + a.w / 2; y1 = a.y + a.h; x2 = b.x + b.w / 2; y2 = b.y;
+          bend = Math.max(30, (y2 - y1) / 2);
+          d = 'M' + x1 + ' ' + y1 + ' C' + x1 + ' ' + (y1 + bend) + ' ' + x2 + ' ' + (y2 - bend) + ' ' + x2 + ' ' + y2;
+        } else {
+          x1 = a.x + a.w; y1 = a.y + a.h / 2; x2 = b.x; y2 = b.y + b.h / 2;
+          bend = Math.max(35, Math.abs(x2 - x1) / 2);
+          d = 'M' + x1 + ' ' + y1 + ' C' + (x1 + bend) + ' ' + y1 + ' ' + (x2 - bend) + ' ' + y2 + ' ' + x2 + ' ' + y2;
+        }
+        paths += '<path class="sc-arrow" data-sc-from="' + s.id + '" data-sc-to="' + toId + '" d="' + d + '" marker-end="url(#scArrowHead)"><title>click to remove this link</title></path>';
+      });
+    });
+    // fill via a class, not a fill="var(--violet)" attribute — var() inside a presentation
+    // attribute isn't reliably resolved, and a silently black arrowhead would look like a bug.
+    svg.innerHTML = '<defs><marker id="scArrowHead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">' +
+      '<path class="sc-arrow-head" d="M 0 0 L 10 5 L 0 10 z"></path></marker></defs>' + paths;
+  }
+  function renderScenarioCompare(list, ranked){
+    var host = document.getElementById("scCompare");
+    if(!host) return;
+    if(list.length < 2){ host.innerHTML = ""; return; }
+    var scored = list.filter(scenarioIsScored);
+    if(!scored.length){ host.innerHTML = ""; return; }
+    var maxAbs = Math.max(1, Math.max.apply(null, scored.map(function(s){ return Math.abs(scenarioNetScore(s)); })));
+    var ordered = scored.slice().sort(function(a, b){ return scenarioNetScore(b) - scenarioNetScore(a); })
+      .concat(list.filter(function(s){ return !scenarioIsScored(s); }));
+    host.innerHTML = ordered.map(function(s){
+      if(!scenarioIsScored(s)){
+        return '<div class="sc-compare-row"><span class="sc-compare-name unscored">' + escapeHtml(s.title) + '</span>' +
+          '<span class="sc-compare-track"></span><span class="sc-compare-score">—</span></div>';
+      }
+      var net = scenarioNetScore(s);
+      var pct = Math.abs(net) / maxAbs * 50;
+      var r = ranked[s.id];
+      var fill = net >= 0
+        ? '<span class="sc-compare-fill pos" style="left:50%; width:' + pct + '%;"></span>'
+        : '<span class="sc-compare-fill neg" style="right:50%; width:' + pct + '%;"></span>';
+      return '<div class="sc-compare-row">' +
+        '<span class="sc-compare-name">' + (r ? '#' + r.rank + ' ' : '') + escapeHtml(s.title) + '</span>' +
+        '<span class="sc-compare-track">' + fill + '</span>' +
+        '<span class="sc-compare-score">' + (net > 0 ? "+" : "") + net + '</span></div>';
+    }).join("");
+  }
+  var scViewInitialized = false;
+  function renderDecisionBlock(){
+    var block = document.getElementById("entityDecisionBlock");
+    if(!block) return;
+    var obj = entityPage.kind === "action" ? entityPageObj() : null;
+    var on = !!(obj && obj.isDecision);
+    block.style.display = on ? "" : "none";
+    if(!on){ scViewInitialized = false; return; }
+    var list = scenariosForAction(entityPage.id);
+    var ranked = scenarioRankMap(list);
+    renderScenarioNodes(list, ranked);
+    renderScenarioArrows(list);
+    renderScenarioCompare(list, ranked);
+    document.getElementById("scEmptyState").style.display = list.length ? "none" : "";
+    document.getElementById("scCanvasWrap").style.display = list.length ? "" : "none";
+    // Frame the tree the first time this action's canvas is shown, then leave the view alone — a
+    // re-render mid-session must not yank the viewport back from wherever you panned it.
+    if(!scViewInitialized && list.length){ scViewInitialized = true; scResetView(); }
+    else applyScTransform();
+  }
+
+  /* ---- Canvas interactions: pan, node drag, ◉ link drag, click-arrow-to-remove ---- */
+  (function wireScenarioCanvas(){
+    var wrap = document.getElementById("scCanvasWrap");
+    if(!wrap) return;
+    var pan = null, drag = null, link = null, suppressClick = false;
+    wrap.addEventListener("pointerdown", function(e){
+      if(e.button > 0) return;
+      // Cleared here, not only when a click consumes it: a drag whose pointerup isn't followed by a
+      // native click (released off the element, gesture cancelled) would otherwise leave the flag
+      // armed and silently swallow the next unrelated click — an arrow you then couldn't remove.
+      // Tying it to the start of a gesture means it can never outlive the one that set it.
+      suppressClick = false;
+      var handle = e.target.closest("[data-sc-link-from]");
+      if(handle){
+        link = { fromId: handle.dataset.scLinkFrom, targetEl: null };
+        try{ handle.setPointerCapture(e.pointerId); }catch(err){}
+        return;
+      }
+      if(e.target.closest("button")) return; // the card's own ⑂ / ✎ / × — a click, never a drag
+      var node = e.target.closest(".sc-node");
+      if(node){
+        var s = scenarioById(node.dataset.id);
+        if(!s) return;
+        drag = { el: node, id: s.id, startX: e.clientX, startY: e.clientY, origX: s.x, origY: s.y, moved: false };
+        try{ node.setPointerCapture(e.pointerId); }catch(err){}
+        node.classList.add("dragging");
+        return;
+      }
+      if(e.target.closest(".sc-arrow")) return; // handled by the click listener below
+      pan = { startX: e.clientX, startY: e.clientY, origX: scPanX, origY: scPanY, moved: false };
+      wrap.classList.add("panning");
+    });
+    wrap.addEventListener("pointermove", function(e){
+      if(drag){
+        var dx = (e.clientX - drag.startX) / scZoom, dy = (e.clientY - drag.startY) / scZoom;
+        if(Math.abs(e.clientX - drag.startX) > 3 || Math.abs(e.clientY - drag.startY) > 3) drag.moved = true;
+        var nx = Math.max(0, Math.min(SC_WORLD_W - SC_NODE_W, drag.origX + dx));
+        var ny = Math.max(0, Math.min(SC_WORLD_H - 60, drag.origY + dy));
+        drag.el.style.left = nx + "px"; drag.el.style.top = ny + "px";
+        drag.pendingX = nx; drag.pendingY = ny;
+        var sObj = scenarioById(drag.id);
+        // Written straight onto the object so the arrows can follow the card live — the DB write
+        // waits for pointerup (one round-trip per drag, not one per frame).
+        if(sObj){ sObj.x = nx; sObj.y = ny; }
+        renderScenarioArrows(scenariosForAction(entityPage.id));
+        return;
+      }
+      if(link){
+        var wrapRect = wrap.getBoundingClientRect();
+        var fromEl = document.querySelector('[data-sc-node="' + link.fromId + '"]');
+        if(!fromEl) return;
+        var fs = scenarioById(link.fromId);
+        if(!fs) return;
+        // The preview lives in world space (inside the transformed svg), so screen coordinates have
+        // to be converted back through the same pan/zoom the world is under.
+        var x1 = fs.x + (fromEl.offsetWidth || SC_NODE_W), y1 = fs.y + (fromEl.offsetHeight || 110) / 2;
+        var x2 = (e.clientX - wrapRect.left - scPanX) / scZoom;
+        var y2 = (e.clientY - wrapRect.top - scPanY) / scZoom;
+        var svg = document.getElementById("scArrowSvg");
+        var existing = svg.querySelector(".sc-link-preview");
+        var preview = '<path class="sc-link-preview" d="M' + x1 + ' ' + y1 + ' L' + x2 + ' ' + y2 + '"></path>';
+        if(existing) existing.outerHTML = preview; else svg.insertAdjacentHTML("beforeend", preview);
+        var under = document.elementFromPoint(e.clientX, e.clientY);
+        var target = under && under.closest && under.closest(".sc-node");
+        if(target && target.dataset.id === link.fromId) target = null;
+        if(link.targetEl && link.targetEl !== target) link.targetEl.classList.remove("link-target");
+        if(target) target.classList.add("link-target");
+        link.targetEl = target;
+        return;
+      }
+      if(pan){
+        pan.moved = true;
+        scPanX = pan.origX + (e.clientX - pan.startX);
+        scPanY = pan.origY + (e.clientY - pan.startY);
+        applyScTransform();
+      }
+    });
+    wrap.addEventListener("pointerup", async function(e){
+      if(drag){
+        var d = drag; drag = null;
+        d.el.classList.remove("dragging");
+        if(!d.moved){
+          // A clean press with no movement opens the editor — the ✎ button is still there for
+          // anyone who'd rather aim at a target.
+          openScenarioModal(d.id);
+          return;
+        }
+        suppressClick = true;
+        var s = scenarioById(d.id);
+        if(s) await saveScenarioPos(s);
+        return;
+      }
+      if(link){
+        suppressClick = true;
+        var l = link; link = null;
+        var svg = document.getElementById("scArrowSvg");
+        var prev = svg && svg.querySelector(".sc-link-preview");
+        if(prev) prev.remove();
+        if(l.targetEl) l.targetEl.classList.remove("link-target");
+        if(!l.targetEl) return;
+        var toId = l.targetEl.dataset.id;
+        var from = scenarioById(l.fromId), to = scenarioById(toId);
+        if(!from || !to || toId === l.fromId) return;
+        if((from.links || []).indexOf(toId) !== -1){ toast("Already linked."); return; }
+        if(scenarioLinksTo(toId, l.fromId)){ toast("That would create a circular branch."); return; }
+        from.links = (from.links || []).concat([toId]);
+        renderDecisionBlock();
+        await saveScenarioLinks(from);
+        return;
+      }
+      if(pan){
+        if(pan.moved) suppressClick = true;
+        pan = null;
+        wrap.classList.remove("panning");
+      }
+    });
+    wrap.addEventListener("pointercancel", function(){
+      if(drag){ drag.el.classList.remove("dragging"); drag = null; }
+      if(link){
+        var svg = document.getElementById("scArrowSvg");
+        var prev = svg && svg.querySelector(".sc-link-preview");
+        if(prev) prev.remove();
+        if(link.targetEl) link.targetEl.classList.remove("link-target");
+        link = null;
+      }
+      if(pan){ pan = null; wrap.classList.remove("panning"); }
+    });
+    // Ctrl/Cmd+wheel zooms (a bare wheel is left to the page, so the canvas never traps the scroll
+    // of the page it's embedded in — this block sits between two others on a long page).
+    wrap.addEventListener("wheel", function(e){
+      if(!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      var rect = wrap.getBoundingClientRect();
+      scZoomAt(scZoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1), e.clientX - rect.left, e.clientY - rect.top);
+    }, { passive: false });
+    wrap.addEventListener("click", async function(e){
+      if(suppressClick){ suppressClick = false; return; }
+      var arrow = e.target.closest && e.target.closest(".sc-arrow");
+      if(arrow){
+        var from = scenarioById(arrow.dataset.scFrom), to = scenarioById(arrow.dataset.scTo);
+        if(!from) return;
+        if(!confirm('Remove the link from "' + from.title + '" to "' + (to ? to.title : "a deleted scenario") + '"?')) return;
+        from.links = (from.links || []).filter(function(x){ return x !== arrow.dataset.scTo; });
+        renderDecisionBlock();
+        await saveScenarioLinks(from);
+        return;
+      }
+      var btn = e.target.closest("[data-action]");
+      if(!btn) return;
+      if(btn.dataset.action === "branch-scenario") await addScenario(entityPage.id, scenarioById(btn.dataset.id));
+      else if(btn.dataset.action === "edit-scenario") openScenarioModal(btn.dataset.id);
+      else if(btn.dataset.action === "del-scenario") await deleteScenario(btn.dataset.id);
+    });
+  })();
+  document.getElementById("scAddBtn").addEventListener("click", function(){
+    if(entityPage.kind === "action" && entityPage.id) addScenario(entityPage.id, null);
+  });
+  document.getElementById("scZoomOutBtn").addEventListener("click", function(){ scZoomStep(-1); });
+  document.getElementById("scZoomInBtn").addEventListener("click", function(){ scZoomStep(1); });
+  document.getElementById("scResetViewBtn").addEventListener("click", scResetView);
+
+  /* ---- Scenario modal: title, notes, and the two weighted lists ---- */
+  var editingScenarioId = null;
+  function scWeightRowHtml(entry){
+    var w = Number(entry && entry.weight) || 3;
+    var opts = "";
+    for(var i = 1; i <= 5; i++) opts += '<option value="' + i + '"' + (i === w ? " selected" : "") + '>' + i + '</option>';
+    return '<div class="sc-weight-row">' +
+      '<input type="text" class="sc-weight-text" value="' + escapeHtml((entry && entry.text) || "") + '" placeholder="what it is">' +
+      '<select class="sc-weight-sel" aria-label="Weight, 1 minor to 5 decisive">' + opts + '</select>' +
+      '<button class="icon-btn" type="button" data-sc-row-del aria-label="Remove">&times;</button>' +
+    '</div>';
+  }
+  function renderScWeightList(hostId, entries){
+    var host = document.getElementById(hostId);
+    host.innerHTML = (entries || []).length
+      ? entries.map(scWeightRowHtml).join("")
+      : '<div class="sc-weight-empty">none yet</div>';
+  }
+  function readScWeightList(hostId){
+    return Array.from(document.getElementById(hostId).querySelectorAll(".sc-weight-row")).map(function(row){
+      return { text: row.querySelector(".sc-weight-text").value.trim(), weight: Number(row.querySelector(".sc-weight-sel").value) || 1 };
+    }).filter(function(e){ return e.text; });
+  }
+  function updateScNetPreview(){
+    var pros = readScWeightList("scenarioProsList"), cons = readScWeightList("scenarioConsList");
+    var net = scenarioWeightSum(pros) - scenarioWeightSum(cons);
+    var el = document.getElementById("scenarioNetPreview");
+    if(!pros.length && !cons.length){ el.textContent = "net score — nothing weighed yet"; el.style.color = "var(--text-faint)"; return; }
+    el.textContent = "net score " + (net > 0 ? "+" : "") + net + "  (advantages " + scenarioWeightSum(pros) + " − disadvantages " + scenarioWeightSum(cons) + ")";
+    el.style.color = net > 0 ? "var(--ok)" : (net < 0 ? "var(--danger)" : "var(--text-dim)");
+  }
+  function openScenarioModal(id){
+    var s = scenarioById(id);
+    if(!s) return;
+    editingScenarioId = id;
+    document.getElementById("scenarioModalTitle").textContent = "edit_scenario.json";
+    document.getElementById("scenarioTitleInput").value = s.title || "";
+    document.getElementById("scenarioNotesInput").value = s.notes || "";
+    renderScWeightList("scenarioProsList", s.advantages);
+    renderScWeightList("scenarioConsList", s.disadvantages);
+    updateScNetPreview();
+    openModal("scenarioModalOverlay");
+    document.getElementById("scenarioTitleInput").focus();
+    document.getElementById("scenarioTitleInput").select();
+  }
+  ["scenarioProsList", "scenarioConsList"].forEach(function(hostId){
+    var host = document.getElementById(hostId);
+    host.addEventListener("click", function(e){
+      var del = e.target.closest("[data-sc-row-del]");
+      if(!del) return;
+      del.closest(".sc-weight-row").remove();
+      if(!host.querySelector(".sc-weight-row")) host.innerHTML = '<div class="sc-weight-empty">none yet</div>';
+      updateScNetPreview();
+    });
+    host.addEventListener("input", updateScNetPreview);
+    host.addEventListener("change", updateScNetPreview);
+  });
+  function scAddWeightRow(hostId){
+    var host = document.getElementById(hostId);
+    var empty = host.querySelector(".sc-weight-empty");
+    if(empty) empty.remove();
+    host.insertAdjacentHTML("beforeend", scWeightRowHtml(null));
+    var rows = host.querySelectorAll(".sc-weight-row");
+    rows[rows.length - 1].querySelector(".sc-weight-text").focus();
+    updateScNetPreview();
+  }
+  document.getElementById("scenarioAddProBtn").addEventListener("click", function(){ scAddWeightRow("scenarioProsList"); });
+  document.getElementById("scenarioAddConBtn").addEventListener("click", function(){ scAddWeightRow("scenarioConsList"); });
+  document.getElementById("cancelScenarioModalBtn").addEventListener("click", function(){ closeModal("scenarioModalOverlay"); });
+  document.getElementById("saveScenarioBtn").addEventListener("click", async function(){
+    var s = scenarioById(editingScenarioId);
+    if(!s) return;
+    var title = document.getElementById("scenarioTitleInput").value.trim();
+    if(!title) return;
+    var payload = {
+      title: title,
+      notes: document.getElementById("scenarioNotesInput").value.trim(),
+      advantages: readScWeightList("scenarioProsList"),
+      disadvantages: readScWeightList("scenarioConsList")
+    };
+    this.disabled = true;
+    var res = await safeUpdate("action_scenarios", s.id, payload);
+    this.disabled = false;
+    if(res.error){ dbErrorToast(res.error, "Couldn't save"); return; }
+    s.title = payload.title; s.notes = payload.notes;
+    s.advantages = payload.advantages; s.disadvantages = payload.disadvantages;
+    renderDecisionBlock();
+    closeModal("scenarioModalOverlay");
+    warnDroppedFields(res.droppedFields);
+  });
+
   /* ---------------- Areas ---------------- */
   function computeAreaData(cat){
     var goals = state.goals.filter(function(g){ return g.category === cat; });
@@ -11828,7 +12508,7 @@
         return '<div class="ms-tile' + (tCat ? ' ' + tCat : '') + '"' + tStyle + ' data-kind="action" data-id="' + a.id + '">' +
           '<div class="ms-tile-top">' +
             '<button class="ms-check' + (a.done?' done':'') + '" data-action="toggle-action" data-id="' + a.id + '" aria-label="Toggle done"></button>' +
-            '<span class="ms-tile-title' + (a.done?' done':'') + '">' + (a.isMilestone ? "◆ " : "") + escapeHtml(a.title) + '</span>' +
+            '<span class="ms-tile-title' + (a.done?' done':'') + '">' + (a.isMilestone ? "◆ " : "") + (a.isDecision ? "◈ " : "") + escapeHtml(a.title) + '</span>' +
             '<button class="icon-btn edit" data-action="edit-action" data-id="' + a.id + '" aria-label="Edit action">✎</button>' +
             '<button class="icon-btn" data-action="del-action" data-id="' + a.id + '" aria-label="Delete action">&times;</button>' +
           '</div>' +
@@ -11860,7 +12540,7 @@
         '</div>' +
         '<div class="card-body">' +
           '<div class="goal-body-head">' +
-            '<h3 class="goal-title" style="' + (a.done?'color:var(--text-faint);text-decoration:line-through;':'') + '">' + (a.isMilestone ? "◆ " : "") + escapeHtml(a.title) + '</h3>' +
+            '<h3 class="goal-title" style="' + (a.done?'color:var(--text-faint);text-decoration:line-through;':'') + '">' + (a.isMilestone ? "◆ " : "") + (a.isDecision ? "◈ " : "") + escapeHtml(a.title) + '</h3>' +
             '<div class="entity-actions">' +
               '<button class="icon-btn toggle" data-action="toggle-action" data-id="' + a.id + '" aria-label="Toggle done">' + (a.done?'↺':'✓') + '</button>' +
               '<button class="icon-btn edit" data-action="edit-action" data-id="' + a.id + '" aria-label="Edit action">✎</button>' +
@@ -20312,6 +20992,33 @@
 
   var editingActionId = null;
   var editingActionLat = null, editingActionLng = null;
+  // Two flags, not one: the draft value the toggle writes, and what's actually stored. The "open
+  // canvas" button keys off the STORED one, because the canvas reads is_decision from the saved row
+  // — offering to open it from an unsaved toggle would land on a page with the block still hidden.
+  var editingActionIsDecision = false, editingActionStoredIsDecision = false;
+  function renderActionDecisionToggle(){
+    var btn = document.getElementById("actionDecisionToggle");
+    btn.textContent = editingActionIsDecision ? "◈ decision" : "◈ not a decision";
+    btn.classList.toggle("btn-accent", editingActionIsDecision);
+    btn.setAttribute("aria-pressed", editingActionIsDecision ? "true" : "false");
+    var canOpen = editingActionIsDecision && !!editingActionId && editingActionStoredIsDecision;
+    document.getElementById("actionDecisionOpenBtn").style.display = canOpen ? "" : "none";
+    document.getElementById("actionDecisionHint").textContent = !editingActionIsDecision
+      ? "Turn this on when the action isn't settled yet — you'll get a canvas on its page for mapping out the plausible futures and weighing them against each other."
+      : (canOpen
+        ? "This action is a fork. Its scenarios live on its own page."
+        : "Save the action to open its scenario canvas.");
+  }
+  document.getElementById("actionDecisionToggle").addEventListener("click", function(){
+    editingActionIsDecision = !editingActionIsDecision;
+    renderActionDecisionToggle();
+  });
+  document.getElementById("actionDecisionOpenBtn").addEventListener("click", function(){
+    if(!editingActionId) return;
+    var id = editingActionId;
+    closeModal("actionModalOverlay");
+    openEntityPage("action", id);
+  });
   var actionLocationAC = wireAddressAutocomplete({
     inputEl: document.getElementById("actionLocationInput"),
     dropdownEl: document.getElementById("actionLocationSuggest"),
@@ -20370,6 +21077,9 @@
     document.getElementById("actionTimePickPanel").hidden = true;
     renderActionLinkedPeopleChips(editActionObj ? (editActionObj.linkedPeopleIds || []) : []);
     document.getElementById("actionLinkedPeopleSelect").hidden = true;
+    editingActionIsDecision = !!(editActionObj && editActionObj.isDecision);
+    editingActionStoredIsDecision = editingActionIsDecision;
+    renderActionDecisionToggle();
     openModal("actionModalOverlay");
     document.getElementById("actionTitleInput").focus();
   }
@@ -20408,7 +21118,8 @@
       secondary_categories: multiChipValues(document.getElementById("actionSecondaryCatSelect"), "c"),
       location_address: document.getElementById("actionLocationInput").value.trim() || null,
       location_lat: editingActionLat, location_lng: editingActionLng,
-      linked_people_ids: multiChipValues(document.getElementById("actionLinkedPeopleSelect"), "pid")
+      linked_people_ids: multiChipValues(document.getElementById("actionLinkedPeopleSelect"), "pid"),
+      is_decision: editingActionIsDecision
     };
     this.disabled = true;
     var isEdit = !!editingActionId;
@@ -20425,8 +21136,12 @@
     this.disabled = false;
     if(res.error){ dbErrorToast(res.error, "Couldn't save"); return; }
     var r = res.data;
-    var mapped = { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null, secondaryCategories:r.secondary_categories || payload.secondary_categories || [], isMilestone:!!r.is_milestone,
-      locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), linkedPeopleIds:r.linked_people_ids||[] };
+    // notes_md and dependencies are echoed back by the insert/update but were previously left out of
+    // this mapping, so saving the modal replaced the in-memory action with one that had no page
+    // notes and no Gantt arrows until the next reload. Both are carried through now, alongside the
+    // decision flag.
+    var mapped = { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null, secondaryCategories:r.secondary_categories || payload.secondary_categories || [], isMilestone:!!r.is_milestone, isDecision:!!r.is_decision,
+      locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), notesMd:r.notes_md||"", dependencies:r.dependencies||[], linkedPeopleIds:r.linked_people_ids||[] };
     if(isEdit){
       var idx = state.actions.findIndex(function(x){ return x.id === editingActionId; });
       if(idx !== -1) state.actions[idx] = mapped;
