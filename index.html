@@ -4624,6 +4624,9 @@
           <div class="chip-opt" role="button" tabindex="0" data-nt="decision">⚖ decision</div>
         </div>
       </div>
+      <!-- Appears only when the chosen type has no mood but the note is still carrying sentiment
+           tags from when it was a reflection — see renderJournalEditSentimentRow. -->
+      <div class="field" id="journalEditSentimentRow" hidden></div>
       <div class="field note-editor-textfield"><label for="journalEditTextInput">note</label>
         <!-- Markdown formatting toolbar — each button wraps the selection / prefixes the selected
              lines with plain .md syntax (see mdApplyFormat), so the note stays ordinary Markdown
@@ -16214,6 +16217,11 @@
       '<div class="journal-entry-top"><span class="journal-entry-date">' + d.toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" }) + (entry.timeOfDay ? " · " + fmtTimeOfDay(entry.timeOfDay) : "") + '</span>' + typeBadge +
       '<div class="entity-actions">' +
         (noteGetsSentiment(entry) ? '<button class="icon-btn" data-action="analyze-sentiment" data-id="' + entry.id + '" aria-label="Analyze sentiment" title="Analyze sentiment (AI)">✨</button>' : '') +
+        // The ✨ button's exact inverse, and mutually exclusive with it: it appears only once the
+        // type says this note has no mood AND there are leftover tags still saying otherwise.
+        (!noteGetsSentiment(entry) && (entry.sentiment || []).length
+          ? '<button class="icon-btn" data-action="clear-sentiment" data-id="' + entry.id + '" aria-label="Remove sentiment tags" title="Remove the ' + (entry.sentiment || []).length + ' sentiment tag(s) left over from when this was a reflection">⊘</button>'
+          : '') +
         '<button class="icon-btn" data-action="auto-annotate" data-id="' + entry.id + '" aria-label="Auto-fill title, areas, and links" title="Auto-fill title, areas, and goal/people links (AI)">🏷</button>' +
         '<button class="icon-btn edit" data-action="edit-journal" data-id="' + entry.id + '" aria-label="Edit entry">✎</button>' +
         '<button class="icon-btn" data-action="del-journal" data-id="' + entry.id + '" aria-label="Delete entry">&times;</button>' +
@@ -16941,6 +16949,34 @@
   function noteGetsSentiment(n){
     return !n || !n.noteType || n.noteType === "reflection" || !NOTE_TYPE_META[n.noteType];
   }
+  // Retyping a reflection to an idea/decision/reference stops new sentiment being analysed, but the
+  // tags it already earned stay on the row — and keep colouring the card, positioning it on the mood
+  // map and feeding the home widget's mood dot, all of which now claim a mood the note no longer
+  // has. This is how you drop them: offered rather than automatic, because the tags are real data
+  // the analyser produced, and a type change shouldn't silently destroy it. Undoable either way.
+  async function clearNoteSentiment(id){
+    var n = state.journal.find(function(x){ return x.id === id; });
+    if(!n || !(n.sentiment || []).length) return;
+    var prev = n.sentiment.slice();
+    n.sentiment = [];
+    renderAll();
+    var r = await safeUpdate("journal", id, { sentiment: [] });
+    if(r.error){
+      console.error(r.error);
+      n.sentiment = prev;
+      renderAll();
+      toast("Could not remove sentiment: " + r.error.message);
+      return;
+    }
+    warnDroppedFields(r.droppedFields);
+    var label = (n.title || (n.text || "").trim().slice(0, 30) || "note");
+    toast("Removed " + prev.length + " sentiment tag" + (prev.length === 1 ? "" : "s") + ' from "' + label + '"');
+    pushUndo('remove sentiment from "' + label + '"', async function(){
+      n.sentiment = prev;
+      renderAll();
+      await safeUpdate("journal", id, { sentiment: prev });
+    });
+  }
   // Each tag gets its own hue along a red(negative)→green(positive) spectrum, ordered by emotional
   // valence — set once here as a CSS custom property per chip (--sent-h, see .sentiment-chip) rather
   // than as 14 hardcoded hex colors, so light/dark theme only has to tune saturation/lightness once
@@ -17201,6 +17237,8 @@
     if(playBtn){ await playRecording(playBtn.dataset.id, playBtn, e); return; }
     var sentBtn = e.target.closest('[data-action="analyze-sentiment"]');
     if(sentBtn){ await analyzeNoteSentiment(sentBtn.dataset.id, sentBtn); return; }
+    var clearSentBtn = e.target.closest('[data-action="clear-sentiment"]');
+    if(clearSentBtn){ await clearNoteSentiment(clearSentBtn.dataset.id); return; }
     var annotateBtn = e.target.closest('[data-action="auto-annotate"]');
     if(annotateBtn){ await autoAnnotateNote(annotateBtn.dataset.id, annotateBtn); return; }
     var editBtn = e.target.closest('[data-action="edit-journal"]');
@@ -17345,9 +17383,44 @@
   // action modals already use) — opened via the entry list's edit button, the generic right-click
   // menu (EDIT_HANDLERS.journal), or the Today page's "+ note" button for a brand-new entry.
   var editingJournalId = null;
+  // Staged, not applied immediately: the removal lands with the same "save note" press as the type
+  // change that prompted it, so cancelling the edit cancels the removal too.
+  var journalEditClearSentiment = false;
+  function renderJournalEditSentimentRow(){
+    var row = document.getElementById("journalEditSentimentRow");
+    if(!row) return;
+    var n = editingJournalId ? state.journal.find(function(x){ return x.id === editingJournalId; }) : null;
+    var tags = (n && n.sentiment) || [];
+    var type = chipValue(document.getElementById("journalEditTypeSelect"), "nt") || "reflection";
+    // Nothing to offer when the type still takes sentiment, or when there are no tags to drop.
+    if(noteGetsSentiment({ noteType: type }) || !tags.length){ row.hidden = true; row.innerHTML = ""; return; }
+    row.hidden = false;
+    var n_ = tags.length, plural = n_ === 1 ? "" : "s";
+    if(journalEditClearSentiment){
+      row.innerHTML = '<p class="panel-hint" style="margin:0;">' + n_ + ' sentiment tag' + plural +
+        ' will be removed when you save. <button type="button" class="btn" data-sent-undo style="padding:2px 8px;font-size:.72rem;margin-left:6px;">keep them</button></p>';
+      return;
+    }
+    row.innerHTML = '<label>sentiment</label>' +
+      '<p class="panel-hint" style="margin:0 0 6px;">A ' + escapeHtml(NOTE_TYPE_META[type] ? NOTE_TYPE_META[type].label : type) +
+      " isn't a mood, but this note still carries " + n_ + ' tag' + plural + ' from when it was a reflection.</p>' +
+      renderSentimentChipsHtml({ sentiment: tags }) +
+      '<button type="button" class="btn" data-sent-clear style="margin-top:8px;">remove sentiment tag' + plural + '</button>';
+  }
+  document.getElementById("journalEditSentimentRow").addEventListener("click", function(e){
+    if(e.target.closest("[data-sent-clear]")){ journalEditClearSentiment = true; renderJournalEditSentimentRow(); }
+    else if(e.target.closest("[data-sent-undo]")){ journalEditClearSentiment = false; renderJournalEditSentimentRow(); }
+  });
+  // Registered after wireChipSelect's own handler on the same element, so the chip has already
+  // been switched by the time this reads it — same ordering the action modal's area/secondary-area
+  // pairing relies on. keydown too, so the row keeps up for keyboard users driving the chips.
+  ["click", "keydown"].forEach(function(evt){
+    document.getElementById("journalEditTypeSelect").addEventListener(evt, function(){ renderJournalEditSentimentRow(); });
+  });
   wireTimePicker("journalEditTimeInput", "journalEditTimePickBtn", "journalEditTimePickPanel");
   function openJournalEditModal(n){
     editingJournalId = n ? n.id : null;
+    journalEditClearSentiment = false;
     document.getElementById("journalModalTitle").textContent = n ? "edit_note.json" : "new_note.json";
     document.getElementById("saveJournalEditBtn").textContent = n ? "save note" : "add note";
     document.getElementById("journalEditTitleInput").value = (n && n.title) || "";
@@ -17356,6 +17429,7 @@
     setMultiChip(document.getElementById("journalEditAreaSelect"), "ar", (n && n.categories && n.categories.length) ? n.categories : ["Career"]);
     setChip(document.getElementById("journalEditPrioritySelect"), "p", (n && n.priority) || "");
     setChip(document.getElementById("journalEditTypeSelect"), "nt", (n && n.noteType) || "reflection");
+    renderJournalEditSentimentRow();
     document.getElementById("journalEditTextInput").value = (n && n.text) || "";
     document.getElementById("journalEditTimePickPanel").hidden = true;
     var editorEl = document.getElementById("journalModalOverlay").querySelector(".note-editor-modal");
@@ -17462,6 +17536,10 @@
       // Re-resolved on every edit — tags added/removed in the text change the structured links too.
       linked_objects: extractNoteLinks(text)
     };
+    // Only written when the removal was actually staged (see renderJournalEditSentimentRow) —
+    // sending sentiment on every save would clobber tags the auto-analyser may have added while
+    // this modal sat open.
+    if(journalEditClearSentiment) payload.sentiment = [];
     this.disabled = true;
     if(editingJournalId){
       var res = await safeUpdate("journal", editingJournalId, payload);
