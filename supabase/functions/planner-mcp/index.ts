@@ -18,9 +18,11 @@
 //   https://<project-ref>.supabase.co/functions/v1/planner-mcp/mcp
 //
 // The tool surface mirrors the app's own in-page "Agent" tools (create/edit
-// goals, projects, habits, actions, notes, people) plus read tools for pulling
-// the current state. Like the in-app agent, it can create and edit but NEVER
-// delete — deletion stays a manual action in the app.
+// goals, projects, habits, actions, events, notes, people, decisions) plus read
+// tools for pulling the current state. Like the in-app agent, it can create and
+// edit but NEVER delete — deletion stays a manual action in the app. That
+// includes scenarios and the links between them: link_scenarios can remove an
+// arrow (a link is an edit to a row, not a row), but nothing here drops a row.
 // ============================================================================
 
 import { Hono } from "hono";
@@ -46,7 +48,14 @@ const PRIORITIES = ["P0", "P1", "P2", "P3"] as const;
 const CATEGORIES = ["Health", "Finance", "Career", "Maintenance", "Growth", "Relationships", "Sol"] as const;
 const ACTION_TYPES = ["Call", "Email", "Meeting", "Research", "Write", "Review", "Task", "Follow-up"] as const;
 const RELATIONSHIPS = ["Family", "Friend", "Colleague", "Mentor", "Partner", "Other"] as const;
+const NOTE_TYPES = ["reflection", "reference", "idea", "decision"] as const;
 const WEEKDAY_ABBR = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+// Decision-canvas layout constants, mirrored from index.html's own (SC_ORIGIN_X etc).
+// A scenario created through this connector has to land somewhere sensible on the
+// canvas — without this every one would stack at 0,0 in the corner and the user
+// would have to drag them apart by hand before the tree was readable.
+const SC_ORIGIN_X = 1500, SC_ORIGIN_Y = 1000, SC_COL_W = 260, SC_ROW_H = 200;
 
 // ---- Small helpers ---------------------------------------------------------
 function ok(data: unknown) {
@@ -94,6 +103,68 @@ function owned(table: string) {
   return db.from(table).select("*").eq("user_id", OWNER);
 }
 
+// ---- Decision-canvas scoring -----------------------------------------------
+// Mirrors index.html's scenarioNetScore / scenarioIsScored / scenarioRankMap — MUST
+// stay in step with them, for the same reason habitOccursOnDate above does: a number
+// reported here that disagrees with what the user sees on the canvas is worse than
+// no number at all.
+type WeightEntry = { text?: string; weight?: number };
+function weightSum(list: WeightEntry[] | null | undefined): number {
+  return (list || []).reduce((t, e) => t + (Number(e && e.weight) || 0), 0);
+}
+function scenarioNetScore(s: any): number {
+  return weightSum(s.advantages) - weightSum(s.disadvantages);
+}
+// A scenario with nothing weighed scores 0, which would otherwise let an empty branch
+// outrank a genuinely negative one purely by saying nothing. Unscored ones are reported
+// as scored:false and left out of the ranking rather than competing on a score they
+// never earned.
+function scenarioIsScored(s: any): boolean {
+  return ((s.advantages || []).length + (s.disadvantages || []).length) > 0;
+}
+// Entries arrive from a model, so they're clamped rather than trusted: a weight of 40
+// (or "high", or a missing one) would quietly distort every ranking that reads it.
+// Blank text is dropped, matching the app's own readScWeightList.
+function normalizeWeights(list: any): WeightEntry[] {
+  if (!Array.isArray(list)) return [];
+  return list
+    .filter((e) => e && typeof e.text === "string" && e.text.trim())
+    .map((e) => {
+      // A number that's merely OUT of range is clamped; only a non-number falls back to
+      // the middle. `Math.round(n) || 3` would conflate the two and turn a weight of 0 —
+      // "this barely matters" — into 3, tripling something the caller called negligible.
+      const raw = Number(e.weight);
+      return {
+        text: String(e.text).trim(),
+        weight: Number.isFinite(raw) ? Math.max(1, Math.min(5, Math.round(raw))) : 3,
+      };
+    });
+}
+const WEIGHT_ENTRY = z.object({
+  text: z.string().describe("what the advantage or disadvantage actually is"),
+  weight: z.number().optional().describe("1-5, how much it MATTERS (not how likely). Defaults to 3."),
+});
+function scenarioRankMap(list: any[]): Record<string, { rank: number; of: number }> {
+  const scored = list.filter(scenarioIsScored).sort((a, b) => scenarioNetScore(b) - scenarioNetScore(a));
+  const map: Record<string, { rank: number; of: number }> = {};
+  let lastScore: number | null = null, lastRank = 0;
+  scored.forEach((s, i) => {
+    const sc = scenarioNetScore(s);
+    // Ties share a rank — two branches that weigh out identically genuinely are tied.
+    if (lastScore === null || sc !== lastScore) { lastRank = i + 1; lastScore = sc; }
+    map[s.id] = { rank: lastRank, of: scored.length };
+  });
+  return map;
+}
+// Does `fromId` already reach `toId` by following links? Mirrors scenarioLinksTo — the
+// guard that keeps the branching hierarchy from closing into a loop.
+function scenarioLinksTo(all: any[], fromId: string, toId: string, seen: Record<string, boolean> = {}): boolean {
+  if (seen[fromId]) return false;
+  seen[fromId] = true;
+  const s = all.find((x) => x.id === fromId);
+  return !!s && (s.links || []).some((id: string) => id === toId || scenarioLinksTo(all, id, toId, seen));
+}
+
 // Mirrors the app's own safeWrite: run a write, and if the database rejects it for a
 // column it doesn't have yet (a migration that wasn't run), drop that column and retry.
 // Keeps the connector working against a database that's behind on migrations — the same
@@ -129,20 +200,24 @@ const mcp = new McpServer({
 
 mcp.tool("get_agenda", {
   description:
-    "The user's plan for one day (defaults to today, server UTC). Returns actions due that day, overdue open actions, undated open actions (backlog), the habits scheduled for that day (with whether each is already done), and any notes written that day. Start here to understand what's on the user's plate.",
+    "The user's plan for one day (defaults to today, server UTC). Returns actions due that day, overdue open actions, undated open actions (backlog), the habits scheduled for that day (with whether each is already done), the events happening that day, and any notes written that day. Start here to understand what's on the user's plate.",
   inputSchema: z.object({
     date: z.string().optional().describe("YYYY-MM-DD; defaults to today (server UTC). Pass the user's local date if it might differ."),
   }),
   handler: async (args: { date?: string }) => {
     const date = args.date || todayUTC();
-    const [actionsR, habitsR, notesR] = await Promise.all([
+    const [actionsR, habitsR, notesR, eventsR] = await Promise.all([
       owned("actions"),
       owned("habits"),
       owned("journal").eq("date", date).order("created_at"),
+      owned("events").eq("date", date),
     ]);
     if (actionsR.error) return fail(actionsR.error.message);
     if (habitsR.error) return fail(habitsR.error.message);
     if (notesR.error) return fail(notesR.error.message);
+    // Events are tolerated as missing rather than fatal: the table only exists once
+    // migration_events.sql has been run, and an agenda without events is still useful.
+    const events = eventsR.error ? [] : (eventsR.data || []);
 
     const actions = actionsR.data || [];
     const habits = (habitsR.data || []).filter((h) => habitOccursOnDate(h, date));
@@ -164,6 +239,7 @@ mcp.tool("get_agenda", {
       id: a.id, title: a.title, type: a.type, priority: a.priority,
       date: a.date, timeOfDay: a.time_of_day, area: a.category,
       parentType: a.parent_type, parentId: a.parent_id, done: a.done,
+      isMilestone: !!a.is_milestone, isDecision: !!a.is_decision,
     });
 
     return ok({
@@ -173,6 +249,15 @@ mcp.tool("get_agenda", {
         overdue: actions.filter((a) => a.date && a.date < date && !a.done).map(slimAction),
         backlog: actions.filter((a) => !a.date && !a.done).map(slimAction),
       },
+      // Events are things that HAPPEN at a time (a meeting, an appointment, a trip) —
+      // they are not tasks and have no done state or priority, so they're reported as
+      // their own list rather than folded in among the actions.
+      events: events
+        .sort((a, b) => String(a.time_of_day || "99:99").localeCompare(String(b.time_of_day || "99:99")))
+        .map((e) => ({
+          id: e.id, title: e.title, timeOfDay: e.time_of_day, durationMinutes: e.duration_minutes,
+          area: e.category, locationAddress: e.location_address || null,
+        })),
       habitsDue: habits.map((h) => ({
         id: h.id, title: h.title, priority: h.priority, frequency: h.frequency,
         timeOfDay: h.time_of_day, done: h.tracker_variable_id ? doneVarIds.has(h.tracker_variable_id) : false,
@@ -257,8 +342,17 @@ mcp.tool("list_actions", {
     if (error) return fail(error.message);
     return ok((data || []).map((a) => ({
       id: a.id, title: a.title, type: a.type, priority: a.priority, date: a.date,
-      timeOfDay: a.time_of_day, area: a.category, parentType: a.parent_type,
-      parentId: a.parent_id, done: a.done,
+      timeOfDay: a.time_of_day, durationMinutes: a.duration_minutes, area: a.category,
+      secondaryAreas: a.secondary_categories || [],
+      parentType: a.parent_type, parentId: a.parent_id, done: a.done,
+      isMilestone: !!a.is_milestone,
+      // An action flagged as a decision is a fork the user hasn't settled, not a task
+      // they're about to do — call get_decision on it to see the scenarios and scores.
+      isDecision: !!a.is_decision,
+      // [{id, requiresDone}] — a hard prerequisite (requiresDone) blocks this action
+      // until the other one is done; a plain link is only an ordering hint.
+      dependencies: a.dependencies || [],
+      notes: a.notes_md || "",
     })));
   },
 });
@@ -281,6 +375,7 @@ mcp.tool("list_notes", {
     if (error) return fail(error.message);
     return ok((data || []).map((n) => ({
       id: n.id, date: n.date, title: n.title, text: n.text, areas: n.categories || [],
+      noteType: n.note_type || "reflection",
       priority: n.priority, timeOfDay: n.time_of_day, sentiment: n.sentiment || [],
       linkedObjects: n.linked_objects || [], recordingId: n.recording_id || null, createdAt: n.created_at || null,
     })));
@@ -332,6 +427,153 @@ mcp.tool("get_tracker", {
         id: v.id, name: v.name, type: v.type, unit: v.unit, scaleMax: v.scale_max,
       })),
       entries: (entriesR.data || []).map((e) => ({ date: e.date, variableId: e.variable_id, value: e.value })),
+    });
+  },
+});
+
+mcp.tool("list_events", {
+  description:
+    "List the user's events. An event is something that HAPPENS at a time — a meeting, an appointment, a trip — not a task to complete: it has no done state and no priority. Use this (not list_actions) when the user asks what's on their calendar.",
+  inputSchema: z.object({
+    from: z.string().optional().describe("YYYY-MM-DD inclusive lower bound on the event's date"),
+    to: z.string().optional().describe("YYYY-MM-DD inclusive upper bound on the event's date"),
+    area: z.enum(CATEGORIES).optional(),
+    limit: z.number().optional().describe("max rows (default 100)"),
+  }),
+  handler: async (args: { from?: string; to?: string; area?: string; limit?: number }) => {
+    let q = owned("events").order("date", { ascending: true, nullsFirst: false });
+    if (args.from) q = q.gte("date", args.from);
+    if (args.to) q = q.lte("date", args.to);
+    if (args.area) q = q.eq("category", args.area);
+    q = q.limit(args.limit && args.limit > 0 ? args.limit : 100);
+    const { data, error } = await q;
+    if (error) return fail(error.message + " (has migration_events.sql been run?)");
+    return ok((data || []).map((e) => ({
+      id: e.id, title: e.title, date: e.date, timeOfDay: e.time_of_day,
+      durationMinutes: e.duration_minutes, area: e.category,
+      secondaryAreas: e.secondary_categories || [],
+      locationAddress: e.location_address || null,
+      linkedPeopleIds: e.linked_people_ids || [], notes: e.notes_md || "",
+    })));
+  },
+});
+
+mcp.tool("list_decisions", {
+  description:
+    "List the actions the user has flagged as DECISIONS — forks they haven't settled yet, each with a canvas of scenarios (plausible futures) weighed against each other. Returns a summary per decision; call get_decision for one decision's full canvas.",
+  inputSchema: z.object({}),
+  handler: async () => {
+    const [actionsR, scenR] = await Promise.all([
+      owned("actions").eq("is_decision", true),
+      owned("action_scenarios"),
+    ]);
+    if (actionsR.error) return fail(actionsR.error.message + " (has migration_action_scenarios.sql been run?)");
+    const scenarios = scenR.error ? [] : (scenR.data || []);
+    return ok((actionsR.data || []).map((a) => {
+      const mine = scenarios.filter((s) => s.action_id === a.id);
+      const ranked = scenarioRankMap(mine);
+      const leaders = mine.filter((s) => ranked[s.id]?.rank === 1);
+      return {
+        actionId: a.id, title: a.title, date: a.date, area: a.category, done: a.done,
+        scenarioCount: mine.length,
+        scoredCount: mine.filter(scenarioIsScored).length,
+        // Plural on purpose: identical net scores genuinely tie, and naming one of them
+        // "the" leader would overstate how settled the decision is.
+        leading: leaders.map((s) => ({ id: s.id, title: s.title, netScore: scenarioNetScore(s) })),
+      };
+    }));
+  },
+});
+
+mcp.tool("get_decision", {
+  description:
+    "One decision's full scenario canvas: every scenario with its weighted advantages and disadvantages, its computed net score and rank, and the branching links between them. Weights are 1-5 for HOW MUCH SOMETHING MATTERS, not how likely it is; net score = summed advantages minus summed disadvantages. Scenarios with nothing weighed are reported scored:false and left out of the ranking.",
+  inputSchema: z.object({
+    actionId: z.string().describe("id of the action flagged as a decision (from list_decisions)"),
+  }),
+  handler: async (args: { actionId: string }) => {
+    const [actionR, scenR] = await Promise.all([
+      owned("actions").eq("id", args.actionId).maybeSingle(),
+      owned("action_scenarios").eq("action_id", args.actionId).order("position"),
+    ]);
+    if (actionR.error) return fail(actionR.error.message);
+    if (!actionR.data) return fail("no action with id " + args.actionId);
+    if (scenR.error) return fail(scenR.error.message + " (has migration_action_scenarios.sql been run?)");
+    const list = scenR.data || [];
+    const ranked = scenarioRankMap(list);
+    const linkedTo: Record<string, string[]> = {};
+    list.forEach((s) => (s.links || []).forEach((id: string) => {
+      (linkedTo[id] = linkedTo[id] || []).push(s.id);
+    }));
+    return ok({
+      action: {
+        id: actionR.data.id, title: actionR.data.title, date: actionR.data.date,
+        area: actionR.data.category, isDecision: !!actionR.data.is_decision, done: actionR.data.done,
+      },
+      scenarios: list.map((s) => ({
+        id: s.id, title: s.title, notes: s.notes || "",
+        advantages: s.advantages || [], disadvantages: s.disadvantages || [],
+        netScore: scenarioNetScore(s), scored: scenarioIsScored(s),
+        rank: ranked[s.id]?.rank ?? null, rankOf: ranked[s.id]?.of ?? null,
+        // links = branches leading OUT of this scenario; linkedFrom = what leads INTO it.
+        // Roots (nothing leading in) are where the tree starts.
+        links: s.links || [], linkedFrom: linkedTo[s.id] || [],
+      })),
+      ranking: list.filter(scenarioIsScored)
+        .sort((a, b) => scenarioNetScore(b) - scenarioNetScore(a))
+        .map((s) => ({ rank: ranked[s.id].rank, id: s.id, title: s.title, netScore: scenarioNetScore(s) })),
+      roots: list.filter((s) => !(linkedTo[s.id] || []).length).map((s) => s.id),
+      unscored: list.filter((s) => !scenarioIsScored(s)).map((s) => s.id),
+    });
+  },
+});
+
+mcp.tool("list_pois", {
+  description: "List the user's saved points of interest (named places on the Location map).",
+  inputSchema: z.object({
+    query: z.string().optional().describe("case-insensitive substring match on the place name"),
+  }),
+  handler: async (args: { query?: string }) => {
+    let q = owned("points_of_interest").order("created_at");
+    if (args.query) q = q.ilike("name", "%" + args.query + "%");
+    const { data, error } = await q;
+    if (error) return fail(error.message);
+    return ok((data || []).map((p) => ({
+      id: p.id, name: p.name, lat: p.lat, lng: p.lng,
+      notes: p.notes || "", linkedPeopleIds: p.linked_people_ids || [],
+    })));
+  },
+});
+
+mcp.tool("get_finance", {
+  description: "The user's finance accounts with their balances, plus transactions over a date range (defaults to the last 30 days). Amounts are positive for money in, negative for money out.",
+  inputSchema: z.object({
+    from: z.string().optional().describe("YYYY-MM-DD inclusive lower bound (default: 30 days ago)"),
+    to: z.string().optional().describe("YYYY-MM-DD inclusive upper bound (default: today)"),
+    includeArchived: z.boolean().optional().describe("include archived accounts (default false)"),
+  }),
+  handler: async (args: { from?: string; to?: string; includeArchived?: boolean }) => {
+    const to = args.to || todayUTC();
+    const from = args.from || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    const [accR, txR] = await Promise.all([
+      owned("finance_accounts").order("position"),
+      owned("finance_transactions").gte("date", from).lte("date", to).order("date", { ascending: false }),
+    ]);
+    if (accR.error) return fail(accR.error.message);
+    if (txR.error) return fail(txR.error.message);
+    const accounts = (accR.data || []).filter((a) => args.includeArchived ? true : !a.archived);
+    return ok({
+      from, to,
+      accounts: accounts.map((a) => ({
+        id: a.id, name: a.name, type: a.type, balance: Number(a.balance) || 0,
+        currency: a.currency || "EUR", archived: !!a.archived,
+        loanMonthlyPayment: a.loan_monthly_payment, loanInterestRate: a.loan_interest_rate,
+        loanOriginalAmount: a.loan_original_amount, loanPurpose: a.loan_purpose || "",
+      })),
+      transactions: (txR.data || []).map((t) => ({
+        id: t.id, accountId: t.account_id, date: t.date, description: t.description || "",
+        amount: Number(t.amount) || 0, area: t.area, subcategory: t.subcategory || "", source: t.source,
+      })),
     });
   },
 });
@@ -516,6 +758,10 @@ mcp.tool("create_action", {
     timeOfDay: z.string().optional().describe("HH:MM 24h, optional"),
     durationMinutes: z.number().optional(),
     area: z.enum(CATEGORIES).optional().describe("the action's own area; otherwise inferred from its parent"),
+    secondaryAreas: z.array(z.enum(CATEGORIES)).optional().describe("other areas this action also touches"),
+    isMilestone: z.boolean().optional().describe("mark it a milestone — a dated checkpoint rather than ordinary work"),
+    isDecision: z.boolean().optional().describe("mark it a decision — a fork with a scenario canvas rather than a task. Add scenarios with create_scenario."),
+    notes: z.string().optional().describe("longer free-form notes for the action's own page (Markdown)"),
   }),
   handler: async (args: any) => {
     const pt = args.parentType || "none";
@@ -524,6 +770,9 @@ mcp.tool("create_action", {
       parent_type: pt, parent_id: pt === "none" ? null : (args.parentId || null),
       date: args.date || null, done: false, time_of_day: args.timeOfDay || null,
       duration_minutes: args.durationMinutes || null, category: args.area || null,
+      secondary_categories: args.secondaryAreas || [],
+      is_milestone: !!args.isMilestone, is_decision: !!args.isDecision,
+      notes_md: args.notes || "",
     });
     if (error) return fail(error.message);
     return ok({ ok: true, id: data.id });
@@ -543,6 +792,9 @@ mcp.tool("edit_action", {
     timeOfDay: z.string().optional(),
     durationMinutes: z.number().optional(),
     area: z.enum(CATEGORIES).optional(),
+    secondaryAreas: z.array(z.enum(CATEGORIES)).optional().describe("replaces the existing set"),
+    isMilestone: z.boolean().optional(),
+    notes: z.string().optional().describe("free-form notes for the action's own page (Markdown); replaces what's there"),
     done: z.boolean().optional(),
   }),
   handler: async (args: any) => {
@@ -556,7 +808,11 @@ mcp.tool("edit_action", {
     if (args.timeOfDay !== undefined) patch.time_of_day = args.timeOfDay || null;
     if (args.durationMinutes !== undefined) patch.duration_minutes = args.durationMinutes;
     if (args.area !== undefined) patch.category = args.area;
+    if (args.secondaryAreas !== undefined) patch.secondary_categories = args.secondaryAreas;
+    if (args.isMilestone !== undefined) patch.is_milestone = args.isMilestone;
+    if (args.notes !== undefined) patch.notes_md = args.notes;
     if (args.done !== undefined) patch.done = args.done;
+    if (Object.keys(patch).length === 0) return fail("nothing to update — pass at least one field");
     const { error } = await safeWrite((p) => db.from("actions").update(p).eq("id", args.id).eq("user_id", OWNER), patch);
     if (error) return fail(error.message);
     return ok({ ok: true });
@@ -576,6 +832,191 @@ mcp.tool("complete_action", {
   },
 });
 
+// ---- Events ----------------------------------------------------------------
+
+mcp.tool("create_event", {
+  description:
+    "Create an event — something that HAPPENS at a time (a meeting, an appointment, a trip). Use this rather than create_action when there is nothing to complete: an event has no done state and no priority. If the user needs to DO something, that's an action.",
+  inputSchema: z.object({
+    title: z.string(),
+    date: z.string().optional().describe("YYYY-MM-DD when it happens"),
+    timeOfDay: z.string().optional().describe("HH:MM 24h, optional"),
+    durationMinutes: z.number().optional(),
+    area: z.enum(CATEGORIES).optional().describe("the event's primary area"),
+    secondaryAreas: z.array(z.enum(CATEGORIES)).optional(),
+    locationAddress: z.string().optional().describe("free-text place; not geocoded from here"),
+    linkedPeopleIds: z.array(z.string()).optional().describe("ids from list_people — who it's with"),
+    notes: z.string().optional(),
+  }),
+  handler: async (args: any) => {
+    const { data, error } = await safeWrite((p) => db.from("events").insert(p).select().single(), {
+      user_id: OWNER, title: args.title, date: args.date || null,
+      time_of_day: args.timeOfDay || null, duration_minutes: args.durationMinutes || null,
+      category: args.area || null, secondary_categories: args.secondaryAreas || [],
+      location_address: args.locationAddress || null,
+      linked_people_ids: args.linkedPeopleIds || [], notes_md: args.notes || "",
+    });
+    if (error) return fail(error.message + " (has migration_events.sql been run?)");
+    return ok({ ok: true, id: data.id });
+  },
+});
+
+mcp.tool("edit_event", {
+  description: "Edit an existing event by id (reschedule, rename, move). Only the fields you pass are changed.",
+  inputSchema: z.object({
+    id: z.string(),
+    title: z.string().optional(),
+    date: z.string().optional().describe("YYYY-MM-DD; pass an empty string to clear it"),
+    timeOfDay: z.string().optional().describe("HH:MM 24h; pass an empty string to clear it"),
+    durationMinutes: z.number().optional(),
+    area: z.enum(CATEGORIES).optional(),
+    secondaryAreas: z.array(z.enum(CATEGORIES)).optional().describe("replaces the existing set"),
+    locationAddress: z.string().optional(),
+    linkedPeopleIds: z.array(z.string()).optional().describe("replaces the existing set"),
+    notes: z.string().optional(),
+  }),
+  handler: async (args: any) => {
+    const patch: Record<string, unknown> = {};
+    if (args.title !== undefined) patch.title = args.title;
+    if (args.date !== undefined) patch.date = args.date || null;
+    if (args.timeOfDay !== undefined) patch.time_of_day = args.timeOfDay || null;
+    if (args.durationMinutes !== undefined) patch.duration_minutes = args.durationMinutes;
+    if (args.area !== undefined) patch.category = args.area;
+    if (args.secondaryAreas !== undefined) patch.secondary_categories = args.secondaryAreas;
+    if (args.locationAddress !== undefined) patch.location_address = args.locationAddress || null;
+    if (args.linkedPeopleIds !== undefined) patch.linked_people_ids = args.linkedPeopleIds;
+    if (args.notes !== undefined) patch.notes_md = args.notes;
+    if (Object.keys(patch).length === 0) return fail("nothing to update — pass at least one field");
+    const { error } = await safeWrite((p) => db.from("events").update(p).eq("id", args.id).eq("user_id", OWNER), patch);
+    if (error) return fail(error.message);
+    return ok({ ok: true });
+  },
+});
+
+// ---- Decisions and their scenarios -----------------------------------------
+
+mcp.tool("set_action_decision", {
+  description:
+    "Flag an action as a DECISION (or clear the flag), which gives it a scenario canvas in the app. Turning it off only hides the canvas — the scenarios are kept, and turning it back on restores them.",
+  inputSchema: z.object({
+    id: z.string().describe("the action's id"),
+    isDecision: z.boolean().optional().describe("defaults to true"),
+  }),
+  handler: async (args: { id: string; isDecision?: boolean }) => {
+    const { error } = await safeWrite(
+      (p) => db.from("actions").update(p).eq("id", args.id).eq("user_id", OWNER),
+      { is_decision: args.isDecision === undefined ? true : args.isDecision },
+    );
+    if (error) return fail(error.message + " (has migration_action_scenarios.sql been run?)");
+    return ok({ ok: true });
+  },
+});
+
+mcp.tool("create_scenario", {
+  description:
+    "Add a scenario — one plausible future — to an action that's flagged as a decision. Weight each advantage and disadvantage 1-5 by HOW MUCH IT MATTERS, not how likely it is; the app ranks the branches by advantages minus disadvantages. Pass parentScenarioId to grow a branch from an existing scenario, which also draws the arrow between them. Placement on the canvas is automatic.",
+  inputSchema: z.object({
+    actionId: z.string().describe("the decision action's id"),
+    title: z.string(),
+    notes: z.string().optional().describe("a sentence or two on what actually happens if it goes this way"),
+    advantages: z.array(WEIGHT_ENTRY).optional(),
+    disadvantages: z.array(WEIGHT_ENTRY).optional(),
+    parentScenarioId: z.string().optional().describe("branch from this scenario instead of starting a new root"),
+  }),
+  handler: async (args: any) => {
+    const existingR = await owned("action_scenarios").eq("action_id", args.actionId);
+    if (existingR.error) return fail(existingR.error.message + " (has migration_action_scenarios.sql been run?)");
+    const existing = existingR.data || [];
+    const parent = args.parentScenarioId ? existing.find((s) => s.id === args.parentScenarioId) : null;
+    if (args.parentScenarioId && !parent) return fail("no scenario with id " + args.parentScenarioId + " on that decision");
+
+    // Mirrors scenarioAutoPlace: a branch lands under its parent and to the right of
+    // each sibling already there; a root fills the top row.
+    let x: number, y: number;
+    if (parent) {
+      x = Number(parent.x) + (parent.links || []).length * SC_COL_W;
+      y = Number(parent.y) + SC_ROW_H;
+    } else {
+      const linked = new Set<string>();
+      existing.forEach((s) => (s.links || []).forEach((id: string) => linked.add(id)));
+      x = SC_ORIGIN_X + existing.filter((s) => !linked.has(s.id)).length * SC_COL_W;
+      y = SC_ORIGIN_Y;
+    }
+
+    const { data, error } = await safeWrite((p) => db.from("action_scenarios").insert(p).select().single(), {
+      user_id: OWNER, action_id: args.actionId, title: args.title, notes: args.notes || "",
+      advantages: normalizeWeights(args.advantages), disadvantages: normalizeWeights(args.disadvantages),
+      links: [], x, y, position: existing.length,
+    });
+    if (error) return fail(error.message);
+
+    if (parent) {
+      const links = (parent.links || []).concat([data.id]);
+      const lr = await safeWrite((p) => db.from("action_scenarios").update(p).eq("id", parent.id).eq("user_id", OWNER), { links });
+      if (lr.error) return fail("scenario created (" + data.id + ") but linking it to its parent failed: " + lr.error.message);
+    }
+    return ok({ ok: true, id: data.id, netScore: scenarioNetScore(data) });
+  },
+});
+
+mcp.tool("edit_scenario", {
+  description:
+    "Edit a scenario by id. Only the fields you pass are changed. Passing advantages or disadvantages REPLACES that whole list — read it back with get_decision first if you mean to add one entry rather than start over.",
+  inputSchema: z.object({
+    id: z.string(),
+    title: z.string().optional(),
+    notes: z.string().optional(),
+    advantages: z.array(WEIGHT_ENTRY).optional().describe("replaces the whole list"),
+    disadvantages: z.array(WEIGHT_ENTRY).optional().describe("replaces the whole list"),
+  }),
+  handler: async (args: any) => {
+    const patch: Record<string, unknown> = {};
+    if (args.title !== undefined) patch.title = args.title;
+    if (args.notes !== undefined) patch.notes = args.notes;
+    if (args.advantages !== undefined) patch.advantages = normalizeWeights(args.advantages);
+    if (args.disadvantages !== undefined) patch.disadvantages = normalizeWeights(args.disadvantages);
+    if (Object.keys(patch).length === 0) return fail("nothing to update — pass at least one field");
+    const { error } = await safeWrite((p) => db.from("action_scenarios").update(p).eq("id", args.id).eq("user_id", OWNER), patch);
+    if (error) return fail(error.message);
+    return ok({ ok: true });
+  },
+});
+
+mcp.tool("link_scenarios", {
+  description:
+    "Draw or remove a branching arrow between two scenarios of the same decision — 'this path leads to that one'. Refuses links that would close the hierarchy into a loop, the same guard the app applies.",
+  inputSchema: z.object({
+    fromId: z.string().describe("the scenario the arrow leaves"),
+    toId: z.string().describe("the scenario the arrow points at"),
+    remove: z.boolean().optional().describe("remove this link instead of adding it (default false)"),
+  }),
+  handler: async (args: { fromId: string; toId: string; remove?: boolean }) => {
+    if (args.fromId === args.toId) return fail("a scenario can't link to itself");
+    const fromR = await owned("action_scenarios").eq("id", args.fromId).maybeSingle();
+    if (fromR.error) return fail(fromR.error.message);
+    if (!fromR.data) return fail("no scenario with id " + args.fromId);
+    const from = fromR.data;
+    const links: string[] = from.links || [];
+
+    if (args.remove) {
+      if (links.indexOf(args.toId) === -1) return fail("those scenarios aren't linked");
+      const { error } = await safeWrite((p) => db.from("action_scenarios").update(p).eq("id", from.id).eq("user_id", OWNER), { links: links.filter((id) => id !== args.toId) });
+      if (error) return fail(error.message);
+      return ok({ ok: true, removed: true });
+    }
+
+    const siblingsR = await owned("action_scenarios").eq("action_id", from.action_id);
+    if (siblingsR.error) return fail(siblingsR.error.message);
+    const all = siblingsR.data || [];
+    if (!all.some((s) => s.id === args.toId)) return fail("both scenarios must belong to the same decision");
+    if (links.indexOf(args.toId) !== -1) return fail("already linked");
+    if (scenarioLinksTo(all, args.toId, args.fromId)) return fail("that would create a circular branch");
+    const { error } = await safeWrite((p) => db.from("action_scenarios").update(p).eq("id", from.id).eq("user_id", OWNER), { links: links.concat([args.toId]) });
+    if (error) return fail(error.message);
+    return ok({ ok: true });
+  },
+});
+
 mcp.tool("add_note", {
   description: "Add a new note (journal entry). Defaults the date to today.",
   inputSchema: z.object({
@@ -584,13 +1025,16 @@ mcp.tool("add_note", {
     title: z.string().optional().describe("optional short heading"),
     priority: z.enum(PRIORITIES).optional(),
     areas: z.array(z.enum(CATEGORIES)).optional().describe("optional area(s); a note can span more than one"),
+    noteType: z.enum(NOTE_TYPES).optional()
+      .describe("what kind of note this is (default reflection). Only 'reflection' gets sentiment analysis in the app — a reference or a decision record isn't a mood."),
     timeOfDay: z.string().optional().describe("HH:MM 24h, optional"),
   }),
   handler: async (args: any) => {
     const { data, error } = await safeWrite((p) => db.from("journal").insert(p).select().single(), {
       user_id: OWNER, date: args.date || todayUTC(), text: args.text,
       title: args.title || null, priority: args.priority || null,
-      categories: args.areas || [], time_of_day: args.timeOfDay || null,
+      categories: args.areas || [], note_type: args.noteType || "reflection",
+      time_of_day: args.timeOfDay || null,
     });
     if (error) return fail(error.message);
     return ok({ ok: true, id: data.id });
@@ -605,6 +1049,7 @@ mcp.tool("edit_note", {
     title: z.string().optional().describe("short heading; pass an empty string to clear it"),
     priority: z.enum(PRIORITIES).optional(),
     areas: z.array(z.enum(CATEGORIES)).optional().describe("the note's area(s); replaces the existing set"),
+    noteType: z.enum(NOTE_TYPES).optional(),
     date: z.string().optional().describe("YYYY-MM-DD"),
     timeOfDay: z.string().optional().describe("HH:MM 24h; pass an empty string to clear it"),
   }),
@@ -614,6 +1059,7 @@ mcp.tool("edit_note", {
     if (args.title !== undefined) patch.title = args.title || null;
     if (args.priority !== undefined) patch.priority = args.priority;
     if (args.areas !== undefined) patch.categories = args.areas;
+    if (args.noteType !== undefined) patch.note_type = args.noteType;
     if (args.date !== undefined) patch.date = args.date;
     if (args.timeOfDay !== undefined) patch.time_of_day = args.timeOfDay || null;
     if (Object.keys(patch).length === 0) return fail("nothing to update — pass at least one field");
@@ -680,6 +1126,53 @@ mcp.tool("log_metric", {
         { onConflict: "user_id,date,variable_id" });
     if (error) return fail(error.message);
     return ok({ ok: true });
+  },
+});
+
+mcp.tool("create_poi", {
+  description: "Save a point of interest — a named place — on the user's Location map. Coordinates are required; this does not geocode an address.",
+  inputSchema: z.object({
+    name: z.string(),
+    lat: z.number().describe("latitude, decimal degrees"),
+    lng: z.number().describe("longitude, decimal degrees"),
+    notes: z.string().optional(),
+    linkedPeopleIds: z.array(z.string()).optional().describe("ids from list_people"),
+  }),
+  handler: async (args: any) => {
+    if (!(args.lat >= -90 && args.lat <= 90) || !(args.lng >= -180 && args.lng <= 180)) {
+      return fail("lat must be between -90 and 90 and lng between -180 and 180");
+    }
+    const { data, error } = await safeWrite((p) => db.from("points_of_interest").insert(p).select().single(), {
+      user_id: OWNER, name: args.name, lat: args.lat, lng: args.lng,
+      notes: args.notes || "", linked_people_ids: args.linkedPeopleIds || [],
+    });
+    if (error) return fail(error.message);
+    return ok({ ok: true, id: data.id });
+  },
+});
+
+mcp.tool("log_transaction", {
+  description:
+    "Record a finance transaction against an existing account. Amount is POSITIVE for money in and NEGATIVE for money out — a €12 lunch is -12. Call get_finance first for account ids.",
+  inputSchema: z.object({
+    accountId: z.string().describe("id of an existing account (from get_finance)"),
+    amount: z.number().describe("positive = money in, negative = money out"),
+    description: z.string(),
+    date: z.string().optional().describe("YYYY-MM-DD; defaults to today (server UTC)"),
+    area: z.enum(CATEGORIES).optional().describe("which life area this spend belongs to"),
+    subcategory: z.string().optional(),
+  }),
+  handler: async (args: any) => {
+    const { data, error } = await safeWrite((p) => db.from("finance_transactions").insert(p).select().single(), {
+      user_id: OWNER, account_id: args.accountId, date: args.date || todayUTC(),
+      description: args.description, amount: args.amount, area: args.area || null,
+      // source is free text (the app writes "manual", importers write "csv"/"pdf", and
+      // nothing branches on it) — "mcp" keeps the provenance visible so a transaction
+      // this connector added can be told apart from one the user typed in themselves.
+      subcategory: args.subcategory || "", source: "mcp",
+    });
+    if (error) return fail(error.message);
+    return ok({ ok: true, id: data.id });
   },
 });
 

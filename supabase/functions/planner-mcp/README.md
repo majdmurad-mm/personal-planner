@@ -7,8 +7,9 @@ say things in Cowork like *"what's on my plate today?"*, *"add a P1 task to call
 the accountant tomorrow"*, or *"log my mood as 4 for today"*, and it acts on your
 real planner.
 
-It can **create and edit** goals, projects, habits, actions, notes, people, and
-tracker entries — but it can **never delete** anything (deletion stays a manual
+It can **create and edit** goals, projects, habits, actions, events, notes,
+people, decisions and their scenarios, places, tracker entries and finance
+transactions — but it can **never delete** anything (deletion stays a manual
 action in the app), mirroring the app's own in-page agent.
 
 ---
@@ -138,12 +139,35 @@ did today and lay out tomorrow"*).
 ## Tool reference
 
 **Read:** `get_agenda`, `list_goals`, `list_projects`, `list_habits`,
-`list_actions`, `list_notes`, `list_people`, `get_tracker`
+`list_actions`, `list_events`, `list_notes`, `list_people`, `list_decisions`,
+`get_decision`, `list_pois`, `get_tracker`, `get_finance`
 
 **Write (create/edit only — never delete):** `create_goal`, `edit_goal`,
 `create_project`, `edit_project`, `create_habit`, `edit_habit`, `create_action`,
-`edit_action`, `complete_action`, `add_note`, `create_person`, `edit_person`,
-`log_metric`
+`edit_action`, `complete_action`, `create_event`, `edit_event`,
+`set_action_decision`, `create_scenario`, `edit_scenario`, `link_scenarios`,
+`add_note`, `edit_note`, `create_person`, `edit_person`, `log_metric`,
+`create_poi`, `log_transaction`
+
+### The distinctions worth knowing
+
+- **Action vs. event.** An action is something you *complete* — it has a priority
+  and a done state. An event is something that *happens* at a time (a meeting, an
+  appointment, a trip) and has neither. "Book the dentist" is an action; "dentist,
+  Tuesday 9am" is an event. `get_agenda` returns them as separate lists.
+- **Decisions.** An action flagged `is_decision` is a fork the user hasn't settled,
+  with a canvas of *scenarios* — plausible futures — branching off it.
+  `list_decisions` finds them, `get_decision` returns one canvas in full.
+- **Scenario weights are importance, not probability.** Each advantage and
+  disadvantage carries a weight 1–5 meaning *how much it matters*. Net score is
+  summed advantages minus summed disadvantages, and the branches are ranked by it.
+  A scenario with nothing weighed comes back `scored: false` and is left out of the
+  ranking rather than competing on a zero it never earned. Ties share a rank.
+  Out-of-range weights are clamped; a missing one defaults to 3.
+- **`edit_scenario` replaces whole lists.** Passing `advantages` overwrites all of
+  them — read the current set with `get_decision` first if you mean to add one.
+- **Money direction.** `log_transaction` takes a *positive* amount for money in and
+  a *negative* one for money out; a €12 lunch is `-12`.
 
 ## Rotating or revoking access
 
@@ -159,5 +183,13 @@ did today and lay out tomorrow"*).
   explicit `date`, and Cowork will usually pass your local date.
 - `habitOccursOnDate` here is a mirror of the same function in `index.html`. If you
   change habit-scheduling rules in the app, update it here too so the agenda stays
-  in sync.
+  in sync. The same goes for the decision-canvas scoring (`scenarioNetScore`,
+  `scenarioIsScored`, `scenarioRankMap`, `scenarioLinksTo`) and the canvas layout
+  constants (`SC_ORIGIN_X` and friends) — a score reported here that disagrees with
+  what's on screen is worse than no score at all.
+- **Tools whose tables need a migration first.** `list_events` / `create_event` /
+  `edit_event` need `migration_events.sql`; the decision tools need
+  `migration_action_scenarios.sql`. Until those are run, those tools return an error
+  naming the migration, and `get_agenda` simply omits the events list rather than
+  failing outright.
 - This connector is intentionally single-user. It is not meant to be shared.
