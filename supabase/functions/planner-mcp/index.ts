@@ -103,6 +103,67 @@ function owned(table: string) {
   return db.from(table).select("*").eq("user_id", OWNER);
 }
 
+// ---- Geocoding -------------------------------------------------------------
+// Same Nominatim endpoint the app's own address autocomplete uses, so a place added
+// here resolves exactly the way it would if you'd typed it into the app.
+//
+// This exists because the alternative is unusable: every location column is lat/lng,
+// and a model asked for coordinates will invent plausible-looking ones rather than
+// admit it doesn't know — silently dropping a pin in the wrong country. Callers pass
+// an address; the server resolves it or fails loudly.
+//
+// Nominatim's usage policy wants a descriptive User-Agent (browsers send their own,
+// so the in-app calls don't set one; a server has to) and caps traffic at ~1 req/sec.
+// Fine for one person's connector, but a model creating places in a tight loop can
+// still get throttled — hence the explicit "pass lat/lng instead" escape hatch in the
+// failure message rather than a silent null.
+const NOMINATIM_UA = "personal-planner-mcp/1.0 (single-user personal planner connector)";
+type GeoHit = { lat: number; lng: number; displayName: string };
+async function geocode(query: string, limit = 1): Promise<{ hits: GeoHit[]; error?: string }> {
+  try {
+    const res = await fetch(
+      "https://nominatim.openstreetmap.org/search?format=json&limit=" + limit + "&q=" + encodeURIComponent(query),
+      { headers: { "Accept": "application/json", "User-Agent": NOMINATIM_UA } },
+    );
+    if (!res.ok) return { hits: [], error: "geocoder returned HTTP " + res.status };
+    const rows = await res.json();
+    if (!Array.isArray(rows)) return { hits: [], error: "geocoder returned an unexpected response" };
+    return {
+      hits: rows.map((r: any) => ({
+        lat: Number(r.lat), lng: Number(r.lon), displayName: String(r.display_name || query),
+      })).filter((h: GeoHit) => Number.isFinite(h.lat) && Number.isFinite(h.lng)),
+    };
+  } catch (e) {
+    return { hits: [], error: "geocoder unreachable: " + ((e as Error).message || String(e)) };
+  }
+}
+function validCoords(lat: unknown, lng: unknown): boolean {
+  return Number.isFinite(Number(lat)) && Number.isFinite(Number(lng)) &&
+    Number(lat) >= -90 && Number(lat) <= 90 && Number(lng) >= -180 && Number(lng) <= 180;
+}
+// Shared by every tool that accepts a place: explicit coordinates always win (the caller
+// already knows exactly where it is), otherwise the address is geocoded. Returns null
+// coords with no error when neither was supplied — "no location given" is not a failure.
+async function resolvePlace(
+  args: { address?: string; lat?: number; lng?: number },
+): Promise<{ address: string | null; lat: number | null; lng: number | null; error?: string; resolvedFrom?: string }> {
+  if (args.lat !== undefined && args.lng !== undefined) {
+    if (!validCoords(args.lat, args.lng)) {
+      return { address: null, lat: null, lng: null, error: "lat must be between -90 and 90 and lng between -180 and 180" };
+    }
+    return { address: args.address || null, lat: Number(args.lat), lng: Number(args.lng) };
+  }
+  if (!args.address) return { address: null, lat: null, lng: null };
+  const { hits, error } = await geocode(args.address, 1);
+  if (error) return { address: args.address, lat: null, lng: null, error: error + " — pass lat and lng explicitly to skip geocoding" };
+  if (!hits.length) {
+    return { address: args.address, lat: null, lng: null, error: 'could not find "' + args.address + '" — try a fuller address, or pass lat and lng explicitly' };
+  }
+  // The typed address is kept, not the geocoder's display_name: it's what the user
+  // wrote and what the app shows back in the field, same as the in-app autocomplete.
+  return { address: args.address, lat: hits[0].lat, lng: hits[0].lng, resolvedFrom: hits[0].displayName };
+}
+
 // ---- Decision-canvas scoring -----------------------------------------------
 // Mirrors index.html's scenarioNetScore / scenarioIsScored / scenarioRankMap — MUST
 // stay in step with them, for the same reason habitOccursOnDate above does: a number
@@ -353,6 +414,7 @@ mcp.tool("list_actions", {
       // until the other one is done; a plain link is only an ordering hint.
       dependencies: a.dependencies || [],
       notes: a.notes_md || "",
+      locationAddress: a.location_address || null, lat: a.location_lat, lng: a.location_lng,
     })));
   },
 });
@@ -529,7 +591,7 @@ mcp.tool("get_decision", {
 });
 
 mcp.tool("list_pois", {
-  description: "List the user's saved points of interest (named places on the Location map).",
+  description: "List the user's saved places (points of interest — the named pins on the Location map). Call this before create_place to check whether somewhere is already saved, and to get ids for edit_place.",
   inputSchema: z.object({
     query: z.string().optional().describe("case-insensitive substring match on the place name"),
   }),
@@ -542,6 +604,94 @@ mcp.tool("list_pois", {
       id: p.id, name: p.name, lat: p.lat, lng: p.lng,
       notes: p.notes || "", linkedPeopleIds: p.linked_people_ids || [],
     })));
+  },
+});
+
+mcp.tool("list_located_items", {
+  description:
+    "Everything in the planner that carries a location, in one place: saved places, the actions/habits/events that have an address, and the people with a home location. Use this to answer 'what do I have near X' or 'where is everything'.",
+  inputSchema: z.object({
+    kinds: z.array(z.enum(["place", "action", "habit", "event", "person"])).optional()
+      .describe("restrict to these kinds; omit for all"),
+  }),
+  handler: async (args: { kinds?: string[] }) => {
+    const want = (k: string) => !args.kinds || !args.kinds.length || args.kinds.indexOf(k) !== -1;
+    const [poisR, actionsR, habitsR, eventsR, peopleR] = await Promise.all([
+      want("place") ? owned("points_of_interest") : Promise.resolve({ data: [], error: null } as any),
+      want("action") ? owned("actions") : Promise.resolve({ data: [], error: null } as any),
+      want("habit") ? owned("habits") : Promise.resolve({ data: [], error: null } as any),
+      want("event") ? owned("events") : Promise.resolve({ data: [], error: null } as any),
+      want("person") ? owned("people") : Promise.resolve({ data: [], error: null } as any),
+    ]);
+    // Any one of these tables may predate its migration; a partial map beats a hard failure.
+    const rows = (r: any) => (r && !r.error && r.data) ? r.data : [];
+    const located: any[] = [];
+    rows(poisR).forEach((p: any) => located.push({
+      kind: "place", id: p.id, title: p.name, lat: p.lat, lng: p.lng, address: null, notes: p.notes || "",
+    }));
+    [["action", actionsR], ["habit", habitsR], ["event", eventsR]].forEach(([kind, r]: any) => {
+      rows(r).forEach((x: any) => {
+        if (x.location_lat == null && x.location_lng == null && !x.location_address) return;
+        located.push({
+          kind, id: x.id, title: x.title, lat: x.location_lat, lng: x.location_lng,
+          address: x.location_address || null, date: x.date ?? null, done: x.done ?? null,
+        });
+      });
+    });
+    rows(peopleR).forEach((p: any) => {
+      if (p.home_lat == null && p.home_lng == null) return;
+      located.push({ kind: "person", id: p.id, title: p.name, lat: p.home_lat, lng: p.home_lng, address: p.location || null });
+    });
+    return ok({ count: located.length, items: located });
+  },
+});
+
+mcp.tool("get_location_history", {
+  description:
+    "The user's own recorded position over time (GPS pings from the app's live-location layer and any imported Google Maps Timeline data). Defaults to the last 7 days. Points can be dense, so this samples down to a readable number rather than returning everything.",
+  inputSchema: z.object({
+    from: z.string().optional().describe("YYYY-MM-DD inclusive lower bound (default: 7 days ago)"),
+    to: z.string().optional().describe("YYYY-MM-DD inclusive upper bound (default: today)"),
+    maxPoints: z.number().optional().describe("cap on returned points, evenly sampled (default 300, max 2000)"),
+  }),
+  handler: async (args: { from?: string; to?: string; maxPoints?: number }) => {
+    const to = args.to || todayUTC();
+    const from = args.from || new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+    const { data, error } = await owned("gps_pings")
+      .gte("recorded_at", from + "T00:00:00Z").lte("recorded_at", to + "T23:59:59Z")
+      .order("recorded_at");
+    if (error) return fail(error.message + " (has migration_location.sql been run?)");
+    const all = data || [];
+    const cap = Math.max(1, Math.min(2000, args.maxPoints && args.maxPoints > 0 ? args.maxPoints : 300));
+    // Evenly sampled rather than truncated: the first 300 of a week's pings is one
+    // afternoon, which would read as "this is where they were all week".
+    const step = all.length > cap ? all.length / cap : 1;
+    const sampled = all.length > cap
+      ? Array.from({ length: cap }, (_, i) => all[Math.floor(i * step)])
+      : all;
+    return ok({
+      from, to, totalPoints: all.length, returnedPoints: sampled.length,
+      sampled: all.length > cap,
+      points: sampled.map((p) => ({
+        lat: p.lat, lng: p.lng, recordedAt: p.recorded_at, source: p.source, accuracy: p.accuracy,
+      })),
+    });
+  },
+});
+
+mcp.tool("geocode_address", {
+  description:
+    "Turn a written address or place name into coordinates, using the same OpenStreetMap geocoder the app's own address box uses. Use it to confirm somewhere before saving it, or when you need coordinates for a tool that takes them. The create/edit tools geocode on their own, so you rarely need to call this first.",
+  inputSchema: z.object({
+    address: z.string().describe("e.g. 'Alexanderplatz, Berlin' or a full street address"),
+    limit: z.number().optional().describe("how many candidates to return (default 3, max 10)"),
+  }),
+  handler: async (args: { address: string; limit?: number }) => {
+    const limit = Math.max(1, Math.min(10, args.limit && args.limit > 0 ? args.limit : 3));
+    const { hits, error } = await geocode(args.address, limit);
+    if (error) return fail(error);
+    if (!hits.length) return fail('no match for "' + args.address + '"');
+    return ok({ query: args.address, matches: hits });
   },
 });
 
@@ -762,9 +912,12 @@ mcp.tool("create_action", {
     isMilestone: z.boolean().optional().describe("mark it a milestone — a dated checkpoint rather than ordinary work"),
     isDecision: z.boolean().optional().describe("mark it a decision — a fork with a scenario canvas rather than a task. Add scenarios with create_scenario."),
     notes: z.string().optional().describe("longer free-form notes for the action's own page (Markdown)"),
+    location: z.string().optional().describe("where it happens — an address or place name, geocoded for you and pinned on the Location map"),
   }),
   handler: async (args: any) => {
     const pt = args.parentType || "none";
+    const place = await resolvePlace({ address: args.location });
+    if (place.error) return fail(place.error);
     const { data, error } = await safeWrite((p) => db.from("actions").insert(p).select().single(), {
       user_id: OWNER, title: args.title, type: args.type, priority: args.priority,
       parent_type: pt, parent_id: pt === "none" ? null : (args.parentId || null),
@@ -773,9 +926,10 @@ mcp.tool("create_action", {
       secondary_categories: args.secondaryAreas || [],
       is_milestone: !!args.isMilestone, is_decision: !!args.isDecision,
       notes_md: args.notes || "",
+      location_address: place.address, location_lat: place.lat, location_lng: place.lng,
     });
     if (error) return fail(error.message);
-    return ok({ ok: true, id: data.id });
+    return ok({ ok: true, id: data.id, lat: place.lat, lng: place.lng });
   },
 });
 
@@ -844,20 +998,22 @@ mcp.tool("create_event", {
     durationMinutes: z.number().optional(),
     area: z.enum(CATEGORIES).optional().describe("the event's primary area"),
     secondaryAreas: z.array(z.enum(CATEGORIES)).optional(),
-    locationAddress: z.string().optional().describe("free-text place; not geocoded from here"),
+    location: z.string().optional().describe("where it happens — an address or place name, geocoded for you and pinned on the Location map"),
     linkedPeopleIds: z.array(z.string()).optional().describe("ids from list_people — who it's with"),
     notes: z.string().optional(),
   }),
   handler: async (args: any) => {
+    const place = await resolvePlace({ address: args.location });
+    if (place.error) return fail(place.error);
     const { data, error } = await safeWrite((p) => db.from("events").insert(p).select().single(), {
       user_id: OWNER, title: args.title, date: args.date || null,
       time_of_day: args.timeOfDay || null, duration_minutes: args.durationMinutes || null,
       category: args.area || null, secondary_categories: args.secondaryAreas || [],
-      location_address: args.locationAddress || null,
+      location_address: place.address, location_lat: place.lat, location_lng: place.lng,
       linked_people_ids: args.linkedPeopleIds || [], notes_md: args.notes || "",
     });
     if (error) return fail(error.message + " (has migration_events.sql been run?)");
-    return ok({ ok: true, id: data.id });
+    return ok({ ok: true, id: data.id, lat: place.lat, lng: place.lng });
   },
 });
 
@@ -871,7 +1027,7 @@ mcp.tool("edit_event", {
     durationMinutes: z.number().optional(),
     area: z.enum(CATEGORIES).optional(),
     secondaryAreas: z.array(z.enum(CATEGORIES)).optional().describe("replaces the existing set"),
-    locationAddress: z.string().optional(),
+    location: z.string().optional().describe("new address or place name, geocoded for you; pass an empty string to remove the location"),
     linkedPeopleIds: z.array(z.string()).optional().describe("replaces the existing set"),
     notes: z.string().optional(),
   }),
@@ -883,7 +1039,17 @@ mcp.tool("edit_event", {
     if (args.durationMinutes !== undefined) patch.duration_minutes = args.durationMinutes;
     if (args.area !== undefined) patch.category = args.area;
     if (args.secondaryAreas !== undefined) patch.secondary_categories = args.secondaryAreas;
-    if (args.locationAddress !== undefined) patch.location_address = args.locationAddress || null;
+    if (args.location !== undefined) {
+      if (!args.location) {
+        // Clearing the address clears the coordinates with it — leaving a stale pin behind
+        // for an address the user just removed is worse than removing both.
+        patch.location_address = null; patch.location_lat = null; patch.location_lng = null;
+      } else {
+        const place = await resolvePlace({ address: args.location });
+        if (place.error) return fail(place.error);
+        patch.location_address = place.address; patch.location_lat = place.lat; patch.location_lng = place.lng;
+      }
+    }
     if (args.linkedPeopleIds !== undefined) patch.linked_people_ids = args.linkedPeopleIds;
     if (args.notes !== undefined) patch.notes_md = args.notes;
     if (Object.keys(patch).length === 0) return fail("nothing to update — pass at least one field");
@@ -1129,25 +1295,96 @@ mcp.tool("log_metric", {
   },
 });
 
-mcp.tool("create_poi", {
-  description: "Save a point of interest — a named place — on the user's Location map. Coordinates are required; this does not geocode an address.",
+mcp.tool("create_place", {
+  description:
+    "Save a place — a named pin on the user's Location map. Give it an `address` and it's geocoded for you; pass `lat`/`lng` instead only if you already know the exact coordinates. Never guess coordinates: pass the address and let the server resolve it.",
   inputSchema: z.object({
-    name: z.string(),
-    lat: z.number().describe("latitude, decimal degrees"),
-    lng: z.number().describe("longitude, decimal degrees"),
+    name: z.string().describe("what the user calls it, e.g. 'the good bakery'"),
+    address: z.string().optional().describe("address or place name to geocode, e.g. 'Torstraße 100, Berlin'"),
+    lat: z.number().optional().describe("latitude, decimal degrees — only if you already know it"),
+    lng: z.number().optional().describe("longitude, decimal degrees — only if you already know it"),
     notes: z.string().optional(),
     linkedPeopleIds: z.array(z.string()).optional().describe("ids from list_people"),
   }),
   handler: async (args: any) => {
-    if (!(args.lat >= -90 && args.lat <= 90) || !(args.lng >= -180 && args.lng <= 180)) {
-      return fail("lat must be between -90 and 90 and lng between -180 and 180");
-    }
+    const place = await resolvePlace(args);
+    if (place.error) return fail(place.error);
+    if (place.lat == null || place.lng == null) return fail("pass either an address to geocode, or both lat and lng");
     const { data, error } = await safeWrite((p) => db.from("points_of_interest").insert(p).select().single(), {
-      user_id: OWNER, name: args.name, lat: args.lat, lng: args.lng,
+      user_id: OWNER, name: args.name, lat: place.lat, lng: place.lng,
       notes: args.notes || "", linked_people_ids: args.linkedPeopleIds || [],
     });
     if (error) return fail(error.message);
-    return ok({ ok: true, id: data.id });
+    return ok({ ok: true, id: data.id, lat: place.lat, lng: place.lng, resolvedFrom: place.resolvedFrom || null });
+  },
+});
+
+mcp.tool("edit_place", {
+  description:
+    "Edit a saved place by id — rename it, move it, or change its notes. Only the fields you pass are changed. Passing `address` re-geocodes and moves the pin; passing `lat`/`lng` moves it to exactly those coordinates.",
+  inputSchema: z.object({
+    id: z.string().describe("the place's id (from list_pois)"),
+    name: z.string().optional(),
+    address: z.string().optional().describe("new address to geocode and move the pin to"),
+    lat: z.number().optional(),
+    lng: z.number().optional(),
+    notes: z.string().optional(),
+    linkedPeopleIds: z.array(z.string()).optional().describe("replaces the existing set"),
+  }),
+  handler: async (args: any) => {
+    const patch: Record<string, unknown> = {};
+    if (args.name !== undefined) patch.name = args.name;
+    if (args.notes !== undefined) patch.notes = args.notes;
+    if (args.linkedPeopleIds !== undefined) patch.linked_people_ids = args.linkedPeopleIds;
+    // Only touch the coordinates when the caller actually asked to move it — an edit that
+    // only renames a place must not silently re-geocode and shift the existing pin.
+    if (args.address !== undefined || args.lat !== undefined || args.lng !== undefined) {
+      const place = await resolvePlace(args);
+      if (place.error) return fail(place.error);
+      if (place.lat == null || place.lng == null) return fail("to move a place, pass an address to geocode, or both lat and lng");
+      patch.lat = place.lat; patch.lng = place.lng;
+    }
+    if (Object.keys(patch).length === 0) return fail("nothing to update — pass at least one field");
+    const { error } = await safeWrite((p) => db.from("points_of_interest").update(p).eq("id", args.id).eq("user_id", OWNER), patch);
+    if (error) return fail(error.message);
+    return ok({ ok: true, lat: patch.lat ?? null, lng: patch.lng ?? null });
+  },
+});
+
+mcp.tool("set_item_location", {
+  description:
+    "Attach a location to an action, habit, event, or person (a person's is their home). Give an `address` and it's geocoded; pass `lat`/`lng` only if you already know them. Pass `clear: true` to remove the location instead.",
+  inputSchema: z.object({
+    kind: z.enum(["action", "habit", "event", "person"]),
+    id: z.string(),
+    address: z.string().optional(),
+    lat: z.number().optional(),
+    lng: z.number().optional(),
+    clear: z.boolean().optional().describe("remove the location from this item"),
+  }),
+  handler: async (args: any) => {
+    const TABLES: Record<string, string> = { action: "actions", habit: "habits", event: "events", person: "people" };
+    const table = TABLES[args.kind];
+    // A person's home lives in home_lat/home_lng with no address column of its own —
+    // the other three share the location_address/lat/lng shape.
+    const isPerson = args.kind === "person";
+    if (args.clear) {
+      const cleared = isPerson
+        ? { home_lat: null, home_lng: null }
+        : { location_address: null, location_lat: null, location_lng: null };
+      const { error } = await safeWrite((p) => db.from(table).update(p).eq("id", args.id).eq("user_id", OWNER), cleared);
+      if (error) return fail(error.message);
+      return ok({ ok: true, cleared: true });
+    }
+    const place = await resolvePlace(args);
+    if (place.error) return fail(place.error);
+    if (place.lat == null || place.lng == null) return fail("pass either an address to geocode, or both lat and lng (or clear: true)");
+    const patch = isPerson
+      ? { home_lat: place.lat, home_lng: place.lng }
+      : { location_address: place.address, location_lat: place.lat, location_lng: place.lng };
+    const { error } = await safeWrite((p) => db.from(table).update(p).eq("id", args.id).eq("user_id", OWNER), patch);
+    if (error) return fail(error.message);
+    return ok({ ok: true, lat: place.lat, lng: place.lng, resolvedFrom: place.resolvedFrom || null });
   },
 });
 

@@ -140,14 +140,15 @@ did today and lay out tomorrow"*).
 
 **Read:** `get_agenda`, `list_goals`, `list_projects`, `list_habits`,
 `list_actions`, `list_events`, `list_notes`, `list_people`, `list_decisions`,
-`get_decision`, `list_pois`, `get_tracker`, `get_finance`
+`get_decision`, `list_pois`, `list_located_items`, `get_location_history`,
+`geocode_address`, `get_tracker`, `get_finance`
 
 **Write (create/edit only — never delete):** `create_goal`, `edit_goal`,
 `create_project`, `edit_project`, `create_habit`, `edit_habit`, `create_action`,
 `edit_action`, `complete_action`, `create_event`, `edit_event`,
 `set_action_decision`, `create_scenario`, `edit_scenario`, `link_scenarios`,
 `add_note`, `edit_note`, `create_person`, `edit_person`, `log_metric`,
-`create_poi`, `log_transaction`
+`create_place`, `edit_place`, `set_item_location`, `log_transaction`
 
 ### The distinctions worth knowing
 
@@ -168,6 +169,23 @@ did today and lay out tomorrow"*).
   them — read the current set with `get_decision` first if you mean to add one.
 - **Money direction.** `log_transaction` takes a *positive* amount for money in and
   a *negative* one for money out; a €12 lunch is `-12`.
+- **Locations are given as addresses, not coordinates.** Every location tool takes an
+  `address` and geocodes it server-side through the same OpenStreetMap (Nominatim)
+  endpoint the app's own address box uses. Explicit `lat`/`lng` are accepted and win
+  when supplied, but they exist for cases where the exact coordinates are already
+  known — a model should pass the address and let the server resolve it, never guess
+  coordinates. If the geocoder can't find it or is unreachable, the tool says so and
+  names the fallback instead of silently dropping a pin in the wrong place.
+- **Places vs. item locations.** `create_place` / `edit_place` manage the standalone
+  named pins on the Location map. `set_item_location` attaches a location to an
+  existing action, habit, event, or person (a person's is their home), or clears one
+  with `clear: true`. `create_action` and `create_event` also take a `location`
+  directly, so "lunch with Sam at Café Central on Friday" is a single call.
+- **`list_located_items`** is the one-call answer to "where is everything" — places,
+  located actions/habits/events, and people's homes in a single list.
+- **`get_location_history`** returns the user's own recorded positions, evenly
+  sampled down (default 300 points) rather than truncated, so a week's data reads as
+  a week rather than as one dense afternoon.
 
 ## Rotating or revoking access
 
@@ -192,4 +210,9 @@ did today and lay out tomorrow"*).
   `migration_action_scenarios.sql`. Until those are run, those tools return an error
   naming the migration, and `get_agenda` simply omits the events list rather than
   failing outright.
+- **The geocoder is an outbound dependency.** Location writes call
+  `nominatim.openstreetmap.org` from the Edge Function. It needs no key, but its usage
+  policy asks for a descriptive `User-Agent` (sent — see `NOMINATIM_UA`) and roughly
+  one request per second, so a model creating many places in a tight loop may get
+  throttled. Passing `lat`/`lng` skips the call entirely.
 - This connector is intentionally single-user. It is not meant to be shared.
