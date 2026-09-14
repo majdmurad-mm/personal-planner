@@ -3263,8 +3263,9 @@
         .hc-ex:last-child{border-bottom:none;}
         .hc-ex-alt{color:var(--text-faint);font-size:.74rem;margin-left:4px;}
         .hc-ex-scheme{font-family:var(--mono);font-size:.72rem;color:var(--text-dim);white-space:nowrap;}
-        .hc-ex-next{font-size:.74rem;white-space:nowrap;font-variant-numeric:tabular-nums;min-width:0;overflow:hidden;text-overflow:ellipsis;}
-        .hc-ex-next.up{color:var(--ok);} .hc-ex-next.hold{color:var(--text-dim);} .hc-ex-next.down{color:var(--warn);}
+        .hc-ex-next{font-size:.9rem;font-weight:700;text-align:center;width:18px;cursor:help;}
+        .hc-ex-next.up{color:var(--ok);} .hc-ex-next.hold{color:var(--text-dim);} .hc-ex-next.down{color:var(--warn);} .hc-ex-next.new{color:var(--text-faint);}
+        .hc-ex{grid-template-columns:minmax(0,1fr) auto 18px;}
         .hc-session{display:grid;grid-template-columns:70px 1fr auto;gap:8px;align-items:center;font-size:.84rem;padding:6px 0;border-bottom:1px dashed var(--border);}
         .hc-session:last-child{border-bottom:none;}
         .hc-session-date{font-family:var(--mono);font-size:.72rem;color:var(--text-dim);}
@@ -3292,66 +3293,74 @@
       <div class="main-header">
         <div>
           <h1>health</h1>
-          <p class="subhead" id="healthSubhead">A coach over your own numbers — weight, waist, steps, protein, sessions — with plain-language guidance from fixed rules, not a model.</p>
+          <p class="subhead" id="healthSubhead"></p>
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <button class="btn" id="healthSettingsBtn" type="button">settings</button>
-          <button class="btn" id="healthAddMealBtn" type="button">+ meal</button>
-          <button class="btn btn-accent" id="healthLogSessionBtn" type="button">+ log session</button>
-        </div>
+      </div>
+
+      <!-- Four tabs so the landing view is only what's actionable today. The review's numbers, the
+           charts, the templates and the history are all one tap away, not all on screen at once. -->
+      <div class="view-toggle" id="healthTabs">
+        <button class="view-tab active" data-htab="today" type="button">today</button>
+        <button class="view-tab" data-htab="week" type="button">this week</button>
+        <button class="view-tab" data-htab="trends" type="button">trends</button>
+        <button class="view-tab" data-htab="program" type="button">program</button>
       </div>
 
       <div class="hc-setup" id="healthSetupBlock" style="display:none;">
-        <p><b>No plan yet.</b> Set up the 12-week plan: Workout A and Workout B as templates (goblet squat, bench, row, RDL, lateral raise, plank / split squat, overhead press, pulldown, hip thrust, rear-delt fly, dead bug), protein 150–170 g, 6,000 steps, rowing twice a week — and Weight, Waist and Steps as tracker variables if you don't already have them. Everything is editable afterwards.</p>
+        <p><b>No plan yet.</b> One click sets up the 12-week plan — Workout A and B, the protein and step targets, rowing twice a week — and adds Weight, Waist and Steps to your tracker if they're not there. All of it is editable afterwards.</p>
         <button class="btn btn-accent" id="healthSetupPlanBtn" type="button">set up the 12-week plan</button>
       </div>
 
-      <div class="goal-integration-block">
-        <div class="integration-block-head">
-          <h2 id="healthReviewTitle">this week</h2>
-          <div class="hc-week-nav">
-            <button class="cal-nav-btn" id="healthWeekPrevBtn" type="button" aria-label="Previous week">‹</button>
-            <span class="cal-month-label" id="healthWeekLabel"></span>
-            <button class="cal-nav-btn" id="healthWeekNextBtn" type="button" aria-label="Next week">›</button>
+      <!-- TODAY: one focus line, then the three things you actually do on a given day. -->
+      <div id="healthTabToday">
+        <div id="healthFocus"></div>
+        <div class="hc-grid-3">
+          <div class="hc-card">
+            <h3>next session</h3>
+            <div class="hc-next" id="healthNext"></div>
+          </div>
+          <div class="hc-card">
+            <h3>log</h3>
+            <div class="hc-quicklog" id="healthQuickLog"></div>
+          </div>
+          <div class="hc-card">
+            <h3>food</h3>
+            <div id="healthMealsToday"></div>
           </div>
         </div>
-        <div class="hc-review" id="healthReview"></div>
-        <div id="healthFocus"></div>
       </div>
 
-      <div class="hc-grid-3" style="margin-bottom:22px;">
+      <!-- THIS WEEK: the full review — every measure with its number and reason. -->
+      <div id="healthTabWeek" style="display:none;">
         <div class="hc-card">
-          <h3>log today</h3>
-          <div class="hc-quicklog" id="healthQuickLog"></div>
-          <p class="panel-hint" style="margin:8px 0 0;">Morning weight three times a week; waist at the navel every two weeks. These are ordinary tracker variables — they show on the Tracker page too.</p>
-        </div>
-        <div class="hc-card">
-          <h3>next session</h3>
-          <div class="hc-next" id="healthNext"></div>
-        </div>
-        <div class="hc-card">
-          <h3>today's food</h3>
-          <div id="healthMealsToday"></div>
+          <div class="integration-block-head" style="margin-bottom:6px;">
+            <h3 id="healthReviewTitle" style="margin:0;">this week</h3>
+            <div class="hc-week-nav">
+              <button class="cal-nav-btn" id="healthWeekPrevBtn" type="button" aria-label="Previous week">‹</button>
+              <span class="cal-month-label" id="healthWeekLabel"></span>
+              <button class="cal-nav-btn" id="healthWeekNextBtn" type="button" aria-label="Next week">›</button>
+            </div>
+          </div>
+          <div class="hc-review" id="healthReview"></div>
+          <div id="healthCalorieNote"></div>
         </div>
       </div>
 
-      <div class="goal-integration-block">
-        <div class="integration-block-head"><h2>trends</h2></div>
+      <div id="healthTabTrends" style="display:none;">
         <div class="hc-grid" id="healthTrends"></div>
       </div>
 
-      <div class="goal-integration-block">
-        <div class="integration-block-head">
-          <h2>program</h2>
-          <div class="gantt-head-actions"><button class="btn" id="healthAddTemplateBtn" type="button">+ template</button></div>
+      <div id="healthTabProgram" style="display:none;">
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-bottom:12px;">
+          <button class="btn" id="healthSettingsBtn" type="button">settings</button>
+          <button class="btn" id="healthAddTemplateBtn" type="button">+ template</button>
         </div>
-        <p class="panel-hint">Progression: leave 2–3 reps in reserve; when every set reaches the top of the range with clean form, add a small amount of weight. The suggestion beside each exercise applies that rule to your last session.</p>
         <div class="hc-grid" id="healthTemplates"></div>
-      </div>
-
-      <div class="goal-integration-block">
-        <div class="integration-block-head"><h2>session history</h2></div>
-        <div id="healthHistory"></div>
+        <p class="panel-hint">↑ add a little weight next time · → same weight, push reps · ↓ hold. Hover an arrow for the numbers behind it.</p>
+        <div class="hc-card" style="margin-top:14px;">
+          <h3>recent sessions</h3>
+          <div id="healthHistory"></div>
+        </div>
       </div>
     </section>
 
@@ -18556,13 +18565,23 @@
   }
 
   // ---- rendering ----
+  var activeHealthTab = "today";
+  var HEALTH_TAB_PANELS = { today:"healthTabToday", week:"healthTabWeek", trends:"healthTabTrends", program:"healthTabProgram" };
+  document.getElementById("healthTabs").addEventListener("click", function(e){
+    var btn = e.target.closest("[data-htab]");
+    if(!btn) return;
+    activeHealthTab = btn.dataset.htab;
+    this.querySelectorAll(".view-tab").forEach(function(t){ t.classList.toggle("active", t === btn); });
+    renderHealth();
+  });
   function renderHealth(){
     if(activeSection !== "health") return;
     var s = healthSettingsOrDefaults();
     var hasPlan = state.workoutTemplates.length > 0 || !!state.healthSettings;
     document.getElementById("healthSetupBlock").style.display = hasPlan ? "none" : "";
     var pw = healthProgramWeek(s);
-    document.getElementById("healthSubhead").textContent = (pw ? pw.label + " · " : "") + "a coach over your own numbers — fixed rules, not a model.";
+    document.getElementById("healthSubhead").textContent = pw ? pw.label : "12-week plan";
+    Object.keys(HEALTH_TAB_PANELS).forEach(function(k){ document.getElementById(HEALTH_TAB_PANELS[k]).style.display = k === activeHealthTab ? "" : "none"; });
     renderHealthReview();
     renderHealthQuickLog();
     renderHealthNext();
@@ -18585,9 +18604,13 @@
         '<span class="hc-review-num">' + escapeHtml(r.num) + '</span><span class="hc-pill ' + r.status + '">' + pill + '</span>' +
         (r.note ? '<span class="hc-review-note">' + escapeHtml(r.note) + '</span>' : '') + '</span></div>';
     }).join("");
-    document.getElementById("healthFocus").innerHTML =
-      '<div class="hc-focus"><b>' + (rv.isCurrent ? "this week's focus" : "what that week needed") + '</b>' + escapeHtml(rv.focus) + '</div>' +
-      (rv.calorieNote ? '<div class="hc-focus" style="border-left-color:var(--violet);margin-top:6px;"><b>calories</b>' + escapeHtml(rv.calorieNote) + '</div>' : '');
+    // The focus line is the one thing the today view shows from the review — always the CURRENT
+    // week's, regardless of which week the review tab is browsing. The calorie note is detail and
+    // stays with the numbers on the week tab.
+    var cur = rv.isCurrent ? rv : healthWeeklyReview(healthWeekStart(todayStr()));
+    document.getElementById("healthFocus").innerHTML = '<div class="hc-focus" style="margin:0 0 14px;"><b>this week\'s focus</b>' + escapeHtml(cur.focus) + '</div>';
+    document.getElementById("healthCalorieNote").innerHTML = rv.calorieNote
+      ? '<div class="hc-focus" style="border-left-color:var(--violet);"><b>calories</b>' + escapeHtml(rv.calorieNote) + '</div>' : '';
   }
   function renderHealthQuickLog(){
     var today = todayStr();
@@ -18604,9 +18627,12 @@
     var tpl = healthNextTemplate();
     if(!tpl){ host.innerHTML = '<div class="hc-empty">no templates yet — set up the plan above, or add one under program</div>'; return; }
     var doneToday = state.workoutSessions.some(function(x){ return x.date === todayStr() && x.kind === "strength"; });
+    // Just the name and the two buttons — the exercise list lives in the session form itself, where
+    // it's needed, rather than being repeated here.
+    var ups = tpl.exercises.filter(function(ex){ return healthNextTarget(tpl, ex).kind === "up"; }).length;
     host.innerHTML = '<div class="hc-next-title">' + escapeHtml(tpl.name) + (doneToday ? ' <span class="hc-pill ok">logged today</span>' : '') + '</div>' +
-      '<div class="hc-next-ex">' + tpl.exercises.map(function(ex){ var n = healthNextTarget(tpl, ex); return escapeHtml(ex.name) + ' <span class="hc-ex-scheme">' + ex.sets + '×' + ex.repMin + '–' + ex.repMax + '</span>' + (n.kind === "up" ? ' <span class="hc-ex-next up">↑</span>' : ''); }).join("<br>") + '</div>' +
-      '<div><button class="btn btn-accent" type="button" data-hc-log-template="' + tpl.id + '">log ' + escapeHtml(tpl.name) + '</button> <button class="btn" type="button" data-hc-log-cardio>log rowing</button></div>';
+      (ups ? '<div class="hc-next-ex">↑ add weight on ' + ups + ' exercise' + (ups === 1 ? "" : "s") + '</div>' : '') +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;"><button class="btn btn-accent" type="button" data-hc-log-template="' + tpl.id + '">log ' + escapeHtml(tpl.name) + '</button><button class="btn" type="button" data-hc-log-cardio>log rowing</button></div>';
   }
   function renderHealthMealsToday(){
     var s = healthSettingsOrDefaults(), today = todayStr();
@@ -18620,7 +18646,7 @@
       '<div class="hc-protein-bar"><span class="' + (total < s.proteinMin ? "under" : "") + '" style="width:' + pct + '%"></span><i style="left:' + minPct + '%"></i></div>' +
       (meals.length ? meals.map(function(m){
         return '<div class="hc-meal' + (m.planned ? "" : " unplanned") + '" data-kind="meal" data-id="' + m.id + '"><span class="hc-meal-time">' + (m.timeOfDay || "—") + '</span>' +
-          '<span class="hc-meal-desc">' + escapeHtml(m.description || m.label) + '<small>' + m.label + (m.planned ? "" : " · unplanned") + '</small></span>' +
+          '<span class="hc-meal-desc">' + escapeHtml(m.description || m.label) + (m.planned ? "" : '<small>unplanned</small>') + '</span>' +
           '<span class="hc-meal-p">' + Math.round(m.proteinG) + ' g</span>' +
           '<span class="hc-meal-actions"><button class="icon-btn edit" data-action="edit-meal" data-id="' + m.id + '" aria-label="Edit">✎</button><button class="icon-btn" data-action="del-meal" data-id="' + m.id + '" aria-label="Delete">&times;</button></span></div>';
       }).join("") : '<div class="hc-empty">nothing logged today</div>') +
@@ -18651,7 +18677,9 @@
       return '<div class="hc-card hc-tpl" data-kind="workout-template" data-id="' + t.id + '"><div class="hc-tpl-head"><b>' + escapeHtml(t.name) + '</b>' +
         '<button class="btn" type="button" data-hc-log-template="' + t.id + '">log</button><button class="btn" type="button" data-action="edit-template" data-id="' + t.id + '">✎</button><button class="btn" type="button" data-action="del-template" data-id="' + t.id + '">&times;</button></div>' +
         t.exercises.map(function(ex){ var n = healthNextTarget(t, ex);
-          return '<div class="hc-ex"><span>' + escapeHtml(ex.name) + (ex.alt ? '<span class="hc-ex-alt">or ' + escapeHtml(ex.alt) + '</span>' : '') + '</span><span class="hc-ex-scheme">' + ex.sets + ' × ' + ex.repMin + '–' + ex.repMax + (ex.unit === "sec" ? "s" : "") + '</span><span class="hc-ex-next ' + n.kind + '" title="' + escapeHtml(n.text) + '">' + (n.kind === "up" ? "↑ " : n.kind === "down" ? "↓ " : n.kind === "hold" ? "→ " : "") + escapeHtml(n.text.length > 34 ? n.text.slice(0, 34) + "…" : n.text) + '</span></div>'; }).join("") +
+          // Arrow only; the numbers behind it are in the tooltip and repeated in the session form.
+          var glyph = n.kind === "up" ? "↑" : n.kind === "down" ? "↓" : n.kind === "hold" ? "→" : "·";
+          return '<div class="hc-ex"><span>' + escapeHtml(ex.name) + (ex.alt ? '<span class="hc-ex-alt">or ' + escapeHtml(ex.alt) + '</span>' : '') + '</span><span class="hc-ex-scheme">' + ex.sets + ' × ' + ex.repMin + '–' + ex.repMax + (ex.unit === "sec" ? "s" : "") + '</span><span class="hc-ex-next ' + n.kind + '" title="' + escapeHtml(n.text) + '">' + glyph + '</span></div>'; }).join("") +
       '</div>';
     }).join("");
   }
@@ -18932,8 +18960,6 @@
 
   // ---- page wiring ----
   document.getElementById("healthSetupPlanBtn").addEventListener("click", setupHealthPlan);
-  document.getElementById("healthLogSessionBtn").addEventListener("click", function(){ openSessionModal(null); });
-  document.getElementById("healthAddMealBtn").addEventListener("click", function(){ openMealModal(null); });
   document.getElementById("healthWeekPrevBtn").addEventListener("click", function(){ healthSelectedWeekStart = addDaysToDateStr(healthSelectedWeekStart, -7); renderHealthReview(); });
   document.getElementById("healthWeekNextBtn").addEventListener("click", function(){ var n = addDaysToDateStr(healthSelectedWeekStart, 7); if(n <= healthWeekStart(todayStr())){ healthSelectedWeekStart = n; renderHealthReview(); } });
   document.getElementById("healthQuickLog").addEventListener("change", function(e){ var i = e.target.closest("[data-hc-role]"); if(i) healthQuickLogSave(i.dataset.hcRole, i.value.trim()); });
