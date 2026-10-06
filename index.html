@@ -2185,23 +2185,22 @@
     .hm-tile-rec.transcribing{ opacity:0.6; cursor:wait; }
     .hm-tile-rec.transcribing .hm-label-idle, .hm-tile-rec.transcribing .hm-label-rec{ display:none; }
     .hm-tile-rec.transcribing .hm-label-busy{ display:inline; }
-    /* ---- Today's to-dos on the launcher ---- */
-    .hm-todos{ display:flex; flex-direction:column; border:1px solid var(--border-bright); border-radius:16px; background:var(--bg-raised); overflow:hidden; }
-    .hm-todo{ display:grid; grid-template-columns:30px minmax(0,1fr) auto; align-items:center; gap:10px; min-height:46px; padding:6px 12px 6px 10px; border-bottom:1px solid var(--border); font-family:var(--mono); }
-    .hm-todo:last-child{ border-bottom:none; }
-    .hm-todo-check{ width:24px; height:24px; border-radius:50%; border:1.5px solid var(--border-bright); background:none; appearance:none; cursor:pointer; color:transparent; font-size:13px; line-height:1; padding:0; touch-action:manipulation; display:flex; align-items:center; justify-content:center; }
-    .hm-todo-check.done{ background:var(--ok); border-color:var(--ok); color:#fff; }
-    /* Events have nothing to tick — a dot marks the slot so the column still lines up. */
-    .hm-todo-dot{ width:8px; height:8px; border-radius:50%; background:var(--violet); margin-left:8px; }
-    .hm-todo-body{ min-width:0; display:flex; flex-direction:column; gap:1px; text-align:left; background:none; border:none; padding:0; color:var(--text); font:inherit; cursor:pointer; }
-    .hm-todo-title{ font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    /* ---- Today's to-dos on the launcher: a plain checklist. No box, no meta line, no times —
+       a circle and a title per row. Overdue is the one thing that gets a colour. ---- */
+    .hm-todos{ display:flex; flex-direction:column; }
+    .hm-todo{ display:flex; align-items:center; gap:12px; min-height:40px; padding:4px 2px; font-family:var(--mono); }
+    .hm-todo-check{ flex:none; width:22px; height:22px; border-radius:50%; border:1.5px solid var(--border-bright); background:none; appearance:none; cursor:pointer; color:transparent; font-size:12px; line-height:1; padding:0; touch-action:manipulation; display:flex; align-items:center; justify-content:center; }
+    .hm-todo-check.done{ background:var(--text-faint); border-color:var(--text-faint); color:var(--bg); }
+    /* Events have nothing to tick — a hollow dot keeps the column aligned. */
+    .hm-todo-dot{ flex:none; width:22px; height:22px; display:flex; align-items:center; justify-content:center; }
+    .hm-todo-dot::before{ content:""; width:7px; height:7px; border-radius:50%; border:1.5px solid var(--text-faint); }
+    .hm-todo-body{ flex:1; min-width:0; text-align:left; background:none; border:none; padding:0; color:var(--text); font:inherit; cursor:pointer; }
+    .hm-todo-title{ display:block; font-size:14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .hm-todo.done .hm-todo-title{ color:var(--text-faint); text-decoration:line-through; }
-    .hm-todo-meta{ font-size:10px; color:var(--text-dim); }
-    .hm-todo.overdue .hm-todo-meta{ color:var(--danger); }
-    .hm-todo-time{ font-size:11px; color:var(--text-dim); font-variant-numeric:tabular-nums; white-space:nowrap; }
-    .hm-todo-empty{ padding:14px 12px; font-size:12px; color:var(--text-faint); font-family:var(--mono); text-align:center; }
-    .hm-todo-more{ display:block; width:100%; padding:9px; border:none; border-top:1px solid var(--border); background:var(--bg-inset); color:var(--text-dim); font-family:var(--mono); font-size:11px; cursor:pointer; }
-    #homeMobileTodoCount{ color:var(--text-dim); margin-left:4px; }
+    .hm-todo.overdue .hm-todo-title{ color:var(--danger); }
+    .hm-todo-empty{ padding:10px 2px; font-size:13px; color:var(--text-faint); font-family:var(--mono); }
+    .hm-todo-more{ align-self:flex-start; padding:6px 2px; border:none; background:none; color:var(--text-dim); font-family:var(--mono); font-size:12px; cursor:pointer; }
+    #homeMobileTodoCount{ color:var(--text-faint); margin-left:6px; }
     /* Landscape has far less height to divide, so the four destinations go on one row instead of a
        2x2 block and the header collapses to a single baseline-aligned line — keeping every tile
        reachable without scrolling. */
@@ -8900,17 +8899,18 @@
     if(sig === homeMobileTodoSig) return;
     homeMobileTodoSig = sig;
     var open = items.filter(function(it){ return !it.done && it.kind !== "event"; }).length;
-    document.getElementById("homeMobileTodoCount").textContent = open ? open + " open" : (items.length ? "all done" : "");
-    if(!items.length){ host.innerHTML = '<div class="hm-todo-empty">nothing on for today</div>'; return; }
+    document.getElementById("homeMobileTodoCount").textContent = items.length ? (open ? String(open) : "done") : "";
+    if(!items.length){ host.innerHTML = '<div class="hm-todo-empty">nothing today</div>'; return; }
     var shown = items.slice(0, HOME_MOBILE_TODO_MAX);
+    // Just a circle and a title. The time, kind and priority are all one tap away in the editor;
+    // on a phone they were noise. Overdue items are the single exception and read in red.
     host.innerHTML = shown.map(function(it){
       var check = it.kind === "event"
         ? '<span class="hm-todo-dot" aria-hidden="true"></span>'
         : '<button class="hm-todo-check' + (it.done ? " done" : "") + '" type="button" data-hm-done="' + it.kind + '" data-id="' + it.id + '" aria-label="' + (it.done ? "Mark not done" : "Mark done") + '">✓</button>';
       return '<div class="hm-todo' + (it.done ? " done" : "") + (it.overdue ? " overdue" : "") + '" data-kind="' + (it.kind === "habit" ? "habit-instance" : it.kind) + '" data-id="' + it.id + '" data-date="' + todayStr() + '">' + check +
-        '<button class="hm-todo-body" type="button" data-hm-open="' + it.kind + '" data-id="' + it.id + '"><span class="hm-todo-title">' + escapeHtml(it.title) + '</span>' + (it.meta ? '<span class="hm-todo-meta">' + escapeHtml(it.meta) + '</span>' : '') + '</button>' +
-        '<span class="hm-todo-time">' + (it.time ? fmtTimeOfDay(it.time) : "") + '</span></div>';
-    }).join("") + (items.length > shown.length ? '<button class="hm-todo-more" type="button" data-hm-go="today">+' + (items.length - shown.length) + ' more — open today</button>' : '');
+        '<button class="hm-todo-body" type="button" data-hm-open="' + it.kind + '" data-id="' + it.id + '"><span class="hm-todo-title">' + escapeHtml(it.title) + '</span></button></div>';
+    }).join("") + (items.length > shown.length ? '<button class="hm-todo-more" type="button" data-hm-go="today">+' + (items.length - shown.length) + ' more</button>' : '');
   }
   function renderHomeMobile(now){
     if(!homeMobileActive()) return;
