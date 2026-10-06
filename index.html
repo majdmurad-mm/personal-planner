@@ -2185,6 +2185,23 @@
     .hm-tile-rec.transcribing{ opacity:0.6; cursor:wait; }
     .hm-tile-rec.transcribing .hm-label-idle, .hm-tile-rec.transcribing .hm-label-rec{ display:none; }
     .hm-tile-rec.transcribing .hm-label-busy{ display:inline; }
+    /* ---- Today's to-dos on the launcher ---- */
+    .hm-todos{ display:flex; flex-direction:column; border:1px solid var(--border-bright); border-radius:16px; background:var(--bg-raised); overflow:hidden; }
+    .hm-todo{ display:grid; grid-template-columns:30px minmax(0,1fr) auto; align-items:center; gap:10px; min-height:46px; padding:6px 12px 6px 10px; border-bottom:1px solid var(--border); font-family:var(--mono); }
+    .hm-todo:last-child{ border-bottom:none; }
+    .hm-todo-check{ width:24px; height:24px; border-radius:50%; border:1.5px solid var(--border-bright); background:none; appearance:none; cursor:pointer; color:transparent; font-size:13px; line-height:1; padding:0; touch-action:manipulation; display:flex; align-items:center; justify-content:center; }
+    .hm-todo-check.done{ background:var(--ok); border-color:var(--ok); color:#fff; }
+    /* Events have nothing to tick — a dot marks the slot so the column still lines up. */
+    .hm-todo-dot{ width:8px; height:8px; border-radius:50%; background:var(--violet); margin-left:8px; }
+    .hm-todo-body{ min-width:0; display:flex; flex-direction:column; gap:1px; text-align:left; background:none; border:none; padding:0; color:var(--text); font:inherit; cursor:pointer; }
+    .hm-todo-title{ font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .hm-todo.done .hm-todo-title{ color:var(--text-faint); text-decoration:line-through; }
+    .hm-todo-meta{ font-size:10px; color:var(--text-dim); }
+    .hm-todo.overdue .hm-todo-meta{ color:var(--danger); }
+    .hm-todo-time{ font-size:11px; color:var(--text-dim); font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .hm-todo-empty{ padding:14px 12px; font-size:12px; color:var(--text-faint); font-family:var(--mono); text-align:center; }
+    .hm-todo-more{ display:block; width:100%; padding:9px; border:none; border-top:1px solid var(--border); background:var(--bg-inset); color:var(--text-dim); font-family:var(--mono); font-size:11px; cursor:pointer; }
+    #homeMobileTodoCount{ color:var(--text-dim); margin-left:4px; }
     /* Landscape has far less height to divide, so the four destinations go on one row instead of a
        2x2 block and the header collapses to a single baseline-aligned line — keeping every tile
        reachable without scrolling. */
@@ -2434,6 +2451,13 @@
                 <span class="hm-tile-label"><span class="hm-label-idle">record</span><span class="hm-label-rec">stop</span><span class="hm-label-busy">…</span></span>
               </button>
             </div>
+          </div>
+          <!-- Today's to-dos, directly on the launcher: open actions due today (and anything overdue),
+               the habits due today, and today's events. Tap the circle to tick it off, tap the text to
+               open it. Capped at a handful — the Today page has the full picture. -->
+          <div class="hm-group" id="homeMobileTodoGroup">
+            <div class="hm-group-label">today <span id="homeMobileTodoCount"></span></div>
+            <div class="hm-todos" id="homeMobileTodos"></div>
           </div>
           <div class="hm-group">
             <div class="hm-group-label">go to</div>
@@ -8840,17 +8864,81 @@
   var HOME_MOBILE_QUERY = "(max-width: 820px), (max-height: 500px) and (orientation: landscape)";
   var homeMobileMedia = window.matchMedia ? window.matchMedia(HOME_MOBILE_QUERY) : null;
   function homeMobileActive(){ return !!(homeMobileMedia && homeMobileMedia.matches); }
-  // The tiles are static markup, so the only thing that actually re-renders is the clock line.
+  // The tiles are static markup; the clock line and the to-do list are what re-render (the list only
+  // when its signature changes — this runs on the 1s home tick).
+  var HOME_MOBILE_TODO_MAX = 6;
+  function homeMobileTodoItems(){
+    var today = todayStr();
+    var items = [];
+    state.actions.forEach(function(a){
+      if(a.done || !a.date || a.date > today) return;
+      items.push({ kind:"action", id:a.id, title:a.title, time:a.timeOfDay || "", done:false, overdue:a.date < today, meta:a.date < today ? "overdue · " + fmtDate(a.date) : (a.priority || "") });
+    });
+    state.habits.forEach(function(h){
+      if(!habitOccursOnDate(h, today)) return;
+      var f = habitInstanceFields(h, today);
+      items.push({ kind:"habit", id:h.id, title:h.title, time:f.timeOfDay || "", done:habitDoneForDate(h, today), overdue:false, meta:"↻ habit" });
+    });
+    state.events.forEach(function(ev){
+      if(ev.date !== today) return;
+      items.push({ kind:"event", id:ev.id, title:ev.title, time:ev.timeOfDay || "", done:false, overdue:false, meta:"event" });
+    });
+    // Overdue first (it's what needs a decision), then by time, untimed last; done habits sink.
+    items.sort(function(x, y){
+      if(x.done !== y.done) return x.done ? 1 : -1;
+      if(x.overdue !== y.overdue) return x.overdue ? -1 : 1;
+      return (x.time || "99:99").localeCompare(y.time || "99:99");
+    });
+    return items;
+  }
+  var homeMobileTodoSig = null;
+  function renderHomeMobileTodos(){
+    var host = document.getElementById("homeMobileTodos");
+    if(!host) return;
+    var items = homeMobileTodoItems();
+    var sig = items.map(function(it){ return it.kind + it.id + (it.done ? "1" : "0") + it.time + it.title; }).join("|");
+    if(sig === homeMobileTodoSig) return;
+    homeMobileTodoSig = sig;
+    var open = items.filter(function(it){ return !it.done && it.kind !== "event"; }).length;
+    document.getElementById("homeMobileTodoCount").textContent = open ? open + " open" : (items.length ? "all done" : "");
+    if(!items.length){ host.innerHTML = '<div class="hm-todo-empty">nothing on for today</div>'; return; }
+    var shown = items.slice(0, HOME_MOBILE_TODO_MAX);
+    host.innerHTML = shown.map(function(it){
+      var check = it.kind === "event"
+        ? '<span class="hm-todo-dot" aria-hidden="true"></span>'
+        : '<button class="hm-todo-check' + (it.done ? " done" : "") + '" type="button" data-hm-done="' + it.kind + '" data-id="' + it.id + '" aria-label="' + (it.done ? "Mark not done" : "Mark done") + '">✓</button>';
+      return '<div class="hm-todo' + (it.done ? " done" : "") + (it.overdue ? " overdue" : "") + '" data-kind="' + (it.kind === "habit" ? "habit-instance" : it.kind) + '" data-id="' + it.id + '" data-date="' + todayStr() + '">' + check +
+        '<button class="hm-todo-body" type="button" data-hm-open="' + it.kind + '" data-id="' + it.id + '"><span class="hm-todo-title">' + escapeHtml(it.title) + '</span>' + (it.meta ? '<span class="hm-todo-meta">' + escapeHtml(it.meta) + '</span>' : '') + '</button>' +
+        '<span class="hm-todo-time">' + (it.time ? fmtTimeOfDay(it.time) : "") + '</span></div>';
+    }).join("") + (items.length > shown.length ? '<button class="hm-todo-more" type="button" data-hm-go="today">+' + (items.length - shown.length) + ' more — open today</button>' : '');
+  }
   function renderHomeMobile(now){
     if(!homeMobileActive()) return;
     now = now || new Date();
     document.getElementById("homeMobileClock").textContent = now.toLocaleTimeString(undefined, { hour:"2-digit", minute:"2-digit" });
     document.getElementById("homeMobileDate").textContent = now.toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" });
+    renderHomeMobileTodos();
   }
   (function wireHomeMobile(){
     var layer = document.getElementById("homeMobile");
     if(!layer) return;
-    layer.addEventListener("click", function(e){
+    layer.addEventListener("click", async function(e){
+      // To-do ticks go through the same toggles every other surface uses (undoable, and habits
+      // write to their tracker variable); opening goes to the ordinary editors.
+      var done = e.target.closest("[data-hm-done]");
+      if(done){
+        if(done.dataset.hmDone === "action") await toggleActionDone(done.dataset.id);
+        else if(done.dataset.hmDone === "habit") await handleHabitMarkClick(done.dataset.id, todayStr());
+        renderHomeMobileTodos();
+        return;
+      }
+      var open = e.target.closest("[data-hm-open]");
+      if(open){
+        if(open.dataset.hmOpen === "action") editAction(open.dataset.id);
+        else if(open.dataset.hmOpen === "habit") editHabit(open.dataset.id);
+        else if(open.dataset.hmOpen === "event") editEvent(open.dataset.id);
+        return;
+      }
       // Capture opens the same editors the rest of the app uses — no phone-specific save path to
       // drift out of sync, and the note/action still gets reviewed before it commits.
       var cap = e.target.closest("[data-hm-capture]");
