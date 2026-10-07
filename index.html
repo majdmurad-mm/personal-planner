@@ -2201,6 +2201,7 @@
     .hm-todo-empty{ padding:10px 2px; font-size:13px; color:var(--text-faint); font-family:var(--mono); }
     .hm-todo-more{ align-self:flex-start; padding:6px 2px; border:none; background:none; color:var(--text-dim); font-family:var(--mono); font-size:12px; cursor:pointer; }
     #homeMobileTodoCount{ color:var(--text-faint); margin-left:6px; }
+    .hm-inbox-link{ align-self:flex-start; padding:4px 10px; border-radius:999px; border:1px solid var(--accent); background:none; color:var(--accent); font-family:var(--mono); font-size:12px; cursor:pointer; }
     /* Landscape has far less height to divide, so the four destinations go on one row instead of a
        2x2 block and the header collapses to a single baseline-aligned line — keeping every tile
        reachable without scrolling. */
@@ -2318,6 +2319,7 @@
 
       <nav class="side-nav" id="sideNav">
         <button class="side-link active" data-section="home" type="button"><span class="sl-glyph">⌂</span>Home</button>
+        <button class="side-link" data-section="inbox" type="button"><span class="sl-glyph">⇣</span>Inbox<span class="side-link-badge" id="inboxNavBadge" hidden></span></button>
         <button class="side-link side-link-parent" id="sideLinkTimeToggle" data-toggle-submenu="sideSubmenuTime" type="button" aria-expanded="false">
           <span class="sl-glyph">◔</span>Time<span class="side-link-caret">▾</span>
         </button>
@@ -2455,6 +2457,8 @@
                the habits due today, and today's events. Tap the circle to tick it off, tap the text to
                open it. Capped at a handful — the Today page has the full picture. -->
           <div class="hm-group" id="homeMobileTodoGroup">
+            <!-- Only shown when agents have something waiting for you. -->
+            <button class="hm-inbox-link" type="button" data-hm-go="inbox" id="homeMobileInboxLink" hidden></button>
             <div class="hm-group-label">today <span id="homeMobileTodoCount"></span></div>
             <div class="hm-todos" id="homeMobileTodos"></div>
           </div>
@@ -3385,6 +3389,48 @@
           <div id="healthHistory"></div>
         </div>
       </div>
+    </section>
+
+    <!-- ===== INBOX: where agents report in =====
+         Two kinds of thing arrive here from Agent PgM's bots through the planner connector:
+         proposals (a change an agent wants to make — nothing happens until you approve it) and
+         reports (briefs, digests, run summaries — just to read). See migration_agent_hub.sql. -->
+    <section id="inboxSection" style="display:none;">
+      <style>
+        .side-link-badge{ margin-left:auto; min-width:18px; padding:0 6px; border-radius:999px; background:var(--accent); color:#fff; font-size:10px; font-weight:700; line-height:18px; text-align:center; font-variant-numeric:tabular-nums; }
+        .ib-list{ display:flex; flex-direction:column; gap:8px; max-width:820px; }
+        .ib-item{ border:1px solid var(--border); border-radius:12px; background:var(--bg-raised); padding:10px 14px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px 12px; align-items:start; }
+        .ib-head{ display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; font-size:.72rem; color:var(--text-dim); font-family:var(--mono); }
+        .ib-agent{ font-weight:700; color:var(--violet); }
+        .ib-summary{ grid-column:1; font-size:.92rem; color:var(--text); }
+        .ib-reason{ grid-column:1; font-size:.8rem; color:var(--text-dim); }
+        .ib-actions{ grid-column:2; grid-row:1 / span 3; display:flex; gap:6px; align-self:center; }
+        .ib-status{ font-size:.66rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; padding:1px 8px; border-radius:999px; }
+        .ib-status.approved{ background:var(--ok-bg); color:var(--ok); } .ib-status.rejected{ background:var(--danger-bg); color:var(--danger); }
+        .ib-report{ border:1px solid var(--border); border-radius:12px; background:var(--bg-raised); max-width:820px; }
+        .ib-report summary{ list-style:none; cursor:pointer; padding:10px 14px; display:flex; gap:10px; align-items:baseline; }
+        .ib-report summary::-webkit-details-marker{ display:none; }
+        .ib-report-title{ flex:1; min-width:0; font-size:.92rem; }
+        .ib-report.unread .ib-report-title{ font-weight:700; }
+        .ib-report.unread .ib-report-title::before{ content:""; display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--accent); margin-right:8px; vertical-align:middle; }
+        .ib-report-body{ padding:0 14px 12px; font-size:.86rem; }
+        .ib-empty{ font-size:.86rem; color:var(--text-faint); padding:10px 0; }
+        .ib-toolbar{ display:flex; gap:8px; justify-content:flex-end; max-width:820px; margin-bottom:10px; }
+        /* "via Middler" — where a row came from, on actions/notes/events made by an agent or Cowork. */
+        .src-tag{ display:inline-block; font-family:var(--mono); font-size:9.5px; letter-spacing:.04em; color:var(--violet); border:1px solid var(--violet); border-radius:999px; padding:0 6px; opacity:.8; white-space:nowrap; }
+      </style>
+      <div class="main-header">
+        <div>
+          <h1>inbox</h1>
+          <p class="subhead">What your agents want to change, and what they've reported. Nothing an agent proposes touches your planner until you approve it.</p>
+        </div>
+      </div>
+      <div class="view-toggle" id="inboxTabs">
+        <button class="view-tab active" data-itab="proposals" type="button">to approve</button>
+        <button class="view-tab" data-itab="reports" type="button">reports</button>
+        <button class="view-tab" data-itab="history" type="button">history</button>
+      </div>
+      <div id="inboxBody"></div>
     </section>
 
     <!-- ===== AGENT SECTION ===== -->
@@ -5851,7 +5897,7 @@
   }
 
   var state = { goals:[], projects:[], habits:[], actions:[], events:[], journal:[], people:[], trackerVars:[], trackerEntries:[], trackerDays:[], wbConnections:[], sleepScores:[], trash:[], socialGroupColors:[], gpsPings:[], pois:[], recordings:[], financeAccounts:[], financeTransactions:[], actionScenarios:[],
-    healthSettings:null, workoutTemplates:[], workoutSessions:[], meals:[] };
+    healthSettings:null, workoutTemplates:[], workoutSessions:[], meals:[], agentProposals:[], agentReports:[] };
   var currentUser = null;
 
   function goalById(id){ return state.goals.find(function(g){ return g.id === id; }); }
@@ -5983,7 +6029,9 @@
       sb.from("health_settings").select("*").limit(1),
       sb.from("workout_templates").select("*").order("position", { ascending:true }),
       sb.from("workout_sessions").select("*").order("date", { ascending:false }),
-      sb.from("meals").select("*").order("date", { ascending:false })
+      sb.from("meals").select("*").order("date", { ascending:false }),
+      sb.from("agent_proposals").select("*").order("created_at", { ascending:false }).limit(200),
+      sb.from("agent_reports").select("*").order("created_at", { ascending:false }).limit(100)
     ]);
     results.forEach(function(r){ if(r.error) console.error(r.error); });
     // position defaults to 0 (via ||0) when the migration_positions.sql column doesn't exist yet —
@@ -5997,9 +6045,9 @@
       locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), linkedPeopleIds:r.linked_people_ids||[] }; });
     state.habits.sort(function(a,b){ return a.position - b.position; });
     state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null, secondaryCategories:r.secondary_categories || [], isMilestone:!!r.is_milestone, isDecision:!!r.is_decision,
-      locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), notesMd:r.notes_md||"", dependencies:r.dependencies||[], linkedPeopleIds:r.linked_people_ids||[] }; });
+      locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), notesMd:r.notes_md||"", dependencies:r.dependencies||[], linkedPeopleIds:r.linked_people_ids||[], source:r.source||null, externalId:r.external_id||null }; });
     state.actions.sort(function(a,b){ return a.position - b.position; });
-    state.journal = (results[4].data || []).map(function(r){ return { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, categories:r.categories||[], noteType:r.note_type||"reflection", recordingId:r.recording_id||null, linkedObjects:r.linked_objects||[], sentiment:r.sentiment||[], title:r.title||"", priority:r.priority||null, createdAt:r.created_at||null }; });
+    state.journal = (results[4].data || []).map(function(r){ return { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, categories:r.categories||[], noteType:r.note_type||"reflection", recordingId:r.recording_id||null, linkedObjects:r.linked_objects||[], sentiment:r.sentiment||[], title:r.title||"", priority:r.priority||null, createdAt:r.created_at||null, source:r.source||null }; });
     state.people = (results[5].data || []).map(function(r){
       return { id:r.id, name:r.name, relationship:r.relationship, contact:r.contact, notes:r.notes, position:r.position||0,
         verified:!!r.verified, likeScore:(r.like_score!=null?r.like_score:null), contactScore:(r.contact_score!=null?r.contact_score:null),
@@ -6032,7 +6080,7 @@
     // the query itself errors — same graceful-degradation shape as every other not-yet-migrated
     // surface above: caught by the blanket console.error loop, || [] keeps state.events usable).
     state.events = (results[17].data || []).map(function(r){ return { id:r.id, title:r.title, date:r.date, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null, secondaryCategories:r.secondary_categories||[],
-      locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), linkedPeopleIds:r.linked_people_ids||[], notesMd:r.notes_md||"", position:r.position||0 }; });
+      locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), linkedPeopleIds:r.linked_people_ids||[], notesMd:r.notes_md||"", position:r.position||0, source:r.source||null }; });
     state.events.sort(function(a,b){ return a.position - b.position; });
     // Empty until migration_action_scenarios.sql has been run — same graceful-degradation shape as
     // every other not-yet-migrated table here. Actions just can't be flagged as decisions until then.
@@ -6046,6 +6094,9 @@
     state.workoutTemplates = (results[20].data || []).map(healthMapTemplate);
     state.workoutSessions = (results[21].data || []).map(healthMapSession);
     state.meals = (results[22].data || []).map(healthMapMeal);
+    // Empty until migration_agent_hub.sql has been run — see the Inbox section.
+    state.agentProposals = (results[23].data || []).map(inboxMapProposal);
+    state.agentReports = (results[24].data || []).map(inboxMapReport);
     await backfillLegacyHabitTrackers();
     await backfillHabitIcons();
     // After the tracker backfill above, so habits that only just got their linked variable are
@@ -6127,7 +6178,7 @@
     });
   }
 
-  var ALL_SECTION_IDS = ["homeSection","todaySection","plannerSection","trackerSection","agentSection","timelineSection","journalSection","peopleSection","locationSection","knowledgeSection","integrationsSection","futureSection","timematrixSection","toolsSection","archiveSection","goalDetailSection","areaDetailSection","entityPageSection","healthSection"];
+  var ALL_SECTION_IDS = ["homeSection","todaySection","plannerSection","trackerSection","agentSection","timelineSection","journalSection","peopleSection","locationSection","knowledgeSection","integrationsSection","futureSection","timematrixSection","toolsSection","archiveSection","goalDetailSection","areaDetailSection","entityPageSection","healthSection","inboxSection"];
   // Sidebar dropdown groups — a parent nav item with no page of its own, bundling a set of section
   // names under one submenu. See showSection() (active/auto-open) and the sideNav click handler
   // (data-toggle-submenu, open/close).
@@ -8917,6 +8968,10 @@
     now = now || new Date();
     document.getElementById("homeMobileClock").textContent = now.toLocaleTimeString(undefined, { hour:"2-digit", minute:"2-digit" });
     document.getElementById("homeMobileDate").textContent = now.toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" });
+    var waiting = inboxPending().length;
+    var link = document.getElementById("homeMobileInboxLink");
+    link.hidden = !waiting;
+    link.textContent = waiting + " from agents to approve →";
     renderHomeMobileTodos();
   }
   (function wireHomeMobile(){
@@ -12896,7 +12951,7 @@
             '<button class="icon-btn edit" data-action="edit-action" data-id="' + a.id + '" aria-label="Edit action">✎</button>' +
             '<button class="icon-btn" data-action="del-action" data-id="' + a.id + '" aria-label="Delete action">&times;</button>' +
           '</div>' +
-          '<div class="ms-tile-meta"><span class="prio-badge ' + a.priority + '">' + a.priority + '</span>' +
+          '<div class="ms-tile-meta"><span class="prio-badge ' + a.priority + '">' + a.priority + '</span>' + srcTagHtml(a) +
           (a.parentType==="project" ? '<span>via ' + escapeHtml(parentTitle(a)) + '</span>' : '') +
           (a.date ? '<span style="color:' + (overdue?'var(--p0)':'var(--text-faint)') + '">' + fmtDate(a.date) + '</span>' : '') +
           '</div>' +
@@ -12917,7 +12972,7 @@
       var aStyle = aMerged ? ' style="border-left-color:' + aMerged.c + ';background:linear-gradient(135deg, ' + aMerged.bg + ', var(--bg-raised) 55%);"' : '';
       return '<div class="goal-card' + (cat ? ' ' + cat : '') + '"' + aStyle + ' data-kind="action" data-id="' + a.id + '" draggable="true">' +
         '<div class="card-tab">' +
-          '<span class="prio-badge ' + a.priority + '">' + a.priority + '</span><span class="sep">·</span>' +
+          '<span class="prio-badge ' + a.priority + '">' + a.priority + '</span><span class="sep">·</span>' + (a.source ? srcTagHtml(a) + '<span class="sep">·</span>' : '') +
           '<span class="parent-tag">' + (a.parentType === "none" ? "standalone" : (a.parentType + ': <b>' + escapeHtml(parentTitle(a)) + '</b>')) + '</span>' +
           '<span class="due-tag">' + (a.date ? '<span style="color:' + (overdue?'var(--p0)':'var(--text-dim)') + '">' + fmtDate(a.date) + '</span>' : '') +
           '<span class="status-dot ' + (a.done?"done":(overdue?"behind":"on-track")) + '" title="' + statusDotTitle(a.done?"done":(overdue?"behind":"on-track")) + '"></span></span>' +
@@ -12968,7 +13023,7 @@
             '<button class="icon-btn edit" data-action="edit-event" data-id="' + ev.id + '" aria-label="Edit event">✎</button>' +
             '<button class="icon-btn" data-action="del-event" data-id="' + ev.id + '" aria-label="Delete event">&times;</button>' +
           '</div>' +
-          '<div class="ms-tile-meta">' +
+          '<div class="ms-tile-meta">' + srcTagHtml(ev) +
           (ev.date ? '<span>' + fmtDate(ev.date) + (ev.timeOfDay ? ' ' + ev.timeOfDay : '') + '</span>' : '') +
           '</div>' +
         '</div>';
@@ -12987,7 +13042,7 @@
       var eStyle = eMerged ? ' style="border-left-color:' + eMerged.c + ';background:linear-gradient(135deg, ' + eMerged.bg + ', var(--bg-raised) 55%);"' : '';
       return '<div class="goal-card' + (cat ? ' ' + cat : '') + '"' + eStyle + ' data-kind="event" data-id="' + ev.id + '" draggable="true">' +
         '<div class="card-tab">' +
-          '<span class="due-tag">' + (ev.date ? '<span style="color:var(--text-dim);">' + fmtDate(ev.date) + (ev.timeOfDay ? ' ' + ev.timeOfDay : '') + '</span>' : '') + '</span>' +
+          srcTagHtml(ev) + '<span class="due-tag">' + (ev.date ? '<span style="color:var(--text-dim);">' + fmtDate(ev.date) + (ev.timeOfDay ? ' ' + ev.timeOfDay : '') + '</span>' : '') + '</span>' +
         '</div>' +
         '<div class="card-body">' +
           '<div class="goal-body-head">' +
@@ -16595,7 +16650,7 @@
     var typeBadge = typeMeta ? '<span class="note-type-badge">' + typeMeta.glyph + " " + typeMeta.label + '</span>' : "";
     return '<div class="journal-entry' + catClass + '" style="' + style + '" data-kind="journal" data-id="' + entry.id + '" data-x="' + xPct + '">' +
       renderNoteTagsHtml(entry) +
-      '<div class="journal-entry-top"><span class="journal-entry-date">' + d.toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" }) + (entry.timeOfDay ? " · " + fmtTimeOfDay(entry.timeOfDay) : "") + '</span>' + typeBadge +
+      '<div class="journal-entry-top"><span class="journal-entry-date">' + d.toLocaleDateString(undefined, { weekday:"short", month:"short", day:"numeric" }) + (entry.timeOfDay ? " · " + fmtTimeOfDay(entry.timeOfDay) : "") + '</span>' + typeBadge + srcTagHtml(entry) +
       '<div class="entity-actions">' +
         (noteGetsSentiment(entry) ? '<button class="icon-btn" data-action="analyze-sentiment" data-id="' + entry.id + '" aria-label="Analyze sentiment" title="Analyze sentiment (AI)">✨</button>' : '') +
         // The ✨ button's exact inverse, and mutually exclusive with it: it appears only once the
@@ -24538,6 +24593,174 @@
     else editAction(row.dataset.id);
   });
 
+  /* ================================ Inbox: agent proposals + reports ================================
+     Agents (Agent PgM's bots) talk to the planner through the connector's agent token, which can
+     read but never write: every change arrives here as a proposal carrying the exact columns it
+     would write. Approving performs that write through the same safeInsert/safeUpdate paths every
+     editor uses, stamped with the agent's name (source), its run id and the input's external id —
+     so the row says where it came from forever after ("via Middler"). See migration_agent_hub.sql. */
+  function inboxMapProposal(r){
+    return { id:r.id, agent:r.agent, client:r.client||"", runId:r.run_id||null, externalId:r.external_id||null, kind:r.kind, op:r.op,
+      targetId:r.target_id||null, payload:r.payload||{}, meta:r.meta||{}, summary:r.summary||"", reason:r.reason||"",
+      status:r.status||"pending", resultId:r.result_id||null, decidedAt:r.decided_at||null, createdAt:r.created_at||null };
+  }
+  function inboxMapReport(r){
+    return { id:r.id, agent:r.agent, runId:r.run_id||null, kind:r.kind||"summary", title:r.title||"", bodyMd:r.body_md||"", readAt:r.read_at||null, createdAt:r.created_at||null };
+  }
+  // "via Middler" on anything an agent (or Cowork, as "claude") created.
+  function srcTagHtml(obj){ return obj && obj.source ? '<span class="src-tag" title="created by ' + escapeHtml(obj.source) + '">via ' + escapeHtml(obj.source) + '</span>' : ''; }
+  var activeInboxTab = "proposals";
+  function inboxPending(){ return state.agentProposals.filter(function(p){ return p.status === "pending"; }); }
+  function inboxUnread(){ return state.agentReports.filter(function(r){ return !r.readAt; }); }
+  function renderInboxBadge(){
+    var badge = document.getElementById("inboxNavBadge");
+    if(!badge) return;
+    var n = inboxPending().length + inboxUnread().length;
+    badge.hidden = !n;
+    badge.textContent = n > 99 ? "99+" : String(n);
+  }
+  function inboxAgo(iso){
+    if(!iso) return "";
+    var mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+    if(mins < 1) return "just now";
+    if(mins < 60) return mins + " min ago";
+    if(mins < 60 * 24) return Math.round(mins / 60) + " h ago";
+    return fmtDate(iso.slice(0, 10));
+  }
+  var INBOX_KIND_LABEL = { action:"action", note:"note", event:"event", metric:"tracker", scenario:"scenario" };
+  function inboxProposalHtml(p, decided){
+    var head = '<div class="ib-head"><span class="ib-agent">' + escapeHtml(p.agent) + '</span><span>' + INBOX_KIND_LABEL[p.kind] + ' · ' + p.op + '</span><span>' + inboxAgo(p.createdAt) + '</span>' +
+      (decided ? '<span class="ib-status ' + p.status + '">' + p.status + '</span>' : '') + '</div>';
+    var actions = decided
+      ? (p.status === "rejected" ? '<button class="btn" type="button" data-ib="restore" data-id="' + p.id + '">reconsider</button>'
+        : (p.op === "create" && p.resultId && p.kind !== "metric" ? '<button class="btn" type="button" data-ib="remove" data-id="' + p.id + '" title="Delete what this approval created (goes to trash, Ctrl+Z restores)">remove</button>' : ''))
+      : '<button class="btn" type="button" data-ib="reject" data-id="' + p.id + '">reject</button><button class="btn btn-accent" type="button" data-ib="approve" data-id="' + p.id + '">approve</button>';
+    return '<div class="ib-item">' + head + '<div class="ib-summary">' + escapeHtml(p.summary) + '</div>' +
+      (p.reason ? '<div class="ib-reason">' + escapeHtml(p.reason) + '</div>' : '') +
+      '<div class="ib-actions">' + actions + '</div></div>';
+  }
+  function renderInbox(){
+    if(activeSection !== "inbox") return;
+    var body = document.getElementById("inboxBody");
+    document.querySelectorAll("#inboxTabs .view-tab").forEach(function(t){
+      var k = t.dataset.itab;
+      var n = k === "proposals" ? inboxPending().length : (k === "reports" ? inboxUnread().length : 0);
+      t.textContent = (k === "proposals" ? "to approve" : k) + (n ? " · " + n : "");
+      t.classList.toggle("active", k === activeInboxTab);
+    });
+    if(activeInboxTab === "proposals"){
+      var pending = inboxPending();
+      body.innerHTML = pending.length
+        ? '<div class="ib-toolbar"><button class="btn" type="button" data-ib="approve-all">approve all ' + pending.length + '</button></div><div class="ib-list">' + pending.map(function(p){ return inboxProposalHtml(p, false); }).join("") + '</div>'
+        : '<div class="ib-empty">Nothing waiting. When an agent wants to add or change something, it shows up here first.</div>';
+    } else if(activeInboxTab === "reports"){
+      var reports = state.agentReports;
+      body.innerHTML = reports.length
+        ? (inboxUnread().length ? '<div class="ib-toolbar"><button class="btn" type="button" data-ib="read-all">mark all read</button></div>' : '') +
+          '<div class="ib-list">' + reports.map(function(r){
+            return '<details class="ib-report' + (r.readAt ? '' : ' unread') + '" data-report="' + r.id + '"><summary><span class="ib-report-title">' + escapeHtml(r.title) + '</span>' +
+              '<span class="ib-head"><span class="ib-agent">' + escapeHtml(r.agent) + '</span><span>' + escapeHtml(r.kind) + '</span><span>' + inboxAgo(r.createdAt) + '</span></span></summary>' +
+              '<div class="ib-report-body journal-entry-md">' + (renderNoteBodyHtml(r.bodyMd) || '<span class="panel-hint">empty report</span>') + '</div></details>';
+          }).join("") + '</div>'
+        : '<div class="ib-empty">No reports yet. Briefs, digests and run summaries from your agents land here.</div>';
+    } else {
+      var decided = state.agentProposals.filter(function(p){ return p.status !== "pending"; });
+      body.innerHTML = decided.length
+        ? '<div class="ib-list">' + decided.map(function(p){ return inboxProposalHtml(p, true); }).join("") + '</div>'
+        : '<div class="ib-empty">No decisions yet.</div>';
+    }
+  }
+  var INBOX_TABLE = { action:"actions", note:"journal", event:"events", scenario:"action_scenarios" };
+  // Performs one proposal's write. Returns true on success; leaves the proposal pending on failure
+  // so nothing is marked approved that didn't actually happen.
+  async function inboxApply(p){
+    var res = null, resultId = null;
+    var prov = { source:p.agent, source_run_id:p.runId, external_id:p.externalId };
+    if(p.kind === "metric"){
+      // Through the tracker's own save path, so the Tracker page and undo stay in step.
+      await trackerSaveValue(p.payload.variable_id, p.payload.date, String(p.payload.value));
+    } else if(p.op === "create"){
+      var payload = Object.assign({}, p.payload);
+      if(p.kind === "scenario"){
+        var parent = p.meta.parentScenarioId ? scenarioById(p.meta.parentScenarioId) : null;
+        var pos = scenarioAutoPlace(payload.action_id, parent);
+        payload.x = pos.x; payload.y = pos.y;
+        res = await safeInsert("action_scenarios", payload, state.actionScenarios);
+        if(!res.error && parent){ parent.links = (parent.links || []).concat([res.data.id]); await saveScenarioLinks(parent); }
+      } else {
+        Object.assign(payload, prov);
+        res = p.kind === "note"
+          ? await safeWrite(function(q){ return sb.from("journal").insert(q).select().single(); }, payload)
+          : await safeInsert(INBOX_TABLE[p.kind], payload, p.kind === "action" ? state.actions : state.events);
+      }
+      if(res && !res.error) resultId = res.data.id;
+    } else {
+      res = await safeUpdate(INBOX_TABLE[p.kind], p.targetId, p.op === "complete" ? { done:true } : p.payload);
+      resultId = p.targetId;
+    }
+    if(res && res.error){ dbErrorToast(res.error, "Couldn't apply " + p.agent + "'s change"); return false; }
+    if(res) warnDroppedFields(res.droppedFields);
+    var upd = await safeUpdate("agent_proposals", p.id, { status:"approved", result_id: resultId ? String(resultId) : null, decided_at: new Date().toISOString() });
+    if(upd.error){ console.error(upd.error); toast("Applied, but couldn't mark it approved: " + upd.error.message); }
+    return true;
+  }
+  async function inboxDecide(id, status){
+    var p = state.agentProposals.find(function(x){ return x.id === id; });
+    if(!p) return;
+    var r = await safeUpdate("agent_proposals", id, { status: status, decided_at: status === "pending" ? null : new Date().toISOString() });
+    if(r.error){ dbErrorToast(r.error, "Couldn't update"); return; }
+    p.status = status; p.decidedAt = status === "pending" ? null : new Date().toISOString();
+    renderAll();
+  }
+  async function inboxReload(){ await loadAll(); renderAll(); }
+  document.getElementById("inboxTabs").addEventListener("click", function(e){
+    var t = e.target.closest("[data-itab]");
+    if(!t) return;
+    activeInboxTab = t.dataset.itab;
+    renderInbox();
+  });
+  document.getElementById("inboxBody").addEventListener("click", async function(e){
+    var b = e.target.closest("[data-ib]");
+    if(!b) return;
+    var act = b.dataset.ib, id = b.dataset.id;
+    var p = id ? state.agentProposals.find(function(x){ return x.id === id; }) : null;
+    if(act === "approve" && p){
+      b.disabled = true;
+      if(await inboxApply(p)){ toast("Approved: " + p.summary); await inboxReload(); } else b.disabled = false;
+    } else if(act === "approve-all"){
+      b.disabled = true;
+      var list = inboxPending(), done = 0;
+      for(var i = 0; i < list.length; i++){ if(await inboxApply(list[i])) done++; }
+      toast("Approved " + done + " of " + list.length);
+      await inboxReload();
+    } else if(act === "reject" && p){
+      await inboxDecide(id, "rejected");
+    } else if(act === "restore" && p){
+      await inboxDecide(id, "pending");
+    } else if(act === "remove" && p){
+      // Deletes what the approval created through that kind's own delete handler — trash + Ctrl+Z.
+      var handler = { action: DELETE_HANDLERS.action, note: DELETE_HANDLERS.journal, event: DELETE_HANDLERS.event, scenario: DELETE_HANDLERS.scenario }[p.kind];
+      if(handler && p.resultId) await handler(p.resultId);
+      renderAll();
+    } else if(act === "read-all"){
+      var now = new Date().toISOString();
+      var unread = inboxUnread();
+      for(var j = 0; j < unread.length; j++){ unread[j].readAt = now; await safeUpdate("agent_reports", unread[j].id, { read_at: now }); }
+      renderAll();
+    }
+  });
+  // Opening a report marks it read.
+  document.getElementById("inboxBody").addEventListener("toggle", async function(e){
+    var d = e.target;
+    if(!d || !d.open || !d.dataset || !d.dataset.report) return;
+    var r = state.agentReports.find(function(x){ return x.id === d.dataset.report; });
+    if(!r || r.readAt) return;
+    r.readAt = new Date().toISOString();
+    d.classList.remove("unread");
+    renderInboxBadge();
+    await safeUpdate("agent_reports", r.id, { read_at: r.readAt });
+  }, true);
+
   var SECTION_RENDERERS = {
     home: [renderHomeDashboard],
     agent: [],
@@ -24550,6 +24773,7 @@
     planner: [renderAreas, renderGoals, renderProjects, renderHabits, renderActions, renderEvents, renderCalendar],
     tracker: [renderTracker],
     health: [renderHealth],
+    inbox: [renderInbox],
     timeline: [renderTimeline],
     journal: [renderJournal],
     people: [renderPeople],
@@ -24566,6 +24790,7 @@
   }
   function renderAll(){
     renderStats();
+    renderInboxBadge();
     renderActiveSectionContent();
   }
 })();

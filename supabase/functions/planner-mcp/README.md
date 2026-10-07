@@ -187,6 +187,35 @@ did today and lay out tomorrow"*).
   sampled down (default 300 points) rather than truncated, so a week's data reads as
   a week rather than as one dense afternoon.
 
+## Agents (Agent PgM) — a second, restricted token
+
+Agents connect to the same URL with their own token, `AGENT_TOKEN`, which gets a
+**restricted** tool set:
+
+- **Can read:** agenda, goals, projects, habits, actions, events, notes, people,
+  decisions, places, tracker.
+- **Cannot read:** finance, location history, `list_located_items` (it reveals
+  where people live).
+- **Cannot write directly.** Every change goes through `propose_action`,
+  `propose_event`, `propose_note`, `propose_metric` or `propose_scenario` and lands
+  as a pending proposal in the app's **Inbox** — nothing touches your planner until
+  you press Approve. `post_report` puts a brief/digest/summary in the Inbox.
+- Every proposal carries the agent's name, run id and an `externalId` (e.g. an
+  email's message-id); the same `externalId` is never filed twice.
+- Approved rows remember where they came from (`source`), shown as "via Middler".
+  Things you create through Cowork are tagged `claude`.
+
+Setup:
+
+```bash
+supabase secrets set AGENT_TOKEN="$(openssl rand -hex 32)"
+supabase functions deploy planner-mcp
+```
+
+Revoke agents without touching your own connector: `supabase secrets unset AGENT_TOKEN`
+and redeploy. An `AGENT_TOKEN` equal to `MCP_TOKEN` is ignored. Needs
+`_Memory/migration_agent_hub.sql`.
+
 ## Rotating or revoking access
 
 - **Rotate the token:** `supabase secrets set MCP_TOKEN="<new-token>"`, redeploy,

@@ -38,6 +38,8 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const OWNER = Deno.env.get("OWNER_USER_ID") ?? "";
 const MCP_TOKEN = Deno.env.get("MCP_TOKEN") ?? "";
+// Optional second token for agents (Agent PgM). Unset = agents can't connect at all.
+const AGENT_TOKEN = Deno.env.get("AGENT_TOKEN") ?? "";
 
 const db = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -250,16 +252,40 @@ async function safeWrite(op: (p: Record<string, unknown>) => any, payload: Recor
   return await op(p);
 }
 
-// ---- MCP server ------------------------------------------------------------
-const mcp = new McpServer({
-  name: "personal-planner",
-  version: "1.0.0",
-  schemaAdapter: (schema) => z.toJSONSchema(schema as z.ZodType),
-});
+// ---- MCP servers -----------------------------------------------------------
+// Two servers over the same tool definitions, chosen per request by which token was presented:
+//
+//   mcp       — the OWNER (you, via Cowork / claude.ai). Every tool, including direct writes.
+//   mcpAgent  — AGENTS (Agent PgM's bots, via AGENT_TOKEN). Reads, plus propose_* and
+//               post_report. An agent cannot write to your real lists directly: everything it
+//               wants to change becomes a pending row in agent_proposals that you approve in the
+//               app's Inbox. Finance, location history and anything that reveals where people
+//               live are deliberately not readable with the agent token at all.
+//
+// A separate token also means agents can be revoked (unset AGENT_TOKEN, redeploy) without
+// breaking your own connector.
+const schemaAdapter = (schema: unknown) => z.toJSONSchema(schema as z.ZodType);
+const mcp = new McpServer({ name: "personal-planner", version: "1.1.0", schemaAdapter });
+const mcpAgent = new McpServer({ name: "personal-planner-agents", version: "1.1.0", schemaAdapter });
+
+// Read tools the agent token may use. Everything not listed here is owner-only unless a tool is
+// registered with an explicit audience.
+const AGENT_READABLE = new Set([
+  "get_agenda", "list_goals", "list_projects", "list_habits", "list_actions", "list_events",
+  "list_notes", "list_people", "list_decisions", "get_decision", "list_pois", "get_tracker",
+  "geocode_address",
+]);
+type Audience = "owner" | "agent" | "both";
+// deno-lint-ignore no-explicit-any
+function tool(name: string, def: any, audience?: Audience) {
+  const who = audience || (AGENT_READABLE.has(name) ? "both" : "owner");
+  if (who !== "agent") mcp.tool(name, def);
+  if (who !== "owner") mcpAgent.tool(name, def);
+}
 
 // ============================ READ TOOLS ====================================
 
-mcp.tool("get_agenda", {
+tool("get_agenda", {
   description:
     "The user's plan for one day (defaults to today, server UTC). Returns actions due that day, overdue open actions, undated open actions (backlog), the habits scheduled for that day (with whether each is already done), the events happening that day, and any notes written that day. Start here to understand what's on the user's plate.",
   inputSchema: z.object({
@@ -331,7 +357,7 @@ mcp.tool("get_agenda", {
   },
 });
 
-mcp.tool("list_goals", {
+tool("list_goals", {
   description: "List the user's goals. Optionally filter by area (category).",
   inputSchema: z.object({
     area: z.enum(CATEGORIES).optional().describe("only goals in this area"),
@@ -349,7 +375,7 @@ mcp.tool("list_goals", {
   },
 });
 
-mcp.tool("list_projects", {
+tool("list_projects", {
   description: "List the user's projects. Optionally filter by parent goal id.",
   inputSchema: z.object({
     goalId: z.string().optional().describe("only projects under this goal"),
@@ -368,7 +394,7 @@ mcp.tool("list_projects", {
   },
 });
 
-mcp.tool("list_habits", {
+tool("list_habits", {
   description: "List the user's recurring habits and their schedules.",
   inputSchema: z.object({}),
   handler: async () => {
@@ -383,7 +409,7 @@ mcp.tool("list_habits", {
   },
 });
 
-mcp.tool("list_actions", {
+tool("list_actions", {
   description: "List the user's actions (tasks), most recent first. Filter by done state and/or date range.",
   inputSchema: z.object({
     done: z.boolean().optional().describe("filter by completion state; omit for both"),
@@ -415,11 +441,13 @@ mcp.tool("list_actions", {
       dependencies: a.dependencies || [],
       notes: a.notes_md || "",
       locationAddress: a.location_address || null, lat: a.location_lat, lng: a.location_lng,
+      // null = the user made it; otherwise the agent's name, or "claude" for Cowork.
+      source: a.source || null, externalId: a.external_id || null,
     })));
   },
 });
 
-mcp.tool("list_notes", {
+tool("list_notes", {
   description: "List the user's notes (journal entries), newest first. Optionally filter by date range or a text search.",
   inputSchema: z.object({
     from: z.string().optional().describe("YYYY-MM-DD inclusive lower bound"),
@@ -440,11 +468,12 @@ mcp.tool("list_notes", {
       noteType: n.note_type || "reflection",
       priority: n.priority, timeOfDay: n.time_of_day, sentiment: n.sentiment || [],
       linkedObjects: n.linked_objects || [], recordingId: n.recording_id || null, createdAt: n.created_at || null,
+      source: n.source || null, externalId: n.external_id || null,
     })));
   },
 });
 
-mcp.tool("list_people", {
+tool("list_people", {
   description: "List people in the user's network, with their full profile fields. Optionally filter by relationship or a name search.",
   inputSchema: z.object({
     relationship: z.enum(RELATIONSHIPS).optional(),
@@ -468,7 +497,7 @@ mcp.tool("list_people", {
   },
 });
 
-mcp.tool("get_tracker", {
+tool("get_tracker", {
   description: "The user's self-tracking variables (mood, metrics, habits) and their logged entries over a date range (defaults to the last 14 days).",
   inputSchema: z.object({
     from: z.string().optional().describe("YYYY-MM-DD inclusive lower bound (default: 14 days ago)"),
@@ -493,7 +522,7 @@ mcp.tool("get_tracker", {
   },
 });
 
-mcp.tool("list_events", {
+tool("list_events", {
   description:
     "List the user's events. An event is something that HAPPENS at a time — a meeting, an appointment, a trip — not a task to complete: it has no done state and no priority. Use this (not list_actions) when the user asks what's on their calendar.",
   inputSchema: z.object({
@@ -516,11 +545,12 @@ mcp.tool("list_events", {
       secondaryAreas: e.secondary_categories || [],
       locationAddress: e.location_address || null,
       linkedPeopleIds: e.linked_people_ids || [], notes: e.notes_md || "",
+      source: e.source || null, externalId: e.external_id || null,
     })));
   },
 });
 
-mcp.tool("list_decisions", {
+tool("list_decisions", {
   description:
     "List the actions the user has flagged as DECISIONS — forks they haven't settled yet, each with a canvas of scenarios (plausible futures) weighed against each other. Returns a summary per decision; call get_decision for one decision's full canvas.",
   inputSchema: z.object({}),
@@ -547,7 +577,7 @@ mcp.tool("list_decisions", {
   },
 });
 
-mcp.tool("get_decision", {
+tool("get_decision", {
   description:
     "One decision's full scenario canvas: every scenario with its weighted advantages and disadvantages, its computed net score and rank, and the branching links between them. Weights are 1-5 for HOW MUCH SOMETHING MATTERS, not how likely it is; net score = summed advantages minus summed disadvantages. Scenarios with nothing weighed are reported scored:false and left out of the ranking.",
   inputSchema: z.object({
@@ -590,7 +620,7 @@ mcp.tool("get_decision", {
   },
 });
 
-mcp.tool("list_pois", {
+tool("list_pois", {
   description: "List the user's saved places (points of interest — the named pins on the Location map). Call this before create_place to check whether somewhere is already saved, and to get ids for edit_place.",
   inputSchema: z.object({
     query: z.string().optional().describe("case-insensitive substring match on the place name"),
@@ -607,7 +637,7 @@ mcp.tool("list_pois", {
   },
 });
 
-mcp.tool("list_located_items", {
+tool("list_located_items", {
   description:
     "Everything in the planner that carries a location, in one place: saved places, the actions/habits/events that have an address, and the people with a home location. Use this to answer 'what do I have near X' or 'where is everything'.",
   inputSchema: z.object({
@@ -646,7 +676,7 @@ mcp.tool("list_located_items", {
   },
 });
 
-mcp.tool("get_location_history", {
+tool("get_location_history", {
   description:
     "The user's own recorded position over time (GPS pings from the app's live-location layer and any imported Google Maps Timeline data). Defaults to the last 7 days. Points can be dense, so this samples down to a readable number rather than returning everything.",
   inputSchema: z.object({
@@ -679,7 +709,7 @@ mcp.tool("get_location_history", {
   },
 });
 
-mcp.tool("geocode_address", {
+tool("geocode_address", {
   description:
     "Turn a written address or place name into coordinates, using the same OpenStreetMap geocoder the app's own address box uses. Use it to confirm somewhere before saving it, or when you need coordinates for a tool that takes them. The create/edit tools geocode on their own, so you rarely need to call this first.",
   inputSchema: z.object({
@@ -695,7 +725,7 @@ mcp.tool("geocode_address", {
   },
 });
 
-mcp.tool("get_finance", {
+tool("get_finance", {
   description: "The user's finance accounts with their balances, plus transactions over a date range (defaults to the last 30 days). Amounts are positive for money in, negative for money out.",
   inputSchema: z.object({
     from: z.string().optional().describe("YYYY-MM-DD inclusive lower bound (default: 30 days ago)"),
@@ -733,7 +763,7 @@ mcp.tool("get_finance", {
 // Every insert sets user_id explicitly because the service-role client has no
 // auth.uid() to fall back on for the column default.
 
-mcp.tool("create_goal", {
+tool("create_goal", {
   description: "Create a new goal.",
   inputSchema: z.object({
     title: z.string(),
@@ -753,7 +783,7 @@ mcp.tool("create_goal", {
   },
 });
 
-mcp.tool("edit_goal", {
+tool("edit_goal", {
   description: "Edit an existing goal by id. Only the fields you pass are changed.",
   inputSchema: z.object({
     id: z.string(),
@@ -777,7 +807,7 @@ mcp.tool("edit_goal", {
   },
 });
 
-mcp.tool("create_project", {
+tool("create_project", {
   description: "Create a new project, optionally attached to a goal.",
   inputSchema: z.object({
     title: z.string(),
@@ -797,7 +827,7 @@ mcp.tool("create_project", {
   },
 });
 
-mcp.tool("edit_project", {
+tool("edit_project", {
   description: "Edit an existing project by id. Only the fields you pass are changed.",
   inputSchema: z.object({
     id: z.string(),
@@ -824,7 +854,7 @@ mcp.tool("edit_project", {
   },
 });
 
-mcp.tool("create_habit", {
+tool("create_habit", {
   description: "Create a new recurring habit, optionally attached to a goal. Also creates the linked tracker variable the app uses to record completions.",
   inputSchema: z.object({
     title: z.string(),
@@ -858,7 +888,7 @@ mcp.tool("create_habit", {
   },
 });
 
-mcp.tool("edit_habit", {
+tool("edit_habit", {
   description: "Edit an existing habit by id. Only the fields you pass are changed.",
   inputSchema: z.object({
     id: z.string(),
@@ -896,7 +926,7 @@ mcp.tool("edit_habit", {
   },
 });
 
-mcp.tool("create_action", {
+tool("create_action", {
   description: "Create a new single-shot action (task), optionally attached to a goal or project and scheduled for a date. This is how you 'schedule something' for the user.",
   inputSchema: z.object({
     title: z.string(),
@@ -927,13 +957,14 @@ mcp.tool("create_action", {
       is_milestone: !!args.isMilestone, is_decision: !!args.isDecision,
       notes_md: args.notes || "",
       location_address: place.address, location_lat: place.lat, location_lng: place.lng,
+      source: "claude",
     });
     if (error) return fail(error.message);
     return ok({ ok: true, id: data.id, lat: place.lat, lng: place.lng });
   },
 });
 
-mcp.tool("edit_action", {
+tool("edit_action", {
   description: "Edit an existing action by id (reschedule, rename, re-prioritize, re-parent, mark done). Only the fields you pass are changed.",
   inputSchema: z.object({
     id: z.string(),
@@ -973,7 +1004,7 @@ mcp.tool("edit_action", {
   },
 });
 
-mcp.tool("complete_action", {
+tool("complete_action", {
   description: "Mark an action done (or not done). Convenience wrapper over edit_action.",
   inputSchema: z.object({
     id: z.string(),
@@ -988,7 +1019,7 @@ mcp.tool("complete_action", {
 
 // ---- Events ----------------------------------------------------------------
 
-mcp.tool("create_event", {
+tool("create_event", {
   description:
     "Create an event — something that HAPPENS at a time (a meeting, an appointment, a trip). Use this rather than create_action when there is nothing to complete: an event has no done state and no priority. If the user needs to DO something, that's an action.",
   inputSchema: z.object({
@@ -1011,13 +1042,14 @@ mcp.tool("create_event", {
       category: args.area || null, secondary_categories: args.secondaryAreas || [],
       location_address: place.address, location_lat: place.lat, location_lng: place.lng,
       linked_people_ids: args.linkedPeopleIds || [], notes_md: args.notes || "",
+      source: "claude",
     });
     if (error) return fail(error.message + " (has migration_events.sql been run?)");
     return ok({ ok: true, id: data.id, lat: place.lat, lng: place.lng });
   },
 });
 
-mcp.tool("edit_event", {
+tool("edit_event", {
   description: "Edit an existing event by id (reschedule, rename, move). Only the fields you pass are changed.",
   inputSchema: z.object({
     id: z.string(),
@@ -1061,7 +1093,7 @@ mcp.tool("edit_event", {
 
 // ---- Decisions and their scenarios -----------------------------------------
 
-mcp.tool("set_action_decision", {
+tool("set_action_decision", {
   description:
     "Flag an action as a DECISION (or clear the flag), which gives it a scenario canvas in the app. Turning it off only hides the canvas — the scenarios are kept, and turning it back on restores them.",
   inputSchema: z.object({
@@ -1078,7 +1110,7 @@ mcp.tool("set_action_decision", {
   },
 });
 
-mcp.tool("create_scenario", {
+tool("create_scenario", {
   description:
     "Add a scenario — one plausible future — to an action that's flagged as a decision. Weight each advantage and disadvantage 1-5 by HOW MUCH IT MATTERS, not how likely it is; the app ranks the branches by advantages minus disadvantages. Pass parentScenarioId to grow a branch from an existing scenario, which also draws the arrow between them. Placement on the canvas is automatic.",
   inputSchema: z.object({
@@ -1125,7 +1157,7 @@ mcp.tool("create_scenario", {
   },
 });
 
-mcp.tool("edit_scenario", {
+tool("edit_scenario", {
   description:
     "Edit a scenario by id. Only the fields you pass are changed. Passing advantages or disadvantages REPLACES that whole list — read it back with get_decision first if you mean to add one entry rather than start over.",
   inputSchema: z.object({
@@ -1148,7 +1180,7 @@ mcp.tool("edit_scenario", {
   },
 });
 
-mcp.tool("link_scenarios", {
+tool("link_scenarios", {
   description:
     "Draw or remove a branching arrow between two scenarios of the same decision — 'this path leads to that one'. Refuses links that would close the hierarchy into a loop, the same guard the app applies.",
   inputSchema: z.object({
@@ -1183,7 +1215,7 @@ mcp.tool("link_scenarios", {
   },
 });
 
-mcp.tool("add_note", {
+tool("add_note", {
   description: "Add a new note (journal entry). Defaults the date to today.",
   inputSchema: z.object({
     text: z.string(),
@@ -1200,14 +1232,14 @@ mcp.tool("add_note", {
       user_id: OWNER, date: args.date || todayUTC(), text: args.text,
       title: args.title || null, priority: args.priority || null,
       categories: args.areas || [], note_type: args.noteType || "reflection",
-      time_of_day: args.timeOfDay || null,
+      time_of_day: args.timeOfDay || null, source: "claude",
     });
     if (error) return fail(error.message);
     return ok({ ok: true, id: data.id });
   },
 });
 
-mcp.tool("edit_note", {
+tool("edit_note", {
   description: "Edit an existing note (journal entry) by id. Only the fields you pass are changed. (Sentiment tags and note-tag links are managed by the app and left untouched.)",
   inputSchema: z.object({
     id: z.string(),
@@ -1235,7 +1267,7 @@ mcp.tool("edit_note", {
   },
 });
 
-mcp.tool("create_person", {
+tool("create_person", {
   description: "Add a new person to the user's network.",
   inputSchema: z.object({
     name: z.string(),
@@ -1254,7 +1286,7 @@ mcp.tool("create_person", {
   },
 });
 
-mcp.tool("edit_person", {
+tool("edit_person", {
   description: "Edit an existing person by id. Only the fields you pass are changed.",
   inputSchema: z.object({
     id: z.string(),
@@ -1277,7 +1309,7 @@ mcp.tool("edit_person", {
   },
 });
 
-mcp.tool("log_metric", {
+tool("log_metric", {
   description: "Record a self-tracking value for a date (mood, weight, a habit's completion, etc.). The variable must already exist — call get_tracker to see available variables and their ids. Upserts, so re-logging the same day overwrites.",
   inputSchema: z.object({
     variableId: z.string().describe("id of an existing tracker variable (from get_tracker)"),
@@ -1295,7 +1327,7 @@ mcp.tool("log_metric", {
   },
 });
 
-mcp.tool("create_place", {
+tool("create_place", {
   description:
     "Save a place — a named pin on the user's Location map. Give it an `address` and it's geocoded for you; pass `lat`/`lng` instead only if you already know the exact coordinates. Never guess coordinates: pass the address and let the server resolve it.",
   inputSchema: z.object({
@@ -1319,7 +1351,7 @@ mcp.tool("create_place", {
   },
 });
 
-mcp.tool("edit_place", {
+tool("edit_place", {
   description:
     "Edit a saved place by id — rename it, move it, or change its notes. Only the fields you pass are changed. Passing `address` re-geocodes and moves the pin; passing `lat`/`lng` moves it to exactly those coordinates.",
   inputSchema: z.object({
@@ -1351,7 +1383,7 @@ mcp.tool("edit_place", {
   },
 });
 
-mcp.tool("set_item_location", {
+tool("set_item_location", {
   description:
     "Attach a location to an action, habit, event, or person (a person's is their home). Give an `address` and it's geocoded; pass `lat`/`lng` only if you already know them. Pass `clear: true` to remove the location instead.",
   inputSchema: z.object({
@@ -1388,7 +1420,7 @@ mcp.tool("set_item_location", {
   },
 });
 
-mcp.tool("log_transaction", {
+tool("log_transaction", {
   description:
     "Record a finance transaction against an existing account. Amount is POSITIVE for money in and NEGATIVE for money out — a €12 lunch is -12. Call get_finance first for account ids.",
   inputSchema: z.object({
@@ -1413,9 +1445,343 @@ mcp.tool("log_transaction", {
   },
 });
 
+// ============================ AGENT HUB =====================================
+// Everything an agent wants to change is filed as a proposal: a pending row carrying the exact
+// columns the write would make (`payload`) plus one human-readable line (`summary`). You approve
+// or reject it in the app's Inbox; the app performs the write and stamps the result with the
+// agent's name, run id and external id. Nothing here touches actions/journal/events directly.
+//
+// Every proposal tool shares the same envelope:
+//   agent       the bot's name as you'll see it in the Inbox ("Middler", "Briefer")
+//   runId       the agent run that produced it — lets you trace a change back to its report
+//   externalId  a stable id for the INPUT (an email message-id, a calendar UID). The same
+//               externalId is never filed twice: a repeat returns {duplicate:true} with the
+//               first proposal's status, so re-running a bot over the same inbox is harmless.
+//   reason      one sentence on why — shown under the summary in the Inbox
+const AGENT_ENVELOPE = {
+  agent: z.string().min(1).describe("the bot's name as it should appear in the user's Inbox, e.g. 'Middler'"),
+  runId: z.string().optional().describe("id of the agent run that produced this"),
+  externalId: z.string().optional().describe("stable id of the source item (email message-id, calendar UID…) — the same id is never filed twice"),
+  reason: z.string().optional().describe("one sentence on why, shown to the user"),
+};
+const PROPOSAL_HINT = " (has migration_agent_hub.sql been run?)";
+function fmtDay(d?: string | null): string {
+  if (!d) return "no date";
+  // Parsed AND printed in UTC. Parsing "YYYY-MM-DDT00:00:00" without the Z reads local midnight,
+  // which toUTCString then shows as the previous day anywhere east of UTC.
+  const dt = new Date(d + "T00:00:00Z");
+  return isNaN(dt.getTime()) ? d : dt.toUTCString().slice(0, 11).replace(",", "");
+}
+async function fileProposal(p: {
+  agent: string; runId?: string; externalId?: string; reason?: string;
+  kind: string; op: string; targetId?: string | null;
+  payload: Record<string, unknown>; meta?: Record<string, unknown>; summary: string;
+}) {
+  if (p.externalId) {
+    const dup = await owned("agent_proposals").eq("external_id", p.externalId).maybeSingle();
+    if (dup.error) return fail(dup.error.message + PROPOSAL_HINT);
+    if (dup.data) {
+      return ok({ duplicate: true, proposalId: dup.data.id, status: dup.data.status, summary: dup.data.summary });
+    }
+  }
+  const { data, error } = await db.from("agent_proposals").insert({
+    user_id: OWNER, agent: p.agent, client: "agent-pgm", run_id: p.runId || null,
+    external_id: p.externalId || null, kind: p.kind, op: p.op, target_id: p.targetId || null,
+    payload: p.payload, meta: p.meta || {}, summary: p.summary, reason: p.reason || null,
+  }).select().single();
+  if (error) {
+    // Lost a race with an identical externalId filed a moment earlier — same answer as above.
+    if ((error as { code?: string }).code === "23505") return ok({ duplicate: true, externalId: p.externalId });
+    return fail(error.message + PROPOSAL_HINT);
+  }
+  return ok({ ok: true, proposalId: data.id, status: "pending", summary: p.summary });
+}
+async function targetTitle(table: string, id: string, col = "title"): Promise<string | null> {
+  const r = await owned(table).eq("id", id).maybeSingle();
+  return r.data ? String(r.data[col] ?? "") : null;
+}
+
+tool("propose_action", {
+  description:
+    "Propose creating, editing or completing an ACTION (a task the user will do). Nothing changes until the user approves it in their Inbox. op=create needs title; op=edit/complete need actionId (from list_actions). For something that simply happens at a time — a meeting, an appointment — use propose_event instead.",
+  inputSchema: z.object({
+    ...AGENT_ENVELOPE,
+    op: z.enum(["create", "edit", "complete"]),
+    actionId: z.string().optional().describe("required for edit / complete"),
+    title: z.string().optional(),
+    priority: z.enum(PRIORITIES).optional().describe("defaults to P2 on create"),
+    type: z.enum(ACTION_TYPES).optional(),
+    parentType: z.enum(["goal", "project", "none"]).optional(),
+    parentId: z.string().optional(),
+    date: z.string().optional().describe("YYYY-MM-DD; empty string clears it on edit"),
+    timeOfDay: z.string().optional().describe("HH:MM 24h"),
+    durationMinutes: z.number().optional(),
+    area: z.enum(CATEGORIES).optional(),
+    notes: z.string().optional(),
+    location: z.string().optional().describe("address or place name — geocoded now, so the Inbox shows where it resolved"),
+  }),
+  handler: async (args: any) => {
+    if (args.op === "create") {
+      if (!args.title) return fail("title is required to create an action");
+      const place = await resolvePlace({ address: args.location });
+      if (place.error) return fail(place.error);
+      const pt = args.parentType || "none";
+      const payload = {
+        title: args.title, priority: args.priority || "P2", type: args.type || "Task",
+        parent_type: pt, parent_id: pt === "none" ? null : (args.parentId || null),
+        date: args.date || null, time_of_day: args.timeOfDay || null,
+        duration_minutes: args.durationMinutes || null, category: args.area || null,
+        notes_md: args.notes || "", done: false,
+        location_address: place.address, location_lat: place.lat, location_lng: place.lng,
+      };
+      return fileProposal({ ...args, kind: "action", op: "create", payload,
+        summary: `New action: "${args.title}" · ${fmtDay(args.date)}${args.timeOfDay ? " " + args.timeOfDay : ""}` });
+    }
+    if (!args.actionId) return fail("actionId is required for " + args.op);
+    const title = await targetTitle("actions", args.actionId);
+    if (title === null) return fail("no action with id " + args.actionId);
+    if (args.op === "complete") {
+      return fileProposal({ ...args, kind: "action", op: "complete", targetId: args.actionId,
+        payload: { done: true }, summary: `Complete "${title}"` });
+    }
+    const patch: Record<string, unknown> = {};
+    const changed: string[] = [];
+    const set = (col: string, val: unknown, label: string) => { patch[col] = val; changed.push(label); };
+    if (args.title !== undefined) set("title", args.title, `title → "${args.title}"`);
+    if (args.priority !== undefined) set("priority", args.priority, `priority → ${args.priority}`);
+    if (args.type !== undefined) set("type", args.type, `type → ${args.type}`);
+    if (args.parentType !== undefined) {
+      set("parent_type", args.parentType, `parent → ${args.parentType}`);
+      patch.parent_id = args.parentType === "none" ? null : (args.parentId || null);
+    }
+    if (args.date !== undefined) set("date", args.date || null, `date → ${args.date ? fmtDay(args.date) : "none"}`);
+    if (args.timeOfDay !== undefined) set("time_of_day", args.timeOfDay || null, `time → ${args.timeOfDay || "none"}`);
+    if (args.durationMinutes !== undefined) set("duration_minutes", args.durationMinutes, `duration → ${args.durationMinutes} min`);
+    if (args.area !== undefined) set("category", args.area, `area → ${args.area}`);
+    if (args.notes !== undefined) set("notes_md", args.notes, "notes");
+    if (args.location !== undefined) {
+      const place = await resolvePlace({ address: args.location });
+      if (place.error) return fail(place.error);
+      patch.location_address = place.address; patch.location_lat = place.lat; patch.location_lng = place.lng;
+      changed.push(`location → ${args.location || "none"}`);
+    }
+    if (!changed.length) return fail("nothing to change — pass at least one field");
+    return fileProposal({ ...args, kind: "action", op: "edit", targetId: args.actionId, payload: patch,
+      summary: `Edit "${title}": ${changed.join(", ")}` });
+  },
+}, "agent");
+
+tool("propose_event", {
+  description:
+    "Propose creating or editing an EVENT — something that happens at a time (meeting, appointment, trip), with no done state. Calendar entries belong here, not in propose_action. Nothing changes until the user approves it.",
+  inputSchema: z.object({
+    ...AGENT_ENVELOPE,
+    op: z.enum(["create", "edit"]),
+    eventId: z.string().optional().describe("required for edit"),
+    title: z.string().optional(),
+    date: z.string().optional().describe("YYYY-MM-DD"),
+    timeOfDay: z.string().optional().describe("HH:MM 24h"),
+    durationMinutes: z.number().optional(),
+    area: z.enum(CATEGORIES).optional(),
+    location: z.string().optional().describe("address or place name — geocoded now"),
+    linkedPeopleIds: z.array(z.string()).optional().describe("ids from list_people"),
+    notes: z.string().optional(),
+  }),
+  handler: async (args: any) => {
+    const place = args.location !== undefined ? await resolvePlace({ address: args.location }) : null;
+    if (place && place.error) return fail(place.error);
+    if (args.op === "create") {
+      if (!args.title) return fail("title is required to create an event");
+      const payload = {
+        title: args.title, date: args.date || null, time_of_day: args.timeOfDay || null,
+        duration_minutes: args.durationMinutes || null, category: args.area || null,
+        secondary_categories: [], linked_people_ids: args.linkedPeopleIds || [], notes_md: args.notes || "",
+        location_address: place ? place.address : null, location_lat: place ? place.lat : null, location_lng: place ? place.lng : null,
+      };
+      return fileProposal({ ...args, kind: "event", op: "create", payload,
+        summary: `New event: "${args.title}" · ${fmtDay(args.date)}${args.timeOfDay ? " " + args.timeOfDay : ""}` });
+    }
+    if (!args.eventId) return fail("eventId is required for edit");
+    const title = await targetTitle("events", args.eventId);
+    if (title === null) return fail("no event with id " + args.eventId);
+    const patch: Record<string, unknown> = {};
+    const changed: string[] = [];
+    if (args.title !== undefined) { patch.title = args.title; changed.push(`title → "${args.title}"`); }
+    if (args.date !== undefined) { patch.date = args.date || null; changed.push(`date → ${fmtDay(args.date)}`); }
+    if (args.timeOfDay !== undefined) { patch.time_of_day = args.timeOfDay || null; changed.push(`time → ${args.timeOfDay || "none"}`); }
+    if (args.durationMinutes !== undefined) { patch.duration_minutes = args.durationMinutes; changed.push(`duration → ${args.durationMinutes} min`); }
+    if (args.area !== undefined) { patch.category = args.area; changed.push(`area → ${args.area}`); }
+    if (args.linkedPeopleIds !== undefined) { patch.linked_people_ids = args.linkedPeopleIds; changed.push("people"); }
+    if (args.notes !== undefined) { patch.notes_md = args.notes; changed.push("notes"); }
+    if (place) {
+      patch.location_address = place.address; patch.location_lat = place.lat; patch.location_lng = place.lng;
+      changed.push(`location → ${args.location || "none"}`);
+    }
+    if (!changed.length) return fail("nothing to change — pass at least one field");
+    return fileProposal({ ...args, kind: "event", op: "edit", targetId: args.eventId, payload: patch,
+      summary: `Edit event "${title}": ${changed.join(", ")}` });
+  },
+}, "agent");
+
+tool("propose_note", {
+  description:
+    "Propose adding a NOTE (journal entry) or editing one. Use noteType 'reference' for facts and summaries an agent gathered — only 'reflection' notes are treated as the user's own mood. Nothing changes until the user approves it.",
+  inputSchema: z.object({
+    ...AGENT_ENVELOPE,
+    op: z.enum(["create", "edit"]),
+    noteId: z.string().optional().describe("required for edit"),
+    text: z.string().optional(),
+    title: z.string().optional(),
+    date: z.string().optional().describe("YYYY-MM-DD; defaults to today on create"),
+    areas: z.array(z.enum(CATEGORIES)).optional(),
+    noteType: z.enum(NOTE_TYPES).optional().describe("defaults to 'reference' for agent notes"),
+    priority: z.enum(PRIORITIES).optional(),
+    timeOfDay: z.string().optional(),
+  }),
+  handler: async (args: any) => {
+    if (args.op === "create") {
+      if (!args.text) return fail("text is required to create a note");
+      const payload = {
+        text: args.text, title: args.title || null, date: args.date || todayUTC(),
+        categories: args.areas || [], note_type: args.noteType || "reference",
+        priority: args.priority || null, time_of_day: args.timeOfDay || null,
+      };
+      const label = args.title || String(args.text).slice(0, 60);
+      return fileProposal({ ...args, kind: "note", op: "create", payload, summary: `New note: "${label}"` });
+    }
+    if (!args.noteId) return fail("noteId is required for edit");
+    const r = await owned("journal").eq("id", args.noteId).maybeSingle();
+    if (!r.data) return fail("no note with id " + args.noteId);
+    const patch: Record<string, unknown> = {};
+    if (args.text !== undefined) patch.text = args.text;
+    if (args.title !== undefined) patch.title = args.title || null;
+    if (args.date !== undefined) patch.date = args.date;
+    if (args.areas !== undefined) patch.categories = args.areas;
+    if (args.noteType !== undefined) patch.note_type = args.noteType;
+    if (args.priority !== undefined) patch.priority = args.priority;
+    if (args.timeOfDay !== undefined) patch.time_of_day = args.timeOfDay || null;
+    if (!Object.keys(patch).length) return fail("nothing to change — pass at least one field");
+    const label = r.data.title || String(r.data.text || "").slice(0, 40);
+    return fileProposal({ ...args, kind: "note", op: "edit", targetId: args.noteId, payload: patch,
+      summary: `Edit note "${label}": ${Object.keys(patch).join(", ")}` });
+  },
+}, "agent");
+
+tool("propose_metric", {
+  description:
+    "Propose logging a tracker value for a day (weight, steps, a habit's completion…). The variable must exist — see get_tracker for ids. Re-logging the same day overwrites once approved.",
+  inputSchema: z.object({
+    ...AGENT_ENVELOPE,
+    variableId: z.string(),
+    value: z.string().describe('the value as text, e.g. "7400" or "true"'),
+    date: z.string().optional().describe("YYYY-MM-DD; defaults to today"),
+  }),
+  handler: async (args: any) => {
+    const v = await owned("tracker_variables").eq("id", args.variableId).maybeSingle();
+    if (!v.data) return fail("no tracker variable with id " + args.variableId);
+    const date = args.date || todayUTC();
+    return fileProposal({ ...args, kind: "metric", op: "create",
+      payload: { date, variable_id: args.variableId, value: args.value },
+      summary: `Log ${v.data.name}: ${args.value}${v.data.unit ? " " + v.data.unit : ""} on ${fmtDay(date)}` });
+  },
+}, "agent");
+
+tool("propose_scenario", {
+  description:
+    "Propose adding a scenario (one plausible future) to a decision — an action flagged as a decision, see list_decisions. Weight advantages/disadvantages 1-5 by how much they MATTER. Pass parentScenarioId to branch from an existing scenario. Placed on the canvas when approved.",
+  inputSchema: z.object({
+    ...AGENT_ENVELOPE,
+    actionId: z.string().describe("the decision's action id"),
+    title: z.string(),
+    notes: z.string().optional(),
+    advantages: z.array(WEIGHT_ENTRY).optional(),
+    disadvantages: z.array(WEIGHT_ENTRY).optional(),
+    parentScenarioId: z.string().optional(),
+  }),
+  handler: async (args: any) => {
+    const decision = await targetTitle("actions", args.actionId);
+    if (decision === null) return fail("no action with id " + args.actionId);
+    if (args.parentScenarioId) {
+      const parent = await owned("action_scenarios").eq("id", args.parentScenarioId).maybeSingle();
+      if (!parent.data || parent.data.action_id !== args.actionId) return fail("parentScenarioId must be a scenario of the same decision");
+    }
+    const payload = {
+      action_id: args.actionId, title: args.title, notes: args.notes || "",
+      advantages: normalizeWeights(args.advantages), disadvantages: normalizeWeights(args.disadvantages), links: [],
+    };
+    return fileProposal({ ...args, kind: "scenario", op: "create", payload,
+      meta: { parentScenarioId: args.parentScenarioId || null },
+      summary: `New scenario for "${decision}": "${args.title}" (net ${scenarioNetScore(payload) >= 0 ? "+" : ""}${scenarioNetScore(payload)})` });
+  },
+}, "agent");
+
+tool("post_report", {
+  description:
+    "Post a report to the user's Inbox — a morning brief, a digest, a run summary, or an alert. Markdown body. Reports are informational and need no approval; to change the planner, use the propose_* tools.",
+  inputSchema: z.object({
+    agent: AGENT_ENVELOPE.agent,
+    runId: AGENT_ENVELOPE.runId,
+    kind: z.enum(["brief", "digest", "summary", "alert"]).optional().describe("defaults to summary"),
+    title: z.string(),
+    body: z.string().describe("Markdown"),
+  }),
+  handler: async (args: any) => {
+    const { data, error } = await db.from("agent_reports").insert({
+      user_id: OWNER, agent: args.agent, client: "agent-pgm", run_id: args.runId || null,
+      kind: args.kind || "summary", title: args.title, body_md: args.body,
+    }).select().single();
+    if (error) return fail(error.message + PROPOSAL_HINT);
+    return ok({ ok: true, reportId: data.id });
+  },
+}, "agent");
+
+tool("list_proposals", {
+  description:
+    "Proposals agents have filed and what the user decided. Agents: check this before re-proposing, and learn from what gets rejected.",
+  inputSchema: z.object({
+    status: z.enum(["pending", "approved", "rejected"]).optional(),
+    agent: z.string().optional(),
+    limit: z.number().optional().describe("max rows (default 50)"),
+  }),
+  handler: async (args: { status?: string; agent?: string; limit?: number }) => {
+    let q = owned("agent_proposals").order("created_at", { ascending: false });
+    if (args.status) q = q.eq("status", args.status);
+    if (args.agent) q = q.eq("agent", args.agent);
+    q = q.limit(args.limit && args.limit > 0 ? args.limit : 50);
+    const { data, error } = await q;
+    if (error) return fail(error.message + PROPOSAL_HINT);
+    return ok((data || []).map((p) => ({
+      id: p.id, agent: p.agent, kind: p.kind, op: p.op, summary: p.summary, reason: p.reason,
+      status: p.status, externalId: p.external_id, runId: p.run_id, resultId: p.result_id,
+      createdAt: p.created_at, decidedAt: p.decided_at,
+    })));
+  },
+}, "both");
+
+tool("list_agent_reports", {
+  description: "Reports agents have posted to the Inbox — briefs, digests, run summaries, alerts — newest first.",
+  inputSchema: z.object({
+    agent: z.string().optional(),
+    unreadOnly: z.boolean().optional(),
+    limit: z.number().optional().describe("max rows (default 20)"),
+  }),
+  handler: async (args: { agent?: string; unreadOnly?: boolean; limit?: number }) => {
+    let q = owned("agent_reports").order("created_at", { ascending: false });
+    if (args.agent) q = q.eq("agent", args.agent);
+    if (args.unreadOnly) q = q.is("read_at", null);
+    q = q.limit(args.limit && args.limit > 0 ? args.limit : 20);
+    const { data, error } = await q;
+    if (error) return fail(error.message + PROPOSAL_HINT);
+    return ok((data || []).map((r) => ({
+      id: r.id, agent: r.agent, kind: r.kind, title: r.title, body: r.body_md,
+      runId: r.run_id, read: !!r.read_at, createdAt: r.created_at,
+    })));
+  },
+}, "both");
+
 // ---- HTTP wiring -----------------------------------------------------------
-const transport = new StreamableHttpTransport();
-const httpHandler = transport.bind(mcp);
+const httpHandler = new StreamableHttpTransport().bind(mcp);
+const agentHttpHandler = new StreamableHttpTransport().bind(mcpAgent);
 
 const app = new Hono();
 
@@ -1427,17 +1793,21 @@ const app = new Hono();
 //      — the most robust option, because some clients (the claude.ai web connector
 //      appears to be one) drop the query string when they call the endpoint, but the
 //      URL PATH is always preserved. If MCP_TOKEN isn't set, fail closed.
-function authorized(req: Request): boolean {
-  if (!MCP_TOKEN) return false;
+// The same three places carry AGENT_TOKEN, which gets the restricted agent server instead.
+// An AGENT_TOKEN identical to MCP_TOKEN is ignored rather than honoured: it would make the
+// "restricted" token the owner token, which is exactly the mistake a second token exists to stop.
+function tokenRole(req: Request): "owner" | "agent" | null {
   const url = new URL(req.url);
   const header = req.headers.get("authorization") || "";
-  const headerToken = header.replace(/^Bearer\s+/i, "").trim();
-  if (headerToken && headerToken === MCP_TOKEN) return true;
-  const queryToken = url.searchParams.get("token");
-  if (queryToken && queryToken === MCP_TOKEN) return true;
   const pathMatch = url.pathname.match(/\/([^/]+)\/mcp$/);
-  if (pathMatch && pathMatch[1] === MCP_TOKEN) return true;
-  return false;
+  const presented = [
+    header.replace(/^Bearer\s+/i, "").trim(),
+    url.searchParams.get("token") || "",
+    pathMatch ? pathMatch[1] : "",
+  ].filter(Boolean);
+  if (MCP_TOKEN && presented.includes(MCP_TOKEN)) return "owner";
+  if (AGENT_TOKEN && AGENT_TOKEN !== MCP_TOKEN && presented.includes(AGENT_TOKEN)) return "agent";
+  return null;
 }
 
 // Path-agnostic routing. Depending on the Supabase runtime version, the Hono app
@@ -1448,9 +1818,10 @@ function authorized(req: Request): boolean {
 app.all("*", async (c) => {
   const pathname = new URL(c.req.url).pathname;
   if (pathname.endsWith("/mcp")) {
-    if (!authorized(c.req.raw)) return c.json({ error: "unauthorized" }, 401);
+    const role = tokenRole(c.req.raw);
+    if (!role) return c.json({ error: "unauthorized" }, 401);
     if (!OWNER) return c.json({ error: "server not configured: OWNER_USER_ID is unset" }, 500);
-    return await httpHandler(c.req.raw);
+    return await (role === "agent" ? agentHttpHandler : httpHandler)(c.req.raw);
   }
   // Health check ONLY at the function root. Everything else — crucially the OAuth
   // discovery probes an MCP client fires on connect (/.well-known/oauth-protected-
@@ -1467,6 +1838,7 @@ app.all("*", async (c) => {
       endpoint: ".../functions/v1/planner-mcp/mcp",
       ownerConfigured: !!OWNER,
       tokenConfigured: !!MCP_TOKEN,
+      agentTokenConfigured: !!AGENT_TOKEN && AGENT_TOKEN !== MCP_TOKEN,
     });
   }
   return c.json({ error: "not found" }, 404);
