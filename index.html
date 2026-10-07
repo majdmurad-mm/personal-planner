@@ -2182,6 +2182,10 @@
   /* Seven tabs now — let them wrap instead of overflowing on narrow screens. */
   #plannerTabs{ flex-wrap:wrap; }
 
+  /* Paused habits (habits.paused_at): kept, not scheduled — dimmed, with a quiet tag. */
+  .habit-paused{ opacity:.6; }
+  .habit-paused-tag{ font-family:var(--mono); font-size:10px; letter-spacing:.05em; text-transform:uppercase; color:var(--text-dim); border:1px dashed var(--border-bright); border-radius:999px; padding:0 7px; }
+
   /* ===== Markdown note bodies ===== */
   /* Scoped tightly to .journal-entry-md so markdown typography can't leak into other card text.
      Sized down from document defaults — these live inside compact cards, not an article page. */
@@ -2701,6 +2705,7 @@
           <button class="filter-chip" data-filter="daily" type="button">daily</button>
           <button class="filter-chip" data-filter="weekly" type="button">weekly</button>
           <button class="filter-chip" data-filter="monthly" type="button">monthly</button>
+          <button class="filter-chip" data-filter="paused" type="button">paused</button>
         </div>
         <div class="entity-list" id="habitList"></div>
         <div class="empty-state" id="habitEmptyState" style="display:none;">
@@ -5374,7 +5379,7 @@
     state.projects = (results[1].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), categories:r.categories||[], planJson:r.plan_json||null, notesMd:r.notes_md||"", linkedPeopleIds:r.linked_people_ids||[], filesSlug:r.files_slug||"" }; });
     state.projects.sort(function(a,b){ return a.position - b.position; });
     state.habits = (results[2].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, frequency:r.frequency, weekdays:r.weekdays || [], trackerVariableId:r.tracker_variable_id || null, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, days:r.days || {}, position:r.position||0, createdAt:r.created_at ? r.created_at.slice(0,10) : null, skipDates:r.skip_dates || [], extraDates:r.extra_dates || [], customIntervalDays:r.custom_interval_days||null, monthDay:r.month_day||null, icon:r.icon||null, instanceOverrides:r.instance_overrides || {},
-      locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), linkedPeopleIds:r.linked_people_ids||[] }; });
+      locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), linkedPeopleIds:r.linked_people_ids||[], pausedAt:r.paused_at||null }; });
     state.habits.sort(function(a,b){ return a.position - b.position; });
     state.actions = (results[3].data || []).map(function(r){ return { id:r.id, parentType:r.parent_type, parentId:r.parent_id, title:r.title, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null, secondaryCategories:r.secondary_categories || [], isMilestone:!!r.is_milestone, isDecision:!!r.is_decision,
       locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), notesMd:r.notes_md||"", dependencies:r.dependencies||[], linkedPeopleIds:r.linked_people_ids||[], source:r.source||null, externalId:r.external_id||null }; });
@@ -8255,6 +8260,10 @@
   // what "delete" means for a single day's instance shown on Today/Timeline, as opposed to deleting
   // the habit itself from the Planner tab.
   function habitOccursOnDate(h, dateStr){
+    // Paused (habits.paused_at): the habit's pattern is kept so it can be resumed, but it occurs on
+    // no date at all — so it vanishes from Today, the timelines, the home dock, the agenda and the
+    // day-end auto-completion, all of which ask this one function.
+    if(h.pausedAt) return false;
     // A deliberate skip always wins; a deliberate manual add (see scheduleHabitInstance, from the
     // Tracker page's press-and-hold gesture) forces an instance to exist on that date regardless of
     // the habit's own repetition pattern or how far outside its normal schedule the date falls.
@@ -8550,7 +8559,7 @@
   }
   function habitPayload(snapshot){
     return { id:snapshot.id, goal_id:snapshot.goalId, secondary_goal_ids:snapshot.secondaryGoalIds, title:snapshot.title, priority:snapshot.priority, frequency:snapshot.frequency, weekdays:snapshot.weekdays, tracker_variable_id:snapshot.trackerVariableId, time_of_day:snapshot.timeOfDay, duration_minutes:snapshot.durationMinutes, days:snapshot.days, position:snapshot.position, skip_dates:snapshot.skipDates, extra_dates:snapshot.extraDates, created_at:snapshot.createdAt, custom_interval_days:snapshot.customIntervalDays, icon:snapshot.icon, instance_overrides:snapshot.instanceOverrides || {},
-      location_address:snapshot.locationAddress, location_lat:snapshot.locationLat, location_lng:snapshot.locationLng };
+      location_address:snapshot.locationAddress, location_lat:snapshot.locationLat, location_lng:snapshot.locationLng, paused_at:snapshot.pausedAt || null };
   }
   function trackerVarPayload(snapshot){
     return { id:snapshot.id, name:snapshot.name, type:snapshot.type, unit:snapshot.unit, scale_max:snapshot.scaleMax, categories:snapshot.categories, position:snapshot.position };
@@ -9821,6 +9830,7 @@
     var head = ganttHeadHtml(start, days, today);
     var rows = "";
     state.habits.forEach(function(h){
+      if(h.pausedAt) return;
       var cat = habitCategory(h);
       var ticks = "";
       for(var i = 0; i < days; i++){
@@ -10873,12 +10883,17 @@
     var f = filters.habits;
     var today = todayStr();
     var list = state.habits.filter(function(h){
+      if(f === "paused") return !!h.pausedAt;
       if(f === "all") return true;
+      // "today"-based filters only make sense for habits that are still being scheduled
+      if(h.pausedAt) return false;
       if(f === "today") return habitDoneForDate(h, today);
       if(f === "pending") return !habitDoneForDate(h, today);
       if(f === "daily" || f === "weekly" || f === "monthly") return h.frequency === f;
       return true;
     });
+    // Paused habits sink below the active ones (stable sort keeps the user's own order within each).
+    list = list.slice().sort(function(a, b){ return (a.pausedAt ? 1 : 0) - (b.pausedAt ? 1 : 0); });
     if(views.habits === "matrix") renderHabitsMatrix(list); else renderHabitsList(list);
     document.getElementById("habitEmptyState").style.display = list.length ? "none" : "";
   }
@@ -10888,16 +10903,18 @@
     var streak = habitStreak(h);
     var on = habitDoneForDate(h, today);
     var cat = habitCategory(h);
-    return '<div class="ms-tile' + (cat ? ' ' + cat : '') + '" data-kind="habit" data-id="' + h.id + '">' +
+    var paused = !!h.pausedAt;
+    return '<div class="ms-tile' + (cat ? ' ' + cat : '') + (paused ? ' habit-paused' : '') + '" data-kind="habit" data-id="' + h.id + '">' +
       '<div class="ms-tile-top">' +
-        '<button class="ms-check' + (on?' done':'') + '" data-action="toggle-habit-today" data-id="' + h.id + '" aria-label="Toggle today"></button>' +
+        (paused ? '' : '<button class="ms-check' + (on?' done':'') + '" data-action="toggle-habit-today" data-id="' + h.id + '" aria-label="Toggle today"></button>') +
         habitIconInlineHtml(h.icon, cat) +
         '<span class="ms-tile-title">' + escapeHtml(h.title) + '</span>' +
+        habitPauseBtnHtml(h) +
         '<button class="icon-btn edit" data-action="edit-habit" data-id="' + h.id + '" aria-label="Edit habit">✎</button>' +
         '<button class="icon-btn" data-action="del-habit" data-id="' + h.id + '" aria-label="Delete habit">&times;</button>' +
       '</div>' +
       '<div class="ms-tile-meta"><span class="prio-badge ' + h.priority + '">' + h.priority + '</span><span>' + habitScheduleLabel(h) + '</span>' +
-      '<span style="color:var(--accent)">' + streak + 'd streak</span></div>' +
+      (paused ? '<span class="habit-paused-tag">paused</span>' : '<span style="color:var(--accent)">' + streak + 'd streak</span>') + '</div>' +
     '</div>';
   }
   function renderHabitsMatrix(list){
@@ -10925,9 +10942,11 @@
         return '<div class="day-cell"><span class="day-cell-label">' + wd + '</span>' +
           '<button type="button" class="day-box' + (on?' on':'') + (isAuto?' auto':'') + (dt===today?' today':'') + '" data-habit="' + h.id + '" data-date="' + dt + '" title="' + escapeHtml(label) + '" aria-label="' + escapeHtml(label) + '"></button></div>';
       }).join("");
-      return '<div class="goal-card" data-kind="habit" data-id="' + h.id + '" draggable="true">' +
+      var paused = !!h.pausedAt;
+      return '<div class="goal-card' + (paused ? ' habit-paused' : '') + '" data-kind="habit" data-id="' + h.id + '" draggable="true">' +
         '<div class="card-tab">' +
           '<span class="prio-badge ' + h.priority + '">' + h.priority + '</span><span class="sep">·</span>' +
+          (paused ? '<span class="habit-paused-tag">paused</span><span class="sep">·</span>' : '') +
           '<span class="type-badge">' + habitScheduleLabel(h) + '</span><span class="sep">·</span>' +
           '<span class="parent-tag">' + (g ? 'goal: <b>' + escapeHtml(g.title) + '</b>' : 'standalone') + '</span>' +
         '</div>' +
@@ -10936,11 +10955,13 @@
             (h.icon ? iconMaskHtml("entity-icon-img", habitIconDataUri(h.icon), habitCategory(h)) : '') +
             '<h3 class="goal-title">' + escapeHtml(h.title) + '</h3>' +
             '<div class="entity-actions">' +
+              habitPauseBtnHtml(h) +
               '<button class="icon-btn edit" data-action="edit-habit" data-id="' + h.id + '" aria-label="Edit habit">✎</button>' +
               '<button class="icon-btn" data-action="del-habit" data-id="' + h.id + '" aria-label="Delete habit">&times;</button>' +
             '</div>' +
           '</div>' +
-          '<div class="habit-foot"><span class="streak-tag"><b>' + streak + '</b> day streak</span><div class="habit-days">' + boxes + '</div></div>' +
+          (paused ? '<div class="habit-foot"><span class="streak-tag">not scheduled — the pattern above is kept for when you resume it</span></div>'
+                  : '<div class="habit-foot"><span class="streak-tag"><b>' + streak + '</b> day streak</span><div class="habit-days">' + boxes + '</div></div>') +
         '</div>' +
       '</div>';
     }).join("");
@@ -10952,9 +10973,36 @@
     if(todayBtn){ await handleHabitMarkClick(todayBtn.dataset.id, todayStr()); return; }
     var editBtn = e.target.closest('[data-action="edit-habit"]');
     if(editBtn){ editHabit(editBtn.dataset.id); return; }
+    var pauseBtn = e.target.closest('[data-action="pause-habit"]');
+    if(pauseBtn){ await setHabitPaused(pauseBtn.dataset.id, pauseBtn.dataset.paused === "1"); return; }
     var del = e.target.closest('[data-action="del-habit"]');
     if(del) await deleteHabit(del.dataset.id);
   });
+  function habitPauseBtnHtml(h){
+    return h.pausedAt
+      ? '<button class="icon-btn" data-action="pause-habit" data-paused="0" data-id="' + h.id + '" title="Resume — start scheduling this habit again" aria-label="Resume habit">▶</button>'
+      : '<button class="icon-btn" data-action="pause-habit" data-paused="1" data-id="' + h.id + '" title="Pause — stop scheduling it, keep the pattern" aria-label="Pause habit">❚❚</button>';
+  }
+  // Pausing keeps the habit and its history; it just stops being scheduled. Undoable.
+  async function setHabitPaused(id, paused){
+    var h = state.habits.find(function(x){ return x.id === id; });
+    if(!h) return;
+    var prev = h.pausedAt;
+    h.pausedAt = paused ? new Date().toISOString() : null;
+    renderAll();
+    var r = await safeUpdate("habits", id, { paused_at: h.pausedAt });
+    if(r.error){ h.pausedAt = prev; renderAll(); dbErrorToast(r.error, "Couldn't " + (paused ? "pause" : "resume")); return; }
+    if(r.droppedFields && r.droppedFields.indexOf("paused_at") !== -1){
+      h.pausedAt = prev; renderAll();
+      toast("Pausing needs migration_pause_habits.sql to be run first.");
+      return;
+    }
+    toast((paused ? "Paused" : "Resumed") + ' "' + h.title + '"');
+    pushUndo((paused ? "pause" : "resume") + ' "' + h.title + '"', async function(){
+      h.pausedAt = prev; renderAll();
+      await safeUpdate("habits", id, { paused_at: prev });
+    });
+  }
 
   /* ---------------- Actions ---------------- */
   function parentTitle(a){
@@ -15734,7 +15782,9 @@
     var dates = trackerRangeDates();
     document.getElementById("trackerRangeLabel").textContent = trackerFmtRangeLabel(dates);
 
-    var vars = state.trackerVars.slice().sort(function(a,b){ return (a.position||0) - (b.position||0); });
+    var pausedVarIds = {};
+    state.habits.forEach(function(h){ if(h.pausedAt && h.trackerVariableId) pausedVarIds[h.trackerVariableId] = true; });
+    var vars = state.trackerVars.filter(function(v){ return !pausedVarIds[v.id]; }).sort(function(a,b){ return (a.position||0) - (b.position||0); });
     var table = document.getElementById("trackerTable");
     document.getElementById("trackerEmptyState").style.display = vars.length ? "none" : "";
     table.style.display = vars.length ? "" : "none";

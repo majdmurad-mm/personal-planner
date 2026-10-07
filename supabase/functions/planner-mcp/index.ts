@@ -75,6 +75,8 @@ function todayUTC(): string {
 // Mirror of index.html's habitOccursOnDate — MUST stay in step with it so the
 // agenda's "habits due today" matches what the app itself shows.
 function habitOccursOnDate(h: any, dateStr: string): boolean {
+  // Paused: the pattern is kept so the habit can be resumed, but it occurs on no date at all.
+  if (h.paused_at) return false;
   const skip: string[] = h.skip_dates || [];
   const extra: string[] = h.extra_dates || [];
   if (skip.indexOf(dateStr) !== -1) return false;
@@ -395,7 +397,7 @@ tool("list_projects", {
 });
 
 tool("list_habits", {
-  description: "List the user's recurring habits and their schedules.",
+  description: "List the user's recurring habits and their schedules. A paused habit (paused:true) is a remembered pattern that is NOT currently scheduled — it never appears on any day until resumed.",
   inputSchema: z.object({}),
   handler: async () => {
     const { data, error } = await owned("habits").order("position");
@@ -405,6 +407,7 @@ tool("list_habits", {
       frequency: h.frequency, weekdays: h.weekdays || [], monthDay: h.month_day,
       customIntervalDays: h.custom_interval_days, timeOfDay: h.time_of_day,
       durationMinutes: h.duration_minutes,
+      paused: !!h.paused_at, pausedAt: h.paused_at || null,
     })));
   },
 });
@@ -889,7 +892,7 @@ tool("create_habit", {
 });
 
 tool("edit_habit", {
-  description: "Edit an existing habit by id. Only the fields you pass are changed.",
+  description: "Edit an existing habit by id. Only the fields you pass are changed. paused=true stops scheduling it but keeps its pattern; paused=false resumes it.",
   inputSchema: z.object({
     id: z.string(),
     title: z.string().optional(),
@@ -901,9 +904,11 @@ tool("edit_habit", {
     customIntervalDays: z.number().optional(),
     timeOfDay: z.string().optional(),
     durationMinutes: z.number().optional(),
+    paused: z.boolean().optional().describe("true = stop scheduling it (pattern kept); false = resume"),
   }),
   handler: async (args: any) => {
     const patch: Record<string, unknown> = {};
+    if (args.paused !== undefined) patch.paused_at = args.paused ? new Date().toISOString() : null;
     if (args.title !== undefined) patch.title = args.title;
     if (args.goalId !== undefined) patch.goal_id = args.goalId || null;
     if (args.priority !== undefined) patch.priority = args.priority;
