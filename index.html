@@ -2285,6 +2285,7 @@
       <nav class="side-nav" id="sideNav">
         <button class="side-link active" data-section="home" type="button"><span class="sl-glyph">⌂</span>Home</button>
         <button class="side-link" data-section="inbox" type="button"><span class="sl-glyph">⇣</span>Inbox<span class="side-link-badge" id="inboxNavBadge" hidden></span></button>
+        <button class="side-link" data-section="memory" type="button"><span class="sl-glyph">◎</span>Memory</button>
         <button class="side-link side-link-parent" id="sideLinkTimeToggle" data-toggle-submenu="sideSubmenuTime" type="button" aria-expanded="false">
           <span class="sl-glyph">◔</span>Time<span class="side-link-caret">▾</span>
         </button>
@@ -3299,6 +3300,63 @@
       <div id="inboxBody"></div>
     </section>
 
+    <!-- ===== MEMORY: the agents' own knowledge base =====
+         One Agent PgM bot listens to the others and keeps what's worth remembering here — apartments
+         being considered, facts about people, running logs. Writes need no approval (it's the agents'
+         space, not your planner). You can read, search, add, edit, pin and archive. See
+         migration_agent_memory.sql and the memory_* connector tools. -->
+    <section id="memorySection" style="display:none;">
+      <style>
+        .mem-layout{ display:grid; grid-template-columns:200px minmax(0,1fr); gap:20px; align-items:start; }
+        .mem-topics{ display:flex; flex-direction:column; gap:2px; position:sticky; top:12px; }
+        .mem-topic{ display:flex; justify-content:space-between; gap:8px; padding:6px 10px; border-radius:8px; border:none; background:none; color:var(--text-dim); font:inherit; font-size:.86rem; text-align:left; cursor:pointer; }
+        .mem-topic:hover{ background:var(--bg-inset); color:var(--text); }
+        .mem-topic.active{ background:var(--bg-raised); color:var(--text); box-shadow:inset 2px 0 0 var(--accent); }
+        .mem-topic-n{ font-family:var(--mono); font-size:.72rem; color:var(--text-faint); font-variant-numeric:tabular-nums; }
+        .mem-toolbar{ display:flex; gap:8px; align-items:center; margin-bottom:12px; flex-wrap:wrap; }
+        .mem-toolbar input[type=search]{ flex:1; min-width:180px; }
+        .mem-toolbar label{ font-size:.78rem; color:var(--text-dim); display:flex; gap:5px; align-items:center; }
+        .mem-list{ display:flex; flex-direction:column; gap:10px; }
+        .mem-card{ border:1px solid var(--border); border-radius:12px; background:var(--bg-raised); padding:12px 14px; }
+        .mem-card.pinned{ border-color:var(--accent); }
+        .mem-card.archived{ opacity:.55; }
+        .mem-head{ display:flex; gap:8px; align-items:baseline; }
+        .mem-title{ flex:1; min-width:0; font-weight:600; font-size:.98rem; }
+        .mem-actions{ display:flex; gap:2px; flex:none; }
+        .mem-meta{ display:flex; gap:6px 10px; flex-wrap:wrap; align-items:center; margin:4px 0 8px; font-family:var(--mono); font-size:.68rem; color:var(--text-faint); }
+        .mem-chip{ padding:0 7px; border-radius:999px; border:1px solid var(--border-bright); color:var(--text-dim); }
+        .mem-chip.topic{ border-color:var(--violet); color:var(--violet); }
+        .mem-body{ font-size:.86rem; }
+        .mem-body.clamped{ max-height:9.5em; overflow:hidden; -webkit-mask-image:linear-gradient(#000 70%, transparent); mask-image:linear-gradient(#000 70%, transparent); }
+        .mem-more{ border:none; background:none; color:var(--accent); font:inherit; font-size:.76rem; padding:4px 0 0; cursor:pointer; }
+        .mem-key{ font-family:var(--mono); font-size:.68rem; color:var(--text-faint); }
+        .mem-empty{ color:var(--text-faint); font-size:.88rem; padding:16px 0; }
+        @media (max-width:820px){
+          .mem-layout{ grid-template-columns:1fr; gap:10px; }
+          .mem-topics{ position:static; flex-direction:row; overflow-x:auto; gap:4px; padding-bottom:4px; }
+          .mem-topic{ flex:none; border:1px solid var(--border); border-radius:999px; padding:4px 10px; }
+          .mem-topic.active{ box-shadow:none; border-color:var(--accent); }
+        }
+      </style>
+      <div class="main-header">
+        <div>
+          <h1>memory</h1>
+          <p class="subhead">What your agents have learned and kept — and anything you add yourself. Agents write here directly; nothing here changes your planner.</p>
+        </div>
+        <div><button class="btn btn-accent" id="memAddBtn" type="button">+ entry</button></div>
+      </div>
+      <div class="mem-layout">
+        <nav class="mem-topics" id="memTopics" aria-label="Topics"></nav>
+        <div>
+          <div class="mem-toolbar">
+            <input type="search" id="memSearch" placeholder="search titles and text…" aria-label="Search memory">
+            <label><input type="checkbox" id="memShowArchived"> archived</label>
+          </div>
+          <div class="mem-list" id="memList"></div>
+        </div>
+      </div>
+    </section>
+
 
     <!-- ===== TIMELINE SECTION ===== -->
     <section id="timelineSection" style="display:none;">
@@ -4115,6 +4173,23 @@
         <p class="panel-hint" id="actionDecisionHint">Turn this on when the action isn't settled yet — you'll get a canvas on its page for mapping out the plausible futures and weighing them against each other.</p>
       </div>
       <div class="modal-actions"><button class="btn" id="cancelActionModalBtn" type="button">cancel</button><button class="btn btn-accent" id="saveActionBtn" type="button">save action</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MEMORY: ADD / EDIT ENTRY ===== -->
+<div class="modal-overlay" id="memModalOverlay" hidden>
+  <div class="modal">
+    <div class="modal-head"><span class="dot g"></span><h2 id="memModalTitle">memory_entry.json</h2></div>
+    <div class="modal-inner">
+      <div class="field"><label for="memTitleInput">title</label><input type="text" id="memTitleInput" maxlength="300"></div>
+      <div class="field-row">
+        <div class="field"><label for="memTopicInput">topic</label><input type="text" id="memTopicInput" list="memTopicList" maxlength="80" placeholder="General"><datalist id="memTopicList"></datalist></div>
+        <div class="field"><label for="memTagsInput">tags (comma-separated)</label><input type="text" id="memTagsInput"></div>
+      </div>
+      <div class="field"><label for="memBodyInput">text (Markdown)</label><textarea id="memBodyInput" class="journal-textarea" rows="10"></textarea></div>
+      <p class="mem-key" id="memKeyNote"></p>
+      <div class="modal-actions"><button class="btn" id="cancelMemModalBtn" type="button">cancel</button><button class="btn btn-accent" id="saveMemBtn" type="button">save</button></div>
     </div>
   </div>
 </div>
@@ -5435,7 +5510,7 @@
   }
 
   var state = { goals:[], projects:[], habits:[], actions:[], events:[], journal:[], people:[], trackerVars:[], trackerEntries:[], trackerDays:[], wbConnections:[], sleepScores:[], trash:[], socialGroupColors:[], gpsPings:[], pois:[], recordings:[], financeAccounts:[], financeTransactions:[], actionScenarios:[],
-    healthSettings:null, workoutTemplates:[], workoutSessions:[], meals:[], agentProposals:[], agentReports:[] };
+    healthSettings:null, workoutTemplates:[], workoutSessions:[], meals:[], agentProposals:[], agentReports:[], agentMemory:[] };
   var currentUser = null;
 
   function goalById(id){ return state.goals.find(function(g){ return g.id === id; }); }
@@ -5569,7 +5644,8 @@
       sb.from("workout_sessions").select("*").order("date", { ascending:false }),
       sb.from("meals").select("*").order("date", { ascending:false }),
       sb.from("agent_proposals").select("*").order("created_at", { ascending:false }).limit(200),
-      sb.from("agent_reports").select("*").order("created_at", { ascending:false }).limit(100)
+      sb.from("agent_reports").select("*").order("created_at", { ascending:false }).limit(100),
+      sb.from("agent_memory").select("*").order("updated_at", { ascending:false }).limit(1000)
     ]);
     results.forEach(function(r){ if(r.error) console.error(r.error); });
     // position defaults to 0 (via ||0) when the migration_positions.sql column doesn't exist yet —
@@ -5635,6 +5711,8 @@
     // Empty until migration_agent_hub.sql has been run — see the Inbox section.
     state.agentProposals = (results[23].data || []).map(inboxMapProposal);
     state.agentReports = (results[24].data || []).map(inboxMapReport);
+    // Empty until migration_agent_memory.sql has been run — see the Memory section.
+    state.agentMemory = (results[25].data || []).map(memoryMapEntry);
     await backfillLegacyHabitTrackers();
     await backfillHabitIcons();
     // After the tracker backfill above, so habits that only just got their linked variable are
@@ -5715,7 +5793,7 @@
     });
   }
 
-  var ALL_SECTION_IDS = ["homeSection","todaySection","plannerSection","trackerSection","timelineSection","journalSection","peopleSection","locationSection","futureSection","goalDetailSection","areaDetailSection","entityPageSection","healthSection","inboxSection"];
+  var ALL_SECTION_IDS = ["homeSection","todaySection","plannerSection","trackerSection","timelineSection","journalSection","peopleSection","locationSection","futureSection","goalDetailSection","areaDetailSection","entityPageSection","healthSection","inboxSection","memorySection"];
   // Sidebar dropdown groups — a parent nav item with no page of its own, bundling a set of section
   // names under one submenu. See showSection() (active/auto-open) and the sideNav click handler
   // (data-toggle-submenu, open/close).
@@ -21451,7 +21529,7 @@
     if(!badge) return;
     var n = inboxPending().length + inboxUnread().length;
     badge.hidden = !n;
-    badge.textContent = n > 99 ? "99+" : String(n);
+    badge.textContent = !n ? "" : (n > 99 ? "99+" : String(n));
   }
   function inboxAgo(iso){
     if(!iso) return "";
@@ -21595,6 +21673,144 @@
     await safeUpdate("agent_reports", r.id, { read_at: r.readAt });
   }, true);
 
+  /* ================================ Memory: the agents' knowledge base ================================
+     Agents write here directly through the connector (memory_save — keyed, so a repeat save updates
+     one entry rather than adding another); you read, search, add, edit, pin and archive. Nothing on
+     this page touches the planner itself. See migration_agent_memory.sql. */
+  function memoryMapEntry(r){
+    return { id:r.id, key:r.key||null, title:r.title||"", bodyMd:r.body_md||"", topic:r.topic||"General", tags:r.tags||[],
+      contributors:r.contributors||[], sources:r.sources||[], pinned:!!r.pinned, archivedAt:r.archived_at||null,
+      createdBy:r.created_by||"me", updatedBy:r.updated_by||"me", createdAt:r.created_at||null, updatedAt:r.updated_at||null };
+  }
+  var memoryTopic = null;            // null = all topics
+  var memoryExpanded = {};           // id -> true when a card is expanded
+  function memoryTopicsList(){
+    var counts = {};
+    state.agentMemory.forEach(function(m){ if(!m.archivedAt) counts[m.topic] = (counts[m.topic] || 0) + 1; });
+    return Object.keys(counts).sort(function(a, b){ return counts[b] - counts[a] || a.localeCompare(b); }).map(function(t){ return { topic:t, n:counts[t] }; });
+  }
+  function memoryVisible(){
+    var q = (document.getElementById("memSearch").value || "").trim().toLowerCase();
+    var showArchived = document.getElementById("memShowArchived").checked;
+    return state.agentMemory.filter(function(m){
+      if(!showArchived && m.archivedAt) return false;
+      if(memoryTopic && m.topic !== memoryTopic) return false;
+      if(q && m.title.toLowerCase().indexOf(q) === -1 && m.bodyMd.toLowerCase().indexOf(q) === -1 && m.tags.join(" ").toLowerCase().indexOf(q) === -1) return false;
+      return true;
+    }).sort(function(a, b){
+      if(a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+      return (b.updatedAt || "").localeCompare(a.updatedAt || "");
+    });
+  }
+  function memoryCardHtml(m){
+    var who = m.contributors.length ? m.contributors.join(", ") : m.createdBy;
+    var expanded = !!memoryExpanded[m.id];
+    var long = m.bodyMd.length > 420 || (m.bodyMd.match(/\n/g) || []).length > 7;
+    return '<article class="mem-card' + (m.pinned ? ' pinned' : '') + (m.archivedAt ? ' archived' : '') + '" data-mem="' + m.id + '">' +
+      '<div class="mem-head"><span class="mem-title">' + (m.pinned ? '★ ' : '') + escapeHtml(m.title) + '</span>' +
+        '<span class="mem-actions">' +
+          '<button class="icon-btn" type="button" data-mem-act="pin" title="' + (m.pinned ? 'Unpin' : 'Pin to the top') + '" aria-label="' + (m.pinned ? 'Unpin' : 'Pin') + '">' + (m.pinned ? '★' : '☆') + '</button>' +
+          '<button class="icon-btn edit" type="button" data-mem-act="edit" aria-label="Edit">✎</button>' +
+          '<button class="icon-btn" type="button" data-mem-act="archive" title="' + (m.archivedAt ? 'Restore' : 'Archive (hidden, never deleted)') + '" aria-label="' + (m.archivedAt ? 'Restore' : 'Archive') + '">' + (m.archivedAt ? '↺' : '⊟') + '</button>' +
+        '</span></div>' +
+      '<div class="mem-meta"><span class="mem-chip topic">' + escapeHtml(m.topic) + '</span>' +
+        m.tags.map(function(t){ return '<span class="mem-chip">#' + escapeHtml(t) + '</span>'; }).join("") +
+        '<span>by ' + escapeHtml(who) + '</span><span>' + (m.updatedAt ? inboxAgo(m.updatedAt) : '') + '</span>' +
+        (m.archivedAt ? '<span>archived</span>' : '') + '</div>' +
+      (m.bodyMd ? '<div class="mem-body journal-entry-md' + (long && !expanded ? ' clamped' : '') + '">' + (renderNoteBodyHtml(m.bodyMd) || '') + '</div>' +
+        (long ? '<button class="mem-more" type="button" data-mem-act="more">' + (expanded ? 'show less' : 'show all') + '</button>' : '') : '') +
+    '</article>';
+  }
+  function renderMemory(){
+    if(activeSection !== "memory") return;
+    var topics = memoryTopicsList();
+    if(memoryTopic && !topics.some(function(t){ return t.topic === memoryTopic; })) memoryTopic = null;
+    var total = state.agentMemory.filter(function(m){ return !m.archivedAt; }).length;
+    document.getElementById("memTopics").innerHTML =
+      '<button class="mem-topic' + (memoryTopic ? '' : ' active') + '" type="button" data-mem-topic=""><span>all</span><span class="mem-topic-n">' + total + '</span></button>' +
+      topics.map(function(t){
+        return '<button class="mem-topic' + (memoryTopic === t.topic ? ' active' : '') + '" type="button" data-mem-topic="' + escapeHtml(t.topic) + '"><span>' + escapeHtml(t.topic) + '</span><span class="mem-topic-n">' + t.n + '</span></button>';
+      }).join("");
+    var list = memoryVisible();
+    document.getElementById("memList").innerHTML = list.length ? list.map(memoryCardHtml).join("")
+      : '<div class="mem-empty">' + (state.agentMemory.length ? 'Nothing matches.' : 'Nothing here yet. Your agents will fill this in as they learn things — or add an entry yourself.') + '</div>';
+  }
+  var editingMemoryId = null;
+  function openMemoryModal(id){
+    var m = id ? state.agentMemory.find(function(x){ return x.id === id; }) : null;
+    editingMemoryId = m ? m.id : null;
+    document.getElementById("memModalTitle").textContent = m ? "edit_memory.json" : "new_memory.json";
+    document.getElementById("memTitleInput").value = m ? m.title : "";
+    document.getElementById("memTopicInput").value = m ? m.topic : (memoryTopic || "");
+    document.getElementById("memTagsInput").value = m ? m.tags.join(", ") : "";
+    document.getElementById("memBodyInput").value = m ? m.bodyMd : "";
+    document.getElementById("memTopicList").innerHTML = memoryTopicsList().map(function(t){ return '<option value="' + escapeHtml(t.topic) + '"></option>'; }).join("");
+    document.getElementById("memKeyNote").textContent = m && m.key ? "key: " + m.key + " — agents update this entry under that key" : "";
+    openModal("memModalOverlay");
+    document.getElementById("memTitleInput").focus();
+  }
+  function memoryHint(err, what){ dbErrorToast(err, "Couldn't " + what + " — has migration_agent_memory.sql been run?"); }
+  async function memoryPatch(m, patch, label){
+    var prev = {}; Object.keys(patch).forEach(function(k){ prev[k] = m[k]; });
+    var cols = {}; Object.keys(patch).forEach(function(k){ cols[{ pinned:"pinned", archivedAt:"archived_at" }[k]] = patch[k]; });
+    Object.assign(m, patch); renderMemory();
+    var r = await safeUpdate("agent_memory", m.id, cols);
+    if(r.error){ Object.assign(m, prev); renderMemory(); memoryHint(r.error, label); return; }
+    pushUndo(label + ' "' + m.title + '"', async function(){
+      Object.assign(m, prev); renderMemory();
+      var back = {}; Object.keys(prev).forEach(function(k){ back[{ pinned:"pinned", archivedAt:"archived_at" }[k]] = prev[k]; });
+      await safeUpdate("agent_memory", m.id, back);
+    });
+  }
+  document.getElementById("memAddBtn").addEventListener("click", function(){ openMemoryModal(null); });
+  document.getElementById("cancelMemModalBtn").addEventListener("click", function(){ closeModal("memModalOverlay"); });
+  document.getElementById("saveMemBtn").addEventListener("click", async function(){
+    var title = document.getElementById("memTitleInput").value.trim();
+    if(!title){ document.getElementById("memTitleInput").focus(); return; }
+    var payload = {
+      title: title,
+      topic: document.getElementById("memTopicInput").value.trim() || "General",
+      tags: document.getElementById("memTagsInput").value.split(",").map(function(t){ return t.trim().replace(/^#/, ""); }).filter(Boolean),
+      body_md: document.getElementById("memBodyInput").value,
+      updated_by: "me", updated_at: new Date().toISOString()
+    };
+    this.disabled = true;
+    var res;
+    if(editingMemoryId){
+      res = await safeUpdate("agent_memory", editingMemoryId, payload);
+    } else {
+      payload.created_by = "me"; payload.contributors = ["me"];
+      res = await safeWrite(function(p){ return sb.from("agent_memory").insert(p).select().single(); }, payload);
+    }
+    this.disabled = false;
+    if(res.error){ memoryHint(res.error, "save"); return; }
+    var mapped = memoryMapEntry(res.data);
+    if(editingMemoryId){ var i = state.agentMemory.findIndex(function(x){ return x.id === editingMemoryId; }); if(i !== -1) state.agentMemory[i] = mapped; }
+    else state.agentMemory.unshift(mapped);
+    closeModal("memModalOverlay");
+    renderMemory();
+  });
+  document.getElementById("memTopics").addEventListener("click", function(e){
+    var b = e.target.closest("[data-mem-topic]");
+    if(!b) return;
+    memoryTopic = b.dataset.memTopic || null;
+    renderMemory();
+  });
+  document.getElementById("memSearch").addEventListener("input", function(){ renderMemory(); });
+  document.getElementById("memShowArchived").addEventListener("change", function(){ renderMemory(); });
+  document.getElementById("memList").addEventListener("click", async function(e){
+    var b = e.target.closest("[data-mem-act]");
+    if(!b) return;
+    var card = b.closest("[data-mem]");
+    var m = card && state.agentMemory.find(function(x){ return x.id === card.dataset.mem; });
+    if(!m) return;
+    var act = b.dataset.memAct;
+    if(act === "edit") openMemoryModal(m.id);
+    else if(act === "more"){ memoryExpanded[m.id] = !memoryExpanded[m.id]; renderMemory(); }
+    else if(act === "pin") await memoryPatch(m, { pinned: !m.pinned }, m.pinned ? "unpin" : "pin");
+    else if(act === "archive") await memoryPatch(m, { archivedAt: m.archivedAt ? null : new Date().toISOString() }, m.archivedAt ? "restore" : "archive");
+  });
+
   var SECTION_RENDERERS = {
     home: [renderHomeDashboard],
     today: [renderToday],
@@ -21606,6 +21822,7 @@
     tracker: [renderTracker],
     health: [renderHealth],
     inbox: [renderInbox],
+    memory: [renderMemory],
     timeline: [renderTimeline],
     journal: [renderJournal],
     people: [renderPeople],

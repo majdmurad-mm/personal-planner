@@ -1779,6 +1779,161 @@ tool("list_agent_reports", {
   },
 }, "both");
 
+// ============================ AGENT MEMORY ==================================
+// The agents' own knowledge base (agent_memory), shown on the app's Memory page. Unlike proposals,
+// writes here are direct: it's the agents' space and doesn't change the user's planner. Entries are
+// keyed by a stable id the agent chooses, so saving the same thing twice updates one entry instead of
+// accumulating near-duplicates. Agents can archive but never delete. Available to both tokens — from
+// Cowork, memory_save is "remember this", and entries are attributed to "claude".
+const MEMORY_HINT = " (has migration_agent_memory.sql been run?)";
+// deno-lint-ignore no-explicit-any
+function memoryOut(r: any, full: boolean) {
+  const body = String(r.body_md || "");
+  return {
+    id: r.id, key: r.key, title: r.title, topic: r.topic, tags: r.tags || [],
+    contributors: r.contributors || [], pinned: !!r.pinned, archived: !!r.archived_at,
+    createdBy: r.created_by, updatedBy: r.updated_by, createdAt: r.created_at, updatedAt: r.updated_at,
+    ...(full ? { body, sources: r.sources || [] } : { excerpt: body.length > 280 ? body.slice(0, 280) + "…" : body }),
+  };
+}
+// deno-lint-ignore no-explicit-any
+function whoFor(args: any, role: "owner" | "agent"): string {
+  return role === "agent" ? String(args.agent || "agent") : "claude";
+}
+// deno-lint-ignore no-explicit-any
+async function memorySave(args: any, who: string) {
+  const now = new Date().toISOString();
+  const source = (args.runId || args.sourceRef)
+    ? [{ agent: who, runId: args.runId || null, ref: args.sourceRef || null, at: now }] : [];
+  let existing = null;
+  if (args.key) {
+    const r = await owned("agent_memory").eq("key", args.key).maybeSingle();
+    if (r.error) return fail(r.error.message + MEMORY_HINT);
+    existing = r.data;
+  }
+  if (!existing) {
+    if (!args.title) return fail("title is required for a new entry");
+    const { data, error } = await db.from("agent_memory").insert({
+      user_id: OWNER, key: args.key || null, title: args.title, body_md: args.body || "",
+      topic: args.topic || "General", tags: args.tags || [], contributors: [who], sources: source,
+      created_by: who, updated_by: who, created_at: now, updated_at: now,
+    }).select().single();
+    if (error) {
+      if ((error as { code?: string }).code === "23505") return fail("an entry with key '" + args.key + "' was just created — save again to update it");
+      return fail(error.message + MEMORY_HINT);
+    }
+    return ok({ ok: true, status: "created", id: data.id, key: data.key });
+  }
+  const append = args.mode === "append";
+  const stamp = now.slice(0, 10);
+  const body = append
+    ? (existing.body_md ? existing.body_md + "\n\n" : "") + "**" + stamp + " · " + who + "** — " + (args.body || "")
+    : (args.body !== undefined ? args.body : existing.body_md);
+  const contributors: string[] = existing.contributors || [];
+  const patch: Record<string, unknown> = {
+    body_md: body,
+    contributors: contributors.includes(who) ? contributors : contributors.concat([who]),
+    sources: (existing.sources || []).concat(source).slice(-50),
+    updated_by: who, updated_at: now,
+  };
+  if (args.title !== undefined) patch.title = args.title;
+  if (args.topic !== undefined) patch.topic = args.topic;
+  if (args.tags !== undefined) patch.tags = args.tags;
+  const { error } = await db.from("agent_memory").update(patch).eq("id", existing.id).eq("user_id", OWNER);
+  if (error) return fail(error.message);
+  // An entry the user archived stays archived — a bot re-saving it shouldn't overrule that. The
+  // flag tells the bot so it can stop writing to it.
+  return ok({ ok: true, status: append ? "appended" : "updated", id: existing.id, key: existing.key, archived: !!existing.archived_at });
+}
+const MEMORY_SAVE_SCHEMA = {
+  key: z.string().max(200).optional().describe("stable id you choose, e.g. 'apartment/oranienstr-12' — saving again under it updates that entry. Omit only for one-off notes."),
+  title: z.string().max(300).optional().describe("required when creating"),
+  body: z.string().max(50000).optional().describe("Markdown"),
+  mode: z.enum(["replace", "append"]).optional().describe("replace (default) overwrites the body; append adds a dated paragraph — use for running logs"),
+  topic: z.string().max(80).optional().describe("grouping shown on the Memory page, e.g. 'Apartments', 'People'. Reuse existing topics (see memory_topics) rather than inventing near-synonyms."),
+  tags: z.array(z.string().max(40)).max(20).optional().describe("replaces the existing tags"),
+  sourceRef: z.string().max(500).optional().describe("where this came from — an email message-id, a URL, a calendar UID"),
+};
+tool("memory_save", {
+  description:
+    "Save something worth remembering to the agents' knowledge base (the app's Memory page). Writes directly — no approval needed. Use a stable key so repeated saves update one entry; use mode='append' for running logs. This is for knowledge, not tasks: to change the user's planner, use the propose_* tools.",
+  inputSchema: z.object({ agent: AGENT_ENVELOPE.agent, runId: AGENT_ENVELOPE.runId, ...MEMORY_SAVE_SCHEMA }),
+  handler: async (args: any) => memorySave(args, whoFor(args, "agent")),
+}, "agent");
+tool("memory_save", {
+  description:
+    "Save something to the agents' knowledge base (the app's Memory page) — 'remember this'. Use a stable key so a later save updates the same entry. Attributed to 'claude'.",
+  inputSchema: z.object({ ...MEMORY_SAVE_SCHEMA }),
+  handler: async (args: any) => memorySave(args, whoFor(args, "owner")),
+}, "owner");
+
+tool("memory_search", {
+  description: "Search the agents' knowledge base by text, topic or tag. Returns excerpts, newest first — call memory_get for a full entry.",
+  inputSchema: z.object({
+    query: z.string().optional().describe("case-insensitive match on title and body"),
+    topic: z.string().optional(),
+    tag: z.string().optional(),
+    includeArchived: z.boolean().optional(),
+    limit: z.number().optional().describe("max rows (default 20)"),
+  }),
+  handler: async (args: { query?: string; topic?: string; tag?: string; includeArchived?: boolean; limit?: number }) => {
+    let q = owned("agent_memory").order("updated_at", { ascending: false }).limit(1000);
+    if (args.topic) q = q.eq("topic", args.topic);
+    const { data, error } = await q;
+    if (error) return fail(error.message + MEMORY_HINT);
+    const needle = (args.query || "").toLowerCase();
+    const rows = (data || []).filter((r) =>
+      (args.includeArchived || !r.archived_at) &&
+      (!args.tag || (r.tags || []).includes(args.tag)) &&
+      (!needle || String(r.title).toLowerCase().includes(needle) || String(r.body_md).toLowerCase().includes(needle)));
+    return ok(rows.slice(0, args.limit && args.limit > 0 ? args.limit : 20).map((r) => memoryOut(r, false)));
+  },
+}, "both");
+
+tool("memory_get", {
+  description: "One knowledge-base entry in full — body, sources and who contributed. Look it up by key or id.",
+  inputSchema: z.object({ key: z.string().optional(), id: z.string().optional() }),
+  handler: async (args: { key?: string; id?: string }) => {
+    if (!args.key && !args.id) return fail("pass key or id");
+    let q = owned("agent_memory");
+    q = args.key ? q.eq("key", args.key) : q.eq("id", args.id);
+    const { data, error } = await q.maybeSingle();
+    if (error) return fail(error.message + MEMORY_HINT);
+    if (!data) return fail("no entry with " + (args.key ? "key " + args.key : "id " + args.id));
+    return ok(memoryOut(data, true));
+  },
+}, "both");
+
+tool("memory_topics", {
+  description: "The topics the knowledge base is organised under, with how many entries each holds. Check this before choosing a topic so entries don't scatter across near-synonyms.",
+  inputSchema: z.object({}),
+  handler: async () => {
+    const { data, error } = await owned("agent_memory");
+    if (error) return fail(error.message + MEMORY_HINT);
+    const counts: Record<string, number> = {};
+    (data || []).filter((r) => !r.archived_at).forEach((r) => { counts[r.topic] = (counts[r.topic] || 0) + 1; });
+    return ok(Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([topic, entries]) => ({ topic, entries })));
+  },
+}, "both");
+
+tool("memory_archive", {
+  description: "Archive a knowledge-base entry that's no longer true or useful (or restore one with archived=false). Archived entries are hidden but kept; nothing is ever deleted from here.",
+  inputSchema: z.object({ key: z.string().optional(), id: z.string().optional(), archived: z.boolean().optional().describe("defaults to true") }),
+  handler: async (args: { key?: string; id?: string; archived?: boolean }) => {
+    if (!args.key && !args.id) return fail("pass key or id");
+    let q = owned("agent_memory");
+    q = args.key ? q.eq("key", args.key) : q.eq("id", args.id);
+    const found = await q.maybeSingle();
+    if (found.error) return fail(found.error.message + MEMORY_HINT);
+    if (!found.data) return fail("no such entry");
+    const archived = args.archived === undefined ? true : args.archived;
+    const { error } = await db.from("agent_memory").update({ archived_at: archived ? new Date().toISOString() : null })
+      .eq("id", found.data.id).eq("user_id", OWNER);
+    if (error) return fail(error.message);
+    return ok({ ok: true, archived });
+  },
+}, "both");
+
 // ---- HTTP wiring -----------------------------------------------------------
 const httpHandler = new StreamableHttpTransport().bind(mcp);
 const agentHttpHandler = new StreamableHttpTransport().bind(mcpAgent);

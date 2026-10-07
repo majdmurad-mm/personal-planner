@@ -212,6 +212,17 @@ supabase secrets set AGENT_TOKEN="$(openssl rand -hex 32)"
 supabase functions deploy planner-mcp
 ```
 
+### Memory — the agents' own knowledge base
+
+`memory_save`, `memory_search`, `memory_get`, `memory_topics` and `memory_archive` read and
+write `agent_memory`, shown on the app's **Memory** page. Unlike proposals, these writes are
+direct (no approval) — it's the agents' space and doesn't change your planner. Entries have a
+stable `key` the agent chooses, so saving again updates one entry instead of adding duplicates;
+`mode: "append"` adds a dated paragraph for running logs. Agents can archive but never delete,
+and an entry you archived stays archived even if a bot saves to it again. Both tokens get these
+tools; saves made through Cowork are attributed to `claude`. Needs
+`_Memory/migration_agent_memory.sql`.
+
 Revoke agents without touching your own connector: `supabase secrets unset AGENT_TOKEN`
 and redeploy. An `AGENT_TOKEN` equal to `MCP_TOKEN` is ignored. Needs
 `_Memory/migration_agent_hub.sql`.
