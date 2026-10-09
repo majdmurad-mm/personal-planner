@@ -212,10 +212,24 @@ supabase secrets set AGENT_TOKEN="$(openssl rand -hex 32)"
 supabase functions deploy planner-mcp
 ```
 
-### Memory — the agents' own knowledge base
+### Agent memory — the long-term memory of the Agent PgM bots
 
-`memory_save`, `memory_search`, `memory_get`, `memory_topics` and `memory_archive` read and
-write `agent_memory`, shown on the app's **Memory** page. Unlike proposals, these writes are
+The planner is the agents' memory. `memory_save`, `memory_overview`, `memory_search`,
+`memory_get`, `memory_topics` and `memory_archive` read and write `agent_memory`, shown on the
+app's **Agent memory** page.
+
+- **Organised by key.** The bots key entries by namespace: `area/<area>/status` (rewritten each
+  run), `area/<area>/journal` (appended), `project/<slug>`, `person/<slug>`; anything else is a
+  fact under its topic. `memory_overview` returns the whole map that way (Areas, Projects,
+  People, Topics, From you), so Claude starts there.
+- **Your memories too.** `memory_search` also searches your notes by default (marked
+  `from: "your_note"`). Your "keeper" notes are the ones saved through Claude and your reference notes, and the page
+  shows them under *from you*. Decision notes are left out of the memory.
+- **History.** When an entry is rewritten, the version it replaces is kept in
+  `agent_memory_revisions` (up to 50 per entry). `memory_get {history: true}` returns them.
+  This needs `_Memory/migration_agent_memory_history.sql`.
+
+Unlike proposals, these writes are
 direct (no approval) — it's the agents' space and doesn't change your planner. Entries have a
 stable `key` the agent chooses, so saving again updates one entry instead of adding duplicates;
 `mode: "append"` adds a dated paragraph for running logs. Agents can archive but never delete,

@@ -2289,7 +2289,7 @@
       <nav class="side-nav" id="sideNav">
         <button class="side-link active" data-section="home" type="button"><span class="sl-glyph">⌂</span>Home</button>
         <button class="side-link" data-section="inbox" type="button"><span class="sl-glyph">⇣</span>Inbox<span class="side-link-badge" id="inboxNavBadge" hidden></span></button>
-        <button class="side-link" data-section="memory" type="button"><span class="sl-glyph">◎</span>Memory</button>
+        <button class="side-link" data-section="memory" type="button"><span class="sl-glyph">◎</span>Agent memory</button>
         <button class="side-link side-link-parent" id="sideLinkTimeToggle" data-toggle-submenu="sideSubmenuTime" type="button" aria-expanded="false">
           <span class="sl-glyph">◔</span>Time<span class="side-link-caret">▾</span>
         </button>
@@ -3130,59 +3130,95 @@
       <div id="inboxBody"></div>
     </section>
 
-    <!-- ===== MEMORY: the agents' own knowledge base =====
-         One Agent PgM bot listens to the others and keeps what's worth remembering here — apartments
-         being considered, facts about people, running logs. Writes need no approval (it's the agents'
-         space, not your planner). You can read, search, add, edit, pin and archive. See
-         migration_agent_memory.sql and the memory_* connector tools. -->
+    <!-- ===== AGENT MEMORY: the memory of the Agent PgM bots =====
+         The planner is the agents' long-term memory. The Agent PgM bots write here directly through the
+         connector (memory_save), organised by key: area/<area>/status and /journal, project/…, person/…;
+         every replaced version is kept (agent_memory_revisions). Claude reads all of it through the
+         connector (memory_overview / memory_search / memory_get), together with your own notes — the
+         ones you save through Claude, and your reference and decision notes ("from you"). You can read,
+         search, add, edit, pin and archive; nothing here changes your plans. See
+         migration_agent_memory.sql and migration_agent_memory_history.sql. -->
     <section id="memorySection" style="display:none;">
       <style>
-        .mem-layout{ display:grid; grid-template-columns:200px minmax(0,1fr); gap:20px; align-items:start; }
-        .mem-topics{ display:flex; flex-direction:column; gap:2px; position:sticky; top:12px; }
-        .mem-topic{ display:flex; justify-content:space-between; gap:8px; padding:6px 10px; border-radius:8px; border:none; background:none; color:var(--text-dim); font:inherit; font-size:.86rem; text-align:left; cursor:pointer; }
+        .mem-layout{ display:grid; grid-template-columns:210px minmax(0,1fr); gap:22px; align-items:start; }
+        .mem-rail{ display:flex; flex-direction:column; gap:1px; position:sticky; top:12px; }
+        .mem-rail-head{ font-family:var(--mono); font-size:.66rem; letter-spacing:.08em; text-transform:uppercase; color:var(--text-faint); padding:12px 10px 4px; }
+        .mem-topic{ display:flex; justify-content:space-between; align-items:center; gap:8px; padding:6px 10px; border-radius:8px; border:none; background:none; color:var(--text-dim); font:inherit; font-size:.86rem; text-align:left; cursor:pointer; }
         .mem-topic:hover{ background:var(--bg-inset); color:var(--text); }
         .mem-topic.active{ background:var(--bg-raised); color:var(--text); box-shadow:inset 2px 0 0 var(--accent); }
+        .mem-topic:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
         .mem-topic-n{ font-family:var(--mono); font-size:.72rem; color:var(--text-faint); font-variant-numeric:tabular-nums; }
-        .mem-toolbar{ display:flex; gap:8px; align-items:center; margin-bottom:12px; flex-wrap:wrap; }
+        .mem-toolbar{ display:flex; gap:8px; align-items:center; margin-bottom:14px; flex-wrap:wrap; }
         .mem-toolbar input[type=search]{ flex:1; min-width:180px; }
         .mem-toolbar label{ font-size:.78rem; color:var(--text-dim); display:flex; gap:5px; align-items:center; }
+        .mem-view-head{ display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; margin:0 0 12px; }
+        .mem-view-head h2{ margin:0; font-size:1.15rem; }
+        .mem-view-sub{ font-size:.8rem; color:var(--text-faint); }
+        .mem-h3{ font-family:var(--mono); font-size:.7rem; letter-spacing:.08em; text-transform:uppercase; color:var(--text-faint); margin:20px 0 8px; }
+        .mem-stats{ display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:10px; margin-bottom:6px; }
+        .mem-stat{ border:1px solid var(--border); border-radius:12px; background:var(--bg-raised); padding:10px 12px; }
+        .mem-stat b{ display:block; font-size:1.35rem; font-variant-numeric:tabular-nums; line-height:1.2; }
+        .mem-stat span{ font-size:.74rem; color:var(--text-dim); }
+        .mem-area-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(230px, 1fr)); gap:10px; }
+        .mem-area-card{ text-align:left; border:1px solid var(--border); border-radius:12px; background:var(--bg-raised); padding:10px 12px; font:inherit; color:var(--text); cursor:pointer; display:flex; flex-direction:column; gap:4px; }
+        .mem-area-card:hover{ border-color:var(--border-bright); }
+        .mem-area-card:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+        .mem-area-card .t{ font-weight:600; display:flex; justify-content:space-between; gap:8px; }
+        .mem-area-card .t span{ font-family:var(--mono); font-size:.68rem; font-weight:400; color:var(--text-faint); }
+        .mem-area-card .x{ font-size:.8rem; color:var(--text-dim); display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+        .mem-feed{ display:flex; flex-direction:column; border:1px solid var(--border); border-radius:12px; background:var(--bg-raised); overflow:hidden; }
+        .mem-feed-row{ display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px 12px; padding:8px 12px; border:none; border-top:1px solid var(--border); background:none; color:var(--text); font:inherit; text-align:left; cursor:pointer; }
+        .mem-feed-row:first-child{ border-top:none; }
+        .mem-feed-row:hover{ background:var(--bg-inset); }
+        .mem-feed-row .who{ font-size:.76rem; color:var(--text-faint); font-family:var(--mono); white-space:nowrap; }
         .mem-list{ display:flex; flex-direction:column; gap:10px; }
         .mem-card{ border:1px solid var(--border); border-radius:12px; background:var(--bg-raised); padding:12px 14px; }
         .mem-card.pinned{ border-color:var(--accent); }
         .mem-card.archived{ opacity:.55; }
+        .mem-card.note{ border-style:dashed; }
         .mem-head{ display:flex; gap:8px; align-items:baseline; }
         .mem-title{ flex:1; min-width:0; font-weight:600; font-size:.98rem; }
         .mem-actions{ display:flex; gap:2px; flex:none; }
         .mem-meta{ display:flex; gap:6px 10px; flex-wrap:wrap; align-items:center; margin:4px 0 8px; font-family:var(--mono); font-size:.68rem; color:var(--text-faint); }
         .mem-chip{ padding:0 7px; border-radius:999px; border:1px solid var(--border-bright); color:var(--text-dim); }
         .mem-chip.topic{ border-color:var(--violet); color:var(--violet); }
+        .mem-chip.kind{ border-style:dashed; }
         .mem-body{ font-size:.86rem; }
         .mem-body.clamped{ max-height:9.5em; overflow:hidden; -webkit-mask-image:linear-gradient(#000 70%, transparent); mask-image:linear-gradient(#000 70%, transparent); }
         .mem-more{ border:none; background:none; color:var(--accent); font:inherit; font-size:.76rem; padding:4px 0 0; cursor:pointer; }
         .mem-key{ font-family:var(--mono); font-size:.68rem; color:var(--text-faint); }
         .mem-empty{ color:var(--text-faint); font-size:.88rem; padding:16px 0; }
+        .mem-journal{ position:relative; display:flex; flex-direction:column; gap:12px; padding-left:16px; border-left:2px solid var(--border); }
+        .mem-jday{ position:relative; font-size:.86rem; }
+        .mem-jday::before{ content:""; position:absolute; left:-21px; top:.45em; width:8px; height:8px; border-radius:50%; background:var(--violet); box-shadow:0 0 0 3px var(--bg); }
+        .mem-jday time{ display:block; font-family:var(--mono); font-size:.7rem; color:var(--text-faint); margin-bottom:2px; }
+        .mem-hist{ display:flex; flex-direction:column; gap:12px; max-height:60vh; overflow:auto; }
+        .mem-hist details{ border:1px solid var(--border); border-radius:10px; padding:8px 12px; background:var(--bg-raised); }
+        .mem-hist summary{ cursor:pointer; font-family:var(--mono); font-size:.74rem; color:var(--text-dim); }
         @media (max-width:820px){
           .mem-layout{ grid-template-columns:1fr; gap:10px; }
-          .mem-topics{ position:static; flex-direction:row; overflow-x:auto; gap:4px; padding-bottom:4px; }
+          .mem-rail{ position:static; flex-direction:row; overflow-x:auto; gap:4px; padding-bottom:4px; }
+          .mem-rail-head{ display:none; }
           .mem-topic{ flex:none; border:1px solid var(--border); border-radius:999px; padding:4px 10px; }
           .mem-topic.active{ box-shadow:none; border-color:var(--accent); }
+          .mem-stats{ grid-template-columns:repeat(2, minmax(0,1fr)); }
         }
       </style>
       <div class="main-header">
         <div>
-          <h1>memory</h1>
-          <p class="subhead">What your agents have learned and kept — and anything you add yourself. Agents write here directly; nothing here changes your planner.</p>
+          <h1>agent memory</h1>
+          <p class="subhead">The long-term memory of your Agent PgM bots — what they know about each area, your projects and people — plus what you asked Claude to remember. Claude reads all of it through the connector.</p>
         </div>
         <div><button class="btn btn-accent" id="memAddBtn" type="button">+ entry</button></div>
       </div>
       <div class="mem-layout">
-        <nav class="mem-topics" id="memTopics" aria-label="Topics"></nav>
+        <nav class="mem-rail" id="memTopics" aria-label="Memory sections"></nav>
         <div>
           <div class="mem-toolbar">
-            <input type="search" id="memSearch" placeholder="search titles and text…" aria-label="Search memory">
+            <input type="search" id="memSearch" placeholder="search the memory and your notes…" aria-label="Search memory">
             <label><input type="checkbox" id="memShowArchived"> archived</label>
           </div>
-          <div class="mem-list" id="memList"></div>
+          <div id="memList"></div>
         </div>
       </div>
     </section>
@@ -4020,6 +4056,17 @@
       <div class="field"><label for="memBodyInput">text (Markdown)</label><textarea id="memBodyInput" class="journal-textarea" rows="10"></textarea></div>
       <p class="mem-key" id="memKeyNote"></p>
       <div class="modal-actions"><button class="btn" id="cancelMemModalBtn" type="button">cancel</button><button class="btn btn-accent" id="saveMemBtn" type="button">save</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== AGENT MEMORY: an entry's earlier versions ===== -->
+<div class="modal-overlay" id="memHistOverlay" hidden>
+  <div class="modal">
+    <div class="modal-head"><span class="dot g"></span><h2 id="memHistTitle">history.json</h2></div>
+    <div class="modal-inner">
+      <div class="mem-hist" id="memHistBody"></div>
+      <div class="modal-actions"><button class="btn" id="closeMemHistBtn" type="button">close</button></div>
     </div>
   </div>
 </div>
@@ -20703,78 +20750,230 @@
     await safeUpdate("agent_reports", r.id, { read_at: r.readAt });
   }, true);
 
-  /* ================================ Memory: the agents' knowledge base ================================
-     Agents write here directly through the connector (memory_save — keyed, so a repeat save updates
-     one entry rather than adding another); you read, search, add, edit, pin and archive. Nothing on
-     this page touches the planner itself. See migration_agent_memory.sql. */
+  /* ================================ Agent memory ================================
+     The planner is the long-term memory of the Agent PgM bots. They write through the connector
+     (memory_save, keyed — a repeat save updates one entry), organised by key namespace:
+       area/<area>/status (rewritten each run) · area/<area>/journal (appended) · project/… · person/…
+     Anything else is a fact under its topic. Every replaced version is kept in agent_memory_revisions.
+     "From you" adds your own memories: entries you or Claude added here, and your keeper notes (saved
+     through Claude, or reference notes; decision notes are left out). The connector's memory_overview uses the same rules
+     (memoryKind / memorySection in planner-mcp). See migration_agent_memory(_history).sql. */
   function memoryMapEntry(r){
     return { id:r.id, key:r.key||null, title:r.title||"", bodyMd:r.body_md||"", topic:r.topic||"General", tags:r.tags||[],
       contributors:r.contributors||[], sources:r.sources||[], pinned:!!r.pinned, archivedAt:r.archived_at||null,
       createdBy:r.created_by||"me", updatedBy:r.updated_by||"me", createdAt:r.created_at||null, updatedAt:r.updated_at||null };
   }
-  var memoryTopic = null;            // null = all topics
-  var memoryExpanded = {};           // id -> true when a card is expanded
+  var MEMORY_AREAS = ["Health", "Finance", "Career", "Maintenance", "Growth", "Relationships", "Sol"];
+  function memoryKind(m){
+    var k = m.key || "";
+    if(/^area\/[^/]+\/status$/.test(k)) return "status";
+    if(/^area\/[^/]+\/journal$/.test(k)) return "journal";
+    if(k.indexOf("project/") === 0) return "project";
+    if(k.indexOf("person/") === 0) return "person";
+    return "fact";
+  }
+  function memoryIsArea(m){ var kind = memoryKind(m); return kind === "status" || kind === "journal" || MEMORY_AREAS.indexOf(m.topic) !== -1; }
+  function memoryIsYours(m){ return m.createdBy === "me" || m.createdBy === "claude"; }
+  // Your memories that live in notes: whatever Claude saved for you, and reference notes. Decision
+  // notes are no part of the memory (they're on the Notes page).
+  function memoryKeeperNotes(){
+    return (state.journal || []).filter(function(n){ return n.noteType !== "decision" && (n.source === "claude" || n.noteType === "reference"); })
+      .sort(function(a, b){ return (b.date || "").localeCompare(a.date || "") || (b.createdAt || "").localeCompare(a.createdAt || ""); });
+  }
+  var memoryView = "overview";        // overview | you | projects | people | area:<name> | topic:<name>
+  var memoryExpanded = {};            // id -> true when a card is expanded
+  function memoryLive(){
+    var showArchived = document.getElementById("memShowArchived").checked;
+    return state.agentMemory.filter(function(m){ return showArchived || !m.archivedAt; });
+  }
   function memoryTopicsList(){
     var counts = {};
     state.agentMemory.forEach(function(m){ if(!m.archivedAt) counts[m.topic] = (counts[m.topic] || 0) + 1; });
     return Object.keys(counts).sort(function(a, b){ return counts[b] - counts[a] || a.localeCompare(b); }).map(function(t){ return { topic:t, n:counts[t] }; });
   }
-  function memoryVisible(){
-    var q = (document.getElementById("memSearch").value || "").trim().toLowerCase();
-    var showArchived = document.getElementById("memShowArchived").checked;
-    return state.agentMemory.filter(function(m){
-      if(!showArchived && m.archivedAt) return false;
-      if(memoryTopic && m.topic !== memoryTopic) return false;
-      if(q && m.title.toLowerCase().indexOf(q) === -1 && m.bodyMd.toLowerCase().indexOf(q) === -1 && m.tags.join(" ").toLowerCase().indexOf(q) === -1) return false;
-      return true;
-    }).sort(function(a, b){
+  function memorySort(list){
+    return list.slice().sort(function(a, b){
       if(a.pinned !== b.pinned) return a.pinned ? -1 : 1;
       return (b.updatedAt || "").localeCompare(a.updatedAt || "");
     });
   }
-  function memoryCardHtml(m){
+  // What a view contains.
+  function memoryInView(view, live){
+    if(view === "you") return live.filter(memoryIsYours);
+    if(view === "projects") return live.filter(function(m){ return memoryKind(m) === "project"; });
+    if(view === "people") return live.filter(function(m){ return memoryKind(m) === "person"; });
+    if(view.indexOf("area:") === 0){ var a = view.slice(5); return live.filter(function(m){ return m.topic === a && memoryKind(m) !== "person"; }); }
+    if(view.indexOf("topic:") === 0){ var t = view.slice(6); return live.filter(function(m){ return m.topic === t && !memoryIsArea(m) && memoryKind(m) !== "project" && memoryKind(m) !== "person" && !memoryIsYours(m); }); }
+    return live;
+  }
+  function memoryViewOf(m){
+    var kind = memoryKind(m);
+    if(kind === "person") return "people";
+    if(kind === "project" && !MEMORY_AREAS.includes(m.topic)) return "projects";
+    if(memoryIsArea(m)) return "area:" + m.topic;
+    if(memoryIsYours(m)) return "you";
+    return "topic:" + m.topic;
+  }
+  var MEMORY_KIND_LABEL = { status:"status", journal:"journal", project:"project", person:"person", fact:"fact" };
+  function memoryCardHtml(m, opts){
+    opts = opts || {};
     var who = m.contributors.length ? m.contributors.join(", ") : m.createdBy;
-    var expanded = !!memoryExpanded[m.id];
-    var long = m.bodyMd.length > 420 || (m.bodyMd.match(/\n/g) || []).length > 7;
+    var expanded = opts.open || !!memoryExpanded[m.id];
+    var long = !opts.open && (m.bodyMd.length > 420 || (m.bodyMd.match(/\n/g) || []).length > 7);
+    var kind = memoryKind(m);
     return '<article class="mem-card' + (m.pinned ? ' pinned' : '') + (m.archivedAt ? ' archived' : '') + '" data-mem="' + m.id + '">' +
       '<div class="mem-head"><span class="mem-title">' + (m.pinned ? '★ ' : '') + escapeHtml(m.title) + '</span>' +
         '<span class="mem-actions">' +
           '<button class="icon-btn" type="button" data-mem-act="pin" title="' + (m.pinned ? 'Unpin' : 'Pin to the top') + '" aria-label="' + (m.pinned ? 'Unpin' : 'Pin') + '">' + (m.pinned ? '★' : '☆') + '</button>' +
+          '<button class="icon-btn" type="button" data-mem-act="history" title="Earlier versions" aria-label="History">⟲</button>' +
           '<button class="icon-btn edit" type="button" data-mem-act="edit" aria-label="Edit">✎</button>' +
           '<button class="icon-btn" type="button" data-mem-act="archive" title="' + (m.archivedAt ? 'Restore' : 'Archive (hidden, never deleted)') + '" aria-label="' + (m.archivedAt ? 'Restore' : 'Archive') + '">' + (m.archivedAt ? '↺' : '⊟') + '</button>' +
         '</span></div>' +
-      '<div class="mem-meta"><span class="mem-chip topic">' + escapeHtml(m.topic) + '</span>' +
-        m.tags.map(function(t){ return '<span class="mem-chip">#' + escapeHtml(t) + '</span>'; }).join("") +
+      '<div class="mem-meta">' + (opts.hideTopic ? '' : '<span class="mem-chip topic">' + escapeHtml(m.topic) + '</span>') +
+        (kind !== "fact" ? '<span class="mem-chip kind">' + MEMORY_KIND_LABEL[kind] + '</span>' : '') +
+        m.tags.filter(function(t){ return !/^area-(status|journal)$/.test(t) && t !== "project"; }).map(function(t){ return '<span class="mem-chip">#' + escapeHtml(t) + '</span>'; }).join("") +
         '<span>by ' + escapeHtml(who) + '</span><span>' + (m.updatedAt ? inboxAgo(m.updatedAt) : '') + '</span>' +
         (m.archivedAt ? '<span>archived</span>' : '') + '</div>' +
       (m.bodyMd ? '<div class="mem-body journal-entry-md' + (long && !expanded ? ' clamped' : '') + '">' + (renderNoteBodyHtml(m.bodyMd) || '') + '</div>' +
         (long ? '<button class="mem-more" type="button" data-mem-act="more">' + (expanded ? 'show less' : 'show all') + '</button>' : '') : '') +
     '</article>';
   }
+  function memoryNoteCardHtml(nt){
+    var text = nt.text || "";
+    return '<article class="mem-card note" data-mem-note="' + nt.id + '">' +
+      '<div class="mem-head"><span class="mem-title">' + escapeHtml(nt.title || text.split("\n")[0].slice(0, 80) || "note") + '</span>' +
+        '<span class="mem-actions"><button class="icon-btn edit" type="button" data-mem-note-act="open" aria-label="Open note">✎</button></span></div>' +
+      '<div class="mem-meta"><span class="mem-chip kind">' + escapeHtml(nt.noteType) + ' note</span>' +
+        (nt.categories || []).map(function(c){ return '<span class="mem-chip topic">' + escapeHtml(c) + '</span>'; }).join("") +
+        '<span>' + escapeHtml(nt.date || "") + '</span>' + (nt.source === "claude" ? '<span>via Claude</span>' : '') + '</div>' +
+      '<div class="mem-body journal-entry-md clamped">' + (renderNoteBodyHtml(text) || '') + '</div>' +
+    '</article>';
+  }
+  // An area journal is one Markdown body of dated paragraphs ("**2026-10-08** — …" or
+  // "**2026-10-08 · Healther** — …"); shown as a timeline, newest first.
+  function memoryJournalHtml(m){
+    var parts = m.bodyMd.split(/\n\s*\n(?=\*\*\d{4}-\d{2}-\d{2})/);
+    var days = parts.map(function(p){
+      var mm = p.match(/^\*\*(\d{4}-\d{2}-\d{2})([^*]*)\*\*\s*[—-]?\s*/);
+      return mm ? { date:mm[1], who:mm[2].replace(/^\s*·\s*/, "").trim(), text:p.slice(mm[0].length).replace(/^\*\*\d{4}-\d{2}-\d{2}\*\*\s*[—-]?\s*/, "") } : { date:"", who:"", text:p };
+    }).filter(function(d){ return d.text.trim(); }).reverse();
+    return '<div class="mem-journal">' + days.slice(0, memoryExpanded[m.id] ? days.length : 14).map(function(d){
+      return '<div class="mem-jday">' + (d.date ? '<time datetime="' + d.date + '">' + d.date + (d.who ? ' · ' + escapeHtml(d.who) : '') + '</time>' : '') +
+        '<div class="journal-entry-md">' + (renderNoteBodyHtml(d.text) || '') + '</div></div>';
+    }).join("") + '</div>' +
+    (days.length > 14 ? '<button class="mem-more" type="button" data-mem-journal="' + m.id + '">' + (memoryExpanded[m.id] ? 'show the latest only' : 'show all ' + days.length + ' days') + '</button>' : '');
+  }
+  function memoryRailHtml(live){
+    function item(view, label, count){
+      return '<button class="mem-topic' + (memoryView === view ? ' active' : '') + '" type="button" data-mem-view="' + escapeHtml(view) + '"><span>' + escapeHtml(label) + '</span>' + (count !== null ? '<span class="mem-topic-n">' + count + '</span>' : '') + '</button>';
+    }
+    var areas = {}, topics = {};
+    live.forEach(function(m){
+      if(memoryIsArea(m) && memoryKind(m) !== "person") areas[m.topic] = (areas[m.topic] || 0) + 1;
+      else if(memoryViewOf(m).indexOf("topic:") === 0) topics[m.topic] = (topics[m.topic] || 0) + 1;
+    });
+    var areaNames = Object.keys(areas).sort(function(a, b){
+      var ia = MEMORY_AREAS.indexOf(a), ib = MEMORY_AREAS.indexOf(b);
+      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib) || a.localeCompare(b);
+    });
+    var nProjects = live.filter(function(m){ return memoryKind(m) === "project"; }).length;
+    var nPeople = live.filter(function(m){ return memoryKind(m) === "person"; }).length;
+    var nYou = live.filter(memoryIsYours).length + memoryKeeperNotes().length;
+    return item("overview", "overview", null) + item("you", "from you", nYou) +
+      (areaNames.length ? '<div class="mem-rail-head">areas</div>' + areaNames.map(function(a){ return item("area:" + a, a, areas[a]); }).join("") : '') +
+      (nProjects || nPeople ? '<div class="mem-rail-head">things &amp; people</div>' : '') +
+      (nProjects ? item("projects", "projects", nProjects) : '') + (nPeople ? item("people", "people", nPeople) : '') +
+      (Object.keys(topics).length ? '<div class="mem-rail-head">topics</div>' + Object.keys(topics).sort().map(function(t){ return item("topic:" + t, t, topics[t]); }).join("") : '');
+  }
+  function memoryOverviewHtml(live){
+    var day = Date.now() - 86400000;
+    var writers = {};
+    live.forEach(function(m){ m.contributors.forEach(function(c){ if(c !== "me") writers[c] = 1; }); });
+    var recent = live.slice().sort(function(a, b){ return (b.updatedAt || "").localeCompare(a.updatedAt || ""); }).slice(0, 10);
+    var statusOf = {};
+    live.forEach(function(m){ if(memoryKind(m) === "status") statusOf[m.topic] = m; });
+    var areaNames = MEMORY_AREAS.filter(function(a){ return live.some(function(m){ return m.topic === a; }); })
+      .concat(Object.keys(statusOf).filter(function(a){ return MEMORY_AREAS.indexOf(a) === -1; }));
+    var excerpt = function(md){ return escapeHtml(String(md || "").replace(/[*_#>\x60]/g, "").replace(/\s+/g, " ").trim().slice(0, 220)); };
+    return '<div class="mem-stats">' +
+        '<div class="mem-stat"><b>' + live.length + '</b><span>entries</span></div>' +
+        '<div class="mem-stat"><b>' + Object.keys(writers).length + '</b><span>writers (bots &amp; Claude)</span></div>' +
+        '<div class="mem-stat"><b>' + live.filter(function(m){ return m.updatedAt && Date.parse(m.updatedAt) > day; }).length + '</b><span>updated in 24 h</span></div>' +
+        '<div class="mem-stat"><b>' + memoryKeeperNotes().length + '</b><span>of your notes kept</span></div>' +
+      '</div>' +
+      (areaNames.length ? '<div class="mem-h3">areas</div><div class="mem-area-grid">' + areaNames.map(function(a){
+        var st = statusOf[a];
+        var count = live.filter(function(m){ return m.topic === a; }).length;
+        return '<button class="mem-area-card" type="button" data-mem-view="area:' + escapeHtml(a) + '"><span class="t">' + escapeHtml(a) + '<span>' + count + ' · ' + (st && st.updatedAt ? inboxAgo(st.updatedAt) : 'no status yet') + '</span></span>' +
+          '<span class="x">' + (st ? excerpt(st.bodyMd) : 'The area bot hasn\'t written a status yet.') + '</span></button>';
+      }).join("") + '</div>' : '') +
+      (recent.length ? '<div class="mem-h3">latest changes</div><div class="mem-feed">' + recent.map(function(m){
+        return '<button class="mem-feed-row" type="button" data-mem-jump="' + m.id + '"><span>' + escapeHtml(m.title) + '</span><span class="who">' + escapeHtml(m.updatedBy) + ' · ' + (m.updatedAt ? inboxAgo(m.updatedAt) : '') + '</span></button>';
+      }).join("") + '</div>' : '');
+  }
+  function memorySearchHtml(q, live){
+    var words = q.toLowerCase().split(/\s+/).filter(Boolean);
+    var hit = function(t){ t = t.toLowerCase(); return words.every(function(w){ return t.indexOf(w) !== -1; }); };
+    var entries = memorySort(live.filter(function(m){ return hit(m.title + "\n" + m.bodyMd + "\n" + m.tags.join(" ") + "\n" + m.topic); }));
+    var notes = (state.journal || []).filter(function(nt){ return nt.noteType !== "decision" && hit((nt.title || "") + "\n" + (nt.text || "")); })
+      .sort(function(a, b){ return (b.date || "").localeCompare(a.date || ""); }).slice(0, 30);
+    if(!entries.length && !notes.length) return '<div class="mem-empty">Nothing matches “' + escapeHtml(q) + '”.</div>';
+    return (entries.length ? '<div class="mem-h3">in the memory · ' + entries.length + '</div><div class="mem-list">' + entries.map(function(m){ return memoryCardHtml(m); }).join("") + '</div>' : '') +
+      (notes.length ? '<div class="mem-h3">in your notes · ' + notes.length + '</div><div class="mem-list">' + notes.map(memoryNoteCardHtml).join("") + '</div>' : '');
+  }
   function renderMemory(){
     if(activeSection !== "memory") return;
-    var topics = memoryTopicsList();
-    if(memoryTopic && !topics.some(function(t){ return t.topic === memoryTopic; })) memoryTopic = null;
-    var total = state.agentMemory.filter(function(m){ return !m.archivedAt; }).length;
-    document.getElementById("memTopics").innerHTML =
-      '<button class="mem-topic' + (memoryTopic ? '' : ' active') + '" type="button" data-mem-topic=""><span>all</span><span class="mem-topic-n">' + total + '</span></button>' +
-      topics.map(function(t){
-        return '<button class="mem-topic' + (memoryTopic === t.topic ? ' active' : '') + '" type="button" data-mem-topic="' + escapeHtml(t.topic) + '"><span>' + escapeHtml(t.topic) + '</span><span class="mem-topic-n">' + t.n + '</span></button>';
-      }).join("");
-    var list = memoryVisible();
-    document.getElementById("memList").innerHTML = list.length ? list.map(memoryCardHtml).join("")
-      : '<div class="mem-empty">' + (state.agentMemory.length ? 'Nothing matches.' : 'Nothing here yet. Your agents will fill this in as they learn things — or add an entry yourself.') + '</div>';
+    var live = memoryLive();
+    document.getElementById("memTopics").innerHTML = memoryRailHtml(live);
+    var out = document.getElementById("memList");
+    var q = (document.getElementById("memSearch").value || "").trim();
+    if(q){ out.innerHTML = memorySearchHtml(q, live); return; }
+    if(memoryView === "overview"){
+      out.innerHTML = state.agentMemory.length || memoryKeeperNotes().length ? memoryOverviewHtml(live)
+        : '<div class="mem-empty">Nothing here yet. Your Agent PgM bots fill this in as they work — area status and journals, project dossiers, people. You can add an entry yourself, or ask Claude to remember something.</div>';
+      return;
+    }
+    var list = memoryInView(memoryView, live);
+    if(memoryView.indexOf("area:") === 0){
+      var area = memoryView.slice(5);
+      var status = list.filter(function(m){ return memoryKind(m) === "status"; });
+      var journal = list.filter(function(m){ return memoryKind(m) === "journal"; });
+      var rest = memorySort(list.filter(function(m){ return memoryKind(m) !== "status" && memoryKind(m) !== "journal"; }));
+      var keepers = memoryKeeperNotes().filter(function(nt){ return (nt.categories || []).indexOf(area) !== -1; }).slice(0, 6);
+      var writers = {};
+      list.forEach(function(m){ m.contributors.forEach(function(c){ writers[c] = 1; }); });
+      out.innerHTML = '<div class="mem-view-head"><h2>' + escapeHtml(area) + '</h2><span class="mem-view-sub">' + (Object.keys(writers).length ? 'kept by ' + escapeHtml(Object.keys(writers).join(", ")) : '') + '</span></div>' +
+        (status.length ? '<div class="mem-h3">status</div><div class="mem-list">' + status.map(function(m){ return memoryCardHtml(m, { open:true, hideTopic:true }); }).join("") + '</div>' : '') +
+        journal.map(function(m){ return '<div class="mem-h3">journal</div><div data-mem="' + m.id + '">' + memoryJournalHtml(m) + '</div>'; }).join("") +
+        (rest.length ? '<div class="mem-h3">projects &amp; facts</div><div class="mem-list">' + rest.map(function(m){ return memoryCardHtml(m, { hideTopic:true }); }).join("") + '</div>' : '') +
+        (keepers.length ? '<div class="mem-h3">your notes on ' + escapeHtml(area) + '</div><div class="mem-list">' + keepers.map(memoryNoteCardHtml).join("") + '</div>' : '') +
+        (!list.length ? '<div class="mem-empty">Nothing kept for ' + escapeHtml(area) + ' yet.</div>' : '');
+      return;
+    }
+    if(memoryView === "you"){
+      var mine = memorySort(list), notes = memoryKeeperNotes();
+      out.innerHTML = '<div class="mem-view-head"><h2>from you</h2><span class="mem-view-sub">entries you or Claude added, and your keeper notes — saved through Claude, or marked reference</span></div>' +
+        (mine.length ? '<div class="mem-list">' + mine.map(function(m){ return memoryCardHtml(m); }).join("") + '</div>' : '') +
+        (notes.length ? '<div class="mem-h3">your notes · ' + notes.length + '</div><div class="mem-list">' + notes.slice(0, 60).map(memoryNoteCardHtml).join("") + '</div>' : '') +
+        (!mine.length && !notes.length ? '<div class="mem-empty">Nothing yet. Ask Claude to remember something, or mark a note as reference.</div>' : '');
+      return;
+    }
+    var title = memoryView === "projects" ? "projects" : memoryView === "people" ? "people" : memoryView.slice(6);
+    out.innerHTML = '<div class="mem-view-head"><h2>' + escapeHtml(title) + '</h2></div>' +
+      (list.length ? '<div class="mem-list">' + memorySort(list).map(function(m){ return memoryCardHtml(m); }).join("") + '</div>' : '<div class="mem-empty">Nothing here.</div>');
   }
   var editingMemoryId = null;
   function openMemoryModal(id){
     var m = id ? state.agentMemory.find(function(x){ return x.id === id; }) : null;
     editingMemoryId = m ? m.id : null;
+    var preset = memoryView.indexOf("area:") === 0 ? memoryView.slice(5) : memoryView.indexOf("topic:") === 0 ? memoryView.slice(6) : "";
     document.getElementById("memModalTitle").textContent = m ? "edit_memory.json" : "new_memory.json";
     document.getElementById("memTitleInput").value = m ? m.title : "";
-    document.getElementById("memTopicInput").value = m ? m.topic : (memoryTopic || "");
+    document.getElementById("memTopicInput").value = m ? m.topic : preset;
     document.getElementById("memTagsInput").value = m ? m.tags.join(", ") : "";
     document.getElementById("memBodyInput").value = m ? m.bodyMd : "";
-    document.getElementById("memTopicList").innerHTML = memoryTopicsList().map(function(t){ return '<option value="' + escapeHtml(t.topic) + '"></option>'; }).join("");
+    document.getElementById("memTopicList").innerHTML = MEMORY_AREAS.concat(memoryTopicsList().map(function(t){ return t.topic; }))
+      .filter(function(t, i, a){ return a.indexOf(t) === i; }).map(function(t){ return '<option value="' + escapeHtml(t) + '"></option>'; }).join("");
     document.getElementById("memKeyNote").textContent = m && m.key ? "key: " + m.key + " — agents update this entry under that key" : "";
     openModal("memModalOverlay");
     document.getElementById("memTitleInput").focus();
@@ -20792,6 +20991,30 @@
       await safeUpdate("agent_memory", m.id, back);
     });
   }
+  // Your edit replaces a version, like a bot's does: keep the old one (best effort — without
+  // migration_agent_memory_history.sql the edit still saves).
+  async function memoryKeepRevision(m){
+    try {
+      await sb.from("agent_memory_revisions").insert({ memory_id:m.id, title:m.title, body_md:m.bodyMd, topic:m.topic, tags:m.tags,
+        written_by:m.updatedBy || "me", written_at:m.updatedAt || null, replaced_by:"me" });
+    } catch(e){ /* history is optional */ }
+  }
+  async function openMemoryHistory(m){
+    document.getElementById("memHistTitle").textContent = "history · " + m.title;
+    var body = document.getElementById("memHistBody");
+    body.innerHTML = '<div class="mem-empty">loading…</div>';
+    openModal("memHistOverlay");
+    var r = await sb.from("agent_memory_revisions").select("*").eq("memory_id", m.id).order("created_at", { ascending:false }).limit(50);
+    if(r.error){ body.innerHTML = '<div class="mem-empty">No history yet — run migration_agent_memory_history.sql in Supabase to start keeping versions.</div>'; return; }
+    var rows = r.data || [];
+    body.innerHTML = '<details open><summary>now · ' + escapeHtml(m.updatedBy) + (m.updatedAt ? ' · ' + inboxAgo(m.updatedAt) : '') + '</summary><div class="journal-entry-md">' + (renderNoteBodyHtml(m.bodyMd) || '') + '</div></details>' +
+      (rows.length ? rows.map(function(v){
+        return '<details><summary>' + (v.written_at ? new Date(v.written_at).toLocaleString() : 'earlier') + ' · ' + escapeHtml(v.written_by || "") + ' — replaced by ' + escapeHtml(v.replaced_by || "?") + '</summary>' +
+          (v.title !== m.title ? '<p class="mem-key">title: ' + escapeHtml(v.title) + '</p>' : '') +
+          '<div class="journal-entry-md">' + (renderNoteBodyHtml(v.body_md || "") || '') + '</div></details>';
+      }).join("") : '<div class="mem-empty">No earlier versions yet — they\'re kept from now on, each time the entry is rewritten.</div>');
+  }
+  document.getElementById("closeMemHistBtn").addEventListener("click", function(){ closeModal("memHistOverlay"); });
   document.getElementById("memAddBtn").addEventListener("click", function(){ openMemoryModal(null); });
   document.getElementById("cancelMemModalBtn").addEventListener("click", function(){ closeModal("memModalOverlay"); });
   document.getElementById("saveMemBtn").addEventListener("click", async function(){
@@ -20807,6 +21030,8 @@
     this.disabled = true;
     var res;
     if(editingMemoryId){
+      var before = state.agentMemory.find(function(x){ return x.id === editingMemoryId; });
+      if(before && (before.bodyMd !== payload.body_md || before.title !== payload.title)) await memoryKeepRevision(before);
       res = await safeUpdate("agent_memory", editingMemoryId, payload);
     } else {
       payload.created_by = "me"; payload.contributors = ["me"];
@@ -20821,14 +21046,32 @@
     renderMemory();
   });
   document.getElementById("memTopics").addEventListener("click", function(e){
-    var b = e.target.closest("[data-mem-topic]");
+    var b = e.target.closest("[data-mem-view]");
     if(!b) return;
-    memoryTopic = b.dataset.memTopic || null;
+    memoryView = b.dataset.memView || "overview";
+    document.getElementById("memSearch").value = "";
     renderMemory();
   });
   document.getElementById("memSearch").addEventListener("input", function(){ renderMemory(); });
   document.getElementById("memShowArchived").addEventListener("change", function(){ renderMemory(); });
   document.getElementById("memList").addEventListener("click", async function(e){
+    var go = e.target.closest("[data-mem-view]");
+    if(go){ memoryView = go.dataset.memView; renderMemory(); window.scrollTo(0, 0); return; }
+    var jump = e.target.closest("[data-mem-jump]");
+    if(jump){
+      var jm = state.agentMemory.find(function(x){ return x.id === jump.dataset.memJump; });
+      if(jm){ memoryView = memoryViewOf(jm); memoryExpanded[jm.id] = true; renderMemory(); var el = document.querySelector('#memList [data-mem="' + jm.id + '"]'); if(el) el.scrollIntoView({ block:"center" }); }
+      return;
+    }
+    var jb = e.target.closest("[data-mem-journal]");
+    if(jb){ memoryExpanded[jb.dataset.memJournal] = !memoryExpanded[jb.dataset.memJournal]; renderMemory(); return; }
+    var nb = e.target.closest("[data-mem-note-act]");
+    if(nb){
+      var nc = nb.closest("[data-mem-note]");
+      var note = nc && (state.journal || []).find(function(x){ return x.id === nc.dataset.memNote; });
+      if(note) openJournalEditModal(note);
+      return;
+    }
     var b = e.target.closest("[data-mem-act]");
     if(!b) return;
     var card = b.closest("[data-mem]");
@@ -20836,6 +21079,7 @@
     if(!m) return;
     var act = b.dataset.memAct;
     if(act === "edit") openMemoryModal(m.id);
+    else if(act === "history") await openMemoryHistory(m);
     else if(act === "more"){ memoryExpanded[m.id] = !memoryExpanded[m.id]; renderMemory(); }
     else if(act === "pin") await memoryPatch(m, { pinned: !m.pinned }, m.pinned ? "unpin" : "pin");
     else if(act === "archive") await memoryPatch(m, { archivedAt: m.archivedAt ? null : new Date().toISOString() }, m.archivedAt ? "restore" : "archive");
