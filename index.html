@@ -20756,7 +20756,7 @@
        area/<area>/status (rewritten each run) · area/<area>/journal (appended) · project/… · person/…
      Anything else is a fact under its topic. Every replaced version is kept in agent_memory_revisions.
      "From you" adds your own memories: entries you or Claude added here, and your keeper notes (saved
-     through Claude, or reference/decision notes). The connector's memory_overview uses the same rules
+     through Claude, or reference notes; decision notes are left out). The connector's memory_overview uses the same rules
      (memoryKind / memorySection in planner-mcp). See migration_agent_memory(_history).sql. */
   function memoryMapEntry(r){
     return { id:r.id, key:r.key||null, title:r.title||"", bodyMd:r.body_md||"", topic:r.topic||"General", tags:r.tags||[],
@@ -20774,9 +20774,10 @@
   }
   function memoryIsArea(m){ var kind = memoryKind(m); return kind === "status" || kind === "journal" || MEMORY_AREAS.indexOf(m.topic) !== -1; }
   function memoryIsYours(m){ return m.createdBy === "me" || m.createdBy === "claude"; }
-  // Your memories that live in notes: whatever Claude saved for you, and reference/decision notes.
+  // Your memories that live in notes: whatever Claude saved for you, and reference notes. Decision
+  // notes are no part of the memory (they're on the Notes page).
   function memoryKeeperNotes(){
-    return (state.journal || []).filter(function(n){ return n.source === "claude" || n.noteType === "reference" || n.noteType === "decision"; })
+    return (state.journal || []).filter(function(n){ return n.noteType !== "decision" && (n.source === "claude" || n.noteType === "reference"); })
       .sort(function(a, b){ return (b.date || "").localeCompare(a.date || "") || (b.createdAt || "").localeCompare(a.createdAt || ""); });
   }
   var memoryView = "overview";        // overview | you | projects | people | area:<name> | topic:<name>
@@ -20914,7 +20915,7 @@
     var words = q.toLowerCase().split(/\s+/).filter(Boolean);
     var hit = function(t){ t = t.toLowerCase(); return words.every(function(w){ return t.indexOf(w) !== -1; }); };
     var entries = memorySort(live.filter(function(m){ return hit(m.title + "\n" + m.bodyMd + "\n" + m.tags.join(" ") + "\n" + m.topic); }));
-    var notes = (state.journal || []).filter(function(nt){ return hit((nt.title || "") + "\n" + (nt.text || "")); })
+    var notes = (state.journal || []).filter(function(nt){ return nt.noteType !== "decision" && hit((nt.title || "") + "\n" + (nt.text || "")); })
       .sort(function(a, b){ return (b.date || "").localeCompare(a.date || ""); }).slice(0, 30);
     if(!entries.length && !notes.length) return '<div class="mem-empty">Nothing matches “' + escapeHtml(q) + '”.</div>';
     return (entries.length ? '<div class="mem-h3">in the memory · ' + entries.length + '</div><div class="mem-list">' + entries.map(function(m){ return memoryCardHtml(m); }).join("") + '</div>' : '') +
@@ -20951,7 +20952,7 @@
     }
     if(memoryView === "you"){
       var mine = memorySort(list), notes = memoryKeeperNotes();
-      out.innerHTML = '<div class="mem-view-head"><h2>from you</h2><span class="mem-view-sub">entries you or Claude added, and your keeper notes — saved through Claude, or marked reference or decision</span></div>' +
+      out.innerHTML = '<div class="mem-view-head"><h2>from you</h2><span class="mem-view-sub">entries you or Claude added, and your keeper notes — saved through Claude, or marked reference</span></div>' +
         (mine.length ? '<div class="mem-list">' + mine.map(function(m){ return memoryCardHtml(m); }).join("") + '</div>' : '') +
         (notes.length ? '<div class="mem-h3">your notes · ' + notes.length + '</div><div class="mem-list">' + notes.slice(0, 60).map(memoryNoteCardHtml).join("") + '</div>' : '') +
         (!mine.length && !notes.length ? '<div class="mem-empty">Nothing yet. Ask Claude to remember something, or mark a note as reference.</div>' : '');

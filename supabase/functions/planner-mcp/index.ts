@@ -1915,10 +1915,11 @@ tool("memory_save", {
 }, "owner");
 
 // The user's own memories reach the planner as notes (add_note from Claude, or written in the app).
-// "Keepers" are the ones meant to be remembered: everything Claude saved, plus reference and decision
+// "Keepers" are the ones meant to be remembered: everything Claude saved, plus reference notes.
+// Decision notes are no part of the memory (left out of keepers and of memory_search).
 // notes. Searches can cover all notes; the overview counts the keepers.
 // deno-lint-ignore no-explicit-any
-const isKeeperNote = (n: any) => n.source === "claude" || n.note_type === "reference" || n.note_type === "decision";
+const isKeeperNote = (n: any) => n.note_type !== "decision" && (n.source === "claude" || n.note_type === "reference");
 // deno-lint-ignore no-explicit-any
 function noteMemoryOut(n: any) {
   const text = String(n.text || "");
@@ -1960,7 +1961,7 @@ tool("memory_search", {
     if (args.includeNotes !== false && !args.kind && !args.tag && (words.length || args.topic)) {
       const notes = await owned("journal").order("date", { ascending: false }).limit(3000);
       if (!notes.error) {
-        const found = (notes.data || []).filter((n) =>
+        const found = (notes.data || []).filter((n) => n.note_type !== "decision" &&
           (!args.topic || (n.categories || []).includes(args.topic)) &&
           (!words.length || hits(((n.title || "") + "\n" + (n.text || "")).toLowerCase())));
         out.push(...found.slice(0, limit).map(noteMemoryOut));
