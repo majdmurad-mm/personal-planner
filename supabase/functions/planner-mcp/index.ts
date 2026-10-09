@@ -18,7 +18,7 @@
 //   https://<project-ref>.supabase.co/functions/v1/planner-mcp/mcp
 //
 // The tool surface mirrors the app's own in-page "Agent" tools (create/edit
-// goals, projects, habits, actions, events, notes, people, decisions) plus read
+// goals, projects, actions, events, notes, people, decisions) plus read
 // tools for pulling the current state. Like the in-app agent, it can create and
 // edit but NEVER delete — deletion stays a manual action in the app. That
 // includes scenarios and the links between them: link_scenarios can remove an
@@ -70,36 +70,6 @@ function fail(message: string) {
 // tools that default to today also accept an explicit `date` the caller can pass.
 function todayUTC(): string {
   return new Date().toISOString().slice(0, 10);
-}
-
-// Mirror of index.html's habitOccursOnDate — MUST stay in step with it so the
-// agenda's "habits due today" matches what the app itself shows.
-function habitOccursOnDate(h: any, dateStr: string): boolean {
-  // Paused: the pattern is kept so the habit can be resumed, but it occurs on no date at all.
-  if (h.paused_at) return false;
-  const skip: string[] = h.skip_dates || [];
-  const extra: string[] = h.extra_dates || [];
-  if (skip.indexOf(dateStr) !== -1) return false;
-  if (extra.indexOf(dateStr) !== -1) return true;
-  const createdAt = h.created_at ? String(h.created_at).slice(0, 10) : null;
-  if (createdAt && dateStr < createdAt) return false;
-  if (h.frequency === "weekly") {
-    return (h.weekdays || []).indexOf(WEEKDAY_ABBR[new Date(dateStr + "T00:00:00").getDay()]) !== -1;
-  }
-  if (h.frequency === "monthly") {
-    const d = new Date(dateStr + "T00:00:00");
-    const lastDayOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-    const targetDay = Math.min(h.month_day || 1, lastDayOfMonth);
-    return d.getDate() === targetDay;
-  }
-  if (h.frequency === "custom" && createdAt) {
-    const interval = h.custom_interval_days || 1;
-    const daysSince = Math.round(
-      (new Date(dateStr + "T00:00:00").getTime() - new Date(createdAt + "T00:00:00").getTime()) / 86400000,
-    );
-    return daysSince % interval === 0;
-  }
-  return true;
 }
 
 // A scoped SELECT: every read is pinned to the owner's rows.
@@ -170,7 +140,7 @@ async function resolvePlace(
 
 // ---- Decision-canvas scoring -----------------------------------------------
 // Mirrors index.html's scenarioNetScore / scenarioIsScored / scenarioRankMap — MUST
-// stay in step with them, for the same reason habitOccursOnDate above does: a number
+// stay in step with them.
 // reported here that disagrees with what the user sees on the canvas is worse than
 // no number at all.
 type WeightEntry = { text?: string; weight?: number };
@@ -273,7 +243,7 @@ const mcpAgent = new McpServer({ name: "personal-planner-agents", version: "1.1.
 // Read tools the agent token may use. Everything not listed here is owner-only unless a tool is
 // registered with an explicit audience.
 const AGENT_READABLE = new Set([
-  "get_agenda", "list_goals", "list_projects", "list_habits", "list_actions", "list_events",
+  "get_agenda", "list_goals", "list_projects", "list_actions", "list_events",
   "list_notes", "list_people", "list_decisions", "get_decision", "list_pois", "get_tracker",
   "geocode_address",
 ]);
@@ -289,41 +259,24 @@ function tool(name: string, def: any, audience?: Audience) {
 
 tool("get_agenda", {
   description:
-    "The user's plan for one day (defaults to today, server UTC). Returns actions due that day, overdue open actions, undated open actions (backlog), the habits scheduled for that day (with whether each is already done), the events happening that day, and any notes written that day. Start here to understand what's on the user's plate.",
+    "The user's plan for one day (defaults to today, server UTC). Returns actions due that day, overdue open actions, undated open actions (backlog), the events happening that day, and any notes written that day. Start here to understand what's on the user's plate.",
   inputSchema: z.object({
     date: z.string().optional().describe("YYYY-MM-DD; defaults to today (server UTC). Pass the user's local date if it might differ."),
   }),
   handler: async (args: { date?: string }) => {
     const date = args.date || todayUTC();
-    const [actionsR, habitsR, notesR, eventsR] = await Promise.all([
+    const [actionsR, notesR, eventsR] = await Promise.all([
       owned("actions"),
-      owned("habits"),
       owned("journal").eq("date", date).order("created_at"),
       owned("events").eq("date", date),
     ]);
     if (actionsR.error) return fail(actionsR.error.message);
-    if (habitsR.error) return fail(habitsR.error.message);
     if (notesR.error) return fail(notesR.error.message);
     // Events are tolerated as missing rather than fatal: the table only exists once
     // migration_events.sql has been run, and an agenda without events is still useful.
     const events = eventsR.error ? [] : (eventsR.data || []);
 
     const actions = actionsR.data || [];
-    const habits = (habitsR.data || []).filter((h) => habitOccursOnDate(h, date));
-
-    // Habit completion lives in tracker_entries keyed by the habit's linked
-    // tracker_variable_id — pull that day's entries to mark each habit done/undone.
-    const varIds = habits.map((h) => h.tracker_variable_id).filter(Boolean);
-    const doneVarIds = new Set<string>();
-    if (varIds.length) {
-      const entR = await owned("tracker_entries").eq("date", date).in("variable_id", varIds);
-      for (const e of entR.data || []) {
-        // The app stores boolean habit completion as the string "true"/"1"; treat any non-empty, non-"false"/"0" as done.
-        const v = String(e.value).toLowerCase();
-        if (v && v !== "false" && v !== "0") doneVarIds.add(e.variable_id);
-      }
-    }
-
     const slimAction = (a: any) => ({
       id: a.id, title: a.title, type: a.type, priority: a.priority,
       date: a.date, timeOfDay: a.time_of_day, area: a.category,
@@ -347,10 +300,6 @@ tool("get_agenda", {
           id: e.id, title: e.title, timeOfDay: e.time_of_day, durationMinutes: e.duration_minutes,
           area: e.category, locationAddress: e.location_address || null,
         })),
-      habitsDue: habits.map((h) => ({
-        id: h.id, title: h.title, priority: h.priority, frequency: h.frequency,
-        timeOfDay: h.time_of_day, done: h.tracker_variable_id ? doneVarIds.has(h.tracker_variable_id) : false,
-      })),
       notes: (notesR.data || []).map((n) => ({
         id: n.id, title: n.title, text: n.text, areas: n.categories || [],
         priority: n.priority, timeOfDay: n.time_of_day, sentiment: n.sentiment || [],
@@ -392,22 +341,6 @@ tool("list_projects", {
     return ok((data || []).map((p) => ({
       id: p.id, title: p.title, goalId: p.goal_id, priority: p.priority,
       due: p.due, hours: Number(p.hours), done: p.done, areas: p.categories || [],
-    })));
-  },
-});
-
-tool("list_habits", {
-  description: "List the user's recurring habits and their schedules. A paused habit (paused:true) is a remembered pattern that is NOT currently scheduled — it never appears on any day until resumed.",
-  inputSchema: z.object({}),
-  handler: async () => {
-    const { data, error } = await owned("habits").order("position");
-    if (error) return fail(error.message);
-    return ok((data || []).map((h) => ({
-      id: h.id, title: h.title, goalId: h.goal_id, priority: h.priority,
-      frequency: h.frequency, weekdays: h.weekdays || [], monthDay: h.month_day,
-      customIntervalDays: h.custom_interval_days, timeOfDay: h.time_of_day,
-      durationMinutes: h.duration_minutes,
-      paused: !!h.paused_at, pausedAt: h.paused_at || null,
     })));
   },
 });
@@ -501,7 +434,7 @@ tool("list_people", {
 });
 
 tool("get_tracker", {
-  description: "The user's self-tracking variables (mood, metrics, habits) and their logged entries over a date range (defaults to the last 14 days).",
+  description: "The user's self-tracking variables (mood, metrics) and their logged entries over a date range (defaults to the last 14 days).",
   inputSchema: z.object({
     from: z.string().optional().describe("YYYY-MM-DD inclusive lower bound (default: 14 days ago)"),
     to: z.string().optional().describe("YYYY-MM-DD inclusive upper bound (default: today)"),
@@ -642,17 +575,16 @@ tool("list_pois", {
 
 tool("list_located_items", {
   description:
-    "Everything in the planner that carries a location, in one place: saved places, the actions/habits/events that have an address, and the people with a home location. Use this to answer 'what do I have near X' or 'where is everything'.",
+    "Everything in the planner that carries a location, in one place: saved places, the actions/events that have an address, and the people with a home location. Use this to answer 'what do I have near X' or 'where is everything'.",
   inputSchema: z.object({
-    kinds: z.array(z.enum(["place", "action", "habit", "event", "person"])).optional()
+    kinds: z.array(z.enum(["place", "action", "event", "person"])).optional()
       .describe("restrict to these kinds; omit for all"),
   }),
   handler: async (args: { kinds?: string[] }) => {
     const want = (k: string) => !args.kinds || !args.kinds.length || args.kinds.indexOf(k) !== -1;
-    const [poisR, actionsR, habitsR, eventsR, peopleR] = await Promise.all([
+    const [poisR, actionsR, eventsR, peopleR] = await Promise.all([
       want("place") ? owned("points_of_interest") : Promise.resolve({ data: [], error: null } as any),
       want("action") ? owned("actions") : Promise.resolve({ data: [], error: null } as any),
-      want("habit") ? owned("habits") : Promise.resolve({ data: [], error: null } as any),
       want("event") ? owned("events") : Promise.resolve({ data: [], error: null } as any),
       want("person") ? owned("people") : Promise.resolve({ data: [], error: null } as any),
     ]);
@@ -662,7 +594,7 @@ tool("list_located_items", {
     rows(poisR).forEach((p: any) => located.push({
       kind: "place", id: p.id, title: p.name, lat: p.lat, lng: p.lng, address: null, notes: p.notes || "",
     }));
-    [["action", actionsR], ["habit", habitsR], ["event", eventsR]].forEach(([kind, r]: any) => {
+    [["action", actionsR], ["event", eventsR]].forEach(([kind, r]: any) => {
       rows(r).forEach((x: any) => {
         if (x.location_lat == null && x.location_lng == null && !x.location_address) return;
         located.push({
@@ -853,80 +785,6 @@ tool("edit_project", {
     if (args.areas !== undefined) patch.categories = args.areas;
     const { error } = await safeWrite((p) => db.from("projects").update(p).eq("id", args.id).eq("user_id", OWNER), patch);
     if (error) return fail(error.message);
-    return ok({ ok: true });
-  },
-});
-
-tool("create_habit", {
-  description: "Create a new recurring habit, optionally attached to a goal. Also creates the linked tracker variable the app uses to record completions.",
-  inputSchema: z.object({
-    title: z.string(),
-    priority: z.enum(PRIORITIES),
-    frequency: z.enum(["daily", "weekly", "monthly", "custom"]),
-    goalId: z.string().optional(),
-    weekdays: z.array(z.enum(WEEKDAY_ABBR as unknown as [string, ...string[]])).optional()
-      .describe('for weekly: which days, e.g. ["Mon","Wed","Fri"]'),
-    monthDay: z.number().optional().describe("for monthly: day of month 1-31 (clamped to the last day in shorter months)"),
-    customIntervalDays: z.number().optional().describe("for custom: repeat every N days from creation"),
-    timeOfDay: z.string().optional().describe("HH:MM 24h, optional"),
-    durationMinutes: z.number().optional(),
-  }),
-  handler: async (args: any) => {
-    // Mirror the app: each habit gets its own boolean tracker variable so day-by-day
-    // completion can live in tracker_entries.
-    let trackerVariableId: string | null = null;
-    const vr = await safeWrite((p) => db.from("tracker_variables").insert(p).select().single(), { user_id: OWNER, name: args.title, type: "boolean" });
-    if (!vr.error && vr.data) trackerVariableId = vr.data.id;
-
-    const { data, error } = await safeWrite((p) => db.from("habits").insert(p).select().single(), {
-      user_id: OWNER, goal_id: args.goalId || null, title: args.title, priority: args.priority,
-      frequency: args.frequency, days: {}, weekdays: args.frequency === "weekly" ? (args.weekdays || []) : null,
-      month_day: args.frequency === "monthly" ? Math.max(1, Math.min(31, Math.round(args.monthDay) || 1)) : null,
-      custom_interval_days: args.frequency === "custom" ? Math.max(1, Math.round(args.customIntervalDays) || 1) : null,
-      time_of_day: args.timeOfDay || null, duration_minutes: args.durationMinutes || null,
-      tracker_variable_id: trackerVariableId,
-    });
-    if (error) return fail(error.message);
-    return ok({ ok: true, id: data.id });
-  },
-});
-
-tool("edit_habit", {
-  description: "Edit an existing habit by id. Only the fields you pass are changed. paused=true stops scheduling it but keeps its pattern; paused=false resumes it.",
-  inputSchema: z.object({
-    id: z.string(),
-    title: z.string().optional(),
-    goalId: z.string().optional(),
-    priority: z.enum(PRIORITIES).optional(),
-    frequency: z.enum(["daily", "weekly", "monthly", "custom"]).optional(),
-    weekdays: z.array(z.enum(WEEKDAY_ABBR as unknown as [string, ...string[]])).optional(),
-    monthDay: z.number().optional(),
-    customIntervalDays: z.number().optional(),
-    timeOfDay: z.string().optional(),
-    durationMinutes: z.number().optional(),
-    paused: z.boolean().optional().describe("true = stop scheduling it (pattern kept); false = resume"),
-  }),
-  handler: async (args: any) => {
-    const patch: Record<string, unknown> = {};
-    if (args.paused !== undefined) patch.paused_at = args.paused ? new Date().toISOString() : null;
-    if (args.title !== undefined) patch.title = args.title;
-    if (args.goalId !== undefined) patch.goal_id = args.goalId || null;
-    if (args.priority !== undefined) patch.priority = args.priority;
-    if (args.frequency !== undefined) patch.frequency = args.frequency;
-    if (args.weekdays !== undefined) patch.weekdays = args.weekdays;
-    if (args.monthDay !== undefined) patch.month_day = Math.max(1, Math.min(31, Math.round(args.monthDay) || 1));
-    if (args.customIntervalDays !== undefined) patch.custom_interval_days = args.customIntervalDays;
-    if (args.timeOfDay !== undefined) patch.time_of_day = args.timeOfDay || null;
-    if (args.durationMinutes !== undefined) patch.duration_minutes = args.durationMinutes;
-    const { error } = await safeWrite((p) => db.from("habits").update(p).eq("id", args.id).eq("user_id", OWNER), patch);
-    if (error) return fail(error.message);
-    // Keep the linked tracker variable's name in step with a renamed habit.
-    if (args.title !== undefined) {
-      const h = await owned("habits").eq("id", args.id).maybeSingle();
-      if (!h.error && h.data && h.data.tracker_variable_id) {
-        await safeWrite((p) => db.from("tracker_variables").update(p).eq("id", h.data.tracker_variable_id).eq("user_id", OWNER), { name: args.title });
-      }
-    }
     return ok({ ok: true });
   },
 });
@@ -1315,7 +1173,7 @@ tool("edit_person", {
 });
 
 tool("log_metric", {
-  description: "Record a self-tracking value for a date (mood, weight, a habit's completion, etc.). The variable must already exist — call get_tracker to see available variables and their ids. Upserts, so re-logging the same day overwrites.",
+  description: "Record a self-tracking value for a date (mood, weight, etc.). The variable must already exist — call get_tracker to see available variables and their ids. Upserts, so re-logging the same day overwrites.",
   inputSchema: z.object({
     variableId: z.string().describe("id of an existing tracker variable (from get_tracker)"),
     value: z.string().describe('the value as text — e.g. "4", "true", "72.5", or a category label'),
@@ -1390,9 +1248,9 @@ tool("edit_place", {
 
 tool("set_item_location", {
   description:
-    "Attach a location to an action, habit, event, or person (a person's is their home). Give an `address` and it's geocoded; pass `lat`/`lng` only if you already know them. Pass `clear: true` to remove the location instead.",
+    "Attach a location to an action, event, or person (a person's is their home). Give an `address` and it's geocoded; pass `lat`/`lng` only if you already know them. Pass `clear: true` to remove the location instead.",
   inputSchema: z.object({
-    kind: z.enum(["action", "habit", "event", "person"]),
+    kind: z.enum(["action", "event", "person"]),
     id: z.string(),
     address: z.string().optional(),
     lat: z.number().optional(),
@@ -1400,7 +1258,7 @@ tool("set_item_location", {
     clear: z.boolean().optional().describe("remove the location from this item"),
   }),
   handler: async (args: any) => {
-    const TABLES: Record<string, string> = { action: "actions", habit: "habits", event: "events", person: "people" };
+    const TABLES: Record<string, string> = { action: "actions", event: "events", person: "people" };
     const table = TABLES[args.kind];
     // A person's home lives in home_lat/home_lng with no address column of its own —
     // the other three share the location_address/lat/lng shape.
@@ -1695,7 +1553,7 @@ tool("propose_note", {
 
 tool("propose_metric", {
   description:
-    "Propose logging a tracker value for a day (weight, steps, a habit's completion…). The variable must exist — see get_tracker for ids. Re-logging the same day overwrites once approved.",
+    "Propose logging a tracker value for a day (weight, steps…). The variable must exist — see get_tracker for ids. Re-logging the same day overwrites once approved.",
   inputSchema: z.object({
     ...AGENT_ENVELOPE,
     variableId: z.string(),

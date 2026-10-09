@@ -7,7 +7,7 @@ say things in Cowork like *"what's on my plate today?"*, *"add a P1 task to call
 the accountant tomorrow"*, or *"log my mood as 4 for today"*, and it acts on your
 real planner.
 
-It can **create and edit** goals, projects, habits, actions, events, notes,
+It can **create and edit** goals, projects, actions, events, notes,
 people, decisions and their scenarios, places, tracker entries and finance
 transactions — but it can **never delete** anything (deletion stays a manual
 action in the app), mirroring the app's own in-page agent.
@@ -126,7 +126,7 @@ In **Settings → Cowork → global instructions** (or a folder's instructions),
 something like:
 
 > You have a "Personal Planner" connector wired to my planner app. When I ask
-> about my day, tasks, habits, goals, or mood, use it — start with `get_agenda`.
+> about my day, tasks, goals, or mood, use it — start with `get_agenda`.
 > When I ask you to schedule or capture something, create it with the right tool.
 > Never delete anything; if I ask to delete, tell me to do it in the app.
 
@@ -138,13 +138,13 @@ did today and lay out tomorrow"*).
 
 ## Tool reference
 
-**Read:** `get_agenda`, `list_goals`, `list_projects`, `list_habits`,
+**Read:** `get_agenda`, `list_goals`, `list_projects`,
 `list_actions`, `list_events`, `list_notes`, `list_people`, `list_decisions`,
 `get_decision`, `list_pois`, `list_located_items`, `get_location_history`,
 `geocode_address`, `get_tracker`, `get_finance`
 
 **Write (create/edit only — never delete):** `create_goal`, `edit_goal`,
-`create_project`, `edit_project`, `create_habit`, `edit_habit`, `create_action`,
+`create_project`, `edit_project`, `create_action`,
 `edit_action`, `complete_action`, `create_event`, `edit_event`,
 `set_action_decision`, `create_scenario`, `edit_scenario`, `link_scenarios`,
 `add_note`, `edit_note`, `create_person`, `edit_person`, `log_metric`,
@@ -178,11 +178,11 @@ did today and lay out tomorrow"*).
   names the fallback instead of silently dropping a pin in the wrong place.
 - **Places vs. item locations.** `create_place` / `edit_place` manage the standalone
   named pins on the Location map. `set_item_location` attaches a location to an
-  existing action, habit, event, or person (a person's is their home), or clears one
+  existing action, event, or person (a person's is their home), or clears one
   with `clear: true`. `create_action` and `create_event` also take a `location`
   directly, so "lunch with Sam at Café Central on Friday" is a single call.
 - **`list_located_items`** is the one-call answer to "where is everything" — places,
-  located actions/habits/events, and people's homes in a single list.
+  located actions/events, and people's homes in a single list.
 - **`get_location_history`** returns the user's own recorded positions, evenly
   sampled down (default 300 points) rather than truncated, so a week's data reads as
   a week rather than as one dense afternoon.
@@ -192,7 +192,7 @@ did today and lay out tomorrow"*).
 Agents connect to the same URL with their own token, `AGENT_TOKEN`, which gets a
 **restricted** tool set:
 
-- **Can read:** agenda, goals, projects, habits, actions, events, notes, people,
+- **Can read:** agenda, goals, projects, actions, events, notes, people,
   decisions, places, tracker.
 - **Cannot read:** finance, location history, `list_located_items` (it reveals
   where people live).
@@ -253,12 +253,6 @@ and redeploy. An `AGENT_TOKEN` equal to `MCP_TOKEN` is ignored. Needs
 - Server-side "today" is **UTC**. Near midnight your local date can differ; tools
   that default to today (`get_agenda`, `add_note`, `log_metric`) also accept an
   explicit `date`, and Cowork will usually pass your local date.
-- `habitOccursOnDate` here is a mirror of the same function in `index.html`. If you
-  change habit-scheduling rules in the app, update it here too so the agenda stays
-  in sync. The same goes for the decision-canvas scoring (`scenarioNetScore`,
-  `scenarioIsScored`, `scenarioRankMap`, `scenarioLinksTo`) and the canvas layout
-  constants (`SC_ORIGIN_X` and friends) — a score reported here that disagrees with
-  what's on screen is worse than no score at all.
 - **Tools whose tables need a migration first.** `list_events` / `create_event` /
   `edit_event` need `migration_events.sql`; the decision tools need
   `migration_action_scenarios.sql`. Until those are run, those tools return an error
