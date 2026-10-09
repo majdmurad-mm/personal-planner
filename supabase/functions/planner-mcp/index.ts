@@ -1796,10 +1796,50 @@ function memoryOut(r: any, full: boolean) {
   const body = String(r.body_md || "");
   return {
     id: r.id, key: r.key, title: r.title, topic: r.topic, tags: r.tags || [],
+    kind: memoryKind(r), section: memorySection(r),
     contributors: r.contributors || [], pinned: !!r.pinned, archived: !!r.archived_at,
     createdBy: r.created_by, updatedBy: r.updated_by, createdAt: r.created_at, updatedAt: r.updated_at,
     ...(full ? { body, sources: r.sources || [] } : { excerpt: body.length > 280 ? body.slice(0, 280) + "…" : body }),
   };
+}
+// How the knowledge base is organised. Agent PgM's bots key their entries by namespace:
+//   area/<area>/status   an area's current status (rewritten each run)
+//   area/<area>/journal  the area's running log (appended)
+//   project/<slug>       a project dossier (and project/<slug>-<facet>)
+//   person/<slug>        what the agents know about someone
+// Anything else is a fact/note under its topic. The same rules drive the app's Agent Memory page.
+// deno-lint-ignore no-explicit-any
+function memoryKind(r: any): string {
+  const key = String(r.key || "");
+  if (/^area\/[^/]+\/status$/.test(key)) return "status";
+  if (/^area\/[^/]+\/journal$/.test(key)) return "journal";
+  if (key.startsWith("project/")) return "project";
+  if (key.startsWith("person/")) return "person";
+  return "fact";
+}
+const MEMORY_AREAS: readonly string[] = CATEGORIES;
+// deno-lint-ignore no-explicit-any
+function memorySection(r: any): string {
+  const kind = memoryKind(r);
+  if (kind === "person") return "People";
+  if (kind === "project") return "Projects";
+  if (kind === "status" || kind === "journal" || MEMORY_AREAS.includes(r.topic)) return "Areas";
+  if (r.created_by === "me" || r.created_by === "claude") return "From you";
+  return "Topics";
+}
+// Keeps the version an entry is about to lose (best effort: without migration_agent_memory_history.sql
+// the save still goes through, just without history). Trims each entry's history to the newest 50.
+// deno-lint-ignore no-explicit-any
+async function keepRevision(existing: any, replacedBy: string) {
+  const { error } = await db.from("agent_memory_revisions").insert({
+    user_id: OWNER, memory_id: existing.id, title: existing.title, body_md: existing.body_md || "",
+    topic: existing.topic || "General", tags: existing.tags || [], written_by: existing.updated_by || "me",
+    written_at: existing.updated_at || null, replaced_by: replacedBy,
+  });
+  if (error) return;
+  const { data } = await db.from("agent_memory_revisions").select("id").eq("memory_id", existing.id)
+    .eq("user_id", OWNER).order("created_at", { ascending: false }).range(50, 500);
+  if (data && data.length) await db.from("agent_memory_revisions").delete().in("id", data.map((r) => r.id));
 }
 // deno-lint-ignore no-explicit-any
 function whoFor(args: any, role: "owner" | "agent"): string {
@@ -1844,6 +1884,8 @@ async function memorySave(args: any, who: string) {
   if (args.title !== undefined) patch.title = args.title;
   if (args.topic !== undefined) patch.topic = args.topic;
   if (args.tags !== undefined) patch.tags = args.tags;
+  // A real change to the text loses the old version, so keep it first (appends extend the log instead).
+  if (!append && (body !== existing.body_md || (args.title !== undefined && args.title !== existing.title))) await keepRevision(existing, who);
   const { error } = await db.from("agent_memory").update(patch).eq("id", existing.id).eq("user_id", OWNER);
   if (error) return fail(error.message);
   // An entry the user archived stays archived — a bot re-saving it shouldn't overrule that. The
@@ -1872,40 +1914,111 @@ tool("memory_save", {
   handler: async (args: any) => memorySave(args, whoFor(args, "owner")),
 }, "owner");
 
+// The user's own memories reach the planner as notes (add_note from Claude, or written in the app).
+// "Keepers" are the ones meant to be remembered: everything Claude saved, plus reference and decision
+// notes. Searches can cover all notes; the overview counts the keepers.
+// deno-lint-ignore no-explicit-any
+const isKeeperNote = (n: any) => n.source === "claude" || n.note_type === "reference" || n.note_type === "decision";
+// deno-lint-ignore no-explicit-any
+function noteMemoryOut(n: any) {
+  const text = String(n.text || "");
+  return {
+    from: "your_note", id: n.id, title: n.title || text.split("\n")[0].slice(0, 80), date: n.date,
+    noteType: n.note_type || "reflection", areas: n.categories || [], viaClaude: n.source === "claude",
+    excerpt: text.length > 280 ? text.slice(0, 280) + "…" : text,
+  };
+}
+
 tool("memory_search", {
-  description: "Search the agents' knowledge base by text, topic or tag. Returns excerpts, newest first — call memory_get for a full entry.",
+  description:
+    "Search the memory: the agents' knowledge base (what the Agent PgM bots keep — area status and journals, project dossiers, people, facts) and, by default, the user's own notes. Returns excerpts, newest first, each marked from:'agent_memory' or from:'your_note' — call memory_get for a full entry (or list_notes for a note). Start with memory_overview if you don't know what's there.",
   inputSchema: z.object({
-    query: z.string().optional().describe("case-insensitive match on title and body"),
-    topic: z.string().optional(),
+    query: z.string().optional().describe("case-insensitive match on title and text (all words must match)"),
+    topic: z.string().optional().describe("an area or topic, e.g. 'Health'"),
+    kind: z.enum(["status", "journal", "project", "person", "fact"]).optional(),
     tag: z.string().optional(),
+    includeNotes: z.boolean().optional().describe("also search the user's notes (default true)"),
     includeArchived: z.boolean().optional(),
     limit: z.number().optional().describe("max rows (default 20)"),
   }),
-  handler: async (args: { query?: string; topic?: string; tag?: string; includeArchived?: boolean; limit?: number }) => {
+  handler: async (args: { query?: string; topic?: string; kind?: string; tag?: string; includeNotes?: boolean; includeArchived?: boolean; limit?: number }) => {
     let q = owned("agent_memory").order("updated_at", { ascending: false }).limit(1000);
     if (args.topic) q = q.eq("topic", args.topic);
     const { data, error } = await q;
     if (error) return fail(error.message + MEMORY_HINT);
-    const needle = (args.query || "").toLowerCase();
+    const words = (args.query || "").toLowerCase().split(/\s+/).filter(Boolean);
+    const hits = (text: string) => words.every((w) => text.includes(w));
+    const limit = args.limit && args.limit > 0 ? args.limit : 20;
     const rows = (data || []).filter((r) =>
       (args.includeArchived || !r.archived_at) &&
+      (!args.kind || memoryKind(r) === args.kind) &&
       (!args.tag || (r.tags || []).includes(args.tag)) &&
-      (!needle || String(r.title).toLowerCase().includes(needle) || String(r.body_md).toLowerCase().includes(needle)));
-    return ok(rows.slice(0, args.limit && args.limit > 0 ? args.limit : 20).map((r) => memoryOut(r, false)));
+      (!words.length || hits((r.title + "\n" + r.body_md + "\n" + (r.tags || []).join(" ")).toLowerCase())));
+    // deno-lint-ignore no-explicit-any
+    const out: any[] = rows.slice(0, limit).map((r) => ({ from: "agent_memory", ...memoryOut(r, false) }));
+    // Notes have no kind or tags, so a kind/tag filter means "agent memory only".
+    if (args.includeNotes !== false && !args.kind && !args.tag && (words.length || args.topic)) {
+      const notes = await owned("journal").order("date", { ascending: false }).limit(3000);
+      if (!notes.error) {
+        const found = (notes.data || []).filter((n) =>
+          (!args.topic || (n.categories || []).includes(args.topic)) &&
+          (!words.length || hits(((n.title || "") + "\n" + (n.text || "")).toLowerCase())));
+        out.push(...found.slice(0, limit).map(noteMemoryOut));
+      }
+    }
+    return ok(out);
+  },
+}, "both");
+
+tool("memory_overview", {
+  description:
+    "The map of the memory — start here. Everything the agents keep, organised the way the app's Agent Memory page shows it: Areas (each area's status and journal), Projects, People, other Topics, and what the user added themselves; plus the latest changes and how many of the user's notes are keepers. Each entry is listed by key and title only — use memory_get for its content.",
+  inputSchema: z.object({ includeArchived: z.boolean().optional() }),
+  handler: async (args: { includeArchived?: boolean }) => {
+    const { data, error } = await owned("agent_memory").order("updated_at", { ascending: false }).limit(2000);
+    if (error) return fail(error.message + MEMORY_HINT);
+    const rows = (data || []).filter((r) => args.includeArchived || !r.archived_at);
+    // section -> topic -> entries
+    const tree: Record<string, Record<string, unknown[]>> = {};
+    for (const r of rows) {
+      const s = memorySection(r);
+      ((tree[s] ||= {})[r.topic] ||= []).push({ key: r.key, id: r.id, title: r.title, kind: memoryKind(r), updatedAt: r.updated_at, updatedBy: r.updated_by, pinned: !!r.pinned });
+    }
+    const order = ["Areas", "Projects", "People", "Topics", "From you"];
+    const writers: Record<string, number> = {};
+    rows.forEach((r) => (r.contributors || []).forEach((c: string) => { writers[c] = (writers[c] || 0) + 1; }));
+    const notes = await db.from("journal").select("id,source,note_type").eq("user_id", OWNER).limit(5000);
+    return ok({
+      entries: rows.length,
+      sections: order.filter((s) => tree[s]).map((s) => ({
+        section: s,
+        topics: Object.entries(tree[s]).sort((a, b) => a[0].localeCompare(b[0])).map(([topic, entries]) => ({ topic, entries })),
+      })),
+      writers: Object.entries(writers).sort((a, b) => b[1] - a[1]).map(([name, entries]) => ({ name, entries })),
+      latest: rows.slice(0, 10).map((r) => ({ key: r.key, title: r.title, updatedBy: r.updated_by, updatedAt: r.updated_at })),
+      yourNotes: notes.error ? null : { total: (notes.data || []).length, keepers: (notes.data || []).filter(isKeeperNote).length, hint: "search them with memory_search, or list_notes" },
+    });
   },
 }, "both");
 
 tool("memory_get", {
-  description: "One knowledge-base entry in full — body, sources and who contributed. Look it up by key or id.",
-  inputSchema: z.object({ key: z.string().optional(), id: z.string().optional() }),
-  handler: async (args: { key?: string; id?: string }) => {
+  description: "One memory entry in full — body, sources and who contributed. Look it up by key or id. history=true adds the earlier versions (an entry like 'Health · status' is rewritten every run, so this is how to see how things changed).",
+  inputSchema: z.object({ key: z.string().optional(), id: z.string().optional(), history: z.boolean().optional().describe("include earlier versions, newest first (max 50)") }),
+  handler: async (args: { key?: string; id?: string; history?: boolean }) => {
     if (!args.key && !args.id) return fail("pass key or id");
     let q = owned("agent_memory");
     q = args.key ? q.eq("key", args.key) : q.eq("id", args.id);
     const { data, error } = await q.maybeSingle();
     if (error) return fail(error.message + MEMORY_HINT);
     if (!data) return fail("no entry with " + (args.key ? "key " + args.key : "id " + args.id));
-    return ok(memoryOut(data, true));
+    // deno-lint-ignore no-explicit-any
+    const out: any = memoryOut(data, true);
+    if (args.history) {
+      const h = await owned("agent_memory_revisions").eq("memory_id", data.id).order("created_at", { ascending: false }).limit(50);
+      out.history = h.error ? { unavailable: "run migration_agent_memory_history.sql to keep versions" }
+        : (h.data || []).map((v) => ({ title: v.title, body: v.body_md, topic: v.topic, writtenBy: v.written_by, writtenAt: v.written_at, replacedBy: v.replaced_by, replacedAt: v.created_at }));
+    }
+    return ok(out);
   },
 }, "both");
 
