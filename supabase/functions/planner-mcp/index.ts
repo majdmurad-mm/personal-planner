@@ -1628,6 +1628,27 @@ tool("propose_event", {
   },
 }, "agent");
 
+tool("propose_person", {
+  description:
+    "Propose adding a PERSON to the user's People (e.g. someone who writes on WhatsApp and isn't listed yet). Nothing changes until the user approves it in their Inbox. Use socialGroup 'Automatically added' for people an agent found on its own.",
+  inputSchema: z.object({
+    ...AGENT_ENVELOPE,
+    op: z.literal("create").optional(),
+    name: z.string(),
+    relationship: z.enum(RELATIONSHIPS).optional(),
+    contact: z.string().optional().describe("How to reach them: phone, email, 'WhatsApp +49…'"),
+    notes: z.string().optional(),
+    socialGroup: z.string().optional(),
+  }),
+  handler: async (args: any) => {
+    const payload = {
+      user_id: OWNER, name: args.name, relationship: args.relationship || "Other",
+      contact: args.contact || "", notes: args.notes || "", social_group: args.socialGroup || null,
+    };
+    return fileProposal({ ...args, kind: "person", op: "create", payload, summary: `New person: "${args.name}"${args.socialGroup ? ` (${args.socialGroup})` : ""}` });
+  },
+}, "agent");
+
 tool("propose_note", {
   description:
     "Propose adding a NOTE (journal entry) or editing one. Use noteType 'reference' for facts and summaries an agent gathered — only 'reflection' notes are treated as the user's own mood. Nothing changes until the user approves it.",

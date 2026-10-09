@@ -20612,7 +20612,7 @@
         : '<div class="ib-empty">No decisions yet.</div>';
     }
   }
-  var INBOX_TABLE = { action:"actions", note:"journal", event:"events", scenario:"action_scenarios" };
+  var INBOX_TABLE = { action:"actions", note:"journal", event:"events", scenario:"action_scenarios", person:"people" };
   // Performs one proposal's write. Returns true on success; leaves the proposal pending on failure
   // so nothing is marked approved that didn't actually happen.
   async function inboxApply(p){
@@ -20633,7 +20633,7 @@
         Object.assign(payload, prov);
         res = p.kind === "note"
           ? await safeWrite(function(q){ return sb.from("journal").insert(q).select().single(); }, payload)
-          : await safeInsert(INBOX_TABLE[p.kind], payload, p.kind === "action" ? state.actions : state.events);
+          : await safeInsert(INBOX_TABLE[p.kind], payload, p.kind === "action" ? state.actions : p.kind === "person" ? state.people : state.events);
       }
       if(res && !res.error) resultId = res.data.id;
     } else {
