@@ -300,6 +300,11 @@
   /* The Health page paints its own full-bleed background inside a shadow root (see health/), so it
      cancels .main's padding; --pph-top is read by health/health.css to clear the mobile menu button. */
   #healthSection{ margin:-32px -40px -70px; }
+  /* People, constellation and list views: one full-bleed host; the older header, filters and panels step aside. */
+  #peopleSkyHost{ display:none; }
+  #peopleSection.ppl-sky{ margin:-32px -40px -70px; }
+  #peopleSection.ppl-sky > *{ display:none !important; }
+  #peopleSection.ppl-sky > #peopleSkyHost{ display:block !important; }
   .main-header{ display:flex; justify-content:space-between; align-items:flex-end; gap:var(--space-5); flex-wrap:wrap; margin-bottom:var(--space-1); }
   h1{ font-family:var(--display); font-size:var(--fs-xl); font-weight:700; margin:0; letter-spacing:-0.02em; }
   h1 .path-sep{ color:var(--text-faint); font-weight:400; margin:0 2px; }
@@ -1654,6 +1659,7 @@
     h1{ font-size:19px; }
     #locationSection{ margin:-56px -18px -60px; padding:12px 18px 12px; }
     #healthSection{ margin:-56px -18px -60px; --pph-top:46px; }
+    #peopleSection.ppl-sky{ margin:-56px -18px -60px; --pph-top:46px; }
     #peopleSection.ppl-fullscreen-graph{ margin:-56px -18px -60px; padding:12px 18px 12px; }
     /* #homeSection.home-cockpit's mobile margins can't live here — see the note beside its base rule. */
     .today-two-col{ grid-template-columns:1fr; }
@@ -1674,6 +1680,7 @@
     .main{ padding:44px 24px 20px; }
     #locationSection{ margin:-44px -24px -20px; padding:10px 24px 10px; }
     #healthSection{ margin:-44px -24px -20px; --pph-top:36px; }
+    #peopleSection.ppl-sky{ margin:-44px -24px -20px; --pph-top:36px; }
     #peopleSection.ppl-fullscreen-graph{ margin:-44px -24px -20px; padding:10px 24px 10px; }
   }
 
@@ -3402,6 +3409,7 @@
 
     <!-- ===== PEOPLE SECTION ===== -->
     <section id="peopleSection" style="display:none;">
+      <div id="peopleSkyHost"></div>
       <div class="main-header">
         <div>
           <h1>people</h1>
@@ -3410,10 +3418,11 @@
         <button class="btn btn-accent" id="openPersonModalBtn" type="button">+ new person</button>
       </div>
       <div class="sub-view-toggle" id="peopleSubToggle">
-        <button class="sub-view-tab active" data-sub="cards" type="button">cards</button>
-        <button class="sub-view-tab" data-sub="graph" type="button">graph</button>
-        <button class="sub-view-tab" data-sub="graph3d" type="button">3d</button>
+        <button class="sub-view-tab active" data-sub="sky" type="button">constellation</button>
+        <button class="sub-view-tab" data-sub="graph" type="button">clusters</button>
+        <button class="sub-view-tab" data-sub="list" type="button">list</button>
         <button class="sub-view-tab" data-sub="table" type="button">table</button>
+        <button class="sub-view-tab" data-sub="graph3d" id="people3dTab" type="button" style="display:none;">3d</button>
       </div>
       <div class="filter-row" id="peopleFilterRow">
         <button class="filter-chip active" data-filter="all" type="button">all</button>
@@ -5168,7 +5177,7 @@
       L.tileLayer(base + "World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}", { maxNativeZoom:16, maxZoom:19 })
     ]);
   }
-  var state = { archivedActions:[], goals:[], projects:[], actions:[], events:[], journal:[], people:[], trackerVars:[], trackerEntries:[], trackerDays:[], wbConnections:[], sleepScores:[], trash:[], socialGroupColors:[], gpsPings:[], pois:[], recordings:[], financeAccounts:[], financeTransactions:[], actionScenarios:[],
+  var state = { archivedActions:[], goals:[], projects:[], actions:[], events:[], journal:[], people:[], peopleArchived:[], trackerVars:[], trackerEntries:[], trackerDays:[], wbConnections:[], sleepScores:[], trash:[], socialGroupColors:[], gpsPings:[], pois:[], recordings:[], financeAccounts:[], financeTransactions:[], actionScenarios:[],
     agentProposals:[], agentReports:[], agentMemory:[] };
   var currentUser = null;
 
@@ -5313,14 +5322,11 @@
     state.actions = UI_FLAGS.showArchived ? loadedActions : loadedActions.filter(function(a){ return !a.archivedAt; });
     state.actions.sort(function(a,b){ return a.position - b.position; });
     state.journal = (results[3].data || []).filter(function(r){ return UI_FLAGS.showArchived || !r.archived_at; }).map(function(r){ return { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, categories:r.categories||[], noteType:r.note_type||"reflection", recordingId:r.recording_id||null, linkedObjects:r.linked_objects||[], sentiment:r.sentiment||[], title:r.title||"", priority:r.priority||null, createdAt:r.created_at||null, source:r.source||null }; });
-    state.people = (results[4].data || []).map(function(r){
-      return { id:r.id, name:r.name, relationship:r.relationship, contact:r.contact, notes:r.notes, position:r.position||0,
-        verified:!!r.verified, likeScore:(r.like_score!=null?r.like_score:null), contactScore:(r.contact_score!=null?r.contact_score:null),
-        yearMet:(r.year_met!=null?r.year_met:null), relationshipStatus:r.relationship_status||"", socialGroup:r.social_group||"",
-        personalityType:r.personality_type||"", location:r.location||"", relatedPeople:r.related_people||"", planets:r.planets||"",
-        homeLat:(r.home_lat!=null?r.home_lat:null), homeLng:(r.home_lng!=null?r.home_lng:null) };
-    });
-    state.people.sort(function(a,b){ return a.position - b.position; });
+    var loadedPeople = (results[4].data || []).map(mapPerson);
+    loadedPeople.sort(function(a,b){ return a.position - b.position; });
+    // Archived people stay out of the rest of the planner (pickers, map, graph); the People page still lists them under "Archived".
+    state.peopleArchived = UI_FLAGS.showArchived ? [] : loadedPeople.filter(function(p){ return p.archivedAt; });
+    state.people = UI_FLAGS.showArchived ? loadedPeople : loadedPeople.filter(function(p){ return !p.archivedAt; });
     chatMessages = (results[5].data || []).map(function(r){ return { role:r.role, content:r.content }; });
     state.trackerVars = (results[6].data || []).map(function(r){ return { id:r.id, name:r.name, type:r.type, unit:r.unit, scaleMax:r.scale_max, categories:r.categories || [], position:r.position }; });
     state.trackerEntries = (results[7].data || []).map(function(r){ return { id:r.id, date:r.date, variableId:r.variable_id, value:r.value }; });
@@ -5373,7 +5379,7 @@
   function inFilter(key, done){ var f = filters[key]; return f === "all" || (f === "done" ? done : !done); }
   // An ongoing goal is never finished, even when every action under it is done.
   function goalIsOpen(g){ return !!g.ongoing || goalStatus(g) !== "done"; }
-  var views = { goals:"list", projects:"matrix", actions:"matrix", events:"matrix", sleep:"daily", people:"cards", journal:"notes", calStrip:"plain", finance:"overview" };
+  var views = { goals:"list", projects:"matrix", actions:"matrix", events:"matrix", sleep:"daily", people:"sky", journal:"notes", calStrip:"plain", finance:"overview" };
 
   function wireSubViewToggle(containerId, panelKey, renderFn){
     var el = document.getElementById(containerId);
@@ -8254,6 +8260,17 @@
       renderAll();
     });
   }
+  function mapPerson(r){
+    var nn = function(v){ return v != null ? v : null; };
+    return { id:r.id, name:r.name, relationship:r.relationship, contact:r.contact, notes:r.notes, position:r.position||0,
+      verified:!!r.verified, likeScore:nn(r.like_score), contactScore:nn(r.contact_score),
+      yearMet:nn(r.year_met), relationshipStatus:r.relationship_status||"", socialGroup:r.social_group||"",
+      personalityType:r.personality_type||"", location:r.location||"", relatedPeople:r.related_people||"", planets:r.planets||"",
+      homeLat:nn(r.home_lat), homeLng:nn(r.home_lng),
+      circle:nn(r.circle), quality:r.quality||null, energy:r.energy||null, lastContactAt:r.last_contact_at||null, lastContactKind:r.last_contact_kind||null,
+      rhythmDays:nn(r.rhythm_days), birthdayMonth:nn(r.birthday_month), birthdayDay:nn(r.birthday_day), birthdayYear:nn(r.birthday_year),
+      archivedAt:r.archived_at||null, inMemory:!!r.in_memory };
+  }
   function personPayload(snapshot){
     return { id:snapshot.id, name:snapshot.name, relationship:snapshot.relationship, contact:snapshot.contact, notes:snapshot.notes, position:snapshot.position,
       verified:snapshot.verified, like_score:snapshot.likeScore, contact_score:snapshot.contactScore, year_met:snapshot.yearMet,
@@ -8264,18 +8281,30 @@
   async function deletePerson(id){
     var pe = state.people.find(function(x){ return x.id === id; });
     if(!pe) return;
-    var snapshot = Object.assign({}, pe);
-    state.people = state.people.filter(function(x){ return x.id !== id; });
+    // People are never deleted: the row is archived (hidden everywhere, listed under "Archived" on the People page) and can come back.
+    var r = await sb.from("people").update({ archived_at:new Date().toISOString() }).eq("id", id).select().single();
+    if(r.error){ dbErrorToast(r.error, "Couldn't archive"); return; }
+    pe.archivedAt = r.data.archived_at;
+    if(!UI_FLAGS.showArchived){
+      state.people = state.people.filter(function(x){ return x.id !== id; });
+      (state.peopleArchived = state.peopleArchived || []).push(pe);
+    }
     renderAll();
-    var r = await sb.from("people").delete().eq("id", id);
-    if(r.error){ console.error(r.error); return; }
-    await writeTrash("person", snapshot.name, personPayload(snapshot));
-    pushUndo("delete person \"" + snapshot.name + "\"", async function(){
-      var ri = await sb.from("people").insert(personPayload(snapshot)).select().single();
-      if(ri.error){ console.error(ri.error); toast("Could not restore person: " + ri.error.message); return; }
-      state.people.push(snapshot);
-      renderAll();
-    });
+    toast("Archived " + pe.name + ". Ctrl+Z brings them back.");
+    pushUndo("archive \"" + pe.name + "\"", function(){ return restorePerson(id); });
+  }
+  async function restorePerson(id){
+    var pe = (state.peopleArchived || []).concat(state.people).find(function(x){ return x.id === id; });
+    if(!pe) return;
+    var r = await sb.from("people").update({ archived_at:null }).eq("id", id);
+    if(r.error){ dbErrorToast(r.error, "Couldn't restore"); return; }
+    pe.archivedAt = null;
+    if((state.peopleArchived || []).indexOf(pe) !== -1){
+      state.peopleArchived = state.peopleArchived.filter(function(x){ return x.id !== id; });
+      state.people.push(pe);
+      state.people.sort(function(a,b){ return a.position - b.position; });
+    }
+    renderAll();
   }
   function editGoal(id){ var g = goalById(id); if(g) openGoalModal(g); }
   function editProject(id){ var p = projectById(id); if(p) openProjectModal(null, p); }
@@ -14600,6 +14629,18 @@
     var f = filters.people;
     var list = state.people.filter(function(p){ return f === "all" || p.relationship === f; });
     var view = views.people;
+    if(view === "cards") view = views.people = "list";
+    if(view === "graph3d" && !people3dEnabled()) view = views.people = "sky";
+    var sky = view === "sky" || view === "list";
+    document.getElementById("people3dTab").style.display = people3dEnabled() ? "" : "none";
+    document.querySelectorAll("#peopleSubToggle .sub-view-tab").forEach(function(b){ b.classList.toggle("active", b.dataset.sub === view); });
+    document.getElementById("peopleSection").classList.toggle("ppl-sky", sky);
+    if(sky){
+      document.getElementById("peopleSection").classList.remove("ppl-fullscreen-graph");
+      pplScene3dSetActive(false);
+      renderPeopleSky();
+      return;
+    }
     document.getElementById("peopleCardsPanel").style.display = view === "cards" ? "" : "none";
     document.getElementById("peopleGraphPanel").style.display = view === "graph" ? "" : "none";
     document.getElementById("peopleGraph3dPanel").style.display = view === "graph3d" ? "" : "none";
@@ -14632,7 +14673,7 @@
         '<span class="person-relation">' + p.relationship + '</span></div>' +
         '<div class="entity-actions">' +
           '<button class="icon-btn edit" data-action="edit-person" data-id="' + p.id + '" aria-label="Edit person">✎</button>' +
-          '<button class="icon-btn" data-action="del-person" data-id="' + p.id + '" aria-label="Delete person">&times;</button>' +
+          '<button class="icon-btn" data-action="del-person" data-id="' + p.id + '" aria-label="Archive person" title="Archive">&times;</button>' +
         '</div></div>' +
         (metaLine ? '<div class="person-meta">' + metaLine + '</div>' : '') +
         (extraLine ? '<div class="person-meta">' + extraLine + '</div>' : '') +
@@ -14678,7 +14719,7 @@
         textCell("planets", p.planets) +
         textCell("relatedPeople", p.relatedPeople) +
         textCell("notes", p.notes) +
-        '<td class="people-cell-del"><button class="icon-btn" data-action="del-person-row" data-id="{id}" aria-label="Delete person">&times;</button></td>';
+        '<td class="people-cell-del"><button class="icon-btn" data-action="del-person-row" data-id="{id}" aria-label="Archive person" title="Archive">&times;</button></td>';
       return '<tr data-id="' + p.id + '">' + row.split("{id}").join(p.id) + '</tr>';
     }).join("");
     document.getElementById("peopleTableEmptyState").style.display = list.length ? "none" : "";
@@ -18064,11 +18105,7 @@
       var ru = resU.data;
       var idx = state.people.findIndex(function(x){ return x.id === editingPersonId; });
       if(idx !== -1){
-        state.people[idx] = { id:ru.id, name:ru.name, relationship:ru.relationship, contact:ru.contact, notes:ru.notes, position:ru.position||0,
-          verified:!!ru.verified, likeScore:(ru.like_score!=null?ru.like_score:null), contactScore:(ru.contact_score!=null?ru.contact_score:null),
-          yearMet:(ru.year_met!=null?ru.year_met:null), relationshipStatus:ru.relationship_status||"", socialGroup:ru.social_group||"",
-          personalityType:ru.personality_type||"", location:ru.location||"", relatedPeople:ru.related_people||"", planets:ru.planets||"",
-          homeLat:(ru.home_lat!=null?ru.home_lat:null), homeLng:(ru.home_lng!=null?ru.home_lng:null) };
+        state.people[idx] = mapPerson(ru);
       }
       // A location edit may fix a string that previously failed to geocode — let it retry.
       delete locGeocodeFailedIds[editingPersonId];
@@ -18080,11 +18117,7 @@
     this.disabled = false;
     if(res.error){ dbErrorToast(res.error, "Couldn't save"); return; }
     var r = res.data;
-    state.people.push({ id:r.id, name:r.name, relationship:r.relationship, contact:r.contact, notes:r.notes, position:r.position||0,
-      verified:!!r.verified, likeScore:(r.like_score!=null?r.like_score:null), contactScore:(r.contact_score!=null?r.contact_score:null),
-      yearMet:(r.year_met!=null?r.year_met:null), relationshipStatus:r.relationship_status||"", socialGroup:r.social_group||"",
-      personalityType:r.personality_type||"", location:r.location||"", relatedPeople:r.related_people||"", planets:r.planets||"",
-      homeLat:(r.home_lat!=null?r.home_lat:null), homeLng:(r.home_lng!=null?r.home_lng:null) });
+    state.people.push(mapPerson(r));
     renderAll(); closeModal("personModalOverlay"); locRenderPeopleLayer();
     warnDroppedFields(res.droppedFields);
   });
@@ -19751,13 +19784,34 @@
     }
     return "";
   }
+  function fxPeopleText(e, a, b){
+    var who = function(id){ var p = state.people.concat(state.peopleArchived || []).find(function(x){ return x.id === id; }); return p ? p.name : "someone"; };
+    var r = e.op === "delete" ? b : a, gone = a.archived_at && !b.archived_at, back = b.archived_at && !a.archived_at;
+    if(e.table_name === "person_situations"){
+      // What the note says stays on the People page.
+      return (gone || e.op === "delete" ? "Hid a note about " : back ? "Brought back a note about " : e.op === "insert" ? "Noted how things are with " : "Updated a note about ") + who(r.person_id);
+    }
+    if(e.table_name === "person_links"){
+      return (gone || e.op === "delete" ? "Removed the link between " : e.op === "insert" || back ? "Linked " : "Updated the link between ") + who(r.person_a) + " and " + who(r.person_b);
+    }
+    if(e.table_name !== "people") return "";
+    var name = r.name || who(e.row_id);
+    if(e.op === "insert") return "Added " + name + " to People";
+    if(e.op === "delete") return "Removed " + name + " from People";
+    if(gone) return "Archived " + name;
+    if(back) return "Restored " + name;
+    var keys = fxChangedKeys(e);
+    if(keys.indexOf("last_contact_at") !== -1 && a.last_contact_at) return "Logged contact with " + name;
+    if(keys.length && keys.every(function(k){ return ["circle", "quality", "energy", "rhythm_days"].indexOf(k) !== -1; })) return "Updated how things stand with " + name;
+    return "Updated " + name;
+  }
   function fxChangeText(e){
     var b = e.before || {}, a = e.after || {};
     var t = a.title || b.title || String(a.text || b.text || "").slice(0, 60) || "an item";
     var q = '"' + t + '"';
     var noun = e.table_name === "journal" ? "note " : e.table_name === "events" ? "event " : "";
     // Health rows have no title/text; name them by what they are so the activity log stays readable.
-    var hx = fxHealthText(e, a, b); if(hx) return hx;
+    var hx = fxHealthText(e, a, b) || fxPeopleText(e, a, b); if(hx) return hx;
     if(e.op === "insert") return "Added " + noun + q;
     if(e.op === "delete") return "Deleted " + noun + q;
     if(a.archived_at && !b.archived_at) return "Archived " + q;
@@ -19900,6 +19954,7 @@
     if(res.error){ dbErrorToast(res.error, "Couldn't undo"); return; }
     await sb.from("activity_log").update({ undone_at:new Date().toISOString() }).eq("id", e.id);
     await loadAll();
+    if(window.PPPeople && /^person_/.test(e.table_name)) window.PPPeople.reload();
     renderAll();
     await loadActivityLog();
     toast("Undone.");
@@ -19971,6 +20026,83 @@
     }, Promise.resolve());
     healthLoading.catch(function(){ healthLoading = null; });
     return healthLoading;
+  }
+  /* People page (constellation and list). Same pattern as Health: loaded on first open, in order, and
+     versioned against the service worker's cache-first rule: bump PEOPLE_VER with each release of people/*. */
+  var PEOPLE_VER = "1", peopleLoading = null, peopleNotesMemo = null;
+  // The 3D graph is parked: it only shows after localStorage.setItem("pp_people_3d", "1").
+  function people3dEnabled(){ try{ return localStorage.getItem("pp_people_3d") === "1"; } catch(e){ return false; } }
+  function peopleLoadScripts(){
+    if(peopleLoading) return peopleLoading;
+    peopleLoading = ["core", "sky", "people"].reduce(function(chain, f){
+      return chain.then(function(){
+        return new Promise(function(resolve, reject){
+          var el = document.createElement("script");
+          el.src = "people/" + f + ".js?v=" + PEOPLE_VER;
+          el.onload = resolve;
+          el.onerror = function(){ reject(new Error("Could not load people/" + f + ".js")); };
+          document.head.appendChild(el);
+        });
+      });
+    }, Promise.resolve());
+    peopleLoading.catch(function(){ peopleLoading = null; });
+    return peopleLoading;
+  }
+  // Which people each note mentions: explicit links first, then the full name appearing in the text.
+  function peopleNotesFor(all){
+    var key = state.journal.length + ":" + all.length + ":" + (state.journal[0] ? state.journal[0].id : "") + ":" + (state.journal.length ? state.journal[state.journal.length - 1].id : "");
+    if(peopleNotesMemo && peopleNotesMemo.key === key) return peopleNotesMemo.notes;
+    var names = all.filter(function(p){ return p.name && p.name.trim().length >= 4; }).map(function(p){ return { id:p.id, n:p.name.trim().toLowerCase() }; });
+    var notes = [];
+    state.journal.forEach(function(j){
+      var ids = (j.linkedObjects || []).filter(function(o){ return o && o.kind === "person"; }).map(function(o){ return o.id; });
+      var low = ((j.title || "") + " " + (j.text || "")).toLowerCase();
+      names.forEach(function(x){ if(ids.indexOf(x.id) === -1 && low.indexOf(x.n) !== -1) ids.push(x.id); });
+      if(ids.length) notes.push({ id:j.id, date:j.date, title:j.title, text:j.text, people:ids });
+    });
+    peopleNotesMemo = { key:key, notes:notes };
+    return notes;
+  }
+  function peopleSetView(v){ views.people = v; renderPeople(); }
+  async function peopleSavePerson(id, patch){
+    var p = state.people.concat(state.peopleArchived || []).find(function(x){ return x.id === id; });
+    if(!p) throw new Error("person not found");
+    var cols = { quality:"quality", energy:"energy", circle:"circle", rhythmDays:"rhythm_days", lastContactAt:"last_contact_at", lastContactKind:"last_contact_kind", birthdayMonth:"birthday_month", birthdayDay:"birthday_day" };
+    var payload = {}, prev = {};
+    Object.keys(patch).forEach(function(k){ if(cols[k]){ payload[cols[k]] = patch[k]; prev[k] = p[k]; } });
+    var r = await sb.from("people").update(payload).eq("id", id);
+    if(r.error) throw r.error;
+    Object.keys(prev).forEach(function(k){ p[k] = patch[k]; });
+    pushUndo("change " + p.name, async function(){
+      var back = {}; Object.keys(prev).forEach(function(k){ back[cols[k]] = prev[k]; });
+      var u = await sb.from("people").update(back).eq("id", id);
+      if(u.error) throw u.error;
+      Object.keys(prev).forEach(function(k){ p[k] = prev[k]; });
+      renderPeople();
+    });
+    renderPeopleSky();
+  }
+  function renderPeopleSky(){
+    if(activeSection !== "people") return;
+    var host = document.getElementById("peopleSkyHost");
+    peopleLoadScripts().then(function(){
+      if(activeSection !== "people" || (views.people !== "sky" && views.people !== "list")) return;
+      var all = state.people.concat(state.peopleArchived || []);
+      var linked = function(arr){ return arr.filter(function(x){ return (x.linkedPeopleIds || []).length; }).map(function(x){ return { id:x.id, title:x.title, date:x.date, people:x.linkedPeopleIds }; }); };
+      window.PPPeople.mount(host, {
+        sb: sb, userId: currentUser ? currentUser.id : null, view: views.people,
+        people: all.map(function(p){ return Object.assign({}, p, { group: parseSocialGroupField(p.socialGroup).main || "" }); }),
+        ctx: function(){ return { today: todayStr(), actions: linked(state.actions.filter(function(a){ return !a.done && !a.archivedAt; })), events: linked(state.events), notes: peopleNotesFor(all) }; },
+        toast: toast, undo: pushUndo, onView: peopleSetView,
+        onNew: function(){ openPersonEditModal(null); },
+        onEdit: function(id){ if(state.people.some(function(x){ return x.id === id; })) editPerson(id); else toast("Restore this person first, then edit."); },
+        onOpenAction: function(id){ editAction(id); },
+        savePerson: peopleSavePerson, onArchive: deletePerson, onRestore: restorePerson
+      });
+    }).catch(function(err){
+      if(!host.shadowRoot) host.innerHTML = '<div class="empty-note" style="padding:60px 24px;">The People page couldn’t load. Check your connection and open it again.</div>';
+      console.warn(err);
+    });
   }
   function renderHealth(){
     if(activeSection !== "health") return;

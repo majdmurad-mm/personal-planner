@@ -428,7 +428,7 @@ tool("list_people", {
     limit: z.number().optional().describe("max rows (default 100)"),
   }),
   handler: async (args: { relationship?: string; query?: string; limit?: number }) => {
-    let q = owned("people").order("position");
+    let q = owned("people").is("archived_at", null).order("position");
     if (args.relationship) q = q.eq("relationship", args.relationship);
     if (args.query) q = q.ilike("name", "%" + args.query + "%");
     q = q.limit(args.limit && args.limit > 0 ? args.limit : 100);
@@ -440,6 +440,8 @@ tool("list_people", {
       relationshipStatus: p.relationship_status, verified: !!p.verified,
       likeScore: p.like_score, contactScore: p.contact_score, yearMet: p.year_met,
       relatedPeople: p.related_people, planets: p.planets, homeLat: p.home_lat, homeLng: p.home_lng,
+      circle: p.circle, quality: p.quality, energy: p.energy, lastContactAt: p.last_contact_at,
+      lastContactKind: p.last_contact_kind, rhythmDays: p.rhythm_days, inMemory: !!p.in_memory,
     })));
   },
 });
@@ -1210,6 +1212,181 @@ tool("edit_person", {
     const { error } = await safeWrite((p) => db.from("people").update(p).eq("id", args.id).eq("user_id", OWNER), patch);
     if (error) return fail(error.message);
     return ok({ ok: true });
+  },
+});
+
+// ---- People: how things are with someone ------------------------------------
+// These write as the service role, so the activity log records them as "claude" and the app's
+// Today page shows each change with an undo. Nothing here deletes: notes and links are archived.
+const DAY_OPT = () => z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "use YYYY-MM-DD").optional().describe("YYYY-MM-DD; defaults to today (Berlin)");
+const PERSON_REF = z.string().describe("the person's id, or their name (must match exactly one person)");
+const QUALITY = ["strong", "ok", "weak", "strained", "conflict", "cut_off"] as const;
+const ENERGY = ["nourishing", "neutral", "draining"] as const;
+const CONTACT_KIND = ["call", "met", "message", "other"] as const;
+const CIRCLE_NAMES = ["", "Inner", "Close", "Good", "Wider", "Outer"];
+// deno-lint-ignore no-explicit-any
+async function findPerson(ref: string): Promise<{ person?: any; error?: string }> {
+  const r = String(ref || "").trim();
+  if (!r) return { error: "Say which person: pass an id or a name." };
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(r)) {
+    const { data, error } = await owned("people").eq("id", r).maybeSingle();
+    if (error) return { error: error.message };
+    return data ? { person: data } : { error: "No person with that id." };
+  }
+  const { data, error } = await owned("people").is("archived_at", null).ilike("name", "%" + r.replace(/[%_]/g, " ") + "%").limit(20);
+  if (error) return { error: error.message };
+  const rows = data || [], low = r.toLowerCase();
+  const exact = rows.filter((p) => String(p.name).trim().toLowerCase() === low);
+  if (exact.length === 1) return { person: exact[0] };
+  if (rows.length === 1) return { person: rows[0] };
+  if (!rows.length) return { error: 'Nobody called "' + r + '" in People. Use list_people to check the name, or create_person first.' };
+  return { error: 'More than one person matches "' + r + '": ' + rows.map((p) => p.name + " (" + p.id + ")").join(", ") + ". Pass the id." };
+}
+
+tool("set_person_situation", {
+  description:
+    "Record how things currently are with someone, in a sentence or three, as the user described it. It becomes the 'Current situation' on that person's panel in the People page; earlier notes stay as history. Use it whenever the user tells you something about where a relationship stands (a rift, a reconciliation, what someone is going through, what is open between them). Write it plainly in the user's own framing, no judgement, no scores. Do not use it for tasks: an open thread is an action linked to the person.",
+  inputSchema: z.object({
+    person: PERSON_REF,
+    text: z.string().min(1).max(2000).describe("the situation, in plain words"),
+    date: DAY_OPT(),
+  }),
+  handler: async (args: { person: string; text: string; date?: string }) => {
+    const f = await findPerson(args.person);
+    if (!f.person) return fail(f.error!);
+    const { data, error } = await db.from("person_situations").insert({
+      user_id: OWNER, person_id: f.person.id, text: args.text.trim(), noted_on: args.date || berlinToday(), author: "claude",
+    }).select().single();
+    if (error) return fail(error.message);
+    return ok({ ok: true, id: data.id, person: f.person.name, notedOn: data.noted_on });
+  },
+});
+
+tool("log_contact", {
+  description:
+    "Note that the user was in touch with someone (talked, met, messaged). Sets that person's last contact, which is what the People page uses for its gentle 'a little longer than your rhythm' signal. Defaults to today.",
+  inputSchema: z.object({
+    person: PERSON_REF,
+    kind: z.enum(CONTACT_KIND).optional().describe("call, met, message or other (default other)"),
+    date: DAY_OPT(),
+  }),
+  handler: async (args: { person: string; kind?: string; date?: string }) => {
+    const f = await findPerson(args.person);
+    if (!f.person) return fail(f.error!);
+    const date = args.date || berlinToday();
+    if (f.person.last_contact_at && f.person.last_contact_at > date) {
+      return ok({ ok: true, unchanged: true, person: f.person.name, lastContactAt: f.person.last_contact_at, note: "A later contact is already noted, so nothing changed." });
+    }
+    const { error } = await db.from("people").update({ last_contact_at: date, last_contact_kind: args.kind || "other" }).eq("id", f.person.id).eq("user_id", OWNER);
+    if (error) return fail(error.message);
+    return ok({ ok: true, person: f.person.name, lastContactAt: date, kind: args.kind || "other" });
+  },
+});
+
+tool("set_relationship", {
+  description:
+    "Change where someone stands with the user. Only the fields you pass change. circle: 1 Inner, 2 Close, 3 Good, 4 Wider, 5 Outer. quality: strong, ok, weak, strained, conflict, cut_off (cut_off takes the person off the map without archiving them). energy: nourishing, neutral or draining, meaning what the relationship does to the user's energy. rhythmDays: how often the user would like to be in touch (0 or null for no rhythm; only people with a rhythm can show as drifting). archived: true hides the person everywhere, false brings them back; nothing is ever deleted. Only set these from what the user actually said.",
+  inputSchema: z.object({
+    person: PERSON_REF,
+    circle: z.number().int().min(1).max(5).optional(),
+    quality: z.enum(QUALITY).optional(),
+    energy: z.enum(ENERGY).optional(),
+    rhythmDays: z.number().int().min(0).max(3650).nullable().optional(),
+    birthdayMonth: z.number().int().min(1).max(12).nullable().optional(),
+    birthdayDay: z.number().int().min(1).max(31).nullable().optional(),
+    inMemory: z.boolean().optional().describe("true for someone who has died: kept quietly, off the map"),
+    archived: z.boolean().optional(),
+  }),
+  // deno-lint-ignore no-explicit-any
+  handler: async (args: any) => {
+    const f = await findPerson(args.person);
+    if (!f.person) return fail(f.error!);
+    const patch: Record<string, unknown> = {};
+    if (args.circle !== undefined) patch.circle = args.circle;
+    if (args.quality !== undefined) patch.quality = args.quality;
+    if (args.energy !== undefined) patch.energy = args.energy;
+    if (args.rhythmDays !== undefined) patch.rhythm_days = args.rhythmDays || null;
+    if (args.birthdayMonth !== undefined) patch.birthday_month = args.birthdayMonth;
+    if (args.birthdayDay !== undefined) patch.birthday_day = args.birthdayDay;
+    if (args.inMemory !== undefined) patch.in_memory = args.inMemory;
+    if (args.archived !== undefined) patch.archived_at = args.archived ? (f.person.archived_at || new Date().toISOString()) : null;
+    if (!Object.keys(patch).length) return fail("Nothing to change: pass at least one field.");
+    const { data, error } = await db.from("people").update(patch).eq("id", f.person.id).eq("user_id", OWNER).select().single();
+    if (error) return fail(error.message);
+    return ok({ ok: true, person: data.name, circle: data.circle, circleName: CIRCLE_NAMES[data.circle] || null, quality: data.quality, energy: data.energy, rhythmDays: data.rhythm_days, archived: !!data.archived_at, inMemory: !!data.in_memory });
+  },
+});
+
+tool("link_people", {
+  description:
+    "Record that two people in the user's network know each other, and how things are between them (quality defaults to ok). Shown as a line between them on the People map. Pass remove: true to take the link away again (it is archived, not deleted).",
+  inputSchema: z.object({
+    personA: PERSON_REF,
+    personB: PERSON_REF,
+    quality: z.enum(QUALITY).optional(),
+    note: z.string().max(500).optional(),
+    remove: z.boolean().optional(),
+  }),
+  // deno-lint-ignore no-explicit-any
+  handler: async (args: any) => {
+    const fa = await findPerson(args.personA), fb = await findPerson(args.personB);
+    if (!fa.person) return fail(fa.error!);
+    if (!fb.person) return fail(fb.error!);
+    if (fa.person.id === fb.person.id) return fail("Those are the same person.");
+    const a = fa.person.id < fb.person.id ? fa.person.id : fb.person.id, b = a === fa.person.id ? fb.person.id : fa.person.id;
+    if (args.remove) {
+      const { error } = await db.from("person_links").update({ archived_at: new Date().toISOString() }).eq("user_id", OWNER).eq("person_a", a).eq("person_b", b).is("archived_at", null);
+      if (error) return fail(error.message);
+      return ok({ ok: true, removed: true, between: [fa.person.name, fb.person.name] });
+    }
+    const row: Record<string, unknown> = { user_id: OWNER, person_a: a, person_b: b, quality: args.quality || "ok", archived_at: null };
+    if (args.note !== undefined) row.note = args.note;
+    const { data, error } = await db.from("person_links").upsert(row, { onConflict: "person_a,person_b" }).select().single();
+    if (error) return fail(error.message);
+    return ok({ ok: true, id: data.id, between: [fa.person.name, fb.person.name], quality: data.quality });
+  },
+});
+
+tool("get_person_context", {
+  description:
+    "Everything the planner knows about one person, in one call: profile, where they stand (circle, quality, energy, rhythm), last contact, the current situation note and recent history, who they are linked to, open actions and upcoming events linked to them, and recent notes that mention them. Call this before advising the user about someone or before writing a new situation note.",
+  inputSchema: z.object({
+    person: PERSON_REF,
+    history: z.number().int().min(0).max(30).optional().describe("how many earlier situation notes to include (default 5)"),
+  }),
+  handler: async (args: { person: string; history?: number }) => {
+    const f = await findPerson(args.person);
+    if (!f.person) return fail(f.error!);
+    const p = f.person, today = berlinToday();
+    const [sitR, linkR, actR, evR, noteR] = await Promise.all([
+      owned("person_situations").eq("person_id", p.id).is("archived_at", null).order("noted_on", { ascending: false }).order("created_at", { ascending: false }).limit(1 + (args.history ?? 5)),
+      owned("person_links").is("archived_at", null).or("person_a.eq." + p.id + ",person_b.eq." + p.id),
+      owned("actions").contains("linked_people_ids", [p.id]).eq("done", false).is("archived_at", null),
+      owned("events").contains("linked_people_ids", [p.id]).gte("date", today).order("date").limit(20),
+      owned("journal").is("archived_at", null).ilike("text", "%" + String(p.name).replace(/[%_]/g, " ") + "%").order("date", { ascending: false }).limit(8),
+    ]);
+    const err = sitR.error || linkR.error;
+    if (err) return fail(err.message);
+    const otherIds = (linkR.data || []).map((l) => (l.person_a === p.id ? l.person_b : l.person_a));
+    const names: Record<string, string> = {};
+    if (otherIds.length) {
+      const { data } = await owned("people").in("id", otherIds);
+      (data || []).forEach((o) => { names[o.id] = o.name; });
+    }
+    const sits = (sitR.data || []).map((x) => ({ id: x.id, text: x.text, notedOn: x.noted_on, author: x.author }));
+    const days = p.last_contact_at ? Math.round((Date.parse(today) - Date.parse(p.last_contact_at)) / 86400000) : null;
+    return ok({
+      id: p.id, name: p.name, relationship: p.relationship, socialGroup: p.social_group, location: p.location, yearMet: p.year_met, notes: p.notes,
+      circle: p.circle, circleName: CIRCLE_NAMES[p.circle] || null, quality: p.quality, energy: p.energy,
+      rhythmDays: p.rhythm_days, lastContactAt: p.last_contact_at, lastContactKind: p.last_contact_kind, daysSinceContact: days,
+      birthday: p.birthday_month && p.birthday_day ? { month: p.birthday_month, day: p.birthday_day, year: p.birthday_year || null } : null,
+      archived: !!p.archived_at, inMemory: !!p.in_memory,
+      currentSituation: sits[0] || null, earlierSituations: sits.slice(1),
+      linkedPeople: (linkR.data || []).map((l) => { const o = l.person_a === p.id ? l.person_b : l.person_a; return { id: o, name: names[o] || null, quality: l.quality, note: l.note || null }; }),
+      openActions: (actR.data || []).map((a) => ({ id: a.id, title: a.title, date: a.date, priority: a.priority })),
+      upcomingEvents: (evR.data || []).map((e) => ({ id: e.id, title: e.title, date: e.date })),
+      recentMentions: (noteR.data || []).map((n) => ({ id: n.id, date: n.date, title: n.title || null, text: String(n.text || "").slice(0, 400) })),
+    });
   },
 });
 
