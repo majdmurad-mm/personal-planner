@@ -144,7 +144,7 @@ did today and lay out tomorrow"*).
 `geocode_address`, `get_tracker`, `get_finance`
 
 **Write (create/edit only — never delete):** `create_goal`, `edit_goal`,
-`create_project`, `edit_project`, `create_action`,
+`create_project`, `edit_project`, `set_main_thing`, `archive_action`, `create_action`,
 `edit_action`, `complete_action`, `create_event`, `edit_event`,
 `set_action_decision`, `create_scenario`, `edit_scenario`, `link_scenarios`,
 `add_note`, `edit_note`, `create_person`, `edit_person`, `log_metric`,

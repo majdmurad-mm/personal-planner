@@ -2116,6 +2116,63 @@
   #plannerTabs{ flex-wrap:wrap; }
 
 
+  /* ===== Today: the calm page. Big type, few things, nothing decorative. ===== */
+  .fx{ max-width:680px; margin:0 auto; display:flex; flex-direction:column; gap:36px; padding:8px 0 72px; color:var(--text); }
+  .fx-date{ font-family:var(--display); font-size:clamp(1.9rem,6vw,2.5rem); font-weight:600; letter-spacing:-.02em; line-height:1.1; margin:0; padding-right:44px; }
+  .fx-sub{ font-size:1.2rem; color:var(--text); margin:8px 0 0; }
+  .fx-weather{ font-size:.95rem; color:var(--text-dim); margin:6px 0 0; }
+  .fx-label{ font-size:.82rem; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--text-dim); margin:0 0 12px; }
+  .fx-main{ border:1px solid var(--border); border-radius:18px; background:var(--bg-raised); padding:24px; }
+  .fx-main-row{ display:flex; gap:16px; align-items:flex-start; }
+  .fx-main-title{ font-family:var(--display); font-size:clamp(1.55rem,5vw,2.1rem); font-weight:600; line-height:1.2; letter-spacing:-.01em; margin:0; overflow-wrap:anywhere; }
+  .fx-main-meta{ font-size:1rem; color:var(--text-dim); margin:8px 0 0; display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .fx-main-foot{ display:flex; gap:6px; flex-wrap:wrap; justify-content:flex-end; margin-top:14px; }
+  .fx-link{ border:none; background:none; color:var(--text-dim); font:inherit; font-size:.98rem; padding:8px 10px; border-radius:8px; cursor:pointer; min-height:40px; }
+  .fx-link:hover{ color:var(--text); background:var(--bg-inset); }
+  .fx-picker{ margin-top:12px; border-top:1px solid var(--border); padding-top:8px; display:flex; flex-direction:column; }
+  .fx-pick{ display:flex; gap:12px; align-items:center; text-align:left; border:none; background:none; color:var(--text); font:inherit; font-size:1.05rem; padding:12px 6px; border-radius:8px; cursor:pointer; min-height:48px; }
+  .fx-pick:hover{ background:var(--bg-inset); }
+  .fx-pick .when{ margin-left:auto; flex:none; color:var(--text-dim); font-size:.92rem; }
+  .fx-list{ display:flex; flex-direction:column; }
+  .fx-row{ display:flex; gap:12px; align-items:center; padding:12px 0; border-top:1px solid var(--border); min-height:60px; }
+  .fx-row:first-child{ border-top:none; }
+  .fx-check{ flex:none; width:30px; height:30px; border-radius:50%; border:2px solid var(--text-dim); background:none; cursor:pointer; padding:0; }
+  .fx-check:hover{ border-color:var(--accent); background:var(--bg-inset); }
+  .fx-check.big{ width:38px; height:38px; margin-top:2px; }
+  .fx-nocheck{ flex:none; width:30px; }
+  .fx-dot{ flex:none; width:10px; height:10px; border-radius:50%; background:var(--text-dim); }
+  .fx-body{ flex:1; min-width:0; }
+  .fx-title{ font-size:1.14rem; line-height:1.3; overflow-wrap:anywhere; }
+  .fx-meta{ font-size:.92rem; color:var(--text-dim); margin-top:2px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .fx-acts{ flex:none; display:flex; gap:2px; }
+  .fx-act{ width:40px; height:40px; border:none; background:none; border-radius:8px; color:var(--text-dim); font-size:1.15rem; cursor:pointer; }
+  .fx-act:hover{ color:var(--text); background:var(--bg-inset); }
+  .fx-act.on{ color:var(--accent); }
+  .fx-text-acts{ flex:none; display:flex; flex-wrap:wrap; gap:2px; justify-content:flex-end; }
+  .fx-empty{ font-size:1.08rem; color:var(--text-dim); margin:0; padding:6px 0; }
+  .fx-more{ align-self:flex-start; margin-top:4px; }
+  .fx-toggle{ width:100%; display:flex; justify-content:space-between; align-items:center; border:none; background:none; color:var(--text-dim); font:inherit; font-size:.82rem; font-weight:600; letter-spacing:.08em; text-transform:uppercase; padding:10px 0; cursor:pointer; min-height:44px; }
+  .fx-toggle:hover{ color:var(--text); }
+  .fx-line{ display:flex; gap:14px; align-items:baseline; padding:9px 0; font-size:1.05rem; }
+  .fx-line .d{ flex:none; width:58px; color:var(--text-dim); font-size:.95rem; }
+  .fx-line .t{ flex:1; min-width:0; overflow-wrap:anywhere; }
+  .fx-feed-row{ display:flex; gap:12px; align-items:center; padding:8px 0; font-size:1rem; }
+  .fx-feed-row .d{ flex:none; color:var(--text-dim); font-size:.92rem; font-variant-numeric:tabular-nums; }
+  .fx-feed-row .t{ flex:1; min-width:0; overflow-wrap:anywhere; }
+  .fx-check:focus-visible,.fx-act:focus-visible,.fx-link:focus-visible,.fx-pick:focus-visible,.fx-toggle:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  @media (max-width:820px){
+    .fx{ gap:30px; padding-top:44px; }
+    .fx-main{ padding:20px; }
+    .fx-text-acts{ max-width:128px; }
+  }
+  /* Home's graph on its own page: everything else in the old cockpit stays out of the way. */
+  #homeSection.overview-only > *:not(.home-graph-wrap),
+  #homeSection.overview-only .home-graph-wrap > *:not(#homeCanvas):not(#homeGraphFallback):not(#homeNodeTip):not(#overviewFilterRow){ display:none !important; }
+  #homeSection.overview-only .home-graph-wrap{ flex:1; height:auto; }
+  #homeSection.overview-only #homeCanvas{ display:block; }
+  #overviewFilterRow{ display:none; }
+  #homeSection.overview-only #overviewFilterRow{ display:flex; position:absolute; top:14px; right:18px; z-index:6; }
+
   /* ===== Markdown note bodies ===== */
   /* Scoped tightly to .journal-entry-md so markdown typography can't leak into other card text.
      Sized down from document defaults — these live inside compact cards, not an article page. */
@@ -2217,7 +2274,8 @@
       <div class="brand-sub" id="todayLabel">// loading…</div>
 
       <nav class="side-nav" id="sideNav">
-        <button class="side-link active" data-section="home" type="button"><span class="sl-glyph">⌂</span>Home</button>
+        <button class="side-link" data-section="focus" id="navToday" type="button"><span class="sl-glyph">◉</span>Today</button>
+        <button class="side-link active" data-section="home" id="navClassicHome" type="button"><span class="sl-glyph">⌂</span>Home</button>
         <button class="side-link" data-section="inbox" type="button"><span class="sl-glyph">⇣</span>Inbox<span class="side-link-badge" id="inboxNavBadge" hidden></span></button>
         <button class="side-link" data-section="memory" type="button"><span class="sl-glyph">◎</span>Agent memory</button>
         <button class="side-link side-link-parent" id="sideLinkTimeToggle" data-toggle-submenu="sideSubmenuTime" type="button" aria-expanded="false">
@@ -2227,6 +2285,7 @@
           <button class="side-link side-sublink" data-section="today" type="button"><span class="sl-glyph">◷</span>Present</button>
           <button class="side-link side-sublink" data-section="timeline" type="button"><span class="sl-glyph">↔</span>History</button>
           <button class="side-link side-sublink" data-section="future" type="button"><span class="sl-glyph">»</span>Future</button>
+          <button class="side-link side-sublink" data-section="home" id="navOverview" type="button"><span class="sl-glyph">✳</span>Overview</button>
         </div>
         <button class="side-link side-link-parent" id="sideLinkPersonalToggle" data-toggle-submenu="sideSubmenuPersonal" type="button" aria-expanded="false">
           <span class="sl-glyph">◆</span>Personal<span class="side-link-caret">▾</span>
@@ -2260,6 +2319,11 @@
   </aside>
 
   <main class="main">
+    <!-- ===== TODAY: the calm page =====
+         What matters today and nothing else (see renderFocus). The old Home is still here behind
+         UI_FLAGS.classicHome; with it off, homeSection shows only its graph, as Overview. -->
+    <section id="focusSection" style="display:none;"><div class="fx" id="focusRoot"></div></section>
+
     <!-- ===== HOME SECTION ===== -->
     <!-- Fullscreen, non-scrolling "cockpit" (see .home-cockpit): the interactive 3D system graph (same
          data as Planner ▸ Graph, rendered with Three.js — orbit, pan, zoom, clickable nodes) fills
@@ -2272,6 +2336,11 @@
     <section id="homeSection" class="home-cockpit">
       <div class="home-graph-wrap">
         <canvas id="homeCanvas" aria-hidden="true"></canvas>
+        <div class="filter-row" id="overviewFilterRow">
+          <button class="filter-chip" data-filter="open" type="button">open</button>
+          <button class="filter-chip" data-filter="done" type="button">done</button>
+          <button class="filter-chip" data-filter="all" type="button">all</button>
+        </div>
         <div class="home-graph-fallback" id="homeGraphFallback" hidden>
           <p class="panel-hint">The 3D graph needs WebGL — it's unavailable here.</p>
         </div>
@@ -2564,6 +2633,11 @@
 
       <!-- AREAS (moved from its own top-level section — same #areaList target, renderAreas() unchanged) -->
       <div id="areasPanel">
+        <div class="filter-row" id="areaFilterRow">
+          <button class="filter-chip" data-filter="open" type="button">open</button>
+          <button class="filter-chip" data-filter="done" type="button">done</button>
+          <button class="filter-chip" data-filter="all" type="button">all</button>
+        </div>
         <div id="areaList"></div>
       </div>
 
@@ -2574,7 +2648,8 @@
           <button class="sub-view-tab" data-sub="matrix" type="button">matrix</button>
         </div>
         <div class="filter-row" id="goalFilterRow">
-          <button class="filter-chip active" data-filter="all" type="button">all</button>
+          <button class="filter-chip" data-filter="open" type="button">open</button>
+          <button class="filter-chip" data-filter="all" type="button">all</button>
           <button class="filter-chip" data-filter="on-track" type="button">on-track</button>
           <button class="filter-chip" data-filter="behind" type="button">behind</button>
           <button class="filter-chip" data-filter="done" type="button">completed</button>
@@ -3427,6 +3502,11 @@
       </div>
       <!-- Time matrix and the calendar used to be pages of their own (a sidebar entry and a Planner tab);
            they live here now so there is one place for "what's coming". Ids inside are unchanged. -->
+      <div class="filter-row" id="futureFilterRow">
+        <button class="filter-chip" data-filter="open" type="button">open</button>
+        <button class="filter-chip" data-filter="done" type="button">done</button>
+        <button class="filter-chip" data-filter="all" type="button">all</button>
+      </div>
       <div class="view-toggle" id="futureTabs">
         <button class="view-tab active" data-ftab="overview" type="button">overview</button>
         <button class="view-tab" data-ftab="matrix" type="button">quarter</button>
@@ -4504,7 +4584,7 @@
   function calDayItems(dateStr){
     var items = [];
     state.actions.forEach(function(a){
-      if(a.date !== dateStr) return;
+      if(a.date !== dateStr || !inFilter("future", !!a.done)) return;
       items.push({ durationMinutes: a.durationMinutes || 15, priority: a.priority, area: actionCategory(a) });
     });
     // Events have no priority — CAL_PRIORITY_WEIGHT's own `|| CAL_PRIORITY_WEIGHT.P2` fallback
@@ -5039,6 +5119,7 @@
      Everything here only hides things: no code or data was removed. Flip a flag to bring it back.
      showArchived:true also puts archived actions and reports back on every page. */
   var UI_FLAGS = {
+    classicHome: false,         // true = the old Home cockpit is the opening page again
     hideHistory: true,          // Time > History
     hideTracker: true,          // Personal > Tracker
     hideEventsTab: true,        // Planner > Events
@@ -5049,6 +5130,17 @@
   };
   (function applyUiFlags(){
     function hide(on, sel){ var el = on && document.querySelector(sel); if(el) el.style.display = "none"; }
+    hide(UI_FLAGS.classicHome, "#navToday");
+    hide(UI_FLAGS.classicHome, "#navOverview");
+    hide(!UI_FLAGS.classicHome, "#navClassicHome");
+    if(!UI_FLAGS.classicHome){
+      var homeEl = document.getElementById("homeSection");
+      homeEl.classList.add("overview-only");
+      homeEl.style.display = "none";
+      document.getElementById("focusSection").style.display = "";
+      document.getElementById("navClassicHome").classList.remove("active");
+      document.getElementById("navToday").classList.add("active");
+    }
     hide(UI_FLAGS.hideHistory, '[data-section="timeline"]');
     hide(UI_FLAGS.hideTracker, '[data-section="tracker"]');
     hide(UI_FLAGS.hideEventsTab, '#plannerTabs [data-tab="events"]');
@@ -5162,7 +5254,7 @@
     if(session && session.user){
       currentUser = session.user;
       showApp();
-      loadAll().then(function(){ renderAll(); trackerLoadSummaryIntoInput(); loadWbConnections(); });
+      loadAll().then(function(){ renderAll(); trackerLoadSummaryIntoInput(); loadWbConnections(); loadActivityLog(); });
     } else {
       currentUser = null;
       showAuthScreen();
@@ -5204,12 +5296,12 @@
     state.goals.sort(function(a,b){ return a.position - b.position; });
     state.projects = (results[1].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), categories:r.categories||[], planJson:r.plan_json||null, notesMd:r.notes_md||"", linkedPeopleIds:r.linked_people_ids||[], filesSlug:r.files_slug||"" }; });
     state.projects.sort(function(a,b){ return a.position - b.position; });
-    var loadedActions = (results[2].data || []).map(function(r){ return { id:r.id, archivedAt:r.archived_at||null, parentType:r.parent_type, parentId:r.parent_id, title:r.title, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null, secondaryCategories:r.secondary_categories || [], isMilestone:!!r.is_milestone, isDecision:!!r.is_decision,
+    var loadedActions = (results[2].data || []).map(function(r){ return { id:r.id, archivedAt:r.archived_at||null, focusDate:r.focus_date||null, parentType:r.parent_type, parentId:r.parent_id, title:r.title, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null, secondaryCategories:r.secondary_categories || [], isMilestone:!!r.is_milestone, isDecision:!!r.is_decision,
       locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), notesMd:r.notes_md||"", dependencies:r.dependencies||[], linkedPeopleIds:r.linked_people_ids||[], source:r.source||null, externalId:r.external_id||null }; });
     state.archivedActions = UI_FLAGS.showArchived ? [] : loadedActions.filter(function(a){ return a.archivedAt; });
     state.actions = UI_FLAGS.showArchived ? loadedActions : loadedActions.filter(function(a){ return !a.archivedAt; });
     state.actions.sort(function(a,b){ return a.position - b.position; });
-    state.journal = (results[3].data || []).map(function(r){ return { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, categories:r.categories||[], noteType:r.note_type||"reflection", recordingId:r.recording_id||null, linkedObjects:r.linked_objects||[], sentiment:r.sentiment||[], title:r.title||"", priority:r.priority||null, createdAt:r.created_at||null, source:r.source||null }; });
+    state.journal = (results[3].data || []).filter(function(r){ return UI_FLAGS.showArchived || !r.archived_at; }).map(function(r){ return { id:r.id, date:r.date, text:r.text, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, categories:r.categories||[], noteType:r.note_type||"reflection", recordingId:r.recording_id||null, linkedObjects:r.linked_objects||[], sentiment:r.sentiment||[], title:r.title||"", priority:r.priority||null, createdAt:r.created_at||null, source:r.source||null }; });
     state.people = (results[4].data || []).map(function(r){
       return { id:r.id, name:r.name, relationship:r.relationship, contact:r.contact, notes:r.notes, position:r.position||0,
         verified:!!r.verified, likeScore:(r.like_score!=null?r.like_score:null), contactScore:(r.contact_score!=null?r.contact_score:null),
@@ -5241,7 +5333,7 @@
     // Empty until migration_events.sql has been run (a whole missing table, not just a column, so
     // the query itself errors — same graceful-degradation shape as every other not-yet-migrated
     // surface above: caught by the blanket console.error loop, || [] keeps state.events usable).
-    state.events = (results[16].data || []).map(function(r){ return { id:r.id, title:r.title, date:r.date, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null, secondaryCategories:r.secondary_categories||[],
+    state.events = (results[16].data || []).filter(function(r){ return UI_FLAGS.showArchived || !r.archived_at; }).map(function(r){ return { id:r.id, title:r.title, date:r.date, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null, secondaryCategories:r.secondary_categories||[],
       locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), linkedPeopleIds:r.linked_people_ids||[], notesMd:r.notes_md||"", position:r.position||0, source:r.source||null }; });
     state.events.sort(function(a,b){ return a.position - b.position; });
     // Empty until migration_action_scenarios.sql has been run — same graceful-degradation shape as
@@ -5257,9 +5349,19 @@
     state.agentMemory = (results[20].data || []).map(memoryMapEntry);
   }
   /* ---------------- Top-level + planner tabs ---------------- */
-  var activeSection = "home";
+  var activeSection = UI_FLAGS.classicHome ? "home" : "focus";
   var activePlannerTab = "areas";
-  var filters = { goals:"all", projects:"all", actions:"all", events:"all", people:"all" };
+  // "open" is the default everywhere; the last choice per list is remembered in this browser.
+  var FILTERS_KEY = "pp_filters_v1";
+  var filters = (function(){
+    var saved = {};
+    try { saved = JSON.parse(safeGet(window.localStorage, FILTERS_KEY) || "{}") || {}; } catch(e){}
+    return Object.assign({ goals:"open", projects:"open", actions:"open", areas:"open", future:"open", events:"all", people:"all" }, saved);
+  })();
+  // For lists with only open / done / all. Anything else (P0, overdue…) counts as open.
+  function inFilter(key, done){ var f = filters[key]; return f === "all" || (f === "done" ? done : !done); }
+  // An ongoing goal is never finished, even when every action under it is done.
+  function goalIsOpen(g){ return !!g.ongoing || goalStatus(g) !== "done"; }
   var views = { goals:"list", projects:"matrix", actions:"matrix", events:"matrix", sleep:"daily", people:"cards", journal:"notes", calStrip:"plain", finance:"overview" };
 
   function wireSubViewToggle(containerId, panelKey, renderFn){
@@ -5273,12 +5375,12 @@
     });
   }
 
-  var ALL_SECTION_IDS = ["homeSection","todaySection","plannerSection","trackerSection","timelineSection","journalSection","peopleSection","locationSection","futureSection","goalDetailSection","areaDetailSection","entityPageSection","inboxSection","memorySection"];
+  var ALL_SECTION_IDS = ["focusSection","homeSection","todaySection","plannerSection","trackerSection","timelineSection","journalSection","peopleSection","locationSection","futureSection","goalDetailSection","areaDetailSection","entityPageSection","inboxSection","memorySection"];
   // Sidebar dropdown groups — a parent nav item with no page of its own, bundling a set of section
   // names under one submenu. See showSection() (active/auto-open) and the sideNav click handler
   // (data-toggle-submenu, open/close).
   var NAV_GROUPS = [
-    { toggleId:"sideLinkTimeToggle", submenuId:"sideSubmenuTime", children:["today","timeline","future"] },
+    { toggleId:"sideLinkTimeToggle", submenuId:"sideSubmenuTime", children:UI_FLAGS.classicHome ? ["today","timeline","future"] : ["today","timeline","future","home"] },
     { toggleId:"sideLinkPersonalToggle", submenuId:"sideSubmenuPersonal", children:["planner","tracker","journal"] }
   ];
   function showSection(name){
@@ -6811,6 +6913,7 @@
     // what keeps the launcher instant: Three.js, Leaflet and the weather fetch are all reached from
     // this function, so on a phone none of them ever load. Checked per tick rather than once, so
     // rotating or resizing across the breakpoint picks the cockpit back up on the next second.
+    if(!UI_FLAGS.classicHome){ ensureHomeScene(); homeSyncGraphData(); return; }   // the Overview page: just the graph
     if(homeMobileActive()){ renderHomeMobile(new Date()); return; }
     // First paint happens post-auth with the section visible and laid out — the right moment to
     // spin up the (lazy, guarded) 3D layer; ensureHomeScene() is a no-op ever after.
@@ -7011,13 +7114,13 @@
   function buildSystemGraph(){
     var nodes = [];
     CATEGORIES.forEach(function(cat){ nodes.push({ type:"area", id:cat, label:cat, area:cat }); });
-    state.goals.forEach(function(g){ nodes.push({ type:"goal", id:g.id, label:g.title, area:g.category }); });
+    state.goals.forEach(function(g){ if(inFilter("future", !goalIsOpen(g))) nodes.push({ type:"goal", id:g.id, label:g.title, area:g.category }); });
     // area stays the single PRIMARY category (still drives seed position, repulsion clustering, and
     // the areas-rail visibility toggle — all of which need one real category name) — colorRgb is a
     // separate, additive field carrying the true blend across every area, used ONLY for the node's
     // own material color (see rebuildGraph) when the item has more than one.
-    state.projects.forEach(function(p){ nodes.push({ type:"project", id:p.id, label:p.title, area:projectCategory(p), colorRgb:mergedAreaColorRgb(projectCategories(p)) }); });
-    if(homeShowActions) state.actions.forEach(function(a){ nodes.push({ type:"action", id:a.id, label:a.title, area:actionCategory(a), colorRgb:actionAreaColorRgb(a) }); });
+    state.projects.forEach(function(p){ if(inFilter("future", !!p.done)) nodes.push({ type:"project", id:p.id, label:p.title, area:projectCategory(p), colorRgb:mergedAreaColorRgb(projectCategories(p)) }); });
+    if(homeShowActions) state.actions.forEach(function(a){ if(inFilter("future", !!a.done)) nodes.push({ type:"action", id:a.id, label:a.title, area:actionCategory(a), colorRgb:actionAreaColorRgb(a) }); });
     if(homeShowNotes) state.journal.forEach(function(n){ nodes.push({ type:"journal", id:n.id, label:(n.title || n.text || "").slice(0,40) || "note", area:noteCategory(n), colorRgb:mergedAreaColorRgb(noteCategories(n)) }); });
     var index = {};
     nodes.forEach(function(n, i){ index[n.type + ":" + n.id] = i; });
@@ -7065,6 +7168,7 @@
       // the node's blended color too, so it has to be able to invalidate this signature on its own.
       state.projects.map(function(p){ return p.id + projectCategories(p).join("+") + p.title; }).join(","),
       (state.wbConnections || []).length,
+      filters.future,
       homeShowActions ? state.actions.map(function(a){ return a.id + actionCategories(a).join("+") + a.title; }).join(",") : "0",
       homeShowNotes ? state.journal.map(function(n){ return n.id + noteCategories(n).join("+"); }).join(",") : "0",
       homeGraphSizeMode
@@ -7570,10 +7674,22 @@
       var chip = e.target.closest(".filter-chip");
       if(!chip) return;
       filters[key] = chip.dataset.filter;
-      this.querySelectorAll(".filter-chip").forEach(function(c){ c.classList.toggle("active", c===chip); });
+      safeSet(window.localStorage, FILTERS_KEY, JSON.stringify(filters));
+      syncFilterRows(key);
       renderAll();
     });
+    (filterRowsByKey[key] = filterRowsByKey[key] || []).push(rowId);
+    syncFilterRows(key);
   }
+  var filterRowsByKey = {};
+  function syncFilterRows(key){
+    (filterRowsByKey[key] || []).forEach(function(id){
+      document.getElementById(id).querySelectorAll(".filter-chip").forEach(function(c){ c.classList.toggle("active", c.dataset.filter === filters[key]); });
+    });
+  }
+  wireFilterRow("areaFilterRow","areas");
+  wireFilterRow("futureFilterRow","future");
+  wireFilterRow("overviewFilterRow","future");
   wireFilterRow("goalFilterRow","goals");
   wireFilterRow("projFilterRow","projects");
   wireFilterRow("actionFilterRow","actions");
@@ -7818,7 +7934,9 @@
     var f = filters.goals;
     var list = state.goals.filter(function(g){
       if(f === "all") return true;
-      if(["on-track","behind","done"].indexOf(f) !== -1) return goalStatus(g) === f;
+      if(f === "open") return goalIsOpen(g);
+      if(f === "done") return !goalIsOpen(g);
+      if(["on-track","behind"].indexOf(f) !== -1) return goalStatus(g) === f;
       return g.priority === f;
     });
     if(views.goals === "matrix") renderGoalsMatrix(list); else renderGoalsList(list);
@@ -7850,7 +7968,7 @@
     var pct = goalProgress(g);
     var status = goalStatus(g);
     var health = goalHealth(g);
-    var childHtml = goalDirectChildren(g).map(function(c){
+    var childHtml = goalDirectChildren(g).filter(function(c){ return filters.goals === "all" || filters.goals === "done" || !c.done; }).map(function(c){
       var checkbox = '<button class="ms-check' + (c.done?' done':'') + '" data-action="toggle-child" data-kind="' + c.kind + '" data-id="' + c.id + '" aria-label="Toggle done"></button>';
       return '<div class="child-row' + (c.done?' done':'') + '" data-kind="' + c.kind + '" data-id="' + c.id + '">' +
         checkbox +
@@ -8982,7 +9100,8 @@
   // projects) — those already get their own accurate span on the project's own row right below it.
   function ganttItemsForFuture(){
     var goalActions = {}, projectActions = {}, looseActions = [];
-    state.actions.forEach(function(a){
+    var scopedActions = state.actions.filter(function(a){ return inFilter("future", !!a.done); });
+    scopedActions.forEach(function(a){
       if(a.parentType === "goal" && a.parentId) (goalActions[a.parentId] = goalActions[a.parentId] || []).push(a);
       else if(a.parentType === "project" && a.parentId) (projectActions[a.parentId] = projectActions[a.parentId] || []).push(a);
       // Standalone actions — no goal, no project. Not everything worth planning hangs off a goal, so
@@ -8994,12 +9113,12 @@
     // ongoing" flag the goal card and area tile already show) has none by design, so it's excluded
     // here rather than drawn with some arbitrary made-up end date. Its projects/actions still show
     // normally; only the goal's own row is skipped.
-    var finiteGoals = state.goals.filter(function(g){ return !g.ongoing; });
+    var finiteGoals = state.goals.filter(function(g){ return !g.ongoing && inFilter("future", !goalIsOpen(g)); });
     // A goal's group holds only actions parented DIRECTLY to it — ones nested under its projects
     // belong to those projects' own groups, so nothing is listed twice.
     var groups = finiteGoals.map(function(g){
       return { kind:"goal", obj:g, actions: goalActions[g.id] || [], area: g.category || null };
-    }).concat(state.projects.map(function(p){
+    }).concat(state.projects.filter(function(p){ return inFilter("future", !!p.done); }).map(function(p){
       return { kind:"project", obj:p, actions: projectActions[p.id] || [], area: projectCategory(p) || null };
     }));
     // CATEGORIES order (the app's canonical area order everywhere else), with the no-area bucket
@@ -9017,7 +9136,7 @@
       // rows/actions stay populated even though the area branch doesn't render from them:
       // renderGanttInto still derives its date range and its "nothing to plan yet" check from these.
       rows: groups.map(function(g){ return { kind:g.kind, obj:g.obj, span:g.actions }; }),
-      actions: state.actions,
+      actions: scopedActions,
       selfId: null
     };
   }
@@ -9753,7 +9872,11 @@
     var actions = state.actions.filter(function(a){
       return (a.parentType==="goal" && goalIds[a.parentId]) || (a.parentType==="project" && projectIds[a.parentId]);
     });
-    return { goals:goals, projects:projects, actions:actions };
+    return {
+      goals: goals.filter(function(g){ return inFilter("areas", !goalIsOpen(g)); }),
+      projects: projects.filter(function(p){ return inFilter("areas", !!p.done); }),
+      actions: actions.filter(function(a){ return inFilter("areas", !!a.done); })
+    };
   }
 
   /* ---------------- Area detail page (dashboard of all goals in one area) ---------------- */
@@ -9827,9 +9950,9 @@
 
   function renderAreas(){
     var categorizedProjectIds = {};
+    state.projects.forEach(function(p){ if(projectCategories(p).length) categorizedProjectIds[p.id] = true; });
     var blocks = CATEGORIES.map(function(cat){
       var data = computeAreaData(cat);
-      data.projects.forEach(function(p){ categorizedProjectIds[p.id] = true; });
       var body = data.goals.length
         ? '<div class="matrix-grid">' + data.goals.map(renderAreaGoalTile).join("") + '</div>'
         : '<p class="area-empty-note">No goals in this area yet.</p>';
@@ -9844,8 +9967,9 @@
     // Parentless projects have no goal to trace an area back through. Actions count as
     // uncategorized if they sit directly on no parent, or on a project that is itself uncategorized —
     // otherwise they're already covered above via their (categorized) parent project.
-    var uProjects = state.projects.filter(function(p){ return !projectCategories(p).length; });
+    var uProjects = state.projects.filter(function(p){ return !projectCategories(p).length && inFilter("areas", !!p.done); });
     var uActions = state.actions.filter(function(a){
+      if(!inFilter("areas", !!a.done)) return false;
       if(a.parentType === "project") return !categorizedProjectIds[a.parentId];
       return a.parentType !== "goal";
     });
@@ -15284,6 +15408,7 @@
       berlinWeatherByDate = byDate;
       berlinWeatherFetchState = "done";
       renderTodayTimelineWeather();
+      if(activeSection === "focus") renderFocus();
     } catch(e){
       console.error(e);
       berlinWeatherFetchState = "error";
@@ -18061,8 +18186,9 @@
   function renderFutureGoalsGallery(){
     var el = document.getElementById("futureGoalsGallery");
     if(!el) return;
-    if(!state.goals.length){ el.innerHTML = '<div class="future-empty">No goals yet.</div>'; return; }
-    el.innerHTML = futureGalleryRowHtml(state.goals, function(g){ return g.category; }, function(g, cat, isBoundary){
+    var goals = state.goals.filter(function(g){ return inFilter("future", !goalIsOpen(g)); });
+    if(!goals.length){ el.innerHTML = '<div class="future-empty">No goals here.</div>'; return; }
+    el.innerHTML = futureGalleryRowHtml(goals, function(g){ return g.category; }, function(g, cat, isBoundary){
       var icon = g.icon ? iconMaskHtml("future-gallery-icon-img", resolveEntityIconDataUri(g.icon), cat) : futureGalleryInitialHtml(g.title, cat);
       return futureGalleryItemHtml("goal", g.id, g.title, icon, isBoundary, cat);
     });
@@ -18075,7 +18201,7 @@
   function renderFutureChildrenGallery(){
     var el = document.getElementById("futureChildrenGallery");
     if(!el) return;
-    var combined = state.projects.map(function(p){ return { kind:"project", obj:p }; });
+    var combined = state.projects.filter(function(p){ return inFilter("future", !!p.done); }).map(function(p){ return { kind:"project", obj:p }; });
     if(!combined.length){ el.innerHTML = '<div class="future-empty">No projects yet.</div>'; return; }
     el.innerHTML = futureGalleryRowHtml(combined,
       function(w){ return projectCategory(w.obj); },
@@ -18290,7 +18416,7 @@
   // (id/priority/area colour) the cell chips don't use; cheap enough to always compute the full set.
   function tmDayItems(dateStr){
     var items = [];
-    state.actions.filter(function(a){ return a.date === dateStr; }).forEach(function(a){
+    state.actions.filter(function(a){ return a.date === dateStr && inFilter("future", !!a.done); }).forEach(function(a){
       items.push({ kind:"action", id:a.id, date:a.date, title:a.title, done:!!a.done, priority:a.priority,
         area:actionCategory(a), colorCss:actionAreaColorCss(a), timeOfDay:a.timeOfDay });
     });
@@ -19520,7 +19646,264 @@
     else if(act === "archive") await memoryPatch(m, { archivedAt: m.archivedAt ? null : new Date().toISOString() }, m.archivedAt ? "restore" : "archive");
   });
 
+  /* ---------------- Today: the calm page ----------------
+     Reads what's already in state. The main thing is the action whose focus_date is today; with
+     none set, the highest-priority action due today. "What Claude changed" reads activity_log, which
+     database triggers fill for every write (see _Memory/cleanup_2026_11_09.sql). */
+  var fxView = { showAll:false, overdueOpen:false, pickerOpen:false };
+  var FX_TODAY_MAX = 7;
+  var activityLog = [], activityReady = null;
+  async function loadActivityLog(){
+    var since = new Date(Date.now() - 86400000).toISOString();
+    var r = await sb.from("activity_log").select("*").gte("created_at", since).order("created_at", { ascending:false }).limit(100);
+    activityReady = !r.error;
+    activityLog = r.error ? [] : (r.data || []);
+    if(activeSection === "focus") renderFocus();
+  }
+  function fxPrioRank(a){ return ({ P0:0, P1:1, P2:2, P3:3 })[a.priority] != null ? ({ P0:0, P1:1, P2:2, P3:3 })[a.priority] : 2; }
+  function fxByTimeThenPrio(a, b){
+    if(!!a.timeOfDay !== !!b.timeOfDay) return a.timeOfDay ? -1 : 1;
+    if(a.timeOfDay && a.timeOfDay !== b.timeOfDay) return a.timeOfDay.localeCompare(b.timeOfDay);
+    return fxPrioRank(a) - fxPrioRank(b);
+  }
+  function fxMainAction(today){
+    var open = state.actions.filter(function(a){ return !a.done; });
+    var chosen = open.find(function(a){ return a.focusDate === today; });
+    if(chosen) return chosen;
+    return open.filter(function(a){ return a.date === today; }).sort(function(a, b){ return fxPrioRank(a) - fxPrioRank(b) || fxByTimeThenPrio(a, b); })[0] || null;
+  }
+  function fxDay(d, opts){ return new Date(d + "T00:00:00").toLocaleDateString("en-GB", opts || { weekday:"short", day:"numeric" }); }
+  function fxBadge(item){ return item.source ? '<span class="src-tag">via ' + escapeHtml(item.source) + '</span>' : ''; }
+  function fxWeatherLine(today){
+    var bp = berlinTodayParts(), parts = [];
+    var hours = berlinWeatherByDate[today];
+    if(hours && hours.length){
+      var h = new Date().getHours();
+      var at = hours.find(function(x){ return x.hour === h; }) || hours[0];
+      parts.push(at.temp + "°");
+    } else if(berlinWeatherFetchState === "idle") fetchBerlinWeather();
+    var sunset = sunTimeUTC(bp.year, bp.month, bp.day, BERLIN_LAT, BERLIN_LON, false);
+    if(sunset != null) parts.push("sunset " + utcHourToBerlinLabel(sunset, bp.year, bp.month, bp.day));
+    return parts.join(" · ");
+  }
+  function fxRowHtml(item, today, mainId){
+    var isAction = item.kind === "action";
+    var cat = isAction ? actionCategory(item.obj) : eventCategory(item.obj);
+    var color = cat ? ' style="background:' + categoryColorVar(cat) + ';"' : '';
+    var meta = (item.obj.timeOfDay ? '<span>' + fmtTimeOfDay(item.obj.timeOfDay) + '</span>' : '') + fxBadge(item.obj);
+    return '<div class="fx-row" data-kind="' + item.kind + '" data-id="' + item.obj.id + '" data-date="' + today + '">' +
+      (isAction ? '<button class="fx-check" type="button" data-fx="done" aria-label="Mark done"></button>' : '<span class="fx-nocheck"></span>') +
+      '<span class="fx-dot"' + color + ' title="' + escapeHtml(cat || "no area") + '"></span>' +
+      '<div class="fx-body"><div class="fx-title">' + escapeHtml(item.obj.title) + '</div>' + (meta ? '<div class="fx-meta">' + meta + '</div>' : '') + '</div>' +
+      '<div class="fx-acts">' +
+        (isAction ? '<button class="fx-act' + (item.obj.id === mainId ? ' on' : '') + '" type="button" data-fx="star" title="Make this the main thing" aria-label="Make this the main thing">' + (item.obj.id === mainId ? '★' : '☆') + '</button>' : '') +
+        '<button class="fx-act" type="button" data-fx="tomorrow" title="Move to tomorrow" aria-label="Move to tomorrow">→</button>' +
+        '<button class="fx-act" type="button" data-fx="edit" title="Edit" aria-label="Edit">✎</button>' +
+      '</div></div>';
+  }
+  function fxOverdueRowHtml(a){
+    return '<div class="fx-row" data-kind="action" data-id="' + a.id + '" data-date="' + a.date + '">' +
+      '<div class="fx-body"><div class="fx-title">' + escapeHtml(a.title) + '</div><div class="fx-meta"><span>' + fxDay(a.date, { day:"numeric", month:"short" }) + '</span>' + fxBadge(a) + '</div></div>' +
+      '<div class="fx-text-acts">' +
+        '<button class="fx-link" type="button" data-fx="today">do today</button>' +
+        '<button class="fx-link" type="button" data-fx="move">move</button>' +
+        '<button class="fx-link" type="button" data-fx="archive">archive</button>' +
+      '</div></div>';
+  }
+  function fxNextDays(today){
+    var from = addDaysToDateStr(today, 1), to = addDaysToDateStr(today, 3), out = [];
+    var inRange = function(d){ return d && d >= from && d <= to; };
+    state.events.forEach(function(e){ if(inRange(e.date)) out.push({ date:e.date, time:e.timeOfDay, title:e.title }); });
+    state.actions.forEach(function(a){ if(!a.done && inRange(a.date) && (a.priority === "P0" || a.priority === "P1" || a.isMilestone)) out.push({ date:a.date, time:a.timeOfDay, title:a.title, tag:a.priority }); });
+    state.goals.forEach(function(g){ if(inRange(g.due) && goalIsOpen(g)) out.push({ date:g.due, title:g.title, tag:"goal due" }); });
+    state.projects.forEach(function(p){ if(inRange(p.due) && !p.done) out.push({ date:p.due, title:p.title, tag:"project due" }); });
+    return out.sort(function(a, b){ return a.date.localeCompare(b.date) || (a.time || "99:99").localeCompare(b.time || "99:99"); });
+  }
+  function fxChangedKeys(e){
+    var b = e.before || {}, a = e.after || {};
+    return Object.keys(Object.assign({}, b, a)).filter(function(k){ return k !== "updated_at" && JSON.stringify(b[k]) !== JSON.stringify(a[k]); });
+  }
+  function fxChangeText(e){
+    var b = e.before || {}, a = e.after || {};
+    var t = a.title || b.title || String(a.text || b.text || "").slice(0, 60) || "an item";
+    var q = '"' + t + '"';
+    var noun = e.table_name === "journal" ? "note " : e.table_name === "events" ? "event " : "";
+    if(e.op === "insert") return "Added " + noun + q;
+    if(e.op === "delete") return "Deleted " + noun + q;
+    if(a.archived_at && !b.archived_at) return "Archived " + q;
+    if(b.archived_at && !a.archived_at) return "Restored " + q;
+    if(a.done && !b.done) return "Completed " + q;
+    if(b.done && !a.done) return "Reopened " + q;
+    if(a.focus_date && a.focus_date !== b.focus_date) return "Made " + q + " the main thing";
+    if(a.date !== b.date){
+      var when = function(d){ return d ? fxDay(d, { day:"numeric", month:"short" }) : "no date"; };
+      return "Moved " + q + " " + when(b.date) + " → " + when(a.date);
+    }
+    if(a.title !== b.title) return 'Renamed "' + b.title + '" to "' + a.title + '"';
+    return "Edited " + noun + q;
+  }
+  function fxFeedEntries(){
+    return activityLog.filter(function(e){
+      if(e.actor === "me" || e.undone_at) return false;
+      if(e.op !== "update") return true;
+      var keys = fxChangedKeys(e);
+      // Clearing the previous main thing is a side effect of choosing a new one, not a change to report.
+      return keys.length && !(keys.length === 1 && keys[0] === "focus_date" && !e.after.focus_date);
+    });
+  }
+  function renderFocus(){
+    if(activeSection !== "focus") return;
+    var today = todayStr();
+    var main = fxMainAction(today);
+    var mainId = main ? main.id : null;
+    var items = state.actions.filter(function(a){ return !a.done && a.date === today; }).map(function(a){ return { kind:"action", obj:a }; })
+      .concat(state.events.filter(function(e){ return e.date === today; }).map(function(e){ return { kind:"event", obj:e }; }))
+      .sort(function(x, y){ return fxByTimeThenPrio(x.obj, y.obj); });
+    var overdue = state.actions.filter(function(a){ return !a.done && a.date && a.date < today; }).sort(function(a, b){ return b.date.localeCompare(a.date); });
+    var next = fxNextDays(today);
+    var feed = fxFeedEntries();
+    var count = items.length ? items.length + (items.length === 1 ? " thing today" : " things today") : "Nothing today";
+    var weather = fxWeatherLine(today);
+    var html = '<header><h1 class="fx-date">' + new Date(today + "T00:00:00").toLocaleDateString("en-GB", { weekday:"long", day:"numeric", month:"long" }) + '</h1>' +
+      '<p class="fx-sub">' + count + (overdue.length ? " · " + overdue.length + " overdue" : "") + '</p>' +
+      (weather ? '<p class="fx-weather">' + escapeHtml(weather) + '</p>' : '') + '</header>';
+
+    html += '<section><h2 class="fx-label">Main thing</h2><div class="fx-main">';
+    if(main){
+      var cat = actionCategory(main);
+      html += '<div class="fx-main-row" data-kind="action" data-id="' + main.id + '" data-date="' + today + '"><button class="fx-check big" type="button" data-fx="done" aria-label="Mark done"></button>' +
+        '<div class="fx-body"><p class="fx-main-title">' + escapeHtml(main.title) + '</p>' +
+        '<div class="fx-main-meta">' + (main.timeOfDay ? '<span>' + fmtTimeOfDay(main.timeOfDay) + '</span>' : '') + (cat ? '<span>' + escapeHtml(cat) + '</span>' : '') + fxBadge(main) + '</div></div></div>';
+    } else {
+      html += '<p class="fx-empty">Nothing pressing today.</p>';
+    }
+    html += '<div class="fx-main-foot"><button class="fx-link" type="button" data-fx="picker">' + (fxView.pickerOpen ? 'close' : (main ? 'change main thing' : 'pick a main thing')) + '</button></div>';
+    if(fxView.pickerOpen){
+      var options = state.actions.filter(function(a){ return !a.done && a.id !== mainId; }).sort(function(a, b){
+        if(!!a.date !== !!b.date) return a.date ? -1 : 1;
+        return fxPrioRank(a) - fxPrioRank(b) || String(a.date || "").localeCompare(String(b.date || ""));
+      }).slice(0, 12);
+      html += '<div class="fx-picker">' + (options.length ? options.map(function(a){
+        return '<button class="fx-pick" type="button" data-fx-pick="' + a.id + '"><span>' + escapeHtml(a.title) + '</span><span class="when">' + (a.date ? fxDay(a.date, { day:"numeric", month:"short" }) : a.priority) + '</span></button>';
+      }).join("") : '<p class="fx-empty">Nothing else is open.</p>') + '</div>';
+    }
+    html += '</div></section>';
+
+    var shown = fxView.showAll ? items : items.slice(0, FX_TODAY_MAX);
+    html += '<section><h2 class="fx-label">Today</h2><div class="fx-list">' + shown.map(function(it){ return fxRowHtml(it, today, mainId); }).join("") + '</div>' +
+      (items.length <= 1 ? '<p class="fx-empty">Nothing else today.</p>' : '') +
+      (items.length > FX_TODAY_MAX ? '<button class="fx-link fx-more" type="button" data-fx="showall">' + (fxView.showAll ? 'show fewer' : 'show all ' + items.length) + '</button>' : '') + '</section>';
+
+    if(overdue.length){
+      html += '<section><button class="fx-toggle" type="button" data-fx="overdue" aria-expanded="' + fxView.overdueOpen + '"><span>Overdue · ' + overdue.length + '</span><span aria-hidden="true">' + (fxView.overdueOpen ? '▾' : '▸') + '</span></button>' +
+        (fxView.overdueOpen ? '<div class="fx-list">' + overdue.map(fxOverdueRowHtml).join("") + '</div>' : '') + '</section>';
+    }
+
+    html += '<section><h2 class="fx-label">Next 3 days</h2>' + (next.length ? '<div>' + next.map(function(n){
+      return '<div class="fx-line"><span class="d">' + fxDay(n.date) + '</span><span class="t">' + escapeHtml(n.title) + (n.time ? ' · ' + fmtTimeOfDay(n.time) : '') + '</span></div>';
+    }).join("") + '</div>' : '<p class="fx-empty">Nothing coming up.</p>') + '</section>';
+
+    html += '<section><h2 class="fx-label">What Claude changed</h2>' + (feed.length ? '<div>' + feed.map(function(e){
+      var at = new Date(e.created_at).toLocaleTimeString("en-GB", { hour:"2-digit", minute:"2-digit" });
+      return '<div class="fx-feed-row"><span class="d">' + at + '</span><span class="t">' + escapeHtml(fxChangeText(e)) + (e.actor !== "claude" ? ' <span class="src-tag">' + escapeHtml(e.actor) + '</span>' : '') + '</span>' +
+        '<button class="fx-link" type="button" data-fx-undo="' + e.id + '">undo</button></div>';
+    }).join("") + '</div>' : '<p class="fx-empty">' + (activityReady === false ? 'The change log starts once its database update has been run.' : 'No changes in the last 24 hours.') + '</p>') + '</section>';
+
+    document.getElementById("focusRoot").innerHTML = html;
+  }
+  // True when a write failed only because the database update hasn't been run yet.
+  function fxNeedsSql(res, col){ return !!(res.error && res.error.message && res.error.message.indexOf(col) !== -1 && /exist/.test(res.error.message)) || !!(res.droppedFields && res.droppedFields.indexOf(col) !== -1); }
+  async function fxSetMain(id, today){
+    var a = state.actions.find(function(x){ return x.id === id; });
+    if(!a) return;
+    var turningOff = a.focusDate === today;
+    var prior = state.actions.filter(function(x){ return x.focusDate === today && x.id !== id; });
+    var res = await safeUpdate("actions", id, { focus_date: turningOff ? null : today });
+    if(fxNeedsSql(res, "focus_date")){ toast("Choosing the main thing needs the database update (cleanup_2026_11_09.sql) to be run first."); return; }
+    if(res.error){ dbErrorToast(res.error, "Couldn't set the main thing"); return; }
+    for(var i = 0; i < prior.length; i++){ prior[i].focusDate = null; await safeUpdate("actions", prior[i].id, { focus_date:null }); }
+    a.focusDate = turningOff ? null : today;
+    fxView.pickerOpen = false;
+    renderAll();
+    pushUndo("change the main thing", async function(){
+      a.focusDate = turningOff ? today : null;
+      await safeUpdate("actions", id, { focus_date:a.focusDate });
+      for(var j = 0; j < prior.length; j++){ prior[j].focusDate = today; await safeUpdate("actions", prior[j].id, { focus_date:today }); }
+      renderAll();
+    });
+  }
+  async function fxArchive(id){
+    var a = state.actions.find(function(x){ return x.id === id; });
+    if(!a) return;
+    var res = await safeUpdate("actions", id, { archived_at:new Date().toISOString() });
+    if(fxNeedsSql(res, "archived_at")){ toast("Archiving needs the database update (cleanup_2026_11_09.sql) to be run first."); return; }
+    if(res.error){ dbErrorToast(res.error, "Couldn't archive"); return; }
+    state.actions = state.actions.filter(function(x){ return x.id !== id; });
+    state.archivedActions.push(a);
+    renderAll();
+    pushUndo('archive "' + a.title + '"', async function(){
+      await safeUpdate("actions", id, { archived_at:null });
+      state.archivedActions = state.archivedActions.filter(function(x){ return x.id !== id; });
+      state.actions.push(a);
+      renderAll();
+    });
+  }
+  // Puts a logged change back. If the item has changed again since, it's left alone.
+  async function fxUndo(logId){
+    var e = activityLog.find(function(x){ return String(x.id) === String(logId); });
+    if(!e) return;
+    var res;
+    if(e.op === "insert"){
+      res = await safeUpdate(e.table_name, e.row_id, { archived_at:new Date().toISOString() });
+    } else if(e.op === "delete"){
+      res = await sb.from(e.table_name).insert(e.before);
+    } else {
+      var cur = await sb.from(e.table_name).select("*").eq("id", e.row_id).maybeSingle();
+      if(cur.error || !cur.data){ toast("That item can't be found any more."); return; }
+      var keys = fxChangedKeys(e);
+      var moved = keys.some(function(k){ return JSON.stringify(cur.data[k]) !== JSON.stringify(e.after[k]); });
+      if(moved){ toast("That item has changed again since, so I left it as it is."); return; }
+      var patch = {};
+      keys.forEach(function(k){ patch[k] = e.before[k] === undefined ? null : e.before[k]; });
+      res = await safeUpdate(e.table_name, e.row_id, patch);
+    }
+    if(res.error){ dbErrorToast(res.error, "Couldn't undo"); return; }
+    await sb.from("activity_log").update({ undone_at:new Date().toISOString() }).eq("id", e.id);
+    await loadAll();
+    renderAll();
+    await loadActivityLog();
+    toast("Undone.");
+  }
+  document.getElementById("focusSection").addEventListener("click", async function(ev){
+    var pick = ev.target.closest("[data-fx-pick]");
+    var today = todayStr();
+    if(pick){ await fxSetMain(pick.dataset.fxPick, today); return; }
+    var undo = ev.target.closest("[data-fx-undo]");
+    if(undo){ undo.disabled = true; await fxUndo(undo.dataset.fxUndo); return; }
+    var btn = ev.target.closest("[data-fx]");
+    if(!btn) return;
+    var act = btn.dataset.fx;
+    if(act === "picker"){ fxView.pickerOpen = !fxView.pickerOpen; renderFocus(); return; }
+    if(act === "overdue"){ fxView.overdueOpen = !fxView.overdueOpen; renderFocus(); return; }
+    if(act === "showall"){ fxView.showAll = !fxView.showAll; renderFocus(); return; }
+    var row = btn.closest("[data-kind][data-id]");
+    if(!row) return;
+    var kind = row.dataset.kind, id = row.dataset.id;
+    if(act === "done") await toggleActionDone(id);
+    else if(act === "star") await fxSetMain(id, today);
+    else if(act === "edit"){ if(kind === "event") editEvent(id); else editAction(id); }
+    else if(act === "today") await postponeAction(id, today);
+    else if(act === "archive") await fxArchive(id);
+    else if(act === "move"){ ev.stopPropagation(); openPostponePopover(ev.clientX, ev.clientY, kind, id, row.dataset.date); }
+    else if(act === "tomorrow"){ var to = addDaysToDateStr(today, 1); if(kind === "event") await postponeEvent(id, to); else await postponeAction(id, to); }
+  });
+  // Coming back to the page picks up whatever Claude has changed in the meantime.
+  document.addEventListener("visibilitychange", function(){
+    if(document.visibilityState === "visible" && currentUser && activeSection === "focus") loadAll().then(function(){ renderAll(); loadActivityLog(); });
+  });
+
   var SECTION_RENDERERS = {
+    focus: [renderFocus],
     home: [renderHomeDashboard],
     today: [renderToday],
     future: [renderFutureTabs],

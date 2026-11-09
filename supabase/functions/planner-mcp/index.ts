@@ -68,6 +68,10 @@ function fail(message: string) {
 }
 // Server-side "today" is UTC. The user's local date can differ near midnight, so
 // tools that default to today also accept an explicit `date` the caller can pass.
+// The user's calendar day (Berlin). The main thing is set per day, so UTC would be wrong near midnight.
+function berlinToday(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Berlin" });
+}
 function todayUTC(): string {
   return new Date().toISOString().slice(0, 10);
 }
@@ -284,8 +288,14 @@ tool("get_agenda", {
       isMilestone: !!a.is_milestone, isDecision: !!a.is_decision,
     });
 
+    const openActions = actions.filter((a) => !a.done);
+    const focused = openActions.find((a) => a.focus_date === date);
+    const autoMain = focused ? null : openActions.filter((a) => a.date === date).sort((a, b) => String(a.priority).localeCompare(String(b.priority)))[0];
+
     return ok({
       date,
+      // The one thing the Today page shows large: chosen with set_main_thing, else the top action due that day.
+      mainThing: focused || autoMain ? { ...slimAction(focused || autoMain), chosen: !!focused } : null,
       actions: {
         dueToday: actions.filter((a) => a.date === date && !a.done).map(slimAction),
         overdue: actions.filter((a) => a.date && a.date < date && !a.done).map(slimAction),
@@ -369,7 +379,7 @@ tool("list_actions", {
       timeOfDay: a.time_of_day, durationMinutes: a.duration_minutes, area: a.category,
       secondaryAreas: a.secondary_categories || [],
       parentType: a.parent_type, parentId: a.parent_id, done: a.done,
-      isMilestone: !!a.is_milestone,
+      isMilestone: !!a.is_milestone, focusDate: a.focus_date || null,
       // An action flagged as a decision is a fork the user hasn't settled, not a task
       // they're about to do — call get_decision on it to see the scenarios and scores.
       isDecision: !!a.is_decision,
@@ -882,6 +892,36 @@ tool("complete_action", {
 });
 
 // ---- Events ----------------------------------------------------------------
+
+tool("set_main_thing", {
+  description: "Choose the one action shown large on the Today page for a day (defaults to today, Berlin time). Replaces any earlier choice for that day. Pass clear=true to go back to the automatic choice.",
+  inputSchema: z.object({
+    id: z.string().optional().describe("the action; omit only with clear=true"),
+    date: z.string().optional().describe("YYYY-MM-DD; defaults to today in Berlin"),
+    clear: z.boolean().optional(),
+  }),
+  handler: async (args: { id?: string; date?: string; clear?: boolean }) => {
+    if (!args.id && !args.clear) return fail("pass id, or clear=true");
+    const date = args.date || berlinToday();
+    const off = await db.from("actions").update({ focus_date: null }).eq("user_id", OWNER).eq("focus_date", date);
+    if (off.error) return fail(off.error.message);
+    if (args.clear) return ok({ ok: true, date, cleared: true });
+    const { error } = await db.from("actions").update({ focus_date: date }).eq("id", args.id).eq("user_id", OWNER);
+    if (error) return fail(error.message);
+    return ok({ ok: true, date });
+  },
+});
+
+tool("archive_action", {
+  description: "Archive an action that is no longer relevant, or restore one with archived=false. Archived actions disappear from every list but are never deleted.",
+  inputSchema: z.object({ id: z.string(), archived: z.boolean().optional().describe("defaults to true") }),
+  handler: async (args: { id: string; archived?: boolean }) => {
+    const archived = args.archived === undefined ? true : args.archived;
+    const { error } = await db.from("actions").update({ archived_at: archived ? new Date().toISOString() : null }).eq("id", args.id).eq("user_id", OWNER);
+    if (error) return fail(error.message);
+    return ok({ ok: true, archived });
+  },
+});
 
 tool("create_event", {
   description:
