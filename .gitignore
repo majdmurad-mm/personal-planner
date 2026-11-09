@@ -1,2 +1,4 @@
 .claude/
 _Memory/
+backups/
+cleanup-log-*.md

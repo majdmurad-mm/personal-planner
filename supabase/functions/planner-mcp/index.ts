@@ -276,7 +276,7 @@ tool("get_agenda", {
     // migration_events.sql has been run, and an agenda without events is still useful.
     const events = eventsR.error ? [] : (eventsR.data || []);
 
-    const actions = actionsR.data || [];
+    const actions = (actionsR.data || []).filter((a) => !a.archived_at);
     const slimAction = (a: any) => ({
       id: a.id, title: a.title, type: a.type, priority: a.priority,
       date: a.date, timeOfDay: a.time_of_day, area: a.category,
@@ -353,8 +353,9 @@ tool("list_actions", {
     to: z.string().optional().describe("YYYY-MM-DD inclusive upper bound on the action's date"),
     area: z.enum(CATEGORIES).optional(),
     limit: z.number().optional().describe("max rows (default 100)"),
+    includeArchived: z.boolean().optional().describe("also return archived actions (default false)"),
   }),
-  handler: async (args: { done?: boolean; from?: string; to?: string; area?: string; limit?: number }) => {
+  handler: async (args: { done?: boolean; from?: string; to?: string; area?: string; limit?: number; includeArchived?: boolean }) => {
     let q = owned("actions").order("date", { ascending: false, nullsFirst: false });
     if (args.done !== undefined) q = q.eq("done", args.done);
     if (args.from) q = q.gte("date", args.from);
@@ -363,7 +364,7 @@ tool("list_actions", {
     q = q.limit(args.limit && args.limit > 0 ? args.limit : 100);
     const { data, error } = await q;
     if (error) return fail(error.message);
-    return ok((data || []).map((a) => ({
+    return ok((data || []).filter((a) => args.includeArchived || !a.archived_at).map((a) => ({
       id: a.id, title: a.title, type: a.type, priority: a.priority, date: a.date,
       timeOfDay: a.time_of_day, durationMinutes: a.duration_minutes, area: a.category,
       secondaryAreas: a.secondary_categories || [],
@@ -596,7 +597,7 @@ tool("list_located_items", {
     }));
     [["action", actionsR], ["event", eventsR]].forEach(([kind, r]: any) => {
       rows(r).forEach((x: any) => {
-        if (x.location_lat == null && x.location_lng == null && !x.location_address) return;
+        if (x.archived_at || (x.location_lat == null && x.location_lng == null && !x.location_address)) return;
         located.push({
           kind, id: x.id, title: x.title, lat: x.location_lat, lng: x.location_lng,
           address: x.location_address || null, date: x.date ?? null, done: x.done ?? null,
@@ -1648,15 +1649,16 @@ tool("list_agent_reports", {
     agent: z.string().optional(),
     unreadOnly: z.boolean().optional(),
     limit: z.number().optional().describe("max rows (default 20)"),
+    includeArchived: z.boolean().optional().describe("also return archived reports (default false)"),
   }),
-  handler: async (args: { agent?: string; unreadOnly?: boolean; limit?: number }) => {
+  handler: async (args: { agent?: string; unreadOnly?: boolean; limit?: number; includeArchived?: boolean }) => {
     let q = owned("agent_reports").order("created_at", { ascending: false });
     if (args.agent) q = q.eq("agent", args.agent);
     if (args.unreadOnly) q = q.is("read_at", null);
     q = q.limit(args.limit && args.limit > 0 ? args.limit : 20);
     const { data, error } = await q;
     if (error) return fail(error.message + PROPOSAL_HINT);
-    return ok((data || []).map((r) => ({
+    return ok((data || []).filter((r) => args.includeArchived || !r.archived_at).map((r) => ({
       id: r.id, agent: r.agent, kind: r.kind, title: r.title, body: r.body_md,
       runId: r.run_id, read: !!r.read_at, createdAt: r.created_at,
     })));
