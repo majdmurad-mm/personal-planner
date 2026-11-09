@@ -1349,6 +1349,454 @@ tool("log_transaction", {
   },
 });
 
+// ============================ HEALTH ========================================
+// What Claude reads from Garmin Connect and Hevy, written here so the app's Health page can show
+// it. Owner-only: none of these are in AGENT_READABLE, so the agent token cannot read or write
+// health data.
+//
+// Every write is an idempotent upsert on a natural key (the day, the workout's source id, ...):
+//   * a field you leave out is left alone, so a partial day (steps at noon, sleep in the morning)
+//     can be sent as it becomes known;
+//   * a value that was not measured is left out or sent as null, never 0;
+//   * sending the same data twice changes nothing and writes nothing, so the activity log gets
+//     one entry per real change;
+//   * nothing is deleted: a set that disappears from a re-synced workout is marked superseded.
+// Tables: migration_health_v2.sql.
+const HEALTH_HINT = " (has migration_health_v2.sql been run?)";
+const DAY = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "use YYYY-MM-DD");
+const CLOCK = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "use 24h HH:MM, local time");
+const MUSCLE_KEYS = ["chest", "shoulders", "rear", "traps", "lats", "lower_back", "biceps", "triceps", "forearms", "abs", "obliques", "quads", "hamstrings", "glutes", "adductors", "calves"] as const;
+// Hevy's muscle names (and a few common spellings) → the page's keys. Anything else is ignored.
+const MUSCLE_ALIAS: Record<string, string> = {
+  abdominals: "abs", core: "abs", quadriceps: "quads", upper_back: "lats", back: "lats", abductors: "glutes",
+  rear_delts: "rear", rear_deltoids: "rear", deltoids: "shoulders", delts: "shoulders", trapezius: "traps",
+  pectorals: "chest", pecs: "chest", hamstring: "hamstrings", calf: "calves", glute: "glutes", lower_back: "lower_back",
+};
+function muscleKey(v: unknown): string | null {
+  const k = String(v || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (!k) return null;
+  if ((MUSCLE_KEYS as readonly string[]).includes(k)) return k;
+  return MUSCLE_ALIAS[k] || null;
+}
+function addDays(day: string, n: number): string {
+  const d = new Date(day + "T12:00:00Z");
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+// Key order inside jsonb is not preserved by Postgres, so compare JSON with sorted keys.
+function stable(v: unknown): string {
+  if (Array.isArray(v)) return "[" + v.map(stable).join(",") + "]";
+  if (v && typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    return "{" + Object.keys(o).sort().map((k) => JSON.stringify(k) + ":" + stable(o[k])).join(",") + "}";
+  }
+  return JSON.stringify(v);
+}
+// "Is this the value already stored?" — tolerant of how Postgres hands values back
+// (time as HH:MM:SS, timestamps in UTC, numerics as numbers or strings).
+function sameVal(a: unknown, b: unknown): boolean {
+  if (a == null && b == null) return true;
+  if (a == null || b == null) return false;
+  if (typeof a === "object" || typeof b === "object") return stable(a) === stable(b);
+  const sa = String(a), sb = String(b);
+  if (sa === sb) return true;
+  const clock = /^\d\d:\d\d(:\d\d(\.\d+)?)?$/;
+  if (clock.test(sa) && clock.test(sb)) return sa.slice(0, 5) === sb.slice(0, 5);
+  if (sa.includes("T") && sb.includes("T")) {
+    const ta = Date.parse(sa), tb = Date.parse(sb);
+    if (!isNaN(ta) && !isNaN(tb)) return ta === tb;
+  }
+  if (sa.trim() !== "" && sb.trim() !== "" && !isNaN(Number(sa)) && !isNaN(Number(sb))) return Number(sa) === Number(sb);
+  return false;
+}
+// Insert the row, or update only the fields that actually differ. Returns what happened.
+async function healthUpsert(
+  table: string, key: Record<string, unknown>, fields: Record<string, unknown>, stamps: string[] = ["updated_at"],
+): Promise<{ error?: string; id?: string; result?: "created" | "updated" | "unchanged"; changed?: string[] }> {
+  let q = db.from(table).select("*").eq("user_id", OWNER);
+  for (const [k, v] of Object.entries(key)) q = q.eq(k, v as any);
+  const found = await q.limit(1);
+  if (found.error) return { error: found.error.message + HEALTH_HINT };
+  const patch: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(fields)) if (v !== undefined) patch[k] = v;
+  const existing = found.data && found.data[0];
+  if (!existing) {
+    const ins = await db.from(table).insert({ user_id: OWNER, ...key, ...patch }).select("id").single();
+    if (ins.error) return { error: ins.error.message + HEALTH_HINT };
+    return { id: ins.data.id, result: "created", changed: Object.keys(patch) };
+  }
+  const changed = Object.keys(patch).filter((k) => !sameVal(existing[k], patch[k]));
+  if (!changed.length) return { id: existing.id, result: "unchanged", changed: [] };
+  const upd: Record<string, unknown> = {};
+  changed.forEach((k) => { upd[k] = patch[k]; });
+  const now = new Date().toISOString();
+  stamps.forEach((s) => { upd[s] = now; });
+  const res = await db.from(table).update(upd).eq("id", existing.id).eq("user_id", OWNER);
+  if (res.error) return { error: res.error.message + HEALTH_HINT };
+  return { id: existing.id, result: "updated", changed };
+}
+const pct = () => z.number().int().min(0).max(100).nullable().optional();
+const mins = () => z.number().int().min(0).max(1440).nullable().optional();
+
+tool("upsert_health_day", {
+  description:
+    "Save one day of Garmin data (sleep, heart, Body Battery, stress, movement) for the Health page. Idempotent per date: call it again as the day fills in, sending only the fields you actually read. NEVER send 0 or a guess for something that was not measured — leave the field out (or send null to clear a wrong value). If the watch was not worn at night, simply omit the sleep fields. Sleep belongs to the date the night ENDED on. Clock times are local 24h HH:MM.",
+  inputSchema: z.object({
+    date: DAY.optional().describe("the day; defaults to today (Berlin)"),
+    sleepScore: pct(), sleepMinutes: mins().describe("time asleep, in minutes"),
+    bedTime: CLOCK.nullable().optional().describe("fell asleep at, e.g. 01:42"),
+    wakeTime: CLOCK.nullable().optional(),
+    deepMinutes: mins(), lightMinutes: mins(), remMinutes: mins(), awakeMinutes: mins(),
+    sleepStress: z.number().min(0).max(100).nullable().optional(),
+    restingHr: z.number().int().min(20).max(150).nullable().optional(),
+    hrvAvg: z.number().int().min(1).max(300).nullable().optional().describe("overnight HRV average, ms"),
+    hrvStatus: z.string().nullable().optional().describe("Garmin's word: balanced, unbalanced, low, poor"),
+    maxHr: z.number().int().min(30).max(250).nullable().optional(),
+    bodyBatteryNow: pct(), bodyBatteryHigh: pct().describe("the morning peak"), bodyBatteryLow: pct(),
+    bodyBatteryCharged: z.number().int().min(0).max(200).nullable().optional(),
+    bodyBatteryDrained: z.number().int().min(0).max(200).nullable().optional(),
+    bodyBatteryCurve: z.array(z.tuple([z.number().min(0).max(24), z.number().min(0).max(100)])).max(96).nullable().optional()
+      .describe("optional points across the day as [hour, value], e.g. [[0,41],[6.5,78]]"),
+    stressAvg: pct(), stressLowMinutes: mins(), stressMediumMinutes: mins(), stressHighMinutes: mins(),
+    steps: z.number().int().min(0).max(100000).nullable().optional(),
+    stepsGoal: z.number().int().min(0).max(100000).nullable().optional().describe("Garmin's goal for that day"),
+    intensityMinutes: z.number().int().min(0).max(1440).nullable().optional().describe("that day's intensity minutes"),
+    activeCalories: z.number().int().min(0).max(20000).nullable().optional(),
+    vo2Max: z.number().min(10).max(90).nullable().optional(),
+    trainingReadiness: pct().describe("Garmin's own training readiness, shown beside the page's score"),
+    source: z.string().optional().describe("defaults to 'garmin'"),
+  }),
+  handler: async (a: any) => {
+    const date = a.date || berlinToday();
+    const fields: Record<string, unknown> = {
+      sleep_score: a.sleepScore, sleep_minutes: a.sleepMinutes, bed_time: a.bedTime, wake_time: a.wakeTime,
+      deep_minutes: a.deepMinutes, light_minutes: a.lightMinutes, rem_minutes: a.remMinutes, awake_minutes: a.awakeMinutes,
+      sleep_stress: a.sleepStress, resting_hr: a.restingHr, hrv_avg: a.hrvAvg, hrv_status: a.hrvStatus, max_hr: a.maxHr,
+      body_battery_now: a.bodyBatteryNow, body_battery_high: a.bodyBatteryHigh, body_battery_low: a.bodyBatteryLow,
+      body_battery_charged: a.bodyBatteryCharged, body_battery_drained: a.bodyBatteryDrained, body_battery_curve: a.bodyBatteryCurve,
+      stress_avg: a.stressAvg, stress_low_minutes: a.stressLowMinutes, stress_medium_minutes: a.stressMediumMinutes,
+      stress_high_minutes: a.stressHighMinutes, steps: a.steps, steps_goal: a.stepsGoal, intensity_minutes: a.intensityMinutes,
+      active_calories: a.activeCalories, vo2_max: a.vo2Max, training_readiness: a.trainingReadiness, source: a.source,
+    };
+    if (!Object.values(fields).some((v) => v !== undefined)) return fail("Nothing to save: send at least one measured field.");
+    const r = await healthUpsert("health_daily", { date }, fields, ["updated_at", "synced_at"]);
+    if (r.error) return fail(r.error);
+    return ok({ ok: true, date, result: r.result, changed: r.changed });
+  },
+});
+
+tool("upsert_workout", {
+  description:
+    "Save one strength session (from Hevy) with its exercises and sets. Idempotent per sourceId: re-sending the same workout changes nothing; re-sending an edited one updates it, and sets that are no longer there are marked superseded, not deleted. Send every exercise in order with every set. Weight in kg. If Hevy shows which muscles an exercise works, pass primaryMuscle/secondaryMuscles so the body model can use them.",
+  inputSchema: z.object({
+    sourceId: z.string().min(1).describe("Hevy's workout id (from its URL). If there is none, use 'manual-YYYY-MM-DD-1'"),
+    date: DAY,
+    startedAt: z.string().optional().describe("ISO timestamp with offset, e.g. 2026-11-08T18:30:00+01:00"),
+    durationMinutes: z.number().int().min(1).max(600).optional(),
+    routine: z.string().optional().describe("e.g. 'Full Body A' — used for the A → B → C rotation"),
+    title: z.string().optional(),
+    notes: z.string().optional(),
+    source: z.string().optional().describe("defaults to 'hevy'"),
+    exercises: z.array(z.object({
+      name: z.string().min(1),
+      templateId: z.string().optional().describe("Hevy's exercise template id, if visible"),
+      primaryMuscle: z.string().optional().describe("Hevy's muscle name, e.g. chest, lats, quadriceps, abdominals"),
+      secondaryMuscles: z.array(z.string()).optional(),
+      sets: z.array(z.object({
+        weightKg: z.number().min(0).max(1000).nullable().optional(),
+        reps: z.number().int().min(0).max(1000).nullable().optional(),
+        distanceM: z.number().min(0).nullable().optional(),
+        durationSeconds: z.number().int().min(0).nullable().optional(),
+        rpe: z.number().min(1).max(10).nullable().optional(),
+        type: z.enum(["normal", "warmup", "dropset", "failure"]).optional(),
+        isPr: z.boolean().optional().describe("true if Hevy marked this set as a personal record"),
+      })).min(1),
+    })).min(1),
+  }),
+  handler: async (a: any) => {
+    const source = a.source || "hevy";
+    let volume = 0, prs = 0, setCount = 0;
+    const rows: any[] = [];
+    a.exercises.forEach((ex: any, ei: number) => {
+      ex.sets.forEach((s: any, si: number) => {
+        const type = s.type || "normal";
+        if (type !== "warmup" && s.weightKg != null && s.reps != null) volume += s.weightKg * s.reps;
+        if (s.isPr) prs++;
+        setCount++;
+        rows.push({
+          exercise_index: ei, set_index: si, exercise: ex.name, exercise_template_id: ex.templateId ?? null, set_type: type,
+          weight_kg: s.weightKg ?? null, reps: s.reps ?? null, distance_m: s.distanceM ?? null,
+          duration_seconds: s.durationSeconds ?? null, rpe: s.rpe ?? null, is_pr: !!s.isPr,
+        });
+      });
+    });
+    const head = await healthUpsert("workouts", { source, source_id: a.sourceId }, {
+      date: a.date, started_at: a.startedAt, duration_minutes: a.durationMinutes, routine: a.routine, title: a.title,
+      notes: a.notes, volume_kg: Math.round(volume * 10) / 10, pr_count: prs,
+    });
+    if (head.error) return fail(head.error);
+    const workoutId = head.id!;
+
+    // Sets: write only what differs, mark what vanished.
+    const cur = await db.from("workout_sets").select("*").eq("workout_id", workoutId).eq("user_id", OWNER);
+    if (cur.error) return fail(cur.error.message + HEALTH_HINT);
+    const byKey: Record<string, any> = {};
+    (cur.data || []).forEach((r: any) => { byKey[r.exercise_index + ":" + r.set_index] = r; });
+    const cols = ["exercise", "exercise_template_id", "set_type", "weight_kg", "reps", "distance_m", "duration_seconds", "rpe", "is_pr"];
+    const toWrite = rows.filter((r) => {
+      const e = byKey[r.exercise_index + ":" + r.set_index];
+      return !e || e.superseded_at || cols.some((c) => !sameVal(e[c], r[c]));
+    });
+    if (toWrite.length) {
+      const up = await db.from("workout_sets").upsert(
+        toWrite.map((r) => ({ ...r, user_id: OWNER, workout_id: workoutId, superseded_at: null })),
+        { onConflict: "workout_id,exercise_index,set_index" },
+      );
+      if (up.error) return fail(up.error.message + HEALTH_HINT);
+    }
+    const keep = new Set(rows.map((r) => r.exercise_index + ":" + r.set_index));
+    const gone = (cur.data || []).filter((r: any) => !r.superseded_at && !keep.has(r.exercise_index + ":" + r.set_index)).map((r: any) => r.id);
+    if (gone.length) {
+      const sup = await db.from("workout_sets").update({ superseded_at: new Date().toISOString() }).in("id", gone).eq("user_id", OWNER);
+      if (sup.error) return fail(sup.error.message);
+    }
+
+    // Remember which muscles each exercise works, when Hevy told us.
+    const unknownMuscles: string[] = [];
+    for (const ex of a.exercises) {
+      if (!ex.primaryMuscle) continue;
+      const primary = muscleKey(ex.primaryMuscle);
+      if (!primary) { unknownMuscles.push(ex.name + ": " + ex.primaryMuscle); continue; }
+      const secondary = Array.from(new Set((ex.secondaryMuscles || []).map(muscleKey).filter((m: string | null) => m && m !== primary)));
+      const m = await healthUpsert("exercise_muscle_map", { exercise_key: String(ex.name).trim().toLowerCase() }, {
+        exercise: ex.name, exercise_template_id: ex.templateId, primary_muscle: primary, secondary_muscles: secondary,
+      });
+      if (m.error) return fail(m.error);
+    }
+    const setsChanged = toWrite.length + gone.length;
+    return ok({
+      ok: true, id: workoutId,
+      result: head.result === "created" ? "created" : (head.result === "updated" || setsChanged ? "updated" : "unchanged"),
+      sets: setCount, setsWritten: toWrite.length, setsSuperseded: gone.length, volumeKg: Math.round(volume * 10) / 10, prs,
+      ...(unknownMuscles.length ? { unmappedMuscles: unknownMuscles } : {}),
+    });
+  },
+});
+
+tool("upsert_activity", {
+  description:
+    "Save one non-strength activity from Garmin: a swim, sauna, walk, run or row. Idempotent per sourceId (Garmin's activity id).",
+  inputSchema: z.object({
+    sourceId: z.string().min(1).describe("Garmin's activity id. If there is none, use 'manual-YYYY-MM-DD-swim'"),
+    date: DAY,
+    type: z.enum(["swim", "sauna", "walk", "run", "row", "bike", "hike", "other"]),
+    name: z.string().optional(),
+    startedAt: z.string().optional().describe("ISO timestamp with offset"),
+    durationMinutes: z.number().min(0).max(1440).nullable().optional(),
+    distanceM: z.number().min(0).nullable().optional().describe("metres — a 225 m swim is 225"),
+    calories: z.number().int().min(0).nullable().optional(),
+    avgHr: z.number().int().min(20).max(250).nullable().optional(),
+    maxHr: z.number().int().min(20).max(250).nullable().optional(),
+    source: z.string().optional().describe("defaults to 'garmin'"),
+  }),
+  handler: async (a: any) => {
+    const r = await healthUpsert("activities", { source: a.source || "garmin", source_id: a.sourceId }, {
+      date: a.date, type: a.type, name: a.name, started_at: a.startedAt, duration_minutes: a.durationMinutes,
+      distance_m: a.distanceM, calories: a.calories, avg_hr: a.avgHr, max_hr: a.maxHr,
+    });
+    if (r.error) return fail(r.error);
+    return ok({ ok: true, id: r.id, result: r.result });
+  },
+});
+
+tool("log_body_metric", {
+  description:
+    "Record a body measurement for a day: weight_kg, body_fat_pct, muscle_mass_kg or waist_cm. One value per metric per day; logging again for the same day replaces it.",
+  inputSchema: z.object({
+    metric: z.enum(["weight_kg", "body_fat_pct", "muscle_mass_kg", "waist_cm"]),
+    value: z.number().positive().max(500),
+    date: DAY.optional().describe("defaults to today (Berlin)"),
+    source: z.string().optional().describe("where it came from: garmin, scale, manual"),
+  }),
+  handler: async (a: any) => {
+    const date = a.date || berlinToday();
+    const r = await healthUpsert("body_metrics", { date, metric: a.metric }, { value: a.value, source: a.source });
+    if (r.error) return fail(r.error);
+    return ok({ ok: true, id: r.id, date, result: r.result });
+  },
+});
+
+tool("set_health_status", {
+  description:
+    "Mark a period as sick, injured or on a break — the Health page then pauses targets and streaks and marks the period on its charts — or set 'normal' to end the current period. Use it when the user says they are ill, hurt, travelling, or well again.",
+  inputSchema: z.object({
+    status: z.enum(["normal", "sick", "injured", "break"]),
+    startDate: DAY.optional().describe("first day of the period; defaults to today (Berlin). Ignored for 'normal'"),
+    endDate: DAY.optional().describe("last day of the period. For 'normal': the last day of the period being closed, default yesterday"),
+    note: z.string().optional(),
+  }),
+  handler: async (a: any) => {
+    const today = berlinToday();
+    const open = await owned("health_status").is("end_date", null).is("archived_at", null);
+    if (open.error) return fail(open.error.message + HEALTH_HINT);
+    const now = new Date().toISOString();
+    const close = async (row: any, end: string) => {
+      const e = end < row.start_date ? row.start_date : end;
+      return await db.from("health_status").update({ end_date: e, updated_at: now }).eq("id", row.id).eq("user_id", OWNER);
+    };
+    if (a.status === "normal") {
+      const end = a.endDate || addDays(today, -1);
+      for (const row of open.data || []) { const r = await close(row, end); if (r.error) return fail(r.error.message); }
+      return ok({ ok: true, status: "normal", closed: (open.data || []).length });
+    }
+    const start = a.startDate || today;
+    const same = (open.data || []).find((r: any) => r.status === a.status);
+    if (same && !a.endDate) {
+      const patch: Record<string, unknown> = {};
+      if (a.note !== undefined && a.note !== same.note) patch.note = a.note;
+      if (a.startDate && a.startDate !== same.start_date) patch.start_date = a.startDate;
+      if (!Object.keys(patch).length) return ok({ ok: true, id: same.id, result: "unchanged" });
+      const r = await db.from("health_status").update({ ...patch, updated_at: now }).eq("id", same.id).eq("user_id", OWNER);
+      if (r.error) return fail(r.error.message);
+      return ok({ ok: true, id: same.id, result: "updated" });
+    }
+    // A closed period sent again (same status + start) is the same period, not a new one.
+    const dup = await owned("health_status").eq("status", a.status).eq("start_date", start).is("archived_at", null).limit(1);
+    if (dup.error) return fail(dup.error.message + HEALTH_HINT);
+    if (dup.data && dup.data[0]) {
+      const r = await healthUpsert("health_status", { id: dup.data[0].id }, { end_date: a.endDate ?? undefined, note: a.note });
+      if (r.error) return fail(r.error);
+      return ok({ ok: true, id: r.id, result: r.result });
+    }
+    if (a.endDate && a.endDate < start) return fail("endDate is before startDate.");
+    if (!a.endDate) for (const row of open.data || []) { const r = await close(row, addDays(start, -1)); if (r.error) return fail(r.error.message); }
+    const ins = await db.from("health_status").insert({
+      user_id: OWNER, status: a.status, start_date: start, end_date: a.endDate || null, note: a.note || null,
+    }).select("id").single();
+    if (ins.error) return fail(ins.error.message + HEALTH_HINT);
+    return ok({ ok: true, id: ins.data.id, result: "created" });
+  },
+});
+
+tool("set_health_flag", {
+  description:
+    "Track a body region that needs attention, e.g. lower_back = recovering. One flag per region; setting it again updates it. 'cleared' keeps the history visible as resolved. Regions: lower_back, upper_back, neck, shoulder, elbow, wrist, hip, knee, ankle (or any short name — unknown regions show in the list but not on the figure).",
+  inputSchema: z.object({
+    region: z.string().min(1).describe("snake_case, e.g. lower_back"),
+    state: z.enum(["watch", "recovering", "cleared"]),
+    note: z.string().optional().describe("one calm sentence: what it is and how it is going"),
+    since: DAY.optional().describe("when it started"),
+  }),
+  handler: async (a: any) => {
+    const region = String(a.region).trim().toLowerCase().replace(/[\s-]+/g, "_");
+    const r = await healthUpsert("health_flags", { region }, { state: a.state, note: a.note, since: a.since });
+    if (r.error) return fail(r.error);
+    return ok({ ok: true, id: r.id, region, result: r.result });
+  },
+});
+
+tool("write_health_brief", {
+  description:
+    "Write today's brief for the Health page ('Today's plan'): a one-line headline, an optional short summary, and up to four recommendations, each with a reason drawn from the data. Call get_health_summary first. Tone: calm, encouraging, honest, never guilt-tripping; no medical claims. One brief per day — writing again replaces it. If the user is sick, injured or on a break, recommend rest and do not set training targets.",
+  inputSchema: z.object({
+    date: DAY.optional().describe("defaults to today (Berlin)"),
+    headline: z.string().min(1).max(160).describe("the verdict in one sentence, e.g. 'Recovery is strong — good day for Full Body C.'"),
+    summary: z.string().max(600).optional(),
+    readiness: z.number().int().min(0).max(100).optional().describe("your read of readiness, if you computed one; the page also computes its own"),
+    recommendations: z.array(z.object({
+      kind: z.enum(["train", "move", "sleep", "recover", "eat"]),
+      title: z.string().min(1).max(80).describe("short and concrete: 'In bed by 00:30'"),
+      why: z.string().min(1).max(300).describe("the reason, from the data"),
+    })).max(4),
+    nextSession: z.object({
+      routine: z.string().describe("e.g. 'Full Body C'"),
+      targets: z.array(z.object({
+        exercise: z.string(),
+        weightKg: z.number().min(0).max(1000).optional(),
+        reps: z.string().optional().describe("e.g. '3 × 10–12'"),
+        change: z.enum(["up", "hold", "down"]).optional().describe("compared with last time"),
+        lastWeightKg: z.number().min(0).max(1000).optional(),
+      })).max(12),
+    }).optional(),
+    writtenBy: z.string().optional().describe("defaults to 'Claude'"),
+  }),
+  handler: async (a: any) => {
+    const date = a.date || berlinToday();
+    const r = await healthUpsert("health_briefs", { date }, {
+      headline: a.headline, summary: a.summary, readiness: a.readiness, recommendations: a.recommendations,
+      next_session: a.nextSession, written_by: a.writtenBy || "Claude",
+    });
+    if (r.error) return fail(r.error);
+    return ok({ ok: true, id: r.id, date, result: r.result });
+  },
+});
+
+tool("get_health_summary", {
+  description:
+    "Everything the Health page knows, for writing a brief or answering a health question: the last N days of Garmin data, strength sessions with their exercises, other activities, body measurements, the current status (normal / sick / injured / break), flags, settings, and the user's own 30-day baselines (median and usual range) for resting HR, HRV and sleep score. Missing values are null — they were not measured; do not treat them as zero.",
+  inputSchema: z.object({
+    days: z.number().int().min(1).max(120).optional().describe("how many days back; default 14"),
+  }),
+  handler: async (a: any) => {
+    const today = berlinToday();
+    const n = a.days || 14;
+    const from = addDays(today, -(n - 1));
+    const baseFrom = addDays(today, -30);
+    const live = (t: string) => owned(t).is("archived_at", null);
+    const [daily, workouts, acts, metrics, status, flags, briefs, settings] = await Promise.all([
+      live("health_daily").gte("date", from < baseFrom ? from : baseFrom).order("date"),
+      live("workouts").gte("date", from).order("date"),
+      live("activities").gte("date", from).order("date"),
+      live("body_metrics").gte("date", from).order("date"),
+      live("health_status").order("start_date", { ascending: false }).limit(10),
+      live("health_flags"),
+      live("health_briefs").order("date", { ascending: false }).limit(1),
+      owned("health_settings").limit(1),
+    ]);
+    const firstErr = [daily, workouts, acts, metrics, status, flags, briefs].find((r) => r.error);
+    if (firstErr) return fail(firstErr.error!.message + HEALTH_HINT);
+    const ids = (workouts.data || []).map((w: any) => w.id);
+    const sets = ids.length
+      ? await db.from("workout_sets").select("*").in("workout_id", ids).is("superseded_at", null).order("exercise_index").order("set_index")
+      : { data: [], error: null };
+    if (sets.error) return fail(sets.error.message);
+    const quant = (arr: number[], p: number) => {
+      const s = arr.slice().sort((x, y) => x - y);
+      if (!s.length) return null;
+      const i = (s.length - 1) * p, lo = Math.floor(i), hi = Math.ceil(i);
+      return Math.round((s[lo] + (s[hi] - s[lo]) * (i - lo)) * 10) / 10;
+    };
+    const baseline = (col: string) => {
+      const v = (daily.data || []).filter((d: any) => d.date >= baseFrom && d.date < today && d[col] != null).map((d: any) => Number(d[col]));
+      return { median: quant(v, 0.5), usualLow: quant(v, 0.25), usualHigh: quant(v, 0.75), days: v.length };
+    };
+    const strip = (r: any) => { const { user_id: _u, archived_at: _a, created_at: _c, ...rest } = r; return rest; };
+    const current = (status.data || []).find((s: any) => s.start_date <= today && (!s.end_date || s.end_date >= today));
+    return ok({
+      today,
+      status: current ? { status: current.status, since: current.start_date, note: current.note } : { status: "normal" },
+      recentStatusPeriods: (status.data || []).map(strip),
+      flags: (flags.data || []).map(strip),
+      baselines30d: { restingHr: baseline("resting_hr"), hrv: baseline("hrv_avg"), sleepScore: baseline("sleep_score"), steps: baseline("steps") },
+      days: (daily.data || []).filter((d: any) => d.date >= from).map(strip),
+      workouts: (workouts.data || []).map((w: any) => {
+        const mine = (sets.data || []).filter((s: any) => s.workout_id === w.id);
+        const byEx: Record<string, any> = {};
+        mine.forEach((s: any) => {
+          const e = byEx[s.exercise_index] = byEx[s.exercise_index] || { exercise: s.exercise, sets: [] };
+          e.sets.push({ weightKg: s.weight_kg, reps: s.reps, type: s.set_type, isPr: s.is_pr });
+        });
+        return { ...strip(w), exercises: Object.keys(byEx).sort((x, y) => Number(x) - Number(y)).map((k) => byEx[k]) };
+      }),
+      activities: (acts.data || []).map(strip),
+      bodyMetrics: (metrics.data || []).map(strip),
+      latestBrief: briefs.data && briefs.data[0] ? strip(briefs.data[0]) : null,
+      settings: settings.data && settings.data[0] ? strip(settings.data[0]) : null,
+      rules: "Readiness on the page = sleep 30%, resting HR 25%, HRV 20%, morning Body Battery 15%, previous-day stress 10%, each compared with the user's own 30-day baseline; missing inputs are re-weighted. Progression: every working set at the top of the rep range → add weight next time.",
+    });
+  },
+});
+
 // ============================ AGENT HUB =====================================
 // Everything an agent wants to change is filed as a proposal: a pending row carrying the exact
 // columns the write would make (`payload`) plus one human-readable line (`summary`). You approve

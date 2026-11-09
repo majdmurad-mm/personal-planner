@@ -297,6 +297,9 @@
 
   /* ===== MAIN ===== */
   .main{ padding:32px 40px 70px; max-width:none; width:100%; min-width:0; }
+  /* The Health page paints its own full-bleed background inside a shadow root (see health/), so it
+     cancels .main's padding; --pph-top is read by health/health.css to clear the mobile menu button. */
+  #healthSection{ margin:-32px -40px -70px; }
   .main-header{ display:flex; justify-content:space-between; align-items:flex-end; gap:var(--space-5); flex-wrap:wrap; margin-bottom:var(--space-1); }
   h1{ font-family:var(--display); font-size:var(--fs-xl); font-weight:700; margin:0; letter-spacing:-0.02em; }
   h1 .path-sep{ color:var(--text-faint); font-weight:400; margin:0 2px; }
@@ -1650,6 +1653,7 @@
     .main{ padding:56px 18px 60px; }
     h1{ font-size:19px; }
     #locationSection{ margin:-56px -18px -60px; padding:12px 18px 12px; }
+    #healthSection{ margin:-56px -18px -60px; --pph-top:46px; }
     #peopleSection.ppl-fullscreen-graph{ margin:-56px -18px -60px; padding:12px 18px 12px; }
     /* #homeSection.home-cockpit's mobile margins can't live here — see the note beside its base rule. */
     .today-two-col{ grid-template-columns:1fr; }
@@ -1669,6 +1673,7 @@
   @media (max-height: 500px) and (orientation: landscape){
     .main{ padding:44px 24px 20px; }
     #locationSection{ margin:-44px -24px -20px; padding:10px 24px 10px; }
+    #healthSection{ margin:-44px -24px -20px; --pph-top:36px; }
     #peopleSection.ppl-fullscreen-graph{ margin:-44px -24px -20px; padding:10px 24px 10px; }
   }
 
@@ -2295,6 +2300,7 @@
           <button class="side-link side-sublink" data-section="tracker" type="button"><span class="sl-glyph">▥</span>Tracker</button>
           <button class="side-link side-sublink" data-section="journal" type="button"><span class="sl-glyph">✎</span>Notes</button>
         </div>
+        <button class="side-link" data-section="health" type="button"><span class="sl-glyph">♡</span>Health</button>
         <button class="side-link" data-section="people" type="button"><span class="sl-glyph">☺</span>People</button>
         <button class="side-link" data-section="location" type="button"><span class="sl-glyph">⚲</span>Location</button>
       </nav>
@@ -3103,6 +3109,11 @@
       </div>
       <div id="inboxBody"></div>
     </section>
+
+    <!-- Health: readiness, sleep, energy, movement, training and body, drawn from the health_* tables
+         that Claude fills through the planner connector. The page itself lives in health/ and mounts
+         into a shadow root on this element; see renderHealth. Schema: migration_health_v2.sql. -->
+    <section id="healthSection" style="display:none;"></section>
 
     <!-- ===== AGENT MEMORY: the memory of the Agent PgM bots =====
          The planner is the agents' long-term memory. The Agent PgM bots write here directly through the
@@ -5375,7 +5386,7 @@
     });
   }
 
-  var ALL_SECTION_IDS = ["focusSection","homeSection","todaySection","plannerSection","trackerSection","timelineSection","journalSection","peopleSection","locationSection","futureSection","goalDetailSection","areaDetailSection","entityPageSection","inboxSection","memorySection"];
+  var ALL_SECTION_IDS = ["focusSection","homeSection","todaySection","plannerSection","trackerSection","timelineSection","journalSection","peopleSection","locationSection","futureSection","goalDetailSection","areaDetailSection","entityPageSection","inboxSection","memorySection","healthSection"];
   // Sidebar dropdown groups — a parent nav item with no page of its own, bundling a set of section
   // names under one submenu. See showSection() (active/auto-open) and the sideNav click handler
   // (data-toggle-submenu, open/close).
@@ -19723,11 +19734,30 @@
     var b = e.before || {}, a = e.after || {};
     return Object.keys(Object.assign({}, b, a)).filter(function(k){ return k !== "updated_at" && JSON.stringify(b[k]) !== JSON.stringify(a[k]); });
   }
+  function fxHealthText(e, a, b){
+    var r = a.date || a.start_date || a.since ? a : b, day = r.date || r.start_date || r.since || "";
+    var verb = e.op === "insert" ? "Added " : e.op === "delete" ? "Removed " : (a.archived_at && !b.archived_at) ? "Archived " : "Updated ";
+    var on = day ? " for " + String(day).slice(0, 10) : "";
+    switch(e.table_name){
+      case "health_daily": return verb + "health data" + on;
+      case "workouts": return verb + "workout \"" + (r.routine || r.title || "session") + "\"" + on;
+      case "activities": return verb + "activity \"" + (r.name || r.type || "activity") + "\"" + on;
+      case "body_metrics": return verb + String(r.metric || "body metric").replace(/_/g, " ") + on;
+      case "health_status": return verb + "health status \"" + (r.status || "") + "\"" + (day ? " from " + String(day).slice(0, 10) : "");
+      case "health_flags": return verb + "health flag \"" + String(r.region || "").replace(/_/g, " ") + "\"" + (r.state ? " (" + r.state + ")" : "");
+      case "health_briefs": return verb + "health brief" + on;
+      case "health_settings": return verb + "health settings";
+      case "exercise_muscle_map": return verb + "muscle mapping for \"" + (r.exercise || "") + "\"";
+    }
+    return "";
+  }
   function fxChangeText(e){
     var b = e.before || {}, a = e.after || {};
     var t = a.title || b.title || String(a.text || b.text || "").slice(0, 60) || "an item";
     var q = '"' + t + '"';
     var noun = e.table_name === "journal" ? "note " : e.table_name === "events" ? "event " : "";
+    // Health rows have no title/text; name them by what they are so the activity log stays readable.
+    var hx = fxHealthText(e, a, b); if(hx) return hx;
     if(e.op === "insert") return "Added " + noun + q;
     if(e.op === "delete") return "Deleted " + noun + q;
     if(a.archived_at && !b.archived_at) return "Archived " + q;
@@ -19914,6 +19944,7 @@
     tracker: [renderTracker],
     inbox: [renderInbox],
     memory: [renderMemory],
+    health: [renderHealth],
     timeline: [renderTimeline],
     journal: [renderJournal],
     people: [renderPeople],
@@ -19921,6 +19952,37 @@
     areaDetail: [renderAreaDetail],
     entityPage: [renderEntityPage]
   };
+  /* Health page. Its code is loaded on first open, in order, and versioned so the service worker's
+     cache-first rule for static files can never serve a stale copy: bump HEALTH_VER with each release. */
+  var HEALTH_VER = "1", healthLoading = null;
+  function healthLoadScripts(){
+    if(healthLoading) return healthLoading;
+    var files = ["body", "model", "charts", "view", "health"];
+    healthLoading = files.reduce(function(chain, f){
+      return chain.then(function(){
+        return new Promise(function(resolve, reject){
+          var el = document.createElement("script");
+          el.src = "health/" + f + ".js?v=" + HEALTH_VER;
+          el.onload = resolve;
+          el.onerror = function(){ reject(new Error("Could not load health/" + f + ".js")); };
+          document.head.appendChild(el);
+        });
+      });
+    }, Promise.resolve());
+    healthLoading.catch(function(){ healthLoading = null; });
+    return healthLoading;
+  }
+  function renderHealth(){
+    if(activeSection !== "health") return;
+    var host = document.getElementById("healthSection");
+    healthLoadScripts().then(function(){
+      if(activeSection !== "health") return;
+      window.PPHealth.mount(host, { sb: sb, userId: currentUser ? currentUser.id : null });
+    }).catch(function(err){
+      if(!host.shadowRoot) host.innerHTML = '<div class="empty-note" style="padding:60px 24px;">The Health page couldn’t load. Check your connection and open it again.</div>';
+      console.warn(err);
+    });
+  }
   function renderActiveSectionContent(){
     (SECTION_RENDERERS[activeSection] || []).forEach(function(fn){ fn(); });
   }
