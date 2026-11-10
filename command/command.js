@@ -2,7 +2,7 @@
    It never talks to the database itself; the host (index.html) saves and then calls update(). */
 (function () {
   var C = window.PPCommandCore, V = window.PPCommandView, P = window.PPCommand = {};
-  var VIEWS = [["today", "Today"], ["week", "Week"], ["month", "Month"], ["horizon", "Horizon"], ["backlog", "Backlog"]];
+  var VIEWS = [["today", "Today"], ["week", "Week"], ["month", "Month"], ["horizon", "Horizon"], ["strategy", "Strategy"], ["backlog", "Backlog"]];
 
   P.mount = function (host, o) {
     o = o || {};
@@ -128,10 +128,12 @@
       else if (d.act === "overdue") { S.overdueOpen = !S.overdueOpen; draw(); }
       else if (d.act === "now") { S.cursor = S.today; draw(); }
       else if (d.act === "review") open({ type: "review" });
+      else if (d.act === "treeall") { S.treeAll = !S.treeAll; S.treeOpen = {}; [].forEach.call(root.querySelectorAll("details.tn"), function (x) { S.treeOpen[x.dataset.tree] = S.treeAll; }); draw(); }
       else if (d.act === "newgoal") call("onNewGoal");
       else if (d.act === "newproject") call("onNewProject");
       else if (d.act === "pickok" && it) { var v = $("#ccPick").value; if (!v) { $("#ccPick").focus(); return; } var bk = ov; guard(Promise.resolve(moveTo(it, ov.date, v)).then(function () { if (S.over === bk) close(); })); }
     });
+    cc.addEventListener("toggle", function (e) { var x = e.target; if (x.classList && x.classList.contains("tn")) { S.treeOpen = S.treeOpen || {}; S.treeOpen[x.dataset.tree] = x.open; } }, true);
     cc.addEventListener("input", function (e) {
       if (e.target.id === "ccSearch") { S.q = e.target.value.trim(); draw(); }
       else if (e.target.id === "ccQ") { S.qa.text = e.target.value; S.qa.msg = ""; $("#ccParsed").innerHTML = V.parsed(S, parsed()); }
@@ -176,7 +178,7 @@
       if (k === "n") { e.preventDefault(); S.qa.date = null; open({ type: "quick" }); }
       else if (k === "/") { e.preventDefault(); $("#ccSearch").focus(); }
       else if (S.over) { if (k === "d" && S.over.type === "item") { var it = S.byId[S.over.id]; if (it && C.hasDone(it)) guard(toggleDone(it.id + "@" + (S.over.date || it.date || S.today))); } }
-      else if (/^[1-5]$/.test(k)) { S.view = VIEWS[+k - 1][0]; S.q = ""; S.cursor = S.today; call("onView", S.view); draw(); }
+      else if (/^[1-6]$/.test(k)) { S.view = VIEWS[+k - 1][0]; S.q = ""; S.cursor = S.today; call("onView", S.view); draw(); }
       else if (k === "t") { S.view = "today"; S.cursor = S.today; draw(); }
       else if ((k === "arrowleft" || k === "arrowright") && (S.view === "week" || S.view === "month")) { var b = $(S.view === "week" ? '[data-move="' + (k === "arrowleft" ? -7 : 7) + '"]' : '[data-movem="' + (k === "arrowleft" ? -1 : 1) + '"]'); if (b) b.click(); }
     }

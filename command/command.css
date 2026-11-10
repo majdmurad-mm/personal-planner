@@ -122,3 +122,15 @@ textarea.in{min-height:76px;resize:vertical}
  .shade{align-items:stretch;justify-content:flex-end}.sheet{border-radius:0;max-width:460px;max-height:none;height:100vh;animation-name:side;padding:26px 24px}
  .shade.mid{align-items:flex-start;justify-content:center;padding-top:12vh}.shade.mid .sheet{border-radius:18px;height:auto;max-height:76vh;max-width:620px;animation-name:up}}
 @keyframes side{from{transform:translateX(24px);opacity:0}to{transform:none;opacity:1}}
+
+/* strategy tree */
+.tree{list-style:none;margin:0;padding:0 0 0 22px;border-left:1px solid var(--line)}.tree.root{padding-left:0;border-left:0}
+.tree>li{position:relative;padding:2px 0 2px 14px}.tree.root>li{padding-left:0;margin-bottom:8px}
+.tree>li::before{content:"";position:absolute;left:0;top:20px;width:12px;border-top:1px solid var(--line)}.tree.root>li::before{display:none}
+.tn>summary{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;padding:8px 6px;border-radius:10px;cursor:pointer;list-style:none}.tn>summary::-webkit-details-marker{display:none}
+.tn>summary::before{content:"▸";color:var(--muted);width:12px;flex:none}.tn[open]>summary::before{content:"▾"}.tn>summary:hover{background:var(--inset)}
+.tk{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600;min-width:62px}
+.tt{font-size:15.5px;font-weight:600;min-width:0;overflow-wrap:anywhere}.tt.big{font:500 20px/1.2 var(--disp)}
+.tbar{width:90px;height:6px;border-radius:99px;background:var(--inset);overflow:hidden;flex:none}.tbar i{display:block;height:100%;background:var(--muted)}
+.tc{margin-left:auto;white-space:nowrap}.leaf .it{padding:6px 0;border-top:0}.leaf.sub{padding-top:6px;padding-bottom:6px}
+.goalnode{border:1px solid var(--line);border-radius:12px;padding:4px 8px;background:var(--bg)}
