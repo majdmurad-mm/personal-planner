@@ -41,7 +41,9 @@
     S.root.addEventListener("click", onClick); zoomWire($("#sky"));
     S.root.addEventListener("keydown", function (e) {
       var n = e.target.closest && e.target.closest(".nd");
-      if (n && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); select(n.getAttribute("data-id")); }
+      var ex = e.target.closest && e.target.closest("[data-exes]");
+      if (ex && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); ex.dispatchEvent(new MouseEvent("click", { bubbles: true })); }
+      else if (n && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); select(n.getAttribute("data-id")); }
       else if (e.key === "Escape" && (S.open || S.st.sel)) { if (S.open) { S.open = null; panel(); } else select(null); }
       else if (e.key === "Enter" && e.target.id === "linkName") { e.preventDefault(); addLink(); }
     });
@@ -222,7 +224,8 @@
 
   function onClick(e) {
     var t = e.target, b = t.closest("button"); if (Z.moved && t.closest("#sky")) { Z.moved = false; return; }
-    if (!b && !t.closest(".nd") && t.closest("#sky")) return select(null);
+    if (!b && !t.closest(".nd") && !t.closest("[data-exes]") && t.closest("#sky")) return select(null);
+    if (t.closest("[data-exes]")) { S.st.exOpen = !S.st.exOpen; var sv = $("#sky"); T.draw(sv, S.M, S.st); var again = sv.querySelector("[data-exes]"); if (again) again.focus(); return; }
     var nd = t.closest(".nd"); if (nd) return select(nd.getAttribute("data-id"));
     if (!b) return;
     var id = S.st.sel, p = person(id), d = function (k) { return b.getAttribute(k); };

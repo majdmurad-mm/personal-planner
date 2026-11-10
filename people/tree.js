@@ -1,6 +1,7 @@
 /* People page: the Tree view. A family tree around you (grandparents, parents, aunts and uncles,
-   siblings, cousins, children), relatives whose place is not known yet, and below that one branch
-   per kind of relationship (friends, colleagues, ...) split by group. Family roles come from each
+   siblings, cousins under their parent when the two are linked, children), your partner to your
+   right, former partners folded into one "Exes" point, relatives whose place is not known yet, and
+   below that friends, colleagues and others as free-standing clusters (not part of the tree). Family roles come from each
    person's kinRole / kinSide, set in the person panel. Returns nothing; draws into the SVG and
    leaves the full box in svg._vb and the family part in svg._focus for the zoom code in people.js. */
 (function () {
@@ -28,8 +29,10 @@
 
     var all = M.P.filter(function (p) { return !p.archived; });
     all.forEach(function (p) { p.x = null; });
-    var role = function (p) { return p.kinRole || (p.rel === "Partner" ? "partner" : ""); };
-    var fam = all.filter(function (p) { return role(p) || p.rel === "Family"; }), placed = {};
+    var isEx = function (p) { return p.kinRole === "ex" || (p.rel === "Partner" && p.kinRole !== "partner"); };
+    var role = function (p) { return isEx(p) ? "" : (p.kinRole || ""); };
+    var exes = all.filter(isEx).sort(byName);
+    var fam = all.filter(function (p) { return !isEx(p) && (role(p) || p.rel === "Family"); }), placed = {};
     var pick = function (roles, side) { return fam.filter(function (p) { return roles.indexOf(role(p)) >= 0 && (!side || p.kinSide === side); }).sort(byName); };
     var cap = function (p) { return KIN[role(p)] || ""; }, mark = function (arr) { arr.forEach(function (p) { placed[p.id] = 1; }); return arr; };
 
@@ -38,7 +41,20 @@
     sib.forEach(function (p, i) { put(p, xAt(i), 0, R, cap(p)); });
     partners.forEach(function (p, i) { put(p, meX + (i + 1) * CW, 0, R, cap(p)); line("M" + f(meX + (i ? i * CW + R : 23)) + ",0H" + f(meX + (i + 1) * CW - R - 2), "pair"); });
     grow(meX, 0, 50);
-    var coreL = xAt(0), coreR = meX + partners.length * CW;
+    var coreL = xAt(0), coreR = meX + partners.length * CW, exBottom = 0;
+    /* ---- exes: one quiet point beyond the partner; it opens into its people only when asked ---- */
+    if (exes.length) {
+      var exX = coreR + CW, open = !!st.exOpen;
+      coreR = exX;
+      line("M" + f(exX - CW + (partners.length ? R + 2 : 23)) + ",0H" + f(exX - R - 2), "dash");
+      nodes += '<g class="exn' + (open ? " open" : "") + '" data-exes="1" tabindex="0" role="button" aria-expanded="' + open + '" aria-label="Exes, ' + exes.length + (exes.length === 1 ? " person" : " people") + (open ? ", shown" : ", hidden") + '" transform="translate(' + f(exX) + ',0)"><circle r="' + (R + 7) + '" fill="transparent"/><circle class="disc" r="' + R + '"/><text class="ini" style="font-size:' + f(R * .8) + 'px">' + exes.length + '</text><text class="nm" style="font-size:calc(12px*var(--iz,1))" y="' + (R + 14) + '">Exes</text><text class="cap" y="' + (R + 27) + '">' + (open ? "tap to fold" : "tap to open") + "</text></g>";
+      grow(exX, 0, R + 34);
+      if (open) {
+        exes.forEach(function (p, i) { put(p, exX + ((i % 3) - 1) * BCW, 74 + Math.floor(i / 3) * BCH, SR, ""); });
+        line("M" + f(exX) + "," + (R + 32) + "V" + (74 - SR - 6), "dash");
+        exBottom = 74 + (Math.ceil(exes.length / 3) - 1) * BCH + SR + 40;
+      }
+    }
     /* ---- parents ---- */
     var fa = mark(pick(["father"])), mo = mark(pick(["mother"])), both = fa.length && mo.length, par = fa.concat(mo);
     var faX = both ? -CW * .56 : 0, moX = both ? CW * .56 : 0, sibXs = sib.map(function (p) { return p.x; }).concat([meX]);
@@ -50,7 +66,7 @@
       line("M0," + f(top) + "V" + f(yb)); if (sibXs.length === 1 && Math.abs(meX) > .5) line("M0," + f(yb) + "H" + f(meX));
     } else if (sib.length) bar(sibXs, 0, R);
     /* ---- each side: grandparents, aunts and uncles, cousins ---- */
-    var bottom = R + 40;
+    var bottom = Math.max(R + 40, exBottom);
     [["paternal", -1, fa[0] && fa[0].x != null ? faX : null], ["maternal", 1, mo[0] && mo[0].x != null ? moX : null]].forEach(function (S) {
       var side = S[0], dir = S[1], px = S[2], au = mark(pick(["uncle", "aunt"], side)), gp = mark(pick(["grandfather", "grandmother"], side)).slice(0, 2), co = mark(pick(["cousin"], side));
       if (!au.length && !gp.length && !co.length) return;
@@ -63,11 +79,24 @@
       if (gp.length > 1) line("M" + f(mid - CW * .56 + R + 2) + "," + -2 * H + "H" + f(mid + CW * .56 - R - 2), "pair");
       mark(gp); pick(["grandfather", "grandmother"], side).forEach(function (p) { if (p.x == null) placed[p.id] = 0; });
       if (co.length) {
-        co.forEach(function (p, i) { put(p, x0 + dir * (i % PER) * CW, Math.floor(i / PER) * SUB, R, cap(p)); });
-        var ybc = bar(co.slice(0, PER).map(function (p) { return p.x; }), 0, R);
-        if (au.length) line("M" + f(x0) + "," + f(-H + R + 31) + "V" + f(ybc));
-        else if (px != null) line("M" + f(x0) + "," + f(ybc) + "V" + f(-H) + "H" + f(px + dir * (R + 2)), "dash");
-        bottom = Math.max(bottom, (Math.ceil(co.length / PER) - 1) * SUB + R + 40);
+        var parentOf = {}, loose = [];
+        co.forEach(function (c) { var par = au.filter(function (a) { return (c.links || []).some(function (l) { return l.id === a.id; }); })[0]; if (par) (parentOf[par.id] = parentOf[par.id] || []).push(c); else loose.push(c); });
+        var slot = 0, row0 = [];
+        au.forEach(function (a) {
+          var kids = parentOf[a.id]; if (!kids) return;
+          var xs = kids.map(function (c) { var cx = x0 + dir * slot * CW; put(c, cx, 0, R, cap(c)); slot++; row0.push(cx); return cx; });
+          var ybk = bar(xs, 0, R), mid2 = (Math.min.apply(0, xs) + Math.max.apply(0, xs)) / 2;
+          line("M" + f(a.x) + "," + f(-H + R + 31) + "V" + f((-H + R + 31 + ybk) / 2) + "H" + f(mid2) + "V" + f(ybk));
+          slot += 0.4;
+        });
+        if (loose.length) {
+          var start = Math.ceil(slot);
+          loose.forEach(function (p, i) { put(p, x0 + dir * (start + (i % PER)) * CW, Math.floor(i / PER) * SUB, R, cap(p)); });
+          var ybc = bar(loose.slice(0, PER).map(function (p) { return p.x; }), 0, R), lx = x0 + dir * start * CW;
+          if (au.length && !row0.length) line("M" + f(lx) + "," + f(-H + R + 31) + "V" + f(ybc));
+          else if (!au.length && px != null) line("M" + f(lx) + "," + f(ybc) + "V" + f(-H) + "H" + f(px + dir * (R + 2)), "dash");
+          bottom = Math.max(bottom, (Math.ceil(loose.length / PER) - 1) * SUB + R + 40);
+        }
       }
       text(x0 + dir * (Math.max(au.length, Math.min(co.length, PER), 1) - 1) * CW / 2, -H * (gp.length ? 2 : au.length ? 1 : 0) - R - 34 - (!gp.length && !au.length ? 6 : 0), C.SIDE[side], "tsec", "middle");
     });
@@ -92,16 +121,15 @@
     }
     var focus = [bx0 - 20, by0 - 10, bx1 - bx0 + 40, by1 - by0 + 30];
     /* ---- everyone else: one branch per kind of relationship, split by group ---- */
-    var others = all.filter(function (p) { return fam.indexOf(p) < 0; }), kinds = {}, order = ["Friend", "Colleague", "Mentor", "Other"];
+    var others = all.filter(function (p) { return fam.indexOf(p) < 0 && !isEx(p); }), kinds = {}, order = ["Friend", "Colleague", "Mentor", "Other"];
     others.forEach(function (p) { var k = p.rel || "Other"; (kinds[k] = kinds[k] || []).push(p); });
     Object.keys(kinds).forEach(function (k) { if (order.indexOf(k) < 0) order.push(k); });
     order = order.filter(function (k) { return kinds[k]; });
     if (order.length) {
       var BW = BPER * BCW, GAP = 64, tot = order.length * BW + (order.length - 1) * GAP, ty = bottom + (fam.length ? 70 : 60), xs = order.map(function (k, i) { return -tot / 2 + i * (BW + GAP) + BW / 2; });
-      line("M0," + f(fam.length ? ty - 34 : R + 10) + "V" + f(ty)); if (xs.length > 1) line("M" + f(xs[0]) + "," + f(ty) + "H" + f(xs[xs.length - 1]));
+      text(0, ty - 8, "Around you: not family, so not part of the tree", "thint", "middle");
       order.forEach(function (k, i) {
         var cx = xs[i], left = cx - BW / 2, y = ty + 44, groups = {}, spine = left - 14;
-        line("M" + f(cx) + "," + f(ty) + "V" + f(ty + 20));
         text(cx, ty + 38, (PLURAL[k] || k) + " · " + kinds[k].length, "tbr", "middle");
         kinds[k].forEach(function (p) { (groups[p.group || ""] = groups[p.group || ""] || []).push(p); });
         var names = Object.keys(groups).sort(function (a, b) { return !a ? 1 : !b ? -1 : groups[b].length - groups[a].length || (a < b ? -1 : 1); }), lastY = y;
@@ -113,7 +141,7 @@
           groups[g].sort(function (a, b) { return a.circle - b.circle || byName(a, b); }).forEach(function (p, j) { put(p, left + BCW / 2 + (j % BPER) * BCW, y + 30 + Math.floor(j / BPER) * BCH, SR, ""); });
           y += 30 + Math.ceil(groups[g].length / BPER) * BCH - 22;
         });
-        line("M" + f(spine) + "," + f(ty + 46) + "V" + f(lastY)); line("M" + f(spine) + "," + f(ty + 46) + "H" + f(cx - 4) + "V" + f(ty + 44), "");
+        line("M" + f(spine) + "," + f(ty + 52) + "V" + f(lastY), "dash");
       });
     }
     if (!fam.length) focus = null;

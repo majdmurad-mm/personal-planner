@@ -205,3 +205,9 @@ svg .nd,svg .ln{transition:opacity .25s}
 .thint{fill:var(--muted);font:400 11.5px var(--font-t)}
 .tgrp{fill:var(--muted);font:500 11px var(--font-t)}
 .pp[data-narrow][data-view=tree] #sky{aspect-ratio:auto;height:68vh}
+
+/* the folded "Exes" point in the Tree view */
+.exn{cursor:pointer;outline:none}.exn .disc{fill:none;stroke:var(--muted);stroke-width:1.4;stroke-dasharray:3 4}.exn.open .disc{stroke-dasharray:none}
+.exn .ini{fill:var(--muted);text-anchor:middle;dominant-baseline:central;font-weight:600;pointer-events:none}.exn .nm{fill:var(--text);text-anchor:middle;pointer-events:none}
+.exn .cap{fill:var(--muted);font:500 9.5px var(--font-t);text-anchor:middle;letter-spacing:.04em;pointer-events:none}
+.exn:hover .disc,.exn:focus-visible .disc{stroke:var(--text);stroke-width:2}

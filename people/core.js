@@ -25,7 +25,7 @@
   function groupColors(names, custom) { var o = {}; names.slice().sort().forEach(function (g, i) { o[g] = (custom && custom[g]) || PALETTE[i % PALETTE.length]; }); return o; }
   /* family roles for the Tree view; "side" only matters for the roles marked true */
   var KIN = { father: "Father", mother: "Mother", brother: "Brother", sister: "Sister", grandfather: "Grandfather", grandmother: "Grandmother", uncle: "Uncle", aunt: "Aunt", cousin: "Cousin",
-    partner: "Partner", son: "Son", daughter: "Daughter", nephew: "Nephew", niece: "Niece", inlaw: "In-law", relative: "Relative" };
+    partner: "Partner", ex: "Ex-partner", son: "Son", daughter: "Daughter", nephew: "Nephew", niece: "Niece", inlaw: "In-law", relative: "Relative" };
   var KIN_SIDED = { grandfather: 1, grandmother: 1, uncle: 1, aunt: 1, cousin: 1 }, SIDE = { paternal: "Father's side", maternal: "Mother's side" };
   function isoAdd(today, n) { var d = new Date(dayNum(today) * 864e5 + n * 864e5); return d.toISOString().slice(0, 10); }
 
@@ -161,6 +161,7 @@
     notes.push({ id: "n1", date: d(1), text: "Long walk with Lena, talked about January", people: [lena.id] }, { id: "n2", date: d(2), text: "Omar sent a photo from the old flat", people: [omar.id] });
     var FN = ["Anna", "Ben", "Clara", "David", "Emil", "Freya", "Goran", "Hana", "Ivo", "Julia", "Karim", "Lotte", "Marek", "Nora", "Oskar", "Petra", "Rosa", "Sami", "Tilda", "Vera", "Willem", "Yara", "Zeno", "Alma", "Bruno", "Celia", "Dario", "Edda", "Finn", "Greta"],
       LN = ["Aalto", "Berger", "Castell", "Dahl", "Ekman", "Falk", "Gruber", "Holm", "Ivers", "Jansen", "Koller", "Lund", "Moreau", "Nyberg", "Olsen", "Pohl", "Quist", "Rieger", "Sander", "Thorn"], used = {};
+    add({ name: "Ines Marlow", group: "", relationship: "Partner", circle: 5, quality: "ok" }); add({ name: "Rahel Stone", group: "", relationship: "Partner", circle: 5, quality: "ok" });
     [["Family", 9], ["Hometown", 12], ["University", 9], ["Work", 12], ["Climbing", 5], ["", 6]].forEach(function (gc) {
       var first = people.length, KR = [["mother"], ["brother"], ["grandmother", "maternal"], ["grandfather", "paternal"], ["uncle", "paternal"], ["cousin", "paternal"], ["cousin", "paternal"], ["cousin", "maternal"], []];
       for (var i = 0; i < gc[1]; i++) {
