@@ -20559,7 +20559,7 @@
   /* Knowledge page (knowledge/): files and saved items, sorted and linked. Files are read in the browser;
      rows live in the knowledge_* tables and files in the private "knowledge" bucket, all behind RLS.
      Bump KNOWLEDGE_VER with each release of knowledge/*. */
-  var KNOWLEDGE_VER = "3", knowledgeLoading = null, knowledgeHandle = null, knowledgeFetching = null;
+  var KNOWLEDGE_VER = "4", knowledgeLoading = null, knowledgeHandle = null, knowledgeFetching = null;
   var KN = { items:null, edges:[], topics:{}, files:{}, settings:{ external:{} }, usage:null, meaning:{ ready:false, pending:0, busy:false } };
   var KN_MAX_FILE = 50 * 1024 * 1024, KN_PLAN_LIMIT = 1024 * 1024 * 1024;   // free-plan figures, shown as a guide
   function knowledgeLoadScripts(){
@@ -20612,8 +20612,30 @@
         why:"", url:"", tags:[], topic:"Notes to keep", meta:{}, source:"journal", needsSort:false, createdAt:n.createdAt || (n.date + "T12:00:00Z"), hasFile:false, pages:null, mirror:true };
     });
   }
+  /* The spider: Claude sorting the knowledge in a chat through the connector. This polls its recent steps
+     while the Knowledge page is open, refreshes the items when it has grouped or linked something, and
+     hands the page a prompt to paste into a Claude chat. */
+  var KN_SPIDER_PROMPT = "Please sort my Knowledge page in the planner, using the planner connector.\n1. Call map_knowledge to see everything.\n2. Read the items that have text (get_knowledge_item), one at a time, starting with anything marked to sort.\n3. Group items that belong together with cluster_knowledge, using short topic names I would use; reuse existing topics when they fit.\n4. Connect items that clearly relate (an idea and the book it came from, two papers about the same flat, an author and their work) with link_knowledge, saying why in a few words.\n5. Do not change titles or delete anything. Finish with spider_note: one sentence on what you did.";
+  var knSpider = { events:[], prompt:KN_SPIDER_PROMPT }, knSpiderTimer = 0, knSpiderLast = 0;
+  async function knowledgeSpiderPoll(){
+    clearTimeout(knSpiderTimer);
+    if(activeSection !== "knowledge" || !currentUser) return;
+    if(!document.hidden){
+      var r = await sb.from("knowledge_agent_events").select("id,action,item_id,other_id,note,created_at").gte("created_at", new Date(Date.now() - 2 * 86400000).toISOString()).order("created_at", { ascending:false }).limit(40);
+      if(!r.error){
+        var rows = r.data || [], newest = rows.length ? rows[0].id : 0, fresh = rows.filter(function(x){ return x.id > knSpiderLast; });
+        knSpider.events = rows.map(function(x){ return { id:x.id, action:x.action, item:x.item_id, other:x.other_id, note:x.note || "", at:x.created_at }; });
+        var changed = knSpiderLast && fresh.some(function(x){ return x.action === "cluster" || x.action === "link"; });
+        knSpiderLast = Math.max(knSpiderLast, newest);
+        if(changed){ await knowledgeFetch(); knowledgeRefresh(); }
+        else if(knowledgeHandle) knowledgeHandle.update({ spider:{ events:knSpider.events, prompt:knSpider.prompt } });
+      }
+    }
+    var live = knSpider.events.length && Date.now() - new Date(knSpider.events[0].at).getTime() < 4 * 60 * 1000;
+    knSpiderTimer = setTimeout(knowledgeSpiderPoll, live ? 3000 : 15000);
+  }
   function knowledgeData(){
-    return { items:(KN.items || []).concat(knowledgeMirror()), edges:KN.edges, settings:KN.settings, usage:KN.usage, meaning:KN.meaning, theme:currentTheme() };
+    return { items:(KN.items || []).concat(knowledgeMirror()), edges:KN.edges, settings:KN.settings, usage:KN.usage, meaning:KN.meaning, theme:currentTheme(), spider:{ events:knSpider.events, prompt:knSpider.prompt } };
   }
   function knowledgeRefresh(){ if(knowledgeHandle && activeSection === "knowledge") knowledgeHandle.update(knowledgeData()); }
   async function knowledgeTopicId(zone, name){
@@ -20840,7 +20862,7 @@
     if(!knowledgeFetching) knowledgeFetching = knowledgeFetch();
     Promise.all([knowledgeLoadScripts(), knowledgeFetching]).then(function(){
       if(activeSection !== "knowledge") return;
-      if(knowledgeHandle){ knowledgeHandle.update(knowledgeData()); return; }
+      if(knowledgeHandle){ knowledgeHandle.update(knowledgeData()); knowledgeSpiderPoll(); return; }
       knowledgeHandle = window.PPKnowledge.mount(host, Object.assign(knowledgeData(), {
         css: "knowledge/knowledge.css?v=" + KNOWLEDGE_VER,
         onUpload: knowledgeUpload, onSearch: knowledgeSearch, onPatch: knowledgePatch, onArchive: knowledgeArchive, onCreate: knowledgeCreate,
@@ -20848,6 +20870,7 @@
         onOpenMirror: function(){ showSection("self"); renderAll(); }
       }));
       if(KN.meaning.ready) knowledgeEmbedder().catch(function(){});
+      knowledgeSpiderPoll();
     }).catch(function(err){
       knowledgeFetching = null;
       var missing = err && /knowledge_|schema cache|does not exist/i.test(err.message || "");

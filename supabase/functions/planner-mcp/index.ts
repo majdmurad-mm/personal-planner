@@ -1143,8 +1143,87 @@ tool("get_knowledge_item", {
     let q = db.from("knowledge_chunks").select("page,content").eq("item_id", a.id).eq("user_id", OWNER).order("page", { ascending: true, nullsFirst: true });
     if (a.page) q = q.gte("page", Math.max(1, a.page - 1)).lte("page", a.page + 1);
     const c = await q.limit(40);
+    await knTrace("read", a.id, null, r.data.title);
     return ok({ ...knSlim(r.data), archived: !!r.data.archived_at, passages: (c.data || []).map((x) => ({ page: x.page, text: x.content })), truncated: (c.data || []).length === 40 });
   },
+});
+
+// ---- the Knowledge spider: Claude reading, grouping and linking, visible on the page ----
+async function knTrace(action: string, itemId: string | null, otherId: string | null, note: string) {
+  await db.from("knowledge_agent_events").insert({ user_id: OWNER, action, item_id: itemId, other_id: otherId, note: String(note || "").slice(0, 300) });
+}
+async function knTopicId(zone: string, name: string): Promise<string | null> {
+  const f = await db.from("knowledge_topics").select("id").eq("user_id", OWNER).eq("zone", zone).eq("name", name).maybeSingle();
+  if (f.data) return f.data.id;
+  const i = await db.from("knowledge_topics").insert({ user_id: OWNER, zone, name }).select("id").single();
+  return i.data ? i.data.id : null;
+}
+
+tool("map_knowledge", {
+  description: "The whole Knowledge page at a glance, for sorting it: every item Claude may read (id, title, zone, type, topic, folder, tags, a short summary, whether it has text to read) and the links between them. Start here before reading items with get_knowledge_item and grouping them with cluster_knowledge and link_knowledge. Zones the owner keeps from Claude are only counted.",
+  inputSchema: z.object({}),
+  handler: async () => {
+    const allowed = await knAllowed();
+    const [it, tp, ed, ch] = await Promise.all([
+      db.from("knowledge_items").select("*").eq("user_id", OWNER).is("archived_at", null).order("created_at", { ascending: false }).limit(500),
+      db.from("knowledge_topics").select("id,name").eq("user_id", OWNER),
+      db.from("knowledge_edges").select("from_id,to_id,kind").eq("user_id", OWNER).limit(2000),
+      db.from("knowledge_chunks").select("item_id").eq("user_id", OWNER).limit(20000),
+    ]);
+    if (it.error) return fail(it.error.message + KN_HINT);
+    const tn: Record<string, string> = {}; for (const t of tp.data || []) tn[t.id] = t.name;
+    const withText = new Set((ch.data || []).map((c) => c.item_id));
+    const rows = it.data || [], shown = rows.filter((r) => allowed.includes(r.zone)), ids = new Set(shown.map((r) => r.id));
+    await knTrace("note", null, null, "Looking over " + shown.length + " items");
+    return ok({
+      items: shown.map((r) => ({ id: r.id, title: r.title, zone: r.zone, type: r.type, topic: r.topic_id ? tn[r.topic_id] || null : null, folder: (r.meta || {}).folder || null, tags: r.tags || [], summary: String(r.summary || r.why || "").slice(0, 240), hasText: withText.has(r.id), toSort: !!r.needs_sort })),
+      links: (ed.data || []).filter((e) => ids.has(e.from_id) && ids.has(e.to_id)),
+      keptFromClaude: rows.length - shown.length,
+    });
+  },
+});
+
+tool("cluster_knowledge", {
+  description: "Put several Knowledge items into one topic (the page groups items by topic), optionally also into a folder. Use a short, plain topic name the owner would use, e.g. 'Housing & tenancy' or 'Remote sensing'. Reuse an existing topic name from map_knowledge when one fits. Items in zones kept from Claude are skipped.",
+  inputSchema: z.object({ itemIds: z.array(z.string()).min(1).max(100), topic: z.string().min(2).max(60), folder: z.string().max(80).optional(), why: z.string().max(300).optional() }),
+  handler: async (a: { itemIds: string[]; topic: string; folder?: string; why?: string }) => {
+    const allowed = await knAllowed();
+    const r = await db.from("knowledge_items").select("id,zone,title,meta").eq("user_id", OWNER).is("archived_at", null).in("id", a.itemIds);
+    if (r.error) return fail(r.error.message + KN_HINT);
+    let done = 0, skipped = 0;
+    for (const it of r.data || []) {
+      if (!allowed.includes(it.zone)) { skipped++; continue; }
+      // deno-lint-ignore no-explicit-any
+      const patch: Record<string, any> = { topic_id: await knTopicId(it.zone, a.topic.trim()), updated_at: new Date().toISOString() };
+      if (a.folder) patch.meta = { ...(it.meta || {}), folder: a.folder.trim() };
+      const up = await db.from("knowledge_items").update(patch).eq("id", it.id).eq("user_id", OWNER);
+      if (!up.error) { done++; await knTrace("cluster", it.id, null, a.topic.trim() + (a.why ? " — " + a.why : "")); }
+    }
+    return ok({ ok: true, grouped: done, skipped, notFound: a.itemIds.length - (r.data || []).length, topic: a.topic.trim() });
+  },
+});
+
+tool("link_knowledge", {
+  description: "Connect two Knowledge items that belong together (one cites the other, an idea came from a book, two papers about the same flat, an author and their work). Say why in a few words; it is shown on the page. Linking the same pair twice does nothing.",
+  inputSchema: z.object({ fromId: z.string(), toId: z.string(), why: z.string().max(200).optional() }),
+  handler: async (a: { fromId: string; toId: string; why?: string }) => {
+    if (a.fromId === a.toId) return fail("an item cannot be linked to itself");
+    const allowed = await knAllowed();
+    const r = await db.from("knowledge_items").select("id,zone,title").eq("user_id", OWNER).is("archived_at", null).in("id", [a.fromId, a.toId]);
+    if (r.error) return fail(r.error.message + KN_HINT);
+    if ((r.data || []).length !== 2) return fail("one or both items were not found");
+    if ((r.data || []).some((x) => !allowed.includes(x.zone))) return fail(knKept((r.data || []).map((x) => x.zone).filter((z2) => !allowed.includes(z2))));
+    const ins = await db.from("knowledge_edges").insert({ user_id: OWNER, from_id: a.fromId, to_id: a.toId, kind: "related" });
+    if (ins.error && !/duplicate/i.test(ins.error.message)) return fail(ins.error.message);
+    await knTrace("link", a.fromId, a.toId, a.why || "");
+    return ok({ ok: true, alreadyLinked: !!ins.error });
+  },
+});
+
+tool("spider_note", {
+  description: "Leave a short line on the Knowledge page about what you are doing or what you found, e.g. 'Grouped 6 tenancy papers under Housing & tenancy'. Call it once at the end of a sorting pass with a one-sentence summary.",
+  inputSchema: z.object({ text: z.string().min(2).max(300) }),
+  handler: async (a: { text: string }) => { await knTrace("note", null, null, a.text); return ok({ ok: true }); },
 });
 
 tool("set_item_type", {
