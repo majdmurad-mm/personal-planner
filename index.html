@@ -20332,12 +20332,12 @@
   /* Command Center (command/): one page for tasks, events, deadlines and time blocks. The module only
      draws; every save goes through the functions below, so the activity log and undo keep working.
      Bump COMMAND_VER with each release of command/*. */
-  var COMMAND_VER = "2", commandLoading = null, commandHandle = null;
+  var COMMAND_VER = "3", commandLoading = null, commandHandle = null, commandBoard = null, commandBoardLoad = null;
   // Hours that count as booked in the free-time bars. Change here if the work pattern changes.
   var COMMAND_WORK = { days:[1, 2, 3, 4, 5], start:"09:00", end:"18:00" };
   function commandLoadScripts(){
     if(commandLoading) return commandLoading;
-    commandLoading = ["core", "view", "command"].reduce(function(chain, f){
+    commandLoading = ["core", "view", "board", "command"].reduce(function(chain, f){
       return chain.then(function(){
         return new Promise(function(resolve, reject){
           var el = document.createElement("script");
@@ -20350,6 +20350,17 @@
     }, Promise.resolve());
     commandLoading.catch(function(){ commandLoading = null; });
     return commandLoading;
+  }
+  // Strategy board layout (moved cards, folded branches, hand-drawn connections): one row per owner.
+  function commandBoardFetch(){
+    if(!commandBoardLoad) commandBoardLoad = sb.from("strategy_board").select("layout").maybeSingle().then(function(r){ commandBoard = (r && r.data && r.data.layout) || {}; }, function(){ commandBoard = {}; });
+    return commandBoardLoad;
+  }
+  async function commandBoardSave(layout){
+    commandBoard = layout;
+    if(!currentUser) return;
+    var res = await sb.from("strategy_board").upsert({ user_id:currentUser.id, layout:layout, updated_at:new Date().toISOString() }, { onConflict:"user_id" });
+    if(res.error) console.warn(res.error);
   }
   function commandPeople(ids){
     return (ids || []).map(function(id){ var p = state.people.find(function(x){ return x.id === id; }); return p ? p.name : null; }).filter(Boolean);
@@ -20368,7 +20379,7 @@
     }));
     var today = todayStr(), main = fxMainAction(today);
     return {
-      items: items, today: today, mainId: main ? main.id : null, work: COMMAND_WORK, theme: currentTheme(),
+      items: items, today: today, mainId: main ? main.id : null, work: COMMAND_WORK, theme: currentTheme(), board: commandBoard || undefined,
       goals: state.goals.map(function(g){ return { id:g.id, title:g.title, area:g.category || "", due:g.ongoing ? null : (g.due || null), ongoing:!!g.ongoing, progress:Math.round(goalProgress(g)) || 0,
         open: state.actions.filter(function(a){ return !a.done && resolveGoalIdForAction(a) === g.id; }).length }; }),
       projects: state.projects.map(function(p){
@@ -20464,13 +20475,13 @@
   function renderCommand(){
     if(activeSection !== "command") return;
     var host = document.getElementById("commandSection");
-    commandLoadScripts().then(function(){
+    Promise.all([commandLoadScripts(), commandBoardFetch()]).then(function(){
       if(activeSection !== "command") return;
       var d = commandData();
       if(commandHandle){ commandHandle.update(d); return; }
       commandHandle = window.PPCommand.mount(host, Object.assign(d, {
         css: "command/command.css?v=" + COMMAND_VER, areas: CATEGORIES,
-        onCreate: commandCreate, onPatch: commandPatch, onArchive: commandArchive, onHistory: commandHistory,
+        onCreate: commandCreate, onPatch: commandPatch, onArchive: commandArchive, onHistory: commandHistory, onBoardSave: commandBoardSave,
         onSetMain: function(id){ return fxSetMain(id, todayStr()); },
         onUndo: function(logId){ return fxUndo(logId); },
         onOpenFull: function(id){ var hit = commandFind(id); if(hit && hit.table === "events") editEvent(id); else editAction(id); },

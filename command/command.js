@@ -1,17 +1,18 @@
 /* Command Center: mounts the page in a shadow root and turns clicks, drags and keys into callbacks.
    It never talks to the database itself; the host (index.html) saves and then calls update(). */
 (function () {
-  var C = window.PPCommandCore, V = window.PPCommandView, P = window.PPCommand = {};
+  var C = window.PPCommandCore, V = window.PPCommandView, B = window.PPCommandBoard, P = window.PPCommand = {};
   var VIEWS = [["today", "Today"], ["week", "Week"], ["month", "Month"], ["horizon", "Horizon"], ["strategy", "Strategy"], ["backlog", "Backlog"]];
 
   P.mount = function (host, o) {
     o = o || {};
     var root = host.shadowRoot || host.attachShadow({ mode: "open" });
-    var S = { view: o.view || "today", q: "", pickerOpen: false, overdueOpen: false, over: null, qa: { text: "", kind: null, msg: "" }, hist: null, sample: !!o.sample, areas: o.areas || [] };
+    var S = { view: o.view || "today", q: "", pickerOpen: false, overdueOpen: false, over: null, qa: { text: "", kind: null, msg: "" }, hist: null, sample: !!o.sample, areas: o.areas || [], smode: null, board: { pos: {}, links: [], collapsed: {}, cam: { x: 20, y: 20, k: 1 }, linkFrom: null, undo: null, fitted: false, loaded: false } };
     var theme = o.theme || "light", fixedNow = o.now || null, busy = false;
     var call = function (name) { var a = [].slice.call(arguments, 1); return Promise.resolve(o[name] ? o[name].apply(null, a) : null); };
     function setData(d) {
       ["items", "goals", "projects", "feed", "feedNote", "mainId", "work"].forEach(function (k) { if (d[k] !== undefined) S[k] = d[k]; });
+      if (d.board && !S.board.loaded) { S.board.pos = d.board.pos || {}; S.board.links = d.board.links || []; S.board.collapsed = d.board.collapsed || {}; S.board.loaded = true; }
       S.items = S.items || []; S.byId = {}; S.items.forEach(function (i) { S.byId[i.id] = i; });
       var n = fixedNow || new Date(); S.today = d.today || C.localIso(n); S.nowMin = n.getHours() * 60 + n.getMinutes();
       if (!S.cursor) S.cursor = S.today;
@@ -19,6 +20,8 @@
     setData(o);
     root.innerHTML = '<link rel="stylesheet" href="' + (o.css || "command/command.css") + '"><div class="cc"></div>';
     var cc = root.querySelector(".cc"), $ = function (q) { return root.querySelector(q); };
+    // the board is fitted to its box, which only has a size once the stylesheet has arrived
+    var sheet = root.querySelector("link"); if (sheet) sheet.addEventListener("load", function () { if ($("#ccBoard")) fitBoard(); });
 
     function shell() {
       cc.dataset.theme = theme;
@@ -31,7 +34,9 @@
     function draw() {
       var v = S.q ? "search" : S.view;
       [].forEach.call(root.querySelectorAll(".seg button"), function (b) { b.setAttribute("aria-pressed", String(!S.q && b.dataset.view === S.view)); });
+      if (v === "strategy" && S.smode == null) S.smode = host.getBoundingClientRect().width >= 900 ? "board" : "outline";
       $("#ccView").innerHTML = '<div class="view" data-v="' + v + '">' + V[v](S) + "</div>";
+      if (v === "strategy" && S.smode === "board") { if (!S.board.fitted) { S.board.fitted = true; fitBoard(); } }
       drawOver(true);
     }
     function drawOver(fromData) {
@@ -50,6 +55,50 @@
       var s2 = el.querySelector(".sheet"); if (s2 && fromData) s2.scrollTop = top;
       if (fid && fromData) { var f = root.getElementById(fid); if (f) f.focus(); }
     }
+    /* ----- strategy board: pan, zoom, move a branch, connect two cards ----- */
+    var saveT = 0;
+    function saveBoard() { clearTimeout(saveT); saveT = setTimeout(function () { call("onBoardSave", { pos: S.board.pos, links: S.board.links, collapsed: S.board.collapsed }); }, 600); }
+    function applyCam() { var w = $("#ccBW"), c = S.board.cam; if (w) w.style.transform = "translate(" + c.x.toFixed(1) + "px," + c.y.toFixed(1) + "px) scale(" + c.k.toFixed(3) + ")"; }
+    function fitBoard() {
+      var el = $("#ccBoard"), box = S.boardBox; if (!el || !box) return; var r = el.getBoundingClientRect(), k = Math.max(0.25, Math.min(1, (r.width - 48) / Math.max(box.w, 1), (r.height - 70) / Math.max(box.h, 1)));
+      S.board.cam = { k: k, x: (r.width - box.w * k) / 2 - box.x * k, y: Math.max(24, (r.height - 30 - box.h * k) / 2) - box.y * k }; applyCam();
+    }
+    function zoomBoard(f, px, py) { var el = $("#ccBoard"), r = el.getBoundingClientRect(), c = S.board.cam, nk = Math.max(0.2, Math.min(2.2, c.k * f)); if (px == null) { px = r.width / 2; py = r.height / 2; } var bx = (px - c.x) / c.k, by = (py - c.y) / c.k; S.board.cam = { k: nk, x: px - bx * nk, y: py - by * nk }; applyCam(); }
+    function boardLines(extra) { var svg = $("#ccBL"); if (svg) svg.innerHTML = B.lines(S.boardM, S.board) + '<path class="bl-new" id="ccBNew" d="' + (extra || "") + '"/>'; }
+    function branch(id) { var N = S.boardM.nodes, out = [], walk = function (x) { var n = N[x]; if (!n || !n.vis) return; out.push(n); if (!n.folded) n.children.forEach(walk); }; walk(id); return out; }
+    function addLink(a, b) {
+      if (!a || !b || a === b) return false; var L = S.board.links;
+      if (L.some(function (l) { return (l[0] === a && l[1] === b) || (l[0] === b && l[1] === a); })) return false;
+      S.board.undo = { links: L.slice(), pos: Object.assign({}, S.board.pos), collapsed: Object.assign({}, S.board.collapsed) }; L.push([a, b]); saveBoard(); return true;
+    }
+    function openNode(id) {
+      var n = S.boardM && S.boardM.nodes[id]; if (!n) return;
+      if (n.kind === "task") open({ type: "item", id: n.ref, date: null }); else if (n.kind === "goal") call("onOpenGoal", n.ref); else if (n.kind === "project") call("onOpenProject", n.ref); else { S.board.collapsed[id] = !n.folded; saveBoard(); draw(); }
+    }
+    var bd = { mode: null, moved: false };
+    cc.addEventListener("pointerdown", function (e) {
+      var el = e.target.closest && e.target.closest("#ccBoard"); if (!el || e.target.closest(".bzoom,.bt") || e.button > 0) return;
+      var h = e.target.closest(".bh"), n = e.target.closest(".bn"), r = el.getBoundingClientRect();
+      bd = { mode: h ? "link" : n ? "node" : "pan", moved: false, sx: e.clientX, sy: e.clientY, cx: S.board.cam.x, cy: S.board.cam.y, id: h ? h.getAttribute("data-bhandle") : n ? n.getAttribute("data-n") : null, r: r, pid: e.pointerId };
+      if (bd.mode === "node") bd.nodes = branch(bd.id).map(function (x) { return { n: x, x: x.x, y: x.y, el: root.querySelector('.bn[data-n="' + x.id.replace(/"/g, "") + '"]') }; });
+      if (bd.mode === "link") e.preventDefault();
+    });
+    cc.addEventListener("pointermove", function (e) {
+      if (!bd.mode || e.pointerId !== bd.pid) return; var dx = e.clientX - bd.sx, dy = e.clientY - bd.sy, k = S.board.cam.k;
+      if (!bd.moved && Math.abs(dx) + Math.abs(dy) < 5) return; bd.moved = true;
+      if (bd.mode === "pan") { S.board.cam.x = bd.cx + dx; S.board.cam.y = bd.cy + dy; applyCam(); $("#ccBoard").classList.add("grab"); }
+      else if (bd.mode === "node") { bd.nodes.forEach(function (o) { o.n.x = o.x + dx / k; o.n.y = o.y + dy / k; if (o.el) { o.el.style.left = o.n.x.toFixed(1) + "px"; o.el.style.top = o.n.y.toFixed(1) + "px"; } }); boardLines(); }
+      else if (bd.mode === "link") { var a = S.boardM.nodes[bd.id], c = S.board.cam, x2 = (e.clientX - bd.r.left - c.x) / k, y2 = (e.clientY - bd.r.top - c.y) / k; boardLines("M" + (a.x + a.w / 2).toFixed(1) + "," + (a.y + a.h / 2).toFixed(1) + " L" + x2.toFixed(1) + "," + y2.toFixed(1)); }
+    });
+    var bdEnd = function (e) {
+      if (!bd.mode || e.pointerId !== bd.pid) return; var m = bd; bd = { mode: null, moved: m.moved };
+      var brd = $("#ccBoard"); if (brd) brd.classList.remove("grab");
+      if (m.mode === "node" && m.moved) { S.board.undo = { links: S.board.links.slice(), pos: Object.assign({}, S.board.pos), collapsed: Object.assign({}, S.board.collapsed) }; m.nodes.forEach(function (o) { S.board.pos[o.n.id] = [Math.round(o.n.x), Math.round(o.n.y)]; }); saveBoard(); draw(); }
+      else if (m.mode === "link") { var t = root.elementFromPoint(e.clientX, e.clientY), tn = t && t.closest ? t.closest(".bn") : null; if (tn) addLink(m.id, tn.getAttribute("data-n")); draw(); }
+      setTimeout(function () { bd.moved = false; }, 0);
+    };
+    cc.addEventListener("pointerup", bdEnd); cc.addEventListener("pointercancel", bdEnd);
+    cc.addEventListener("wheel", function (e) { var el = e.target.closest && e.target.closest("#ccBoard"); if (!el) return; e.preventDefault(); var r = el.getBoundingClientRect(); zoomBoard(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX - r.left, e.clientY - r.top); }, { passive: false });
     function open(over) {
       S.over = over; S.hist = null; drawOver(false);
       var first = over.type === "quick" ? $("#ccQ") : $("#ccOver .x"); if (first) first.focus();
@@ -92,6 +141,14 @@
 
     cc.addEventListener("click", function (e) {
       if (e.target.dataset && e.target.dataset.shade) { close(); return; }
+      var bl = e.target.closest && e.target.closest("[data-blink]");
+      if (bl) { S.board.undo = { links: S.board.links.slice(), pos: Object.assign({}, S.board.pos), collapsed: Object.assign({}, S.board.collapsed) }; S.board.links.splice(+bl.getAttribute("data-blink"), 1); saveBoard(); draw(); return; }
+      var tg = e.target.closest && e.target.closest("[data-btoggle]");
+      if (tg) { var tn2 = S.boardM.nodes[tg.getAttribute("data-btoggle")]; S.board.collapsed[tn2.id] = !tn2.folded; saveBoard(); draw(); var again = root.querySelector('[data-btoggle="' + tn2.id.replace(/"/g, "") + '"]'); if (again) again.focus(); return; }
+      var bz = e.target.closest && e.target.closest("[data-bzoom]");
+      if (bz) { var zv = bz.getAttribute("data-bzoom"); if (zv === "0") fitBoard(); else zoomBoard(zv === "1" ? 1.3 : 1 / 1.3); return; }
+      var bnode = e.target.closest && e.target.closest(".bn");
+      if (bnode) { if (bd.moved) return; var nid = bnode.getAttribute("data-n"); if (S.board.linkFrom) { addLink(S.board.linkFrom, nid); S.board.linkFrom = null; draw(); } else openNode(nid); return; }
       var t = e.target.closest("button,[data-day],.chip"); if (!t || t.disabled) return; var d = t.dataset, ov = S.over, it = ov && ov.id ? S.byId[ov.id] : null;
       if (d.view) { S.view = d.view; S.q = ""; $("#ccSearch").value = ""; S.cursor = S.today; call("onView", S.view); draw(); }
       else if (d.done) guard(toggleDone(d.done));
@@ -128,6 +185,9 @@
       else if (d.act === "overdue") { S.overdueOpen = !S.overdueOpen; draw(); }
       else if (d.act === "now") { S.cursor = S.today; draw(); }
       else if (d.act === "review") open({ type: "review" });
+      else if (d.act === "smode") { S.smode = S.smode === "board" ? "outline" : "board"; S.board.fitted = false; draw(); }
+      else if (d.act === "btidy") { S.board.undo = { links: S.board.links.slice(), pos: Object.assign({}, S.board.pos), collapsed: Object.assign({}, S.board.collapsed) }; S.board.pos = {}; S.board.collapsed = {}; S.board.fitted = false; saveBoard(); draw(); }
+      else if (d.act === "bundo" && S.board.undo) { var u = S.board.undo; S.board.pos = u.pos; S.board.links = u.links; S.board.collapsed = u.collapsed; S.board.undo = null; saveBoard(); draw(); }
       else if (d.act === "treeall") { S.treeAll = !S.treeAll; S.treeOpen = {}; [].forEach.call(root.querySelectorAll("details.tn"), function (x) { S.treeOpen[x.dataset.tree] = S.treeAll; }); draw(); }
       else if (d.act === "newgoal") call("onNewGoal");
       else if (d.act === "newproject") call("onNewProject");
@@ -151,6 +211,11 @@
     });
     cc.addEventListener("keydown", function (e) {
       if ((e.key === "Enter" || e.key === " ") && e.target.classList && e.target.classList.contains("chip")) { e.preventDefault(); e.target.click(); }
+      var bk = e.target.classList && e.target.classList.contains("bn") ? e.target.getAttribute("data-n") : null;
+      if (bk && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); if (S.board.linkFrom) { addLink(S.board.linkFrom, bk); S.board.linkFrom = null; draw(); } else openNode(bk); }
+      else if (bk && (e.key === "l" || e.key === "L")) { e.preventDefault(); e.stopPropagation(); if (S.board.linkFrom && S.board.linkFrom !== bk) { addLink(S.board.linkFrom, bk); S.board.linkFrom = null; } else S.board.linkFrom = S.board.linkFrom ? null : bk; draw(); var fb = root.querySelector('.bn[data-n="' + bk.replace(/"/g, "") + '"]'); if (fb) fb.focus(); }
+      else if (bk && /^Arrow/.test(e.key)) { e.preventDefault(); var st = e.shiftKey ? 60 : 20, mv = branch(bk); S.board.undo = { links: S.board.links.slice(), pos: Object.assign({}, S.board.pos), collapsed: Object.assign({}, S.board.collapsed) }; mv.forEach(function (x) { S.board.pos[x.id] = [Math.round(x.x + (e.key === "ArrowRight" ? st : e.key === "ArrowLeft" ? -st : 0)), Math.round(x.y + (e.key === "ArrowDown" ? st : e.key === "ArrowUp" ? -st : 0))]; }); saveBoard(); draw(); var fm = root.querySelector('.bn[data-n="' + bk.replace(/"/g, "") + '"]'); if (fm) fm.focus(); }
+      else if (e.key === "Escape" && S.board.linkFrom) { S.board.linkFrom = null; draw(); e.stopPropagation(); }
       if (e.key === "Enter" && e.target.id === "ccQ") { e.preventDefault(); guard(saveQuick(e.ctrlKey || e.metaKey)); }
       if (e.key === "Enter" && e.target.id === "ccPick") { e.preventDefault(); $('[data-act="pickok"]').click(); }
       if (e.key === "Escape" && e.target.id === "ccSearch" && S.q) { S.q = ""; e.target.value = ""; draw(); e.stopPropagation(); }
@@ -187,7 +252,7 @@
     return {
       update: function (d) { if (d.theme) theme = d.theme; setData(d); cc.dataset.theme = theme; draw(); },
       setView: function (v) { S.view = v; draw(); },
-      open: open, state: function () { return { view: S.view, over: S.over && S.over.type }; },
+      open: open, state: function () { return { view: S.view, over: S.over && S.over.type, smode: S.smode, board: { pos: Object.keys(S.board.pos).length, links: S.board.links.length, k: S.board.cam.k } }; },
       destroy: function () { document.removeEventListener("keydown", onKey); }
     };
   };
