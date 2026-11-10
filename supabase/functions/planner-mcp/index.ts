@@ -711,7 +711,7 @@ tool("get_finance", {
 // One row per as_of in finance_snapshots (see _Memory/migration_finance_snapshots.sql). The same
 // rules as F.validate in finance/finance.js. Older snapshots are the history and are never deleted.
 const FIN_VERSIONS = ["1", "1.0"];
-const FIN_LISTS = ["accounts", "monthly", "balances_eom", "categories", "food", "subscriptions", "loans", "investments", "property", "income_sources", "actions"];
+const FIN_LISTS = ["accounts", "monthly", "balances_eom", "categories", "food", "subscriptions", "loans", "investments", "property", "income_sources", "actions", "monthly_categories", "monthly_income"];
 const FIN_HINT = " (if the table is missing, run _Memory/migration_finance_snapshots.sql in the Supabase SQL editor)";
 function financeProblems(snap: any): string[] {
   const e: string[] = [];
@@ -731,7 +731,7 @@ function financeProblems(snap: any): string[] {
 
 tool("import_finance_snapshot", {
   description:
-    "Store a finance snapshot for the Finance page. The snapshot is one object: schema_version ('1'), as_of (YYYY-MM-DD), currency, period, sources, accounts[], monthly[], balances_eom[], categories[], food[], subscriptions[], loans[], investments[], property[], income_sources[], kpis, actions[]. Use null for a number that is unknown, never 0. Importing the same as_of again replaces that snapshot; other dates are kept as history.",
+    "Store a finance snapshot for the Finance page. The snapshot is one object: schema_version ('1'), as_of (YYYY-MM-DD), currency, period, sources, accounts[], monthly[], balances_eom[], categories[], food[], subscriptions[], loans[], investments[], property[], income_sources[], kpis, actions[], and optionally monthly_categories[] ({month: 'YYYY-MM', category, amount}) and monthly_income[] ({month, source, amount}) so the Finance page's money river can show every stream for each month. Use null for a number that is unknown, never 0. Importing the same as_of again replaces that snapshot; other dates are kept as history.",
   inputSchema: z.object({
     snapshot: z.record(z.any()).describe("the whole snapshot object"),
   }),

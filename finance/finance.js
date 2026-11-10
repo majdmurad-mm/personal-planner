@@ -1,7 +1,7 @@
 /* Finance page: renders one snapshot (see finance/sample.js for the shape). No number lives in this file;
    everything comes from the snapshot. A null renders as "not provided yet", never as 0. */
 (function () {
-  var F = window.PPFinance = window.PPFinance || {};
+  var F = window.PPFinance = window.PPFinance || {}, R = window.PPFinanceRiver;
   var SUPPORTED = ["1", "1.0"], NP = "not provided yet", CUR = "EUR", STALE_DAYS = 35;
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
   var n = function (v) { return v == null || v === "" || isNaN(+v) ? null : +v; };
@@ -21,7 +21,7 @@
 
   /* ---------- validation (the same rules the import tool applies) ---------- */
   F.validate = function (s) {
-    var e = [], lists = ["accounts", "monthly", "balances_eom", "categories", "food", "subscriptions", "loans", "investments", "property", "income_sources", "actions"];
+    var e = [], lists = ["accounts", "monthly", "balances_eom", "categories", "food", "subscriptions", "loans", "investments", "property", "income_sources", "actions", "monthly_categories", "monthly_income"];
     if (!s || typeof s !== "object" || Array.isArray(s)) return ["The file is not a snapshot object."];
     if (SUPPORTED.indexOf(String(s.schema_version)) < 0) e.push("Unknown schema_version " + JSON.stringify(s.schema_version) + ". This page reads version " + SUPPORTED[0] + ".");
     if (!/^\d{4}-\d{2}-\d{2}/.test(String(s.as_of || ""))) e.push("as_of must be a date like 2026-11-10.");
@@ -55,7 +55,7 @@
   function ranked(rows, o) {
     /* rows: [{name, v, meta, tip}] ; bars share one scale */
     var known = rows.filter(function (r) { return r.v != null; }), mx = Math.max.apply(0, known.map(function (r) { return Math.abs(r.v); }).concat([0])) || 1;
-    return '<div class="bars">' + rows.map(function (r) { return '<div class="bar"' + tip(r.tip || r.name + "\n" + eur(r.v)) + '><span class="n">' + esc(r.name) + '</span><span class="tr">' + (r.v == null ? "" : '<i style="width:' + (Math.abs(r.v) / mx * 100).toFixed(1) + '%"></i>') + '</span><span class="val">' + money(r.v) + (o && o.unit ? '<span class="sub"> ' + o.unit + "</span>" : "") + "</span>" + (r.meta ? '<span class="meta">' + r.meta + "</span>" : "") + "</div>"; }).join("") + "</div>";
+    return '<div class="bars">' + rows.map(function (r) { return '<div class="bar"' + (r.stream ? ' data-stream="' + esc(r.stream) + '"' : "") + tip(r.tip || r.name + "\n" + eur(r.v)) + '><span class="n">' + esc(r.name) + '</span><span class="tr">' + (r.v == null ? "" : '<i style="width:' + (Math.abs(r.v) / mx * 100).toFixed(1) + '%"></i>') + '</span><span class="val">' + money(r.v) + (o && o.unit ? '<span class="sub"> ' + o.unit + "</span>" : "") + "</span>" + (r.meta ? '<span class="meta">' + r.meta + "</span>" : "") + "</div>"; }).join("") + "</div>";
   }
 
   /* ---------- sections ---------- */
@@ -100,7 +100,7 @@
     return card("s7", "Money in, money out", "Per month, in " + CUR, legend([["f1 b1", "Income"], ["f3 b3", "Liquidated (stacked on income)"], ["fg bg", "Spending"]]) + '<svg class="ch" viewBox="0 0 ' + W + " " + Hh + '" role="img" aria-label="Income plus liquidated against spending, per month">' + axisY(mx, L, W - R, y) + g + "</svg>");
   }
   function cash(s, H) {
-    var C = H.cash; if (C.filter(function (c) { return c.total != null; }).length < 2) return card("s7", "Cash on hand", "", none("Month-end balances"));
+    var C = H.cash; if (C.filter(function (c) { return c.total != null; }).length < 2) return card("st-buffer st-gap s7", "Cash on hand", "", none("Month-end balances"));
     var W = 680, Hh = 280, L = 44, R = 14, T = 16, B = 30, vals = C.map(function (c) { return c.total; }).filter(function (v) { return v != null; }), mx = nice(Math.max.apply(0, vals.concat([H.floor || 0])) * 1.05), y = function (v) { return T + (1 - v / mx) * (Hh - T - B); }, x = function (i) { return L + 10 + i * (W - L - R - 20) / (C.length - 1); };
     var d = "", pen = false, pts = "", hits = "", sw = (W - L - R - 20) / (C.length - 1);
     C.forEach(function (c, i) {
@@ -111,7 +111,7 @@
     var area = '<path class="ar" d="' + d + "L" + x(iL).toFixed(1) + " " + y(0) + "L" + x(iF).toFixed(1) + " " + y(0) + 'Z"/>';
     var ref = H.floor == null ? "" : '<line class="ref" x1="' + L + '" x2="' + (W - R) + '" y1="' + y(H.floor).toFixed(1) + '" y2="' + y(H.floor).toFixed(1) + '"/><text class="ax strong" x="' + (L + 6) + '" y="' + (y(H.floor) - 6).toFixed(1) + '">Cash floor ' + eur(H.floor) + "</text>";
     var st = H.floor == null || H.liquid == null ? "" : H.liquid >= H.floor ? '<span class="chip good">✓ ' + eur(H.liquid - H.floor) + " above the floor</span>" : '<span class="chip bad">▼ ' + eur(H.floor - H.liquid) + " below the floor</span>";
-    return card("s7", "Cash on hand", "Giro plus Tagesgeld at each month end" + (H.floor == null ? " · cash floor " + NP : ""), '<svg class="ch" viewBox="0 0 ' + W + " " + Hh + '" role="img" aria-label="Cash on hand at each month end, with the cash floor as a reference line">' + axisY(mx, L, W - R, y) + area + ref + '<path class="ln" d="' + d + '"/>' + pts + hits + "</svg>", st);
+    return card("st-buffer st-gap s7", "Cash on hand", "Giro plus Tagesgeld at each month end" + (H.floor == null ? " · cash floor " + NP : ""), '<svg class="ch" viewBox="0 0 ' + W + " " + Hh + '" role="img" aria-label="Cash on hand at each month end, with the cash floor as a reference line">' + axisY(mx, L, W - R, y) + area + ref + '<path class="ln" d="' + d + '"/>' + pts + hits + "</svg>", st);
   }
   function committed(s, H) {
     if (H.committed == null) return card("s5", "Committed money", "", none("Commitments"));
@@ -124,34 +124,34 @@
   }
   function categories(s, H) {
     var c = arr(s.categories).slice().sort(function (a, b) { return (n(b.total) || 0) - (n(a.total) || 0); }), top = c.slice(0, 12), rest = c.length - top.length;
-    return card("s6 tall", "Where it went", "Top " + top.length + " categories by total", !c.length ? none("Categories") : ranked(top.map(function (x) { return { name: x.category, v: n(x.total), tip: x.category + "\nTotal: " + eur(x.total) + "\nPer month: " + eur(x.per_month), meta: "" }; })) + (rest > 0 ? '<p class="fine">' + rest + " smaller categor" + (rest === 1 ? "y is" : "ies are") + " not shown.</p>" : ""));
+    return card("st-any s6 tall", "Where it went", "Top " + top.length + " categories by total", !c.length ? none("Categories") : ranked(top.map(function (x) { return { name: x.category, stream: R.streamOfCategory(x.category), v: n(x.total), tip: x.category + "\nTotal: " + eur(x.total) + "\nPer month: " + eur(x.per_month), meta: "" }; })) + (rest > 0 ? '<p class="fine">' + rest + " smaller categor" + (rest === 1 ? "y is" : "ies are") + " not shown.</p>" : ""));
   }
   function food(s, H) {
-    var Fd = arr(s.food); if (!Fd.length) return card("s6", "Food", "", none("Food spending"));
+    var Fd = arr(s.food); if (!Fd.length) return card("st-groceries st-eating s6", "Food", "", none("Food spending"));
     var keys = [["groceries", "Groceries", "f1 b1"], ["dining", "Dining out", "f2 b2"], ["delivery", "Delivery", "f3 b3"]], W = 680, Hh = 230, L = 44, R = 8, T = 10, B = 30;
     var tot = function (m) { return keys.reduce(function (a, k) { return a + (n(m[k[0]]) || 0); }, 0); }, mx = nice(Math.max.apply(0, Fd.map(tot))), gw = (W - L - R) / Fd.length, bw = Math.min(34, gw - 14), y = function (v) { return T + (1 - v / mx) * (Hh - T - B); };
     var g = Fd.map(function (m, i) {
       var cx = L + i * gw + gw / 2, at = 0, p = m.month === H.part, out = keys.map(function (k) { var v = n(m[k[0]]); if (!v) return ""; var y1 = y(at + v), h = Math.max(0, y(at) - y1 - 2); at += v; return '<rect class="' + k[2].split(" ")[0] + (p ? " part" : "") + '" x="' + (cx - bw / 2).toFixed(1) + '" y="' + y1.toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + h.toFixed(1) + '" rx="3"/>'; }).join("");
       return "<g>" + out + '<text class="ax' + (p ? " strong" : "") + '" x="' + cx.toFixed(1) + '" y="' + (Hh - 10) + '" text-anchor="middle">' + mon(m.month) + (p ? "*" : "") + '</text><rect class="hit" x="' + (cx - gw / 2).toFixed(1) + '" y="' + T + '" width="' + gw.toFixed(1) + '" height="' + (Hh - T - B) + '"' + tip(monY(m.month) + (p ? " (partial month)" : "") + keys.map(function (k) { return "\n" + k[1] + ": " + eur(m[k[0]]); }).join("") + "\nTotal: " + eur(tot(m))) + "/></g>";
     }).join("");
-    return card("s6", "Food", "Per month" + (H.part ? " · * partial month" : ""), legend(keys.map(function (k) { return [k[2], k[1]]; })) + '<svg class="ch" viewBox="0 0 ' + W + " " + Hh + '" role="img" aria-label="Food spending per month, split into groceries, dining out and delivery">' + axisY(mx, L, W - R, y) + g + "</svg>");
+    return card("st-groceries st-eating s6", "Food", "Per month" + (H.part ? " · * partial month" : ""), legend(keys.map(function (k) { return [k[2], k[1]]; })) + '<svg class="ch" viewBox="0 0 ' + W + " " + Hh + '" role="img" aria-label="Food spending per month, split into groceries, dining out and delivery">' + axisY(mx, L, W - R, y) + g + "</svg>");
   }
   function incomeSrc(s) {
     var a = arr(s.income_sources).slice().sort(function (x, y) { return (n(y.total) || 0) - (n(x.total) || 0); }), t = sum(a, "total");
-    return card("s6", "Income sources", t.v == null ? "" : eur(t.v) + " in total", !a.length ? none("Income sources") : ranked(a.map(function (x) { return { name: x.source, v: n(x.total), tip: x.source + "\n" + eur(x.total) + (t.v && n(x.total) != null ? "\n" + pct(x.total / t.v * 100, 0) + " of income" : "") }; })));
+    return card("s6 st-salary st-sublet st-shared st-refunds st-freelance st-otherin st-drawn st-income", "Income sources", t.v == null ? "" : eur(t.v) + " in total", !a.length ? none("Income sources") : ranked(a.map(function (x) { return { name: x.source, stream: R.streamOfIncome(x.source), v: n(x.total), tip: x.source + "\n" + eur(x.total) + (t.v && n(x.total) != null ? "\n" + pct(x.total / t.v * 100, 0) + " of income" : "") }; })));
   }
   function subscriptions(s, H) {
     var a = arr(s.subscriptions).slice().sort(function (x, y) { return (n(y.monthly) || 0) - (n(x.monthly) || 0); }), m = H.subs;
-    return card("s7", "Contracts and subscriptions", m.v == null ? "" : eur(m.v) + " a month · " + eur(m.v * 12) + " a year" + missNote(m.miss, "amount"), !a.length ? none("Subscriptions") : ranked(a.map(function (x) {
+    return card("st-bills s7", "Contracts and subscriptions", m.v == null ? "" : eur(m.v) + " a month · " + eur(m.v * 12) + " a year" + missNote(m.miss, "amount"), !a.length ? none("Subscriptions") : ranked(a.map(function (x) {
       var yr = n(x.monthly) == null ? null : x.monthly * 12;
       return { name: x.name, v: n(x.monthly), tip: x.name + "\nMonthly: " + eur(x.monthly) + "\nYearly: " + eur(yr) + "\nLast charge: " + (x.last_charge ? dmy(x.last_charge) : NP) + (n(x.charges_2026) != null ? "\nCharges this year: " + x.charges_2026 : "") + (x.note ? "\nNote: " + x.note : ""),
         meta: eur(yr) + " a year · last charge " + (x.last_charge ? dmy(x.last_charge) : NP) + (x.note ? ' · <span class="flag"><b>⚑</b>' + esc(x.note) + "</span>" : "") };
     }), { unit: "/ mo" }));
   }
   function loans(s) {
-    var a = arr(s.loans); if (!a.length) return card("s5", "Loans", "", none("Loans"));
+    var a = arr(s.loans); if (!a.length) return card("st-loans s5", "Loans", "", none("Loans"));
     var mx = Math.max.apply(0, a.map(function (l) { return (n(l.balance) || 0) + (n(l.future_interest) || 0); })) || 1;
-    return card("s5", "Loans", "What is left to repay, with the interest still to come", legend([["b2", "Remaining balance"], ["hatch", "Future interest"]]) + '<div class="rows">' + a.map(function (l) {
+    return card("st-loans s5", "Loans", "What is left to repay, with the interest still to come", legend([["b2", "Remaining balance"], ["hatch", "Future interest"]]) + '<div class="rows">' + a.map(function (l) {
       var b = n(l.balance), fi = n(l.future_interest);
       return '<article class="rowc"><header><h3>' + esc(l.loan) + "</h3>" + (l.verdict ? '<span class="chip">' + esc(l.verdict) + "</span>" : "") + '</header><div class="stack"' + tip(l.loan + "\nBalance: " + eur(b) + "\nFuture interest: " + eur(fi) + (b != null && fi != null ? "\nStill to pay in total: " + eur(b + fi) : "")) + ">" + (b ? '<i class="b2" style="width:' + (b / mx * 100).toFixed(2) + '%"></i>' : "") + (fi ? '<i class="hatch" style="width:' + (fi / mx * 100).toFixed(2) + '%"></i>' : "") + "</div>" +
         '<dl class="kv"><div><dt>Balance</dt><dd>' + money(b) + "</dd></div><div><dt>Future interest</dt><dd>" + money(fi) + "</dd></div><div><dt>Rate</dt><dd>" + (n(l.rate_pct) == null ? '<span class="np">' + NP + "</span>" : pct(l.rate_pct, 2)) + "</dd></div><div><dt>Payment</dt><dd>" + money(l.payment) + "</dd></div><div><dt>Months left</dt><dd>" + (n(l.months_left) == null ? '<span class="np">' + NP + "</span>" : l.months_left) + "</dd></div></dl></article>";
@@ -160,7 +160,7 @@
   function investments(s) {
     var a = arr(s.investments), t = sum(a, "value"), sp = n((s.kpis || {}).union_sparplan_monthly);
     var gain = function (v, p) { v = n(v); if (v == null) return '<span class="np">' + NP + "</span>"; return '<span class="' + (v >= 0 ? "good" : "bad") + '">' + (v >= 0 ? "▲ " : "▼ ") + signed(v) + "</span>" + (n(p) == null ? "" : '<span class="sub">' + (p > 0 ? "+" : "") + pct(p, 1) + "</span>"); };
-    return card("s6", "Investments", (t.v == null ? "" : eur(t.v) + " in total" + missNote(t.miss, "value")) + (sp == null ? "" : (t.v == null ? "" : " · ") + "savings plan " + eur(sp) + " a month"), !a.length ? none("Investments") : '<div class="scroll"><table><thead><tr><th>Item</th><th class="r">Value</th><th class="r">Lifetime gain</th></tr></thead><tbody>' + a.map(function (x) {
+    return card("st-savings s6", "Investments", (t.v == null ? "" : eur(t.v) + " in total" + missNote(t.miss, "value")) + (sp == null ? "" : (t.v == null ? "" : " · ") + "savings plan " + eur(sp) + " a month"), !a.length ? none("Investments") : '<div class="scroll"><table><thead><tr><th>Item</th><th class="r">Value</th><th class="r">Lifetime gain</th></tr></thead><tbody>' + a.map(function (x) {
       return "<tr" + tip(x.item + "\nValue: " + eur(x.value) + "\nLifetime gain: " + eur(x.gain_total) + "\nCurrent gain: " + eur(x.gain_current) + (x.note ? "\n" + x.note : "")) + "><td>" + esc(x.item) + (x.note ? '<span class="sub">' + esc(x.note) + "</span>" : "") + '</td><td class="r num">' + money(x.value) + '</td><td class="r">' + gain(x.gain_total, x.gain_pct) + "</td></tr>";
     }).join("") + "</tbody></table></div>");
   }
@@ -168,7 +168,7 @@
     var p = arr(s.property), ctx = arr(s.accounts).filter(function (a) { return a.tracked === false; }), t = sum(p, "monthly");
     var tiles = p.map(function (x) { return '<div class="tile"><p class="lab">' + esc(x.item) + '</p><p class="v num">' + money(x.monthly) + (n(x.monthly) == null ? "" : '<span class="sub"> / month</span>') + "</p>" + (x.note ? '<p class="sub">' + esc(x.note) + "</p>" : "") + "</div>"; }).join("");
     var c = ctx.map(function (a) { return '<div class="tile ctx"><p class="lab">' + esc(a.name) + " · " + esc(label(a.type)) + '</p><p class="v num">' + money(a.balance) + '</p><p class="sub">' + (a.note ? esc(a.note) + " · " : "") + "Not tracked: shown for context, left out of every total.</p></div>"; }).join("");
-    return card("s6", "Property", t.v == null ? "" : eur(t.v) + " a month" + missNote(t.miss, "amount"), (p.length ? '<div class="tiles">' + tiles + "</div>" : none("Property items")) + (ctx.length ? '<p class="lab">For context only</p><div class="tiles">' + c + "</div>" : ""));
+    return card("st-housing s6", "Property", t.v == null ? "" : eur(t.v) + " a month" + missNote(t.miss, "amount"), (p.length ? '<div class="tiles">' + tiles + "</div>" : none("Property items")) + (ctx.length ? '<p class="lab">For context only</p><div class="tiles">' + c + "</div>" : ""));
   }
   function accounts(s) {
     var a = arr(s.accounts).filter(function (x) { return x.tracked !== false; }); if (!a.length) return "";
@@ -179,7 +179,7 @@
   function page(S) {
     var s = S.list[S.idx], prev = S.list[S.idx + 1]; CUR = s.currency || "EUR";
     var H = F.headline(s), P = prev ? F.headline(prev) : null;
-    return (S.sample ? '<div class="ribbon" role="note"><b>SAMPLE DATA</b> · invented numbers to show the page · nothing below is yours</div>' : "") + '<div class="wrap">' + header(S, s, S.idx) + (S.msg || "") + kpis(s, H, P) +
+    return (S.sample ? '<div class="ribbon" role="note"><b>SAMPLE DATA</b> · invented numbers to show the page · nothing below is yours</div>' : "") + '<div class="wrap">' + header(S, s, S.idx) + (S.msg || "") + '<section class="river" id="fpRiver" aria-label="Money river"></section>' + kpis(s, H, P) +
       (P ? '<p class="fine" style="margin-top:8px">Changes on the four figures compare this snapshot with the one from ' + dmy(prev.as_of) + ".</p>" : "") +
       '<div class="grid">' + actions(s) + inOut(s, H) + cash(s, H) + committed(s, H) + categories(s, H) + food(s, H) + incomeSrc(s) + subscriptions(s, H) + loans(s) + investments(s) + property(s) + accounts(s) + "</div>" +
       '<footer class="foot"><p>' + S.list.length + " snapshot" + (S.list.length === 1 ? "" : "s") + " stored. Older ones are kept as history and never deleted. Figures are a summary for your own planning, not financial advice.</p></footer></div>" + '<div class="tip" id="fpTip" hidden></div>';
@@ -194,9 +194,51 @@
     var root = host.shadowRoot || host.attachShadow({ mode: "open" });
     var S = { list: arr(o.snapshots).slice().sort(function (a, b) { return String(b.as_of).localeCompare(String(a.as_of)); }), idx: 0, sample: !!o.sample, now: o.now || new Date(), msg: "", onSample: o.onSample };
     var theme = o.theme === "dark" || o.theme === "light" ? o.theme : (window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    var RV = { month: null, mode: "month", table: false, sel: null, last: null, raf: 0, narrow: false };
+    var still = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    function riverHtml(s, M, prev) {
+      var ms = R.months(s), i = ms.indexOf(RV.month), cur = M.cur, part = s.period && s.period.partial_month === RV.month, sel = RV.sel && M.ins.concat(M.outs).filter(function (x) { return x.key === RV.sel; })[0];
+      var seg = function (id, cur2, opts) { return '<div class="seg" role="group">' + opts.map(function (x) { return '<button data-rv="' + id + '" data-val="' + x[0] + '" aria-pressed="' + (cur2 === x[0]) + '">' + x[1] + "</button>"; }).join("") + "</div>"; };
+      var notes = [];
+      if (M.mode === "average") notes.push(esc(M.label) + ".");
+      if (part && M.mode === "month") notes.push("This month is not finished yet, so the figures are only so far.");
+      if (M.coarse && !M.empty) notes.push("Only housing, loans, food and savings are known month by month. Everything else is one stream until the snapshot carries per-month categories. Switch to the average to see every stream.");
+      if (M.missing && M.missing.length) notes.push("Not provided yet: " + esc(M.missing.join(", ")) + ".");
+      return '<div class="rtop"><div class="mon"><button class="rbtn" data-rv="step" data-val="-1" aria-label="Previous month"' + (i <= 0 ? " disabled" : "") + '>‹</button><span aria-live="polite">' + esc(R.monY(RV.month)) + '</span><button class="rbtn" data-rv="step" data-val="1" aria-label="Next month"' + (i >= ms.length - 1 ? " disabled" : "") + ">›</button></div>" +
+        seg("mode", RV.mode, [["month", "This month"], ["average", "Average"]]) + seg("table", RV.table ? "1" : "", [["", "River"], ["1", "View as table"]]) + "</div>" +
+        '<div class="rsum"><span>Income<b>' + R.eur(M.income, cur) + "</b></span><span>Spent<b>" + R.eur(M.spent, cur) + '</b></span><span class="g">Saved<b>' + R.eur(M.saved, cur) + "</b></span>" + (M.drawn > 0.5 ? '<span class="w">▲ From savings<b>' + R.eur(M.drawn, cur) + "</b></span>" : "") + (M.left >= -0.5 ? '<span class="g">Left<b>' + R.eur(Math.max(0, M.left), cur) + "</b></span>" : '<span class="w">▲ Gap<b>' + R.eur(-M.left, cur) + "</b></span>") + "</div>" +
+        (sel ? '<p class="rsel">Showing <b>' + esc(sel.name) + '</b> in the charts below <button class="btn" data-rv="clear">Show everything</button></p>' : "") +
+        '<div id="fpRiverBody">' + (M.empty ? '<p class="np" style="padding:24px 0">No figures for this month.</p>' : RV.table ? R.table(M, prev) : R.svg(M, prev, { narrow: RV.narrow, sel: RV.sel })) + "</div>" +
+        (notes.length ? '<p class="fine">' + notes.join(" ") + "</p>" : "") + (M.empty || RV.table ? "" : '<p class="fine">Stream width is the amount. Point at or tap a stream for the amount, its share of income and the change from the month before; click it to pick it out in the charts below.</p>');
+    }
+    function riverSel() {
+      var fp = root.querySelector(".fp"), base = RV.sel ? RV.sel.split(":")[0] : "";
+      if (!fp) return;
+      if (base) fp.dataset.sel = base; else delete fp.dataset.sel;
+      [].forEach.call(fp.querySelectorAll(".bar[data-stream]"), function (b) { b.classList.toggle("hit", !!base && b.getAttribute("data-stream") === base); });
+      [].forEach.call(fp.querySelectorAll(".card"), function (c) { c.classList.toggle("hit", !!base && c.classList.contains("st-" + base)); });
+    }
+    function riverDraw(animate) {
+      var box = root.querySelector("#fpRiver"), s = S.list[S.idx]; if (!box || !s) return;
+      var ms = R.months(s); if (!ms.length) { box.innerHTML = '<p class="np">Monthly figures ' + NP + ", so the river cannot be drawn.</p>"; return; }
+      if (!RV.month || ms.indexOf(RV.month) < 0) RV.month = R.defaultMonth(s);
+      RV.narrow = box.getBoundingClientRect().width < 700;
+      var M = R.model(s, RV.month, RV.mode), prev = RV.mode === "month" ? R.prev(s, RV.month) : null, from = RV.last;
+      if (RV.sel && !M.ins.concat(M.outs).some(function (x) { return x.key === RV.sel; })) RV.sel = null;
+      cancelAnimationFrame(RV.raf);
+      box.innerHTML = riverHtml(s, M, prev); riverSel(); RV.last = M;
+      if (!animate || still || RV.table || !from || from.empty || M.empty) return;
+      var body = root.querySelector("#fpRiverBody"), t0 = null, final = body.innerHTML;
+      var step = function (ts) {
+        if (t0 == null) t0 = ts; var t = Math.min(1, (ts - t0) / 420), e = 1 - Math.pow(1 - t, 3);
+        body.innerHTML = t < 1 ? R.svg(R.blend(from, M, e), null, { narrow: RV.narrow, sel: RV.sel }) : final;
+        if (t < 1) RV.raf = requestAnimationFrame(step);
+      };
+      RV.raf = requestAnimationFrame(step);
+    }
     function draw() {
       root.innerHTML = '<link rel="stylesheet" href="' + (o.css || "finance/finance.css") + '"><div class="fp" data-theme="' + theme + '">' + (S.list.length ? page(S) : emptyPage(S)) + "</div>";
-      wire();
+      wire(); RV.last = null; riverDraw(false);
     }
     function read(file) {
       var r = new FileReader();
@@ -215,7 +257,22 @@
       var $ = function (q) { return root.querySelector(q); }, fp = $(".fp"), tipEl = $("#fpTip"), file = $("#fpFile"), hist = $("#fpHist"), drop = $("#fpDrop") || fp;
       if ($("#fpImport")) $("#fpImport").onclick = function () { file.click(); };
       if (file) file.onchange = function () { if (file.files[0]) read(file.files[0]); };
-      if (hist) hist.onchange = function () { S.idx = +hist.value; S.msg = ""; draw(); };
+      if (hist) hist.onchange = function () { S.idx = +hist.value; S.msg = ""; RV.month = null; RV.sel = null; draw(); };
+      var rv = $("#fpRiver");
+      if (rv) {
+        rv.addEventListener("click", function (e) {
+          var b = e.target.closest("[data-rv]"), st = e.target.closest(".rs"), s = S.list[S.idx], ms = R.months(s);
+          if (b && !b.disabled) {
+            var k = b.getAttribute("data-rv"), v = b.getAttribute("data-val");
+            if (k === "step") { var i = ms.indexOf(RV.month) + +v; if (i < 0 || i >= ms.length) return; RV.month = ms[i]; riverDraw(true); var nb = rv.querySelector('[data-rv="step"][data-val="' + v + '"]'); if (nb && !nb.disabled) nb.focus(); }
+            else if (k === "mode") { RV.mode = v; riverDraw(true); }
+            else if (k === "table") { RV.table = !!v; riverDraw(false); }
+            else if (k === "clear") { RV.sel = null; riverDraw(false); }
+          } else if (st) { var key = st.getAttribute("data-stream"); RV.sel = RV.sel === key ? null : key; riverDraw(false); }
+        });
+        rv.addEventListener("keydown", function (e) { var st = e.target.closest && e.target.closest(".rs"); if (st && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); var key = st.getAttribute("data-stream"); RV.sel = RV.sel === key ? null : key; riverDraw(false); var again = rv.querySelector('.rs[data-stream="' + key + '"]'); if (again) again.focus(); } });
+        if (window.ResizeObserver && !RV.ro) { RV.ro = new ResizeObserver(function () { var box = root.querySelector("#fpRiver"); if (box && (box.getBoundingClientRect().width < 700) !== RV.narrow) riverDraw(false); }); RV.ro.observe(host); }
+      }
       if ($("#fpSample")) $("#fpSample").onclick = function () { S.onSample(); };
       fp.ondragover = function (e) { e.preventDefault(); drop.classList.add("over"); };
       fp.ondragleave = function () { drop.classList.remove("over"); };

@@ -15,9 +15,9 @@
       { id: "depot", name: "Broker account", type: "investment", balance: 18240, tracked: true, note: "" },
       { id: "share", name: "Family flat share", type: "equity_share", balance: 40000, tracked: false, note: "Rough estimate, not for sale" }
     ],
-    monthly: months.map(function (m, i) { return { month: m, income: income[i], liquidated: liq[i], spend: spend[i], invest: i === 10 ? 0 : 250, loans: i === 10 ? 0 : 610, net: income[i] + liq[i] - spend[i], rent_flat_a: i === 10 ? null : 780, rent_flat_b: i === 10 ? null : 0 }; }),
+    monthly: months.map(function (m, i) { return { month: m, income: income[i], liquidated: liq[i], spend: spend[i], invest: i === 10 ? 0 : 250, loans: i === 10 ? 0 : 610, net: income[i] + liq[i] - spend[i] - (i === 10 ? 0 : 250) - (i === 10 ? 0 : 610), rent_flat_a: i === 10 ? null : 780, rent_flat_b: i === 10 ? null : 0 }; }),
     balances_eom: months.map(function (m, i) { return { month: m, giro: giro[i], tagesgeld: tg[i] }; }),
-    categories: [["Housing", 8580], ["Groceries", 4310], ["Loan payments", 6100], ["Travel", 3920], ["Dining out", 2240], ["Car and transport", 2010], ["Insurance", 1760], ["Shopping", 1690], ["Health", 1180], ["Subscriptions", 1040], ["Delivery", 980], ["Gifts", 760], ["Hobbies", 540], ["Fees", 210]].map(function (c) { return { category: c[0], total: c[1], per_month: Math.round(c[1] / 10) }; }),
+    categories: [["Housing", 8580], ["Groceries", 4310], ["Travel", 3920], ["Dining out", 2240], ["Car and transport", 2010], ["Insurance", 1760], ["Shopping", 1690], ["Health", 1180], ["Subscriptions", 1040], ["Delivery", 980], ["Gifts", 760], ["Hobbies", 540], ["Fees", 210]].map(function (c) { return { category: c[0], total: c[1], per_month: Math.round(c[1] / 10) }; }),
     food: months.map(function (m, i) { return { month: m, delivery: [120, 90, 140, 70, 95, 110, 130, 85, 60, 80, 35][i], dining: [210, 180, 320, 190, 230, 260, 340, 170, 150, 190, 70][i], groceries: [430, 410, 445, 420, 450, 440, 400, 435, 425, 455, 160][i] }; }),
     subscriptions: [
       { name: "Gym membership", monthly: 49, last_charge: "2026-11-01", charges_2026: 11, note: "" },
@@ -50,6 +50,10 @@
       { rank: 4, title: "Move the mobile plan to the cheaper tariff", status: "done" }
     ]
   };
+  /* per-month categories and income for the last four months (invented), so the river can show every stream */
+  var mc = [], mi = [], share = { Housing: 0.25, Groceries: 0.12, Travel: 0.11, "Dining out": 0.07, "Car and transport": 0.06, Insurance: 0.05, Shopping: 0.08, Health: 0.04, Subscriptions: 0.03, Delivery: 0.03, Gifts: 0.03, Hobbies: 0.02, Fees: 0.01 };
+  months.slice(7).forEach(function (m, j) { var i = 7 + j; Object.keys(share).forEach(function (c) { mc.push({ month: m, category: c, amount: Math.round(spend[i] * share[c] / 0.9) }); }); mi.push({ month: m, source: "Salary", amount: Math.round(income[i] * 0.9) }, { month: m, source: "Side work", amount: Math.round(income[i] * 0.07) }, { month: m, source: "Tax refund", amount: Math.round(income[i] * 0.03) }); if (liq[i]) mi.push({ month: m, source: "Investments sold", amount: liq[i] }); });
+  latest.monthly_categories = mc; latest.monthly_income = mi;
   /* an older sample snapshot, so History and the "since the previous snapshot" lines have something to show */
   var older = JSON.parse(JSON.stringify(latest));
   older.as_of = "2026-10-05"; older.period = { from: "2026-01-01", to: "2026-10-05", partial_month: "2026-10" };

@@ -3,9 +3,11 @@
 :host{display:block}
 .fp{--bg:#FBF7EA;--card:#FBF0C4;--inset:#F5E6A6;--text:#2B2110;--muted:#665428;--head:#7A4B00;--line:rgba(90,62,0,.22);--track:rgba(90,62,0,.13);
 --c1:#8F5A00;--c2:#C98A10;--c3:#EBC044;--grey:#8A8171;--good:#176B36;--bad:#B3261E;--pop:#FFFBEC;--shadow:rgba(60,40,0,.18);--on:#2B2110;--on-t:#FBF7EA;
+--r-in1:#C98A10;--r-in2:#D9A53A;--r-in3:#E6BE62;--r-in4:#EED28A;--r-in5:#F2DEA8;--r-sp1:#8C6A4A;--r-sp2:#A07E5C;--r-sp3:#B49370;--r-sp4:#C4A786;--r-save:#3E8F84;--r-lake:#5BA79B;--r-gap:#C8704F;--r-trunk:#D9B25A;
 --serif:"Iowan Old Style","Charter","Cambria","Constantia",Georgia,serif;--sans:"Instrument Sans","Segoe UI",system-ui,-apple-system,Roboto,sans-serif;--r:14px}
 .fp[data-theme=dark]{--bg:#15110A;--card:#221B0D;--inset:#2E2511;--text:#F7EBC0;--muted:#BBA872;--head:#E8BC55;--line:rgba(247,235,192,.17);--track:rgba(247,235,192,.1);
---c1:#E2B03C;--c2:#B98420;--c3:#7E5A14;--grey:#7F7767;--good:#74D391;--bad:#F2796C;--pop:#2A210F;--shadow:rgba(0,0,0,.5);--on:#F7EBC0;--on-t:#15110A}
+--c1:#E2B03C;--c2:#B98420;--c3:#7E5A14;--grey:#7F7767;--good:#74D391;--bad:#F2796C;--pop:#2A210F;--shadow:rgba(0,0,0,.5);--on:#F7EBC0;--on-t:#15110A;
+--r-in1:#E2B03C;--r-in2:#C99A34;--r-in3:#B0862E;--r-in4:#977228;--r-in5:#7E5F22;--r-sp1:#9C7B5B;--r-sp2:#8A6C50;--r-sp3:#785E46;--r-sp4:#66503C;--r-save:#5FB3A6;--r-lake:#4A988C;--r-gap:#D9805E;--r-trunk:#A37F2E}
 
 *,*::before,*::after{box-sizing:border-box}
 .fp{position:relative;container-type:inline-size;container-name:fp;min-height:100vh;background:var(--bg);color:var(--text);font:400 15px/1.5 var(--sans);
@@ -120,3 +122,19 @@ td.r,th.r{text-align:right;padding-right:0}td .sub{display:block}
 .grid{grid-template-columns:repeat(12,minmax(0,1fr))}
 .s4{grid-column:span 4}.s5{grid-column:span 5}.s6{grid-column:span 6}.s7{grid-column:span 7}.s8{grid-column:span 8}.s12{grid-column:1/-1}.tall{grid-row:span 2}}
 @media (prefers-reduced-motion:no-preference){.bar .tr i,.meter i{transition:width .5s cubic-bezier(.2,.7,.2,1)}}
+
+/* money river */
+.river{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px;margin-top:18px}
+.rtop{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;justify-content:space-between}
+.mon{display:flex;align-items:center;gap:10px;font:600 22px var(--serif);color:var(--head)}
+.rbtn{width:34px;height:34px;border:1px solid var(--line);border-radius:99px;font:18px var(--sans);color:var(--text);display:grid;place-items:center}.rbtn:hover{background:var(--inset)}.rbtn[disabled]{opacity:.35;cursor:default}
+.seg{display:flex;gap:2px;padding:3px;border-radius:99px;background:var(--inset);font-size:13px}.seg button{padding:6px 12px;border-radius:99px;color:var(--muted);min-height:30px}.seg button[aria-pressed=true]{background:var(--pop);color:var(--text);font-weight:600}
+.rsum{display:flex;flex-wrap:wrap;gap:6px 22px;margin:14px 0 6px;font-size:14px;color:var(--muted)}.rsum b{font:600 19px var(--serif);color:var(--text);margin-left:6px}.rsum .g b{color:var(--good)}.rsum .w b{color:var(--bad)}
+.rsel{font-size:13.5px;margin:6px 0;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.river svg{display:block;width:100%;height:auto;overflow:visible}
+.river svg text{font:13px var(--sans);fill:var(--text)}.river svg .amt{fill:var(--muted);font-size:12px}.river svg .big{font:600 14px var(--sans)}
+.rib{opacity:.8}.rs{cursor:pointer;outline:none}.rs:hover .rib,.rs:focus-visible .rib{opacity:1;stroke:var(--text);stroke-width:1}.rs.on .rib{opacity:1;stroke:var(--text);stroke-width:1.5}
+.shim{fill:none;stroke:var(--pop);stroke-opacity:.35;stroke-width:1.5;stroke-dasharray:3 22;animation:rflow 5s linear infinite;pointer-events:none}
+@keyframes rflow{to{stroke-dashoffset:-250}}@media (prefers-reduced-motion:reduce){.shim{animation:none;display:none}}
+.rtable{overflow-x:auto}.rtable table{width:100%;border-collapse:collapse;font-size:13.5px}.rtable td,.rtable th{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left}.rtable .num{text-align:right;white-space:nowrap}
+.fp[data-sel] .bar[data-stream]:not(.hit){opacity:.35}.bar.hit .n{font-weight:700}.card.hit{outline:2px solid var(--head);outline-offset:2px}
