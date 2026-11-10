@@ -179,7 +179,7 @@
   function page(S) {
     var s = S.list[S.idx], prev = S.list[S.idx + 1]; CUR = s.currency || "EUR";
     var H = F.headline(s), P = prev ? F.headline(prev) : null;
-    return (S.sample ? '<div class="ribbon" role="note"><b>SAMPLE DATA</b> · invented numbers to show the page · nothing below is yours</div>' : "") + '<div class="wrap">' + header(S, s, S.idx) + (S.msg || "") + '<section class="river" id="fpRiver" aria-label="Money river"></section>' + kpis(s, H, P) +
+    return (S.sample ? '<div class="ribbon" role="note"><b>SAMPLE DATA</b> · invented numbers to show the page · nothing below is yours</div>' : "") + '<div class="wrap">' + header(S, s, S.idx) + (S.msg || "") + '<section class="river" id="fpRiver" aria-label="Money river"></section><section class="river" id="fpFlow" aria-label="Six months of money"></section>' + kpis(s, H, P) +
       (P ? '<p class="fine" style="margin-top:8px">Changes on the four figures compare this snapshot with the one from ' + dmy(prev.as_of) + ".</p>" : "") +
       '<div class="grid">' + actions(s) + inOut(s, H) + cash(s, H) + committed(s, H) + categories(s, H) + food(s, H) + incomeSrc(s) + subscriptions(s, H) + loans(s) + investments(s) + property(s) + accounts(s) + "</div>" +
       '<footer class="foot"><p>' + S.list.length + " snapshot" + (S.list.length === 1 ? "" : "s") + " stored. Older ones are kept as history and never deleted. Figures are a summary for your own planning, not financial advice.</p></footer></div>" + '<div class="tip" id="fpTip" hidden></div>';
@@ -212,6 +212,17 @@
         '<div id="fpRiverBody">' + (M.empty ? '<p class="np" style="padding:24px 0">No figures for this month.</p>' : RV.table ? R.table(M, prev) : R.svg(M, prev, { narrow: RV.narrow, sel: RV.sel })) + "</div>" +
         (notes.length ? '<p class="fine">' + notes.join(" ") + "</p>" : "") + (M.empty || RV.table ? "" : '<p class="fine">Stream width is the amount. Point at or tap a stream for the amount, its share of income and the change from the month before; click it to pick it out in the charts below.</p>');
     }
+    function flowDraw() {
+      var box = root.querySelector("#fpFlow"), s = S.list[S.idx]; if (!box || !s) return;
+      if (!R.months(s).length) { box.hidden = true; return; }
+      var T = R.timeline(s, 6), narrow = box.getBoundingClientRect().width < 700, notes = [];
+      if (T.partial && T.months.indexOf(T.partial) >= 0) notes.push("* " + R.monY(T.partial) + " is not finished yet.");
+      if (T.coarse) notes.push("The snapshot has figures per month, not per week, and only housing, loans, food and savings are split out month by month. A week-by-week picture needs dated transactions or per-week figures in the snapshot.");
+      if (T.estimated) notes.push("The split of income by source within a month is an estimate.");
+      box.innerHTML = '<div class="rtop"><div class="mon" style="font-size:20px">The last ' + T.months.length + ' months</div><div class="seg" role="group"><button data-fl="" aria-pressed="' + !RV.flowTable + '">Chart</button><button data-fl="1" aria-pressed="' + !!RV.flowTable + '">View as table</button></div></div>' +
+        '<p class="fine" style="margin:6px 0 10px">Income rises from the bottom and outgoings hang from the top. The number between them is what was left that month, or ▲ what was missing.</p>' +
+        (RV.flowTable ? R.timelineTable(T) : R.timelineSvg(T, { narrow: narrow }) + R.timelineLegend(T)) + (notes.length ? '<p class="fine" style="margin-top:10px">' + notes.map(esc).join(" ") + "</p>" : "");
+    }
     function riverSel() {
       var fp = root.querySelector(".fp"), base = RV.sel ? RV.sel.split(":")[0] : "";
       if (!fp) return;
@@ -239,7 +250,7 @@
     }
     function draw() {
       root.innerHTML = '<link rel="stylesheet" href="' + (o.css || "finance/finance.css") + '"><div class="fp" data-theme="' + theme + '">' + (S.list.length ? page(S) : emptyPage(S)) + "</div>";
-      wire(); RV.last = null; riverDraw(false);
+      wire(); RV.last = null; riverDraw(false); flowDraw();
     }
     function read(file) {
       var r = new FileReader();
@@ -272,7 +283,8 @@
           } else if (st) { var key = st.getAttribute("data-stream"); RV.sel = RV.sel === key ? null : key; riverDraw(false); }
         });
         rv.addEventListener("keydown", function (e) { var st = e.target.closest && e.target.closest(".rs"); if (st && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); var key = st.getAttribute("data-stream"); RV.sel = RV.sel === key ? null : key; riverDraw(false); var again = rv.querySelector('.rs[data-stream="' + key + '"]'); if (again) again.focus(); } });
-        if (window.ResizeObserver && !RV.ro) { RV.ro = new ResizeObserver(function () { var box = root.querySelector("#fpRiver"); if (box && (box.getBoundingClientRect().width < 700) !== RV.narrow) riverDraw(false); }); RV.ro.observe(host); }
+        var fl = $("#fpFlow"); if (fl) fl.addEventListener("click", function (e) { var b = e.target.closest("[data-fl]"); if (b) { RV.flowTable = !!b.getAttribute("data-fl"); flowDraw(); } });
+        if (window.ResizeObserver && !RV.ro) { RV.ro = new ResizeObserver(function () { var box = root.querySelector("#fpRiver"); if (box && (box.getBoundingClientRect().width < 700) !== RV.narrow) { riverDraw(false); flowDraw(); } }); RV.ro.observe(host); }
       }
       if ($("#fpSample")) $("#fpSample").onclick = function () { S.onSample(); };
       fp.ondragover = function (e) { e.preventDefault(); drop.classList.add("over"); };

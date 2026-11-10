@@ -187,5 +187,52 @@
     M.total = Math.max(M.ins.reduce(function (s, x) { return s + x.v; }, 0), M.outs.reduce(function (s, x) { return s + x.v; }, 0)); M.empty = M.total < 1;
     return M;
   };
+  /* ---------- six months side by side: income rises from the bottom, outgoings hang from the top ---------- */
+  R.timeline = function (s, n) {
+    var ms = R.months(s).slice(-(n || 6)), models = ms.map(function (m) { return R.month(s, m); }), part = s.period && s.period.partial_month;
+    var collect = function (side, skip) {
+      var keys = [], out = [];
+      models.forEach(function (M) { M[side].forEach(function (x) { if (skip.indexOf(x.key) < 0 && keys.indexOf(x.key) < 0) keys.push(x.key); }); });
+      keys.forEach(function (k) { var name = ""; var vals = models.map(function (M) { var h = M[side].filter(function (x) { return x.key === k; })[0]; if (h) name = h.name; return h ? h.v : 0; }); out.push({ key: k, name: name, vals: vals, total: vals.reduce(function (a, b) { return a + b; }, 0) }); });
+      return out;
+    };
+    var ins = collect("ins", ["gap"]), outs = collect("outs", ["buffer"]);
+    // thin streams are folded together so the picture stays readable
+    var fold = function (list, max, key, name) { list.sort(function (a, b) { return b.total - a.total; }); if (list.length <= max) return list; var keep = list.slice(0, max - 1), rest = list.slice(max - 1), o = { key: key, name: name + " (" + rest.length + " smaller)", vals: ms.map(function (_, i) { return rest.reduce(function (t, x) { return t + x.vals[i]; }, 0); }), parts: rest.map(function (x) { return x.name; }) }; o.total = o.vals.reduce(function (a, b) { return a + b; }, 0); return keep.concat([o]); };
+    var drawn = ins.filter(function (x) { return x.key === "drawn"; }), sav = outs.filter(function (x) { return x.key === "savings"; });
+    ins = fold(ins.filter(function (x) { return x.key !== "drawn"; }), 6, "inc:others", "Other income").concat(drawn);
+    outs = fold(outs.filter(function (x) { return x.key !== "savings"; }), 8, "others", "Other spending").concat(sav);
+    return { months: ms, partial: part, ins: ins, outs: outs, cur: s.currency || "EUR", estimated: models.some(function (M) { return M.incomeEstimated; }), coarse: models.some(function (M) { return M.coarse; }),
+      inTot: ms.map(function (_, i) { return ins.reduce(function (t, x) { return t + x.vals[i]; }, 0); }), outTot: ms.map(function (_, i) { return outs.reduce(function (t, x) { return t + x.vals[i]; }, 0); }) };
+  };
+  R.timelineSvg = function (T, o) {
+    var narrow = o && o.narrow, n = T.months.length, W = narrow ? 358 : 1100, H = narrow ? 420 : 460, padL = narrow ? 8 : 60, padR = narrow ? 8 : 20, top = 34, bottom = 30, channel = 34, x = function (i) { return padL + (n === 1 ? 0.5 : i / (n - 1)) * (W - padL - padR); };
+    var maxSum = Math.max.apply(0, T.months.map(function (_, i) { return T.inTot[i] + T.outTot[i]; })) || 1, k = (H - top - bottom - channel) / maxSum, svg = "";
+    var area = function (lo, hi) { // lo, hi: y per month; smooth with horizontal tangents
+      var d = "", pts = function (ys) { return ys.map(function (y, i) { return [x(i), y]; }); }, a = pts(hi), b = pts(lo).reverse(), seg = function (p) { var s = ""; for (var i = 1; i < p.length; i++) { var mx = (p[i - 1][0] + p[i][0]) / 2; s += " C" + mx.toFixed(1) + "," + p[i - 1][1].toFixed(1) + " " + mx.toFixed(1) + "," + p[i][1].toFixed(1) + " " + p[i][0].toFixed(1) + "," + p[i][1].toFixed(1); } return s; };
+      d = "M" + a[0][0].toFixed(1) + "," + a[0][1].toFixed(1) + seg(a) + " L" + b[0][0].toFixed(1) + "," + b[0][1].toFixed(1) + seg(b) + " Z"; return d;
+    };
+    var tipOf = function (st, side) { return st.name + (side === "in" ? " (in)" : " (out)") + "\n" + T.months.map(function (m, i) { return monY(m).replace(/ \d{4}$/, "") + ": " + eur(st.vals[i], T.cur); }).join("\n"); };
+    T.months.forEach(function (m, i) { svg += '<line x1="' + x(i).toFixed(1) + '" y1="' + top + '" x2="' + x(i).toFixed(1) + '" y2="' + (H - bottom) + '" stroke="var(--line)" stroke-dasharray="2 5"/>'; });
+    var base = T.months.map(function () { return H - bottom; });
+    T.ins.forEach(function (st, j) { var hi = base.map(function (y, i) { return y - st.vals[i] * k; }), c = st.key === "drawn" ? "gap" : "in" + (Math.min(j, 4) + 1); svg += '<path class="fl" fill="var(--r-' + c + ')" d="' + area(base, hi) + '" tabindex="0" role="img" aria-label="' + esc(tipOf(st, "in").replace(/\n/g, ", ")) + '" data-tip="' + esc(tipOf(st, "in")) + '"/>'; base = hi; });
+    var inTop = base, ceil = T.months.map(function () { return top; });
+    T.outs.forEach(function (st, j) { var lo = ceil.map(function (y, i) { return y + st.vals[i] * k; }), c = st.key === "savings" ? "save" : "sp" + ((j % 4) + 1); svg += '<path class="fl" fill="var(--r-' + c + ')" d="' + area(lo, ceil) + '" tabindex="0" role="img" aria-label="' + esc(tipOf(st, "out").replace(/\n/g, ", ")) + '" data-tip="' + esc(tipOf(st, "out")) + '"/>'; ceil = lo; });
+    T.months.forEach(function (m, i) {
+      var net = T.inTot[i] - T.outTot[i], mid = (ceil[i] + inTop[i]) / 2, anchor = i === 0 ? "start" : i === n - 1 ? "end" : "middle";
+      svg += '<text class="big" text-anchor="' + anchor + '" x="' + x(i).toFixed(1) + '" y="' + (mid + 5).toFixed(1) + '" style="fill:var(--' + (net >= 0 ? "good" : "bad") + ')">' + (net >= 0 ? "+" : "▲ −") + eur(Math.abs(net), T.cur).replace(/\s?€/, "") + "</text>" +
+        '<text class="amt" text-anchor="' + anchor + '" x="' + x(i).toFixed(1) + '" y="' + (H - 8) + '">' + monY(m).slice(0, 3) + (m === T.partial ? "*" : "") + '</text><text class="amt" text-anchor="' + anchor + '" x="' + x(i).toFixed(1) + '" y="' + (top - 20) + '">out ' + eur(T.outTot[i], T.cur).replace(/\s?€/, "") + '</text><text class="amt" text-anchor="' + anchor + '" x="' + x(i).toFixed(1) + '" y="' + (H - bottom + 0).toFixed(1) + '" dy="-4" style="display:none"></text>';
+    });
+    if (!narrow) svg += '<text class="amt" x="6" y="' + (top + 12) + '">Out ↓</text><text class="amt" x="6" y="' + (H - bottom - 6) + '">In ↑</text>';
+    return '<svg viewBox="0 0 ' + W + " " + H + '" role="group" aria-label="Money over the last ' + n + ' months: income rises from the bottom, outgoings hang from the top, and the number between them is what was left or missing">' + svg + "</svg>";
+  };
+  R.timelineLegend = function (T) {
+    var item = function (st, c) { return '<span><i style="background:var(--r-' + c + ')"></i>' + esc(st.name) + "</span>"; };
+    return '<div class="flegend"><b>Out</b>' + T.outs.map(function (st, j) { return item(st, st.key === "savings" ? "save" : "sp" + ((j % 4) + 1)); }).join("") + '</div><div class="flegend"><b>In</b>' + T.ins.map(function (st, j) { return item(st, st.key === "drawn" ? "gap" : "in" + (Math.min(j, 4) + 1)); }).join("") + "</div>";
+  };
+  R.timelineTable = function (T) {
+    var head = "<tr><th>Direction</th><th>Stream</th>" + T.months.map(function (m) { return '<th class="num">' + monY(m).slice(0, 3) + (m === T.partial ? "*" : "") + "</th>"; }).join("") + "</tr>", row = function (st, side) { return "<tr><td>" + side + "</td><td>" + esc(st.name) + "</td>" + st.vals.map(function (v) { return '<td class="num">' + (v ? eur(v, T.cur) : "–") + "</td>"; }).join("") + "</tr>"; };
+    return '<div class="rtable"><table><thead>' + head + "</thead><tbody>" + T.ins.map(function (s) { return row(s, "In"); }).join("") + T.outs.map(function (s) { return row(s, "Out"); }).join("") + "<tr><td></td><td><b>Left or missing</b></td>" + T.months.map(function (_, i) { var v = T.inTot[i] - T.outTot[i]; return '<td class="num"><b>' + (v < 0 ? "−" : "+") + eur(Math.abs(v), T.cur) + "</b></td>"; }).join("") + "</tr></tbody></table></div>";
+  };
   R.eur = eur;
 })();

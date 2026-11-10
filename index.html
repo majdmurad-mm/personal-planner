@@ -20278,7 +20278,7 @@
   /* Finance page: the snapshot dashboard (finance/). The numbers live only in the finance_snapshots table
      (private to the signed-in owner by row level security); this repo holds the code and an invented sample.
      Bump FINANCE_VER with each release of finance/*. */
-  var FINANCE_VER = "3", financeLoading = null, financeSnaps = null, financeHandle = null, financeTheme = null, financeSample = false;
+  var FINANCE_VER = "4", financeLoading = null, financeSnaps = null, financeHandle = null, financeTheme = null, financeSample = false;
   function financeLoadScripts(){
     if(financeLoading) return financeLoading;
     financeLoading = ["river", "finance", "sample"].reduce(function(chain, f){
