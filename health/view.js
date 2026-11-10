@@ -84,14 +84,14 @@
       '<p class="lab">Last 7 nights</p>' + H.nights(week) + (gaps.length ? hint("none", gaps.map(function (x) { return wday(x.d); }).join(", ") + ": no sleep data, watch probably not worn. Nothing is guessed.") : "");
     /* energy */
     var rhr = n("resting_hr"), hs = M.vitals.heart.s, bbn = n("body_battery_now"), bbh = n("body_battery_high"), sa = n("stress_avg"), ys = M.Y.stress_avg;
-    var energyBody = '<div class="row">' + H.spark(M.col("resting_hr", 7), { band: band(B.resting_hr), label: "Resting heart rate, last 7 days" }) + '<span class="cap">7 days' + (B.resting_hr ? " · band is your usual range" : "") + "</span></div>" +
+    var energyBody = '<div class="row">' + H.spark(M.col("resting_hr", 7), { band: band(B.resting_hr), label: "Resting heart rate, last 7 days", w: 300, h: 64, wide: true }) + '<span class="cap">7 days' + (B.resting_hr ? " · band is your usual range" : "") + "</span></div>" +
       kv([["HRV", n("hrv_avg") == null ? "no reading" : n("hrv_avg") + " ms" + (T.hrv_status ? " · " + esc(T.hrv_status) : "")], ["Body Battery", bbn == null && bbh == null ? "no reading" : (bbn != null ? bbn + " now" : "") + (bbn != null && bbh != null ? " · " : "") + (bbh != null ? "high " + bbh : "")], ["Stress", sa == null && ys == null ? "no reading" : (sa != null ? sa + " so far" : "") + (sa != null && ys != null ? " · " : "") + (ys != null ? ys + " yesterday" : "")]]) +
       '<p class="lab">Body Battery since midnight</p>' + H.bbCurve(T.body_battery_curve);
     /* movement */
     var steps = n("steps"), goal = M.cfg.stepsGoal, ms = steps == null ? "none" : steps >= goal ? "good" : "watch", iw = M.intensityWeek, it = M.cfg.intensity;
     var today = M.acts.filter(function (a) { return H.dayDiff(M.now, a.d) === 0; }).map(function (a) { return esc(a.name) + (a.mins ? " " + Math.round(a.mins) + " min" : ""); });
     var pct = steps == null ? 0 : Math.min(100, Math.round(steps / goal * 100));
-    var moveBody = '<div class="goal" role="img" aria-label="' + (steps == null ? "No steps reported" : pct + "% of the steps goal") + '"><i style="width:' + pct + '%"></i></div><div class="row">' + H.spark(M.col("steps", 8).slice(0, 7), { band: band(B.steps), label: "Steps, last 7 full days" }) + '<span class="cap">Last 7 full days</span></div>' +
+    var moveBody = '<div class="goal" role="img" aria-label="' + (steps == null ? "No steps reported" : pct + "% of the steps goal") + '"><i style="width:' + pct + '%"></i></div><div class="row">' + H.spark(M.col("steps", 8).slice(0, 7), { band: band(B.steps), label: "Steps, last 7 full days", w: 300, h: 64, wide: true }) + '<span class="cap">Last 7 full days</span></div>' +
       '<p class="lab">Intensity minutes, 7 days</p><div class="goal" role="img" aria-label="' + (iw == null ? "not reported" : iw + " of " + it + " minutes") + '"><i style="width:' + (iw == null ? 0 : Math.min(100, Math.round(iw / it * 100))) + '%"></i></div>' + kv([["Intensity", iw == null ? "not reported" : iw + " of " + it + " min"], ["Today", today.length ? today.join(", ") : "nothing logged yet"]]);
     return '<div class="pillars">' +
       pillar("sleep", "Sleep", ss, { good: "Good night", watch: "Fair night", low: "Rough night", none: "No data" }[ss], sl, "score", rel(sl, B.sleep_score), sleepBody) +

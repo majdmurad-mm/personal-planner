@@ -43,10 +43,12 @@
 
   H.volumeBars = function (V) {
     if (!V.some(function (v) { return v.vol > 0; })) return note("No sessions logged in the last 8 weeks.");
-    var w = 420, h = 130, mx = Math.max.apply(0, V.map(function (v) { return v.vol; })), bw = (w - 16) / V.length, id = "hc" + (++cid), Hh = h - 24;
-    var b = V.map(function (v, i) { var bh = Math.max(8, v.vol / mx * (Hh - 12)), x = 8 + i * bw + 7, cw = bw - 14; return (v.vol ? '<path class="c-bar' + (v.current ? " on" : "") + '" d="M' + x + " " + Hh + "V" + (Hh - bh + 4).toFixed(1) + "q0 -4 4 -4h" + (cw - 8) + "q4 0 4 4V" + Hh + 'Z"/>' : '<rect class="c-rest" x="' + x + '" y="' + (Hh - 3) + '" width="' + cw + '" height="3" rx="1.5"/>') + (i % 2 === 1 ? '<text class="c-ax" x="' + (x + cw / 2) + '" y="' + (h - 6) + '" text-anchor="middle">' + dstr(v.from) + "</text>" : ""); }).join("");
+    var w = 560, h = 170, mx = Math.max.apply(0, V.map(function (v) { return v.vol; })), bw = (w - 16) / V.length, id = "hc" + (++cid), Hh = h - 24, T0 = 22;
+    var done = V.filter(function (v) { return v.vol > 0 && !v.current; }), avg = done.length > 1 ? done.reduce(function (a, v) { return a + v.vol; }, 0) / done.length : null, ay = avg == null ? 0 : Hh - Math.max(8, avg / mx * (Hh - T0));
+    var tons = function (x) { return x >= 1000 ? (x / 1000).toFixed(1) + " t" : fmt(x) + " kg"; };
+    var b = V.map(function (v, i) { var bh = Math.max(8, v.vol / mx * (Hh - T0)), x = 8 + i * bw + 9, cw = bw - 18; return (v.vol ? '<path class="c-bar' + (v.current ? " on" : "") + '" d="M' + x + " " + Hh + "V" + (Hh - bh + 4).toFixed(1) + "q0 -4 4 -4h" + (cw - 8) + "q4 0 4 4V" + Hh + 'Z"/>' : '<rect class="c-rest" x="' + x + '" y="' + (Hh - 3) + '" width="' + cw + '" height="3" rx="1.5"/>') + (v.vol && (v.current || v.vol === mx) ? '<text class="c-val-t" x="' + (x + cw / 2) + '" y="' + (Hh - bh - 6).toFixed(1) + '" text-anchor="middle">' + tons(v.vol) + "</text>" : "") + '<text class="c-ax" x="' + (x + cw / 2) + '" y="' + (h - 6) + '" text-anchor="middle">' + dstr(v.from) + "</text>"; }).join("");
     H.charts.push({ id: id, x: V.map(function (_, i) { return 8 + i * bw + bw / 2; }), w: w, labels: V.map(function (v) { return "Week of " + dstr(v.from) + " · " + (v.vol ? fmt(v.vol) + " kg in " + v.n + " session" + (v.n > 1 ? "s" : "") : v.paused ? v.paused + ", paused" : v.current ? "no session yet" : "no sessions") + (v.vol && v.paused ? " · " + v.paused + " part of the week" : ""); }) });
-    return '<svg class="trend" id="' + id + '" viewBox="0 0 ' + w + " " + h + '" role="img" aria-label="Training volume per week, last 8 weeks"><line class="c-grid" x1="8" x2="' + (w - 8) + '" y1="' + Hh + '" y2="' + Hh + '"/>' + b + "</svg>";
+    return '<svg class="trend" id="' + id + '" viewBox="0 0 ' + w + " " + h + '" role="img" aria-label="Training volume per week, last 8 weeks"><line class="c-grid" x1="8" x2="' + (w - 8) + '" y1="' + Hh + '" y2="' + Hh + '"/>' + b + (avg == null ? "" : '<line class="c-avg" x1="8" x2="' + (w - 8) + '" y1="' + ay.toFixed(1) + '" y2="' + ay.toFixed(1) + '"/><text class="c-ax" x="' + (w - 8) + '" y="' + (ay - 5).toFixed(1) + '" text-anchor="end">average ' + tons(avg) + "</text>") + "</svg>";
   };
 
   H.stages = function (r) {
@@ -60,19 +62,19 @@
   };
   H.bbCurve = function (curve) {
     if (!curve || curve.length < 2) return note("No Body Battery curve for today yet.");
-    var w = 240, h = 58, v = curve.map(function (p) { return +p[1]; }), n = v.length, pts = v.map(function (x, i) { return [4 + i * (w - 8) / (n - 1), h - 5 - x / 100 * (h - 10)]; });
+    var w = 300, h = 64, v = curve.map(function (p) { return +p[1]; }), n = v.length, pts = v.map(function (x, i) { return [4 + i * (w - 8) / (n - 1), h - 5 - x / 100 * (h - 10)]; });
     return '<svg class="spark wide" viewBox="0 0 ' + w + " " + h + '" role="img" aria-label="Body Battery since midnight: low ' + Math.min.apply(0, v) + ", high " + Math.max.apply(0, v) + ", latest " + v[n - 1] + '"><path class="c-area" d="M4 ' + h + linePath(pts).replace(/M/g, "L") + "L" + (w - 4) + " " + h + 'Z"/><path class="c-line" d="' + linePath(pts) + '"/><circle class="c-end" cx="' + pts[n - 1][0].toFixed(1) + '" cy="' + pts[n - 1][1].toFixed(1) + '" r="3.2"/></svg>';
   };
 
   /* blocks: [{from, to (hours 0–24), cls, label}], curve: [[hour, value]], nowH: hour of day */
   H.timeline = function (blocks, curve, nowH, aria) {
-    var w = 760, h = 132, X = function (t) { return 8 + Math.max(0, Math.min(24, t)) / 24 * (w - 16); };
+    var w = 600, h = 176, X = function (t) { return 8 + Math.max(0, Math.min(24, t)) / 24 * (w - 16); };
     var hrs = [0, 6, 12, 18, 24].map(function (t) { return '<line class="c-grid" x1="' + X(t) + '" x2="' + X(t) + '" y1="8" y2="' + (h - 22) + '"/><text class="c-ax" x="' + X(t) + '" y="' + (h - 6) + '" text-anchor="' + (t === 0 ? "start" : t === 24 ? "end" : "middle") + '">' + pad2(t) + ":00</text>"; }).join("");
-    var bl = curve && curve.length > 1 ? '<path class="c-line" d="' + curve.map(function (p, i) { return (i ? "L" : "M") + X(+p[0]).toFixed(1) + " " + (64 - p[1] / 100 * 50).toFixed(1); }).join("") + '"/><text class="c-ax" x="' + Math.max(96, X(+curve[curve.length - 1][0]) - 8).toFixed(1) + '" text-anchor="end" y="' + Math.max(18, 64 - curve[curve.length - 1][1] / 100 * 50 - 9).toFixed(1) + '">Body Battery ' + curve[curve.length - 1][1] + "</text>" : "";
+    var bl = curve && curve.length > 1 ? '<path class="c-line" d="' + curve.map(function (p, i) { return (i ? "L" : "M") + X(+p[0]).toFixed(1) + " " + (96 - p[1] / 100 * 80).toFixed(1); }).join("") + '"/><text class="c-ax" x="' + Math.max(96, X(+curve[curve.length - 1][0]) - 8).toFixed(1) + '" text-anchor="end" y="' + Math.max(18, 96 - curve[curve.length - 1][1] / 100 * 80 - 9).toFixed(1) + '">Body Battery ' + curve[curve.length - 1][1] + "</text>" : "";
     var free = [0, 0], bk = blocks.map(function (b) {
       var x0 = X(b.from), bwid = Math.max(5, X(b.to) - x0), inside = bwid > b.label.length * 6.2 + 12, out = "";
-      if (!inside && b.label) { var row = x0 > free[0] ? 0 : x0 > free[1] ? 1 : -1; if (row >= 0) { var tx = Math.min(x0, w - 8 - b.label.length * 5.6); free[row] = tx + b.label.length * 5.8 + 8; out = '<text class="c-ax" x="' + tx.toFixed(1) + '" y="' + (row ? 70 : 106) + '">' + esc(b.label) + "</text>"; } }
-      return '<g><title>' + esc(b.title || b.label) + '</title><rect class="tl ' + b.cls + '" x="' + x0.toFixed(1) + '" y="74" width="' + bwid.toFixed(1) + '" height="18" rx="5"/>' + (inside ? '<text class="tl-t' + (b.cls === "sleep" ? "" : " inv") + '" x="' + (x0 + 7).toFixed(1) + '" y="87">' + esc(b.label) + "</text>" : out) + "</g>";
+      if (!inside && b.label) { var row = x0 > free[0] ? 0 : x0 > free[1] ? 1 : -1; if (row >= 0) { var tx = Math.min(x0, w - 8 - b.label.length * 5.6); free[row] = tx + b.label.length * 5.8 + 8; out = '<text class="c-ax" x="' + tx.toFixed(1) + '" y="' + (row ? 102 : 146) + '">' + esc(b.label) + "</text>"; } }
+      return '<g><title>' + esc(b.title || b.label) + '</title><rect class="tl ' + b.cls + '" x="' + x0.toFixed(1) + '" y="108" width="' + bwid.toFixed(1) + '" height="22" rx="6"/>' + (inside ? '<text class="tl-t' + (b.cls === "sleep" ? "" : " inv") + '" x="' + (x0 + 7).toFixed(1) + '" y="123">' + esc(b.label) + "</text>" : out) + "</g>";
     }).join("");
     var now = nowH == null ? "" : '<line class="c-now" x1="' + X(nowH).toFixed(1) + '" x2="' + X(nowH).toFixed(1) + '" y1="8" y2="' + (h - 22) + '"/><text class="c-ax now" x="' + (nowH > 21.5 ? X(nowH) - 5 : X(nowH) + 5).toFixed(1) + '" y="16"' + (nowH > 21.5 ? ' text-anchor="end"' : "") + ">now</text>";
     return '<div class="scroll-x"><svg class="timeline" viewBox="0 0 ' + w + " " + h + '" role="img" aria-label="' + esc(aria) + '">' + hrs + bl + bk + now + "</svg></div>";
