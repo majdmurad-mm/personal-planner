@@ -300,6 +300,8 @@
   /* The Health page paints its own full-bleed background inside a shadow root (see health/), so it
      cancels .main's padding; --pph-top is read by health/health.css to clear the mobile menu button. */
   #healthSection{ margin:-32px -40px -70px; }
+  /* Self (the redesigned notes page, notes/) paints its own background the same way. */
+  #selfSection{ margin:-32px -40px -70px; }
   /* People, constellation and list views: one full-bleed host; the older header, filters and panels step aside. */
   #peopleSkyHost{ display:none; }
   #peopleSection.ppl-sky{ margin:-32px -40px -70px; }
@@ -1659,6 +1661,7 @@
     h1{ font-size:19px; }
     #locationSection{ margin:-56px -18px -60px; padding:12px 18px 12px; }
     #healthSection{ margin:-56px -18px -60px; --pph-top:46px; }
+    #selfSection{ margin:-56px -18px -60px; --ppn-top:46px; }
     #peopleSection.ppl-sky{ margin:-56px -18px -60px; --pph-top:46px; }
     #peopleSection.ppl-fullscreen-graph{ margin:-56px -18px -60px; padding:12px 18px 12px; }
     /* #homeSection.home-cockpit's mobile margins can't live here — see the note beside its base rule. */
@@ -1680,6 +1683,7 @@
     .main{ padding:44px 24px 20px; }
     #locationSection{ margin:-44px -24px -20px; padding:10px 24px 10px; }
     #healthSection{ margin:-44px -24px -20px; --pph-top:36px; }
+    #selfSection{ margin:-44px -24px -20px; --ppn-top:36px; }
     #peopleSection.ppl-sky{ margin:-44px -24px -20px; --pph-top:36px; }
     #peopleSection.ppl-fullscreen-graph{ margin:-44px -24px -20px; padding:10px 24px 10px; }
   }
@@ -2306,6 +2310,7 @@
           <button class="side-link side-sublink" data-section="planner" type="button"><span class="sl-glyph">▤</span>Planner</button>
           <button class="side-link side-sublink" data-section="tracker" type="button"><span class="sl-glyph">▥</span>Tracker</button>
           <button class="side-link side-sublink" data-section="journal" type="button"><span class="sl-glyph">✎</span>Notes</button>
+          <button class="side-link side-sublink" data-section="self" type="button"><span class="sl-glyph">◎</span>Self</button>
         </div>
         <button class="side-link" data-section="health" type="button"><span class="sl-glyph">♡</span>Health</button>
         <button class="side-link" data-section="people" type="button"><span class="sl-glyph">☺</span>People</button>
@@ -3121,6 +3126,8 @@
          that Claude fills through the planner connector. The page itself lives in health/ and mounts
          into a shadow root on this element; see renderHealth. Schema: migration_health_v2.sql. -->
     <section id="healthSection" style="display:none;"></section>
+    <!-- Self: the redesigned notes page (notes/notes.js, mounted in a shadow root; see renderSelf). -->
+    <section id="selfSection" style="display:none;"></section>
 
     <!-- ===== AGENT MEMORY: the memory of the Agent PgM bots =====
          The planner is the agents' long-term memory. The Agent PgM bots write here directly through the
@@ -4462,6 +4469,7 @@
     else document.documentElement.removeAttribute("data-theme");
     safeSet(window.localStorage, "pp_theme_v1", next);
     applyThemeChrome(next);
+    if(activeSection === "self") renderSelf();
   });
 
   // Sidebar hide/show. The data-sidebar-collapsed attribute (if saved) is already applied pre-paint
@@ -5393,13 +5401,13 @@
     });
   }
 
-  var ALL_SECTION_IDS = ["focusSection","homeSection","todaySection","plannerSection","trackerSection","timelineSection","journalSection","peopleSection","locationSection","futureSection","goalDetailSection","areaDetailSection","entityPageSection","inboxSection","memorySection","healthSection"];
+  var ALL_SECTION_IDS = ["focusSection","homeSection","todaySection","plannerSection","trackerSection","timelineSection","journalSection","peopleSection","locationSection","futureSection","goalDetailSection","areaDetailSection","entityPageSection","inboxSection","memorySection","healthSection","selfSection"];
   // Sidebar dropdown groups — a parent nav item with no page of its own, bundling a set of section
   // names under one submenu. See showSection() (active/auto-open) and the sideNav click handler
   // (data-toggle-submenu, open/close).
   var NAV_GROUPS = [
     { toggleId:"sideLinkTimeToggle", submenuId:"sideSubmenuTime", children:UI_FLAGS.classicHome ? ["today","timeline","future"] : ["today","timeline","future","home"] },
-    { toggleId:"sideLinkPersonalToggle", submenuId:"sideSubmenuPersonal", children:["planner","tracker","journal"] }
+    { toggleId:"sideLinkPersonalToggle", submenuId:"sideSubmenuPersonal", children:["planner","tracker","journal","self"] }
   ];
   function showSection(name){
     activeSection = name;
@@ -20001,6 +20009,7 @@
     inbox: [renderInbox],
     memory: [renderMemory],
     health: [renderHealth],
+    self: [renderSelf],
     timeline: [renderTimeline],
     journal: [renderJournal],
     people: [renderPeople],
@@ -20113,6 +20122,81 @@
       window.PPHealth.mount(host, { sb: sb, userId: currentUser ? currentUser.id : null });
     }).catch(function(err){
       if(!host.shadowRoot) host.innerHTML = '<div class="empty-note" style="padding:60px 24px;">The Health page couldn’t load. Check your connection and open it again.</div>';
+      console.warn(err);
+    });
+  }
+  /* Self page: the notes redesign (notes/). Same loading pattern as Health; bump NOTES_VER with each
+     release of notes/*. It reads state.journal and reuses the existing save, edit, mood and recording code. */
+  var NOTES_VER = "1", notesLoading = null, selfHandle = null;
+  function notesLoadScripts(){
+    if(notesLoading) return notesLoading;
+    notesLoading = new Promise(function(resolve, reject){
+      var el = document.createElement("script");
+      el.src = "notes/notes.js?v=" + NOTES_VER;
+      el.onload = resolve;
+      el.onerror = function(){ reject(new Error("Could not load notes/notes.js")); };
+      document.head.appendChild(el);
+    });
+    notesLoading.catch(function(){ notesLoading = null; });
+    return notesLoading;
+  }
+  function selfNoteLinks(n){
+    return (n.linkedObjects || []).map(function(l){
+      var pool = l.kind === "person" ? state.people : l.kind === "goal" ? state.goals : l.kind === "project" ? state.projects : l.kind === "action" ? state.actions : [];
+      var o = pool.find(function(x){ return x.id === l.id; });
+      return o ? { kind:l.kind, label:o.name || o.title || "" } : null;
+    }).filter(function(x){ return x && x.label; });
+  }
+  function selfData(){
+    return {
+      notes: state.journal.map(function(n){ return { id:n.id, date:n.date, time:n.timeOfDay || null, title:n.title || "", text:n.text || "", type:n.noteType || "reflection", areas:noteCategories(n), sentiment:n.sentiment || [], priority:n.priority || null, hasAudio:!!n.recordingId, links:selfNoteLinks(n), source:n.source || "" }; }),
+      recordings: state.recordings.map(function(r){ var j = state.journal.find(function(x){ return x.recordingId === r.id; }); return { id:r.id, createdAt:r.createdAt, transcript:r.transcript || "", noteTitle: j ? (j.title || "Untitled note") : "" }; }),
+      theme: currentTheme()
+    };
+  }
+  // Archive, not delete: the row and any recording stay in the database; undo brings the note back.
+  async function selfArchiveNote(id){
+    var n = state.journal.find(function(x){ return x.id === id; });
+    if(!n) return;
+    var res = await safeUpdate("journal", id, { archived_at:new Date().toISOString() });
+    if(res.error){ dbErrorToast(res.error, "Couldn't archive"); return; }
+    state.journal = state.journal.filter(function(x){ return x.id !== id; });
+    renderAll();
+    pushUndo("archive note", async function(){
+      var back = await safeUpdate("journal", id, { archived_at:null });
+      if(back.error){ toast("Could not restore the note: " + back.error.message); return; }
+      state.journal.push(n);
+      renderAll();
+    });
+  }
+  function renderSelf(){
+    if(activeSection !== "self") return;
+    var host = document.getElementById("selfSection");
+    notesLoadScripts().then(function(){
+      if(activeSection !== "self") return;
+      var d = selfData();
+      if(selfHandle){ selfHandle.update(d); return; }
+      var note = function(n){ return state.journal.find(function(x){ return x.id === n.id; }); };
+      selfHandle = window.PPNotes.mount(host, {
+        notes: d.notes, recordings: d.recordings, theme: d.theme, css: "notes/notes.css?v=" + NOTES_VER,
+        bodyHtml: function(n){ return renderNoteBodyHtml(n.text); },
+        onSave: async function(p){
+          var res = await saveJournalEntry({ date:p.date || todayStr(), text:p.text.trim(), title:p.title.trim() || null, priority:p.priority || null, time_of_day:p.time || null, categories:p.area ? [p.area] : [], note_type:p.type || "reflection", recording_id:null });
+          if(res.error){ dbErrorToast(res.error, "Couldn't save"); return false; }
+          renderAll();
+          if(res.data && selfHandle) selfHandle.update({ select: res.data.id });
+        },
+        onEdit: function(n){ editJournalEntry(n.id); },
+        onArchive: function(n){ selfArchiveNote(n.id); },
+        onSentiment: function(n){ Promise.resolve(analyzeNoteSentiment(n.id)).then(renderSelf, renderSelf); },
+        onAutoFill: function(n){ Promise.resolve(autoAnnotateNote(n.id)).then(renderSelf, renderSelf); },
+        onPlayNote: function(n){ var j = note(n); if(j && j.recordingId) playRecording(j.recordingId); },
+        onPlay: function(id){ playRecording(id); },
+        onTranscribe: function(id){ Promise.resolve(transcribeRecordingById(id)).then(renderSelf, renderSelf); },
+        onRecord: function(){ showSection("journal"); toast("Recording still lives on the Notes page. Record here, and the note shows up in Self too."); }
+      });
+    }).catch(function(err){
+      if(!host.shadowRoot) host.innerHTML = '<div class="empty-note" style="padding:60px 24px;">The Self page couldn’t load. Check your connection and open it again.</div>';
       console.warn(err);
     });
   }
