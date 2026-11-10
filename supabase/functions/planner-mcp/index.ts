@@ -272,13 +272,13 @@ tool("get_agenda", {
     const [actionsR, notesR, eventsR] = await Promise.all([
       owned("actions"),
       owned("journal").eq("date", date).order("created_at"),
-      owned("events").eq("date", date),
+      owned("events"),
     ]);
     if (actionsR.error) return fail(actionsR.error.message);
     if (notesR.error) return fail(notesR.error.message);
     // Events are tolerated as missing rather than fatal: the table only exists once
     // migration_events.sql has been run, and an agenda without events is still useful.
-    const events = eventsR.error ? [] : (eventsR.data || []);
+    const events = eventsR.error ? [] : (eventsR.data || []).filter((e) => !e.archived_at && ccDates(e, date, date).length);
 
     const actions = (actionsR.data || []).filter((a) => !a.archived_at);
     const slimAction = (a: any) => ({
@@ -286,6 +286,7 @@ tool("get_agenda", {
       date: a.date, timeOfDay: a.time_of_day, area: a.category,
       parentType: a.parent_type, parentId: a.parent_id, done: a.done,
       isMilestone: !!a.is_milestone, isDecision: !!a.is_decision,
+      kind: ccKind(a, "actions"), recurrence: a.recurrence || null,
     });
 
     const openActions = actions.filter((a) => !a.done);
@@ -297,9 +298,9 @@ tool("get_agenda", {
       // The one thing the Today page shows large: chosen with set_main_thing, else the top action due that day.
       mainThing: focused || autoMain ? { ...slimAction(focused || autoMain), chosen: !!focused } : null,
       actions: {
-        dueToday: actions.filter((a) => a.date === date && !a.done).map(slimAction),
-        overdue: actions.filter((a) => a.date && a.date < date && !a.done).map(slimAction),
-        backlog: actions.filter((a) => !a.date && !a.done).map(slimAction),
+        dueToday: actions.filter((a) => !a.someday && (a.recurrence ? ccDates(a, date, date).length > 0 && !(a.recurrence_done || []).includes(date) : a.date === date && !a.done)).map(slimAction),
+        overdue: actions.filter((a) => a.date && a.date < date && !a.done && !a.recurrence && !a.someday).map(slimAction),
+        backlog: actions.filter((a) => !a.date && !a.done && !a.someday).map(slimAction),
       },
       // Events are things that HAPPEN at a time (a meeting, an appointment, a trip) —
       // they are not tasks and have no done state or priority, so they're reported as
@@ -769,6 +770,237 @@ tool("get_finance_snapshot", {
   },
 });
 
+// ---- Command Center: repeating items, free time, planning reads ---------------
+// The same rules as command/core.js in the app. Dates are YYYY-MM-DD strings; maths is in UTC.
+const CC_DAY = /^\d{4}-\d{2}-\d{2}$/;
+const CC_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+const CC_DOW = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
+const CC_WORK = { days: [1, 2, 3, 4, 5], start: 9 * 60, end: 18 * 60 };   // counted as booked
+const CC_DAY_START = 7 * 60, CC_DAY_END = 23 * 60;
+const ccMs = (d: string) => Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10));
+const ccIso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+const ccAdd = (d: string, n: number) => ccIso(ccMs(d) + n * 86400000);
+const ccDow = (d: string) => new Date(ccMs(d)).getUTCDay();
+const ccMonday = (d: string) => ccAdd(d, -((ccDow(d) + 6) % 7));
+const ccDiff = (a: string, b: string) => Math.round((ccMs(b) - ccMs(a)) / 86400000);
+const ccMins = (t: string | null) => t ? +t.slice(0, 2) * 60 + +t.slice(3, 5) : null;
+function ccRule(str: string | null) {
+  if (!str) return null;
+  const r = { freq: "", interval: 1, byday: [] as string[], bymonthday: [] as number[], until: null as string | null, count: null as number | null };
+  let okRule = true;
+  for (const p of String(str).replace(/^RRULE:/i, "").split(";")) {
+    const [k0, v0] = p.split("="); const k = (k0 || "").toUpperCase().trim(), v = (v0 || "").toUpperCase().trim();
+    if (!k) continue;
+    if (k === "FREQ") r.freq = v;
+    else if (k === "INTERVAL") r.interval = Math.max(1, parseInt(v, 10) || 1);
+    else if (k === "BYDAY") r.byday = v.split(",").map((x) => x.replace(/^[+-]?\d+/, "")).filter((x) => CC_DOW.includes(x));
+    else if (k === "BYMONTHDAY") r.bymonthday = v.split(",").map((x) => parseInt(x, 10)).filter((x) => x >= 1 && x <= 31);
+    else if (k === "UNTIL") r.until = v.length >= 8 ? v.slice(0, 4) + "-" + v.slice(4, 6) + "-" + v.slice(6, 8) : null;
+    else if (k === "COUNT") r.count = parseInt(v, 10) || null;
+    else if (k !== "WKST") okRule = false;
+  }
+  return okRule && ["DAILY", "WEEKLY", "MONTHLY", "YEARLY"].includes(r.freq) ? r : null;
+}
+const CC_RULE_HELP = "recurrence must be an RRULE using FREQ=DAILY|WEEKLY|MONTHLY|YEARLY with optional INTERVAL, BYDAY, BYMONTHDAY, UNTIL, COUNT — e.g. FREQ=WEEKLY;BYDAY=MO,WE,FR";
+// deno-lint-ignore no-explicit-any
+function ccHits(r: any, start: string, d: string): boolean {
+  const n = ccDiff(start, d); if (n < 0) return false;
+  if (r.until && d > r.until) return false;
+  if (r.freq === "DAILY") return n % r.interval === 0;
+  if (r.freq === "WEEKLY") {
+    if ((ccDiff(ccMonday(start), ccMonday(d)) / 7) % r.interval !== 0) return false;
+    return r.byday.length ? r.byday.includes(CC_DOW[ccDow(d)]) : ccDow(d) === ccDow(start);
+  }
+  const months = (+d.slice(0, 4) - +start.slice(0, 4)) * 12 + (+d.slice(5, 7) - +start.slice(5, 7)), dom = +d.slice(8, 10);
+  if (r.freq === "MONTHLY") return months % r.interval === 0 && (r.bymonthday.length ? r.bymonthday.includes(dom) : dom === +start.slice(8, 10));
+  return months % (12 * r.interval) === 0 && dom === +start.slice(8, 10);
+}
+// The dates a row (action or event) falls on between from and to, inclusive.
+// deno-lint-ignore no-explicit-any
+function ccDates(row: any, from: string, to: string): string[] {
+  if (!row.date) return [];
+  const r = ccRule(row.recurrence);
+  if (!r) return row.date >= from && row.date <= to ? [row.date] : [];
+  const out: string[] = [], skip: string[] = row.recurrence_exceptions || [];
+  let d = row.date as string, seen = 0, guard = 0;
+  while (d <= to && guard++ < 4000) {
+    if (ccHits(r, row.date, d)) { seen++; if (r.count && seen > r.count) break; if (d >= from && !skip.includes(d)) out.push(d); }
+    d = ccAdd(d, 1);
+  }
+  return out;
+}
+// deno-lint-ignore no-explicit-any
+const ccKind = (row: any, table: string) => table === "events" ? "event" : (row.kind || (row.is_milestone ? "deadline" : "task"));
+// deno-lint-ignore no-explicit-any
+function ccSlim(row: any, table: string, date?: string) {
+  const kind = ccKind(row, table), hasDone = kind === "task" || kind === "deadline";
+  return {
+    id: row.id, table, kind, title: row.title, date: date || row.date || null, timeOfDay: row.time_of_day ? String(row.time_of_day).slice(0, 5) : null,
+    durationMinutes: row.duration_minutes || null, estimateMinutes: row.estimate_min || null, allDay: !!row.all_day, area: row.category || null,
+    priority: table === "events" ? null : row.priority, recurrence: row.recurrence || null, reminders: row.reminders || [],
+    done: !hasDone ? null : row.recurrence ? (row.recurrence_done || []).includes(date || row.date) : !!row.done,
+    status: row.archived_at ? "archived" : row.someday ? "someday" : hasDone && !row.recurrence && row.done ? "done" : "open",
+    parentType: row.parent_type || null, parentId: row.parent_id || null,
+  };
+}
+async function ccLoad() {
+  const [a, e] = await Promise.all([owned("actions"), owned("events")]);
+  if (a.error) return { error: a.error.message, actions: [], events: [] };
+  return { error: "", actions: (a.data || []).filter((x) => !x.archived_at), events: e.error ? [] : (e.data || []).filter((x) => !x.archived_at) };
+}
+// deno-lint-ignore no-explicit-any
+function ccOccurrences(actions: any[], events: any[], from: string, to: string) {
+  // deno-lint-ignore no-explicit-any
+  const out: any[] = [];
+  for (const a of actions) if (!a.someday) for (const d of ccDates(a, from, to)) out.push(ccSlim(a, "actions", d));
+  for (const e of events) for (const d of ccDates(e, from, to)) out.push(ccSlim(e, "events", d));
+  return out.sort((x, y) => (x.date + (x.timeOfDay || "")).localeCompare(y.date + (y.timeOfDay || "")));
+}
+// deno-lint-ignore no-explicit-any
+function ccFree(occ: any[], date: string) {
+  const iv: number[][] = [];
+  if (CC_WORK.days.includes(ccDow(date))) iv.push([CC_WORK.start, CC_WORK.end]);
+  for (const o of occ) {
+    if (o.date !== date || o.allDay || !o.timeOfDay || o.done) continue;
+    const st = ccMins(o.timeOfDay) as number, len = o.durationMinutes || o.estimateMinutes || (o.kind === "event" || o.kind === "block" ? 60 : 30);
+    iv.push([st, st + len]);
+  }
+  const cl = iv.map((x) => [Math.max(CC_DAY_START, x[0]), Math.min(CC_DAY_END, x[1])]).filter((x) => x[1] > x[0]).sort((x, y) => x[0] - y[0]);
+  const slots: { from: string; to: string; minutes: number }[] = [];
+  const hm = (m: number) => String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
+  let cur = CC_DAY_START, booked = 0;
+  for (const x of cl) {
+    if (x[0] > cur) slots.push({ from: hm(cur), to: hm(x[0]), minutes: x[0] - cur });
+    if (x[1] > cur) { booked += x[1] - Math.max(cur, x[0]); cur = x[1]; }
+  }
+  if (cur < CC_DAY_END) slots.push({ from: hm(cur), to: hm(CC_DAY_END), minutes: CC_DAY_END - cur });
+  return { bookedMinutes: booked, freeMinutes: CC_DAY_END - CC_DAY_START - booked, freeSlots: slots.filter((x) => x.minutes >= 15), workHours: CC_WORK.days.includes(ccDow(date)) ? "09:00-18:00" : null };
+}
+// Open, dated, in the past. A repeating task counts once: its latest missed date in the last 14 days.
+// deno-lint-ignore no-explicit-any
+function ccOverdue(actions: any[], today: string) {
+  // deno-lint-ignore no-explicit-any
+  const out: any[] = [];
+  for (const a of actions) {
+    if (a.someday || !a.date || ccKind(a, "actions") === "block") continue;
+    if (!a.recurrence) { if (!a.done && a.date < today) out.push(ccSlim(a, "actions")); continue; }
+    const missed = ccDates(a, ccAdd(today, -14), ccAdd(today, -1)).filter((d) => !(a.recurrence_done || []).includes(d));
+    if (missed.length) out.push(ccSlim(a, "actions", missed[missed.length - 1]));
+  }
+  return out;
+}
+// deno-lint-ignore no-explicit-any
+const ccBacklog = (actions: any[]) => actions.filter((a) => !a.date && !a.done && !a.someday).map((a) => ccSlim(a, "actions"));
+
+tool("plan_day", {
+  description: "Everything needed to plan one day: the items on it (tasks, events, deadlines, time blocks, with repeating items expanded), free time between 07:00 and 23:00 (work hours Mon-Fri 09:00-18:00 count as booked), open items from earlier days, and the undated backlog. Read this before proposing a plan; then use create_action, create_event or reschedule to apply what the user accepts.",
+  inputSchema: z.object({ date: z.string().regex(CC_DAY, "use YYYY-MM-DD").optional().describe("defaults to today (Berlin)") }),
+  handler: async (args: { date?: string }) => {
+    const date = args.date || berlinToday(), L = await ccLoad();
+    if (L.error) return fail(L.error);
+    const occ = ccOccurrences(L.actions, L.events, date, date), main = L.actions.find((a) => a.focus_date === date && !a.done);
+    return ok({ date, mainThing: main ? ccSlim(main, "actions") : null, items: occ, free: ccFree(occ, date), overdue: ccOverdue(L.actions, date), backlog: ccBacklog(L.actions).slice(0, 40) });
+  },
+});
+
+tool("plan_week", {
+  description: "A week at a glance for planning: for each of the 7 days from start (a Monday by default) the items on it and its free time, plus open items from earlier and the undated backlog. Use it to draft a week the user can accept or change.",
+  inputSchema: z.object({ start: z.string().regex(CC_DAY, "use YYYY-MM-DD").optional().describe("first day; defaults to the Monday of the current week (Berlin)") }),
+  handler: async (args: { start?: string }) => {
+    const today = berlinToday(), start = args.start || ccMonday(today), end = ccAdd(start, 6), L = await ccLoad();
+    if (L.error) return fail(L.error);
+    const occ = ccOccurrences(L.actions, L.events, start, end);
+    const days = Array.from({ length: 7 }, (_, i) => { const d = ccAdd(start, i); return { date: d, weekday: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][ccDow(d)], items: occ.filter((o) => o.date === d), free: ccFree(occ, d) }; });
+    return ok({ start, end, today, days, overdue: ccOverdue(L.actions, today), backlog: ccBacklog(L.actions).slice(0, 40) });
+  },
+});
+
+tool("get_backlog", {
+  description: "Open tasks with no date, grouped by area, plus the items parked under 'someday'. Nothing here is late.",
+  inputSchema: z.object({}),
+  handler: async () => {
+    const L = await ccLoad();
+    if (L.error) return fail(L.error);
+    // deno-lint-ignore no-explicit-any
+    const byArea: Record<string, any[]> = {};
+    for (const a of ccBacklog(L.actions)) (byArea[a.area || "No area"] = byArea[a.area || "No area"] || []).push(a);
+    return ok({ byArea, someday: L.actions.filter((a) => a.someday && !a.done).map((a) => ccSlim(a, "actions")) });
+  },
+});
+
+tool("weekly_review", {
+  description: "The material for a weekly review: for the week starting at start (a Monday by default) what got done, what slipped (open and already past), what is still to come this week, and what is already planned for the following week. Summarise it gently and propose next week; nothing is moved until the user agrees.",
+  inputSchema: z.object({ start: z.string().regex(CC_DAY, "use YYYY-MM-DD").optional().describe("defaults to the Monday of the current week (Berlin)") }),
+  handler: async (args: { start?: string }) => {
+    const today = berlinToday(), start = args.start || ccMonday(today), end = ccAdd(start, 6), L = await ccLoad();
+    if (L.error) return fail(L.error);
+    const occ = ccOccurrences(L.actions, L.events, start, end), tasks = occ.filter((o) => o.kind === "task" || o.kind === "deadline");
+    return ok({
+      start, end, today,
+      done: tasks.filter((o) => o.done), slipped: tasks.filter((o) => !o.done && o.date < today), stillToCome: tasks.filter((o) => !o.done && o.date >= today),
+      eventsAndBlocks: occ.filter((o) => o.kind === "event" || o.kind === "block"),
+      nextWeek: ccOccurrences(L.actions, L.events, ccAdd(start, 7), ccAdd(start, 13)), backlogCount: ccBacklog(L.actions).length,
+    });
+  },
+});
+
+// Shared by create_action / create_event: a re-sent item (same title, date and kind) updates the
+// existing row instead of adding a second one.
+// deno-lint-ignore no-explicit-any
+async function ccExisting(table: string, title: string, date: string | null, kind: string): Promise<any | null> {
+  let q = db.from(table).select("*").eq("user_id", OWNER).is("archived_at", null).ilike("title", title.replace(/[%_\\]/g, "\\$&"));
+  q = date ? q.eq("date", date) : q.is("date", null);
+  const r = await q.limit(5);
+  if (r.error || !r.data) return null;
+  return r.data.find((x) => ccKind(x, table) === kind && (table === "events" || !x.done)) || null;
+}
+// deno-lint-ignore no-explicit-any
+function ccCheck(args: any): string {
+  if (args.date && !CC_DAY.test(args.date)) return "date must be YYYY-MM-DD";
+  if (args.timeOfDay && !CC_TIME.test(args.timeOfDay)) return "timeOfDay must be HH:MM (24h)";
+  if (args.recurrence && !ccRule(args.recurrence)) return CC_RULE_HELP;
+  if (args.recurrence && args.date === "") return "a repeating item needs a first date";
+  return "";
+}
+const CC_REMINDERS = z.array(z.number().int().min(0).max(40320)).max(5).optional().describe("minutes before the start, e.g. [1440, 30] for a day before and 30 minutes before");
+const CC_RECUR = z.string().max(200).optional().describe("RRULE for a repeating item, e.g. FREQ=WEEKLY;BYDAY=MO,WE,FR or FREQ=MONTHLY;BYMONTHDAY=1; the date is the first occurrence. Pass an empty string to stop repeating.");
+
+tool("reschedule", {
+  description: "Move an item (action or event) to another day and/or time. For a repeating item pass occurrenceDate to move just that one date: it is skipped in the series and a one-off copy is added on the new day. Without occurrenceDate the whole series is re-anchored.",
+  inputSchema: z.object({
+    id: z.string(),
+    date: z.string().regex(CC_DAY, "use YYYY-MM-DD"),
+    timeOfDay: z.string().optional().describe("HH:MM 24h; omit to keep the current time, pass an empty string to clear it"),
+    occurrenceDate: z.string().regex(CC_DAY, "use YYYY-MM-DD").optional().describe("for a repeating item: the single date to move"),
+  }),
+  handler: async (args: { id: string; date: string; timeOfDay?: string; occurrenceDate?: string }) => {
+    if (args.timeOfDay && !CC_TIME.test(args.timeOfDay)) return fail("timeOfDay must be HH:MM (24h)");
+    let table = "actions";
+    let found = await db.from("actions").select("*").eq("id", args.id).eq("user_id", OWNER).maybeSingle();
+    if (!found.data) { table = "events"; found = await db.from("events").select("*").eq("id", args.id).eq("user_id", OWNER).maybeSingle(); }
+    if (found.error) return fail(found.error.message);
+    const row = found.data;
+    if (!row) return fail("no action or event with that id");
+    const time = args.timeOfDay === undefined ? row.time_of_day : (args.timeOfDay || null);
+    if (row.recurrence && args.occurrenceDate) {
+      if (!ccDates(row, args.occurrenceDate, args.occurrenceDate).length) return fail("the item does not fall on " + args.occurrenceDate);
+      const skip = Array.from(new Set([...(row.recurrence_exceptions || []), args.occurrenceDate]));
+      const up = await db.from(table).update({ recurrence_exceptions: skip }).eq("id", row.id).eq("user_id", OWNER);
+      if (up.error) return fail(up.error.message);
+      const copy: Record<string, unknown> = { user_id: OWNER, title: row.title, date: args.date, time_of_day: time, duration_minutes: row.duration_minutes, category: row.category, notes_md: row.notes_md || "", source: "claude" };
+      if (table === "actions") Object.assign(copy, { kind: row.kind || "task", priority: row.priority, type: row.type || "Task", parent_type: row.parent_type || "none", parent_id: row.parent_id || null, done: false });
+      const ins = await safeWrite((p) => db.from(table).insert(p).select().single(), copy);
+      if (ins.error) return fail(ins.error.message);
+      return ok({ ok: true, movedOneOccurrence: true, newId: ins.data.id, date: args.date });
+    }
+    const patch: Record<string, unknown> = { date: args.date, time_of_day: time };
+    if (table === "actions") patch.someday = false;
+    const { error } = await safeWrite((p) => db.from(table).update(p).eq("id", row.id).eq("user_id", OWNER), patch);
+    if (error) return fail(error.message);
+    return ok({ ok: true, table, date: args.date, timeOfDay: time ? String(time).slice(0, 5) : null });
+  },
+});
+
 // ============================ WRITE TOOLS ===================================
 // These mirror the app's in-page Agent tools (executeAgentTool in index.html).
 // Every insert sets user_id explicitly because the service-role client has no
@@ -882,18 +1114,44 @@ tool("create_action", {
     isDecision: z.boolean().optional().describe("mark it a decision — a fork with a scenario canvas rather than a task. Add scenarios with create_scenario."),
     notes: z.string().optional().describe("longer free-form notes for the action's own page (Markdown)"),
     location: z.string().optional().describe("where it happens — an address or place name, geocoded for you and pinned on the Location map"),
+    kind: z.enum(["task", "deadline", "block"]).optional().describe("task = something to tick off (default); deadline = a date something is due; block = time reserved, e.g. gym or deep work (no done state). For something that simply happens, use create_event."),
+    estimateMinutes: z.number().int().min(1).max(1440).optional().describe("how long the task should take"),
+    allDay: z.boolean().optional(),
+    someday: z.boolean().optional().describe("park it: no date, never shown as open or late"),
+    recurrence: CC_RECUR,
+    reminders: CC_REMINDERS,
   }),
   handler: async (args: any) => {
     const pt = args.parentType || "none";
+    const bad = ccCheck(args); if (bad) return fail(bad);
+    if (args.recurrence && !args.date) return fail("a repeating item needs a first date");
+    const kind = args.kind || (args.isMilestone ? "deadline" : "task");
+    const extra = {
+      kind, estimate_min: args.estimateMinutes || null, all_day: !!args.allDay, someday: !!args.someday,
+      recurrence: args.recurrence || null, reminders: args.reminders || [],
+    };
+    // Sent twice? Update the open item with the same title, date and kind rather than adding another.
+    const dup = await ccExisting("actions", args.title, args.date || null, kind);
+    if (dup) {
+      const patch: Record<string, unknown> = { priority: args.priority, recurrence: extra.recurrence, reminders: extra.reminders };
+      if (args.timeOfDay !== undefined) patch.time_of_day = args.timeOfDay || null;
+      if (args.durationMinutes !== undefined) patch.duration_minutes = args.durationMinutes;
+      if (args.estimateMinutes !== undefined) patch.estimate_min = args.estimateMinutes;
+      if (args.notes) patch.notes_md = args.notes;
+      const up = await safeWrite((p) => db.from("actions").update(p).eq("id", dup.id).eq("user_id", OWNER), patch);
+      if (up.error) return fail(up.error.message);
+      return ok({ ok: true, id: dup.id, alreadyExisted: true });
+    }
     const place = await resolvePlace({ address: args.location });
     if (place.error) return fail(place.error);
     const { data, error } = await safeWrite((p) => db.from("actions").insert(p).select().single(), {
+      ...extra,
       user_id: OWNER, title: args.title, type: args.type, priority: args.priority,
       parent_type: pt, parent_id: pt === "none" ? null : (args.parentId || null),
       date: args.date || null, done: false, time_of_day: args.timeOfDay || null,
       duration_minutes: args.durationMinutes || null, category: args.area || null,
       secondary_categories: args.secondaryAreas || [],
-      is_milestone: !!args.isMilestone, is_decision: !!args.isDecision,
+      is_milestone: !!args.isMilestone || kind === "deadline", is_decision: !!args.isDecision,
       notes_md: args.notes || "",
       location_address: place.address, location_lat: place.lat, location_lng: place.lng,
       source: "claude",
@@ -920,6 +1178,14 @@ tool("edit_action", {
     isMilestone: z.boolean().optional(),
     notes: z.string().optional().describe("free-form notes for the action's own page (Markdown); replaces what's there"),
     done: z.boolean().optional(),
+    kind: z.enum(["task", "deadline", "block"]).optional(),
+    estimateMinutes: z.number().int().min(1).max(1440).optional(),
+    someday: z.boolean().optional().describe("true parks it (clears the date); false brings it back to the backlog"),
+    recurrence: CC_RECUR,
+    reminders: CC_REMINDERS,
+    allDay: z.boolean().optional(),
+    muted: z.boolean().optional().describe("no reminders for this item"),
+    skipDates: z.array(z.string().regex(CC_DAY)).max(200).optional().describe("for a repeating item: dates to leave out (replaces the existing list)"),
   }),
   handler: async (args: any) => {
     const patch: Record<string, unknown> = {};
@@ -936,6 +1202,15 @@ tool("edit_action", {
     if (args.isMilestone !== undefined) patch.is_milestone = args.isMilestone;
     if (args.notes !== undefined) patch.notes_md = args.notes;
     if (args.done !== undefined) patch.done = args.done;
+    const bad = ccCheck(args); if (bad) return fail(bad);
+    if (args.kind !== undefined) { patch.kind = args.kind; patch.is_milestone = args.kind === "deadline"; }
+    if (args.estimateMinutes !== undefined) patch.estimate_min = args.estimateMinutes;
+    if (args.allDay !== undefined) patch.all_day = args.allDay;
+    if (args.someday !== undefined) { patch.someday = args.someday; if (args.someday) { patch.date = null; patch.time_of_day = null; } }
+    if (args.recurrence !== undefined) patch.recurrence = args.recurrence || null;
+    if (args.reminders !== undefined) patch.reminders = args.reminders;
+    if (args.muted !== undefined) patch.muted = args.muted;
+    if (args.skipDates !== undefined) patch.recurrence_exceptions = args.skipDates;
     if (Object.keys(patch).length === 0) return fail("nothing to update — pass at least one field");
     const { error } = await safeWrite((p) => db.from("actions").update(p).eq("id", args.id).eq("user_id", OWNER), patch);
     if (error) return fail(error.message);
@@ -948,8 +1223,18 @@ tool("complete_action", {
   inputSchema: z.object({
     id: z.string(),
     done: z.boolean().optional().describe("defaults to true"),
+    occurrenceDate: z.string().regex(CC_DAY, "use YYYY-MM-DD").optional().describe("for a repeating action: which date to tick off (defaults to today, Berlin)"),
   }),
-  handler: async (args: { id: string; done?: boolean }) => {
+  handler: async (args: { id: string; done?: boolean; occurrenceDate?: string }) => {
+    const cur = await db.from("actions").select("recurrence,recurrence_done").eq("id", args.id).eq("user_id", OWNER).maybeSingle();
+    if (cur.data && cur.data.recurrence) {
+      // A repeating action is ticked off per date; the series itself stays open.
+      const d = args.occurrenceDate || berlinToday(), list: string[] = (cur.data.recurrence_done || []).filter((x: string) => x !== d);
+      if (args.done !== false) list.push(d);
+      const up = await db.from("actions").update({ recurrence_done: list }).eq("id", args.id).eq("user_id", OWNER);
+      if (up.error) return fail(up.error.message);
+      return ok({ ok: true, repeating: true, date: d, done: args.done !== false });
+    }
     const { error } = await safeWrite((p) => db.from("actions").update(p).eq("id", args.id).eq("user_id", OWNER), { done: args.done === undefined ? true : args.done });
     if (error) return fail(error.message);
     return ok({ ok: true });
@@ -1001,11 +1286,27 @@ tool("create_event", {
     location: z.string().optional().describe("where it happens — an address or place name, geocoded for you and pinned on the Location map"),
     linkedPeopleIds: z.array(z.string()).optional().describe("ids from list_people — who it's with"),
     notes: z.string().optional(),
+    allDay: z.boolean().optional(),
+    recurrence: CC_RECUR,
+    reminders: CC_REMINDERS,
   }),
   handler: async (args: any) => {
+    const bad = ccCheck(args); if (bad) return fail(bad);
+    if (args.recurrence && !args.date) return fail("a repeating item needs a first date");
+    const dup = await ccExisting("events", args.title, args.date || null, "event");
+    if (dup) {
+      const patch: Record<string, unknown> = { recurrence: args.recurrence || null, reminders: args.reminders || [] };
+      if (args.timeOfDay !== undefined) patch.time_of_day = args.timeOfDay || null;
+      if (args.durationMinutes !== undefined) patch.duration_minutes = args.durationMinutes;
+      if (args.notes) patch.notes_md = args.notes;
+      const up = await safeWrite((p) => db.from("events").update(p).eq("id", dup.id).eq("user_id", OWNER), patch);
+      if (up.error) return fail(up.error.message);
+      return ok({ ok: true, id: dup.id, alreadyExisted: true });
+    }
     const place = await resolvePlace({ address: args.location });
     if (place.error) return fail(place.error);
     const { data, error } = await safeWrite((p) => db.from("events").insert(p).select().single(), {
+      all_day: !!args.allDay, recurrence: args.recurrence || null, reminders: args.reminders || [],
       user_id: OWNER, title: args.title, date: args.date || null,
       time_of_day: args.timeOfDay || null, duration_minutes: args.durationMinutes || null,
       category: args.area || null, secondary_categories: args.secondaryAreas || [],
@@ -1031,6 +1332,11 @@ tool("edit_event", {
     location: z.string().optional().describe("new address or place name, geocoded for you; pass an empty string to remove the location"),
     linkedPeopleIds: z.array(z.string()).optional().describe("replaces the existing set"),
     notes: z.string().optional(),
+    recurrence: CC_RECUR,
+    reminders: CC_REMINDERS,
+    allDay: z.boolean().optional(),
+    muted: z.boolean().optional().describe("no reminders for this item"),
+    skipDates: z.array(z.string().regex(CC_DAY)).max(200).optional().describe("for a repeating item: dates to leave out (replaces the existing list)"),
   }),
   handler: async (args: any) => {
     const patch: Record<string, unknown> = {};
@@ -1053,6 +1359,12 @@ tool("edit_event", {
     }
     if (args.linkedPeopleIds !== undefined) patch.linked_people_ids = args.linkedPeopleIds;
     if (args.notes !== undefined) patch.notes_md = args.notes;
+    const bad = ccCheck(args); if (bad) return fail(bad);
+    if (args.allDay !== undefined) patch.all_day = args.allDay;
+    if (args.recurrence !== undefined) patch.recurrence = args.recurrence || null;
+    if (args.reminders !== undefined) patch.reminders = args.reminders;
+    if (args.muted !== undefined) patch.muted = args.muted;
+    if (args.skipDates !== undefined) patch.recurrence_exceptions = args.skipDates;
     if (Object.keys(patch).length === 0) return fail("nothing to update — pass at least one field");
     const { error } = await safeWrite((p) => db.from("events").update(p).eq("id", args.id).eq("user_id", OWNER), patch);
     if (error) return fail(error.message);

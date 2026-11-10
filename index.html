@@ -302,6 +302,8 @@
   #healthSection{ margin:-32px -40px -70px; }
   /* Self (the redesigned notes page, notes/) paints its own background the same way. */
   #selfSection{ margin:-32px -40px -70px; }
+  /* Command Center (command/), same full-bleed host. */
+  #commandSection{ margin:-32px -40px -70px; }
   /* Finance snapshot page (finance/), same full-bleed host. */
   #financeSection{ margin:-32px -40px -70px; }
   /* People, constellation and list views: one full-bleed host; the older header, filters and panels step aside. */
@@ -1664,6 +1666,7 @@
     #locationSection{ margin:-56px -18px -60px; padding:12px 18px 12px; }
     #healthSection{ margin:-56px -18px -60px; --pph-top:46px; }
     #selfSection{ margin:-56px -18px -60px; --ppn-top:46px; }
+    #commandSection{ margin:-56px -18px -60px; --ppc-top:46px; }
     #financeSection{ margin:-56px -18px -60px; --ppf-top:46px; }
     #peopleSection.ppl-sky{ margin:-56px -18px -60px; --pph-top:46px; }
     #peopleSection.ppl-fullscreen-graph{ margin:-56px -18px -60px; padding:12px 18px 12px; }
@@ -1687,6 +1690,7 @@
     #locationSection{ margin:-44px -24px -20px; padding:10px 24px 10px; }
     #healthSection{ margin:-44px -24px -20px; --pph-top:36px; }
     #selfSection{ margin:-44px -24px -20px; --ppn-top:36px; }
+    #commandSection{ margin:-44px -24px -20px; --ppc-top:36px; }
     #financeSection{ margin:-44px -24px -20px; --ppf-top:36px; }
     #peopleSection.ppl-sky{ margin:-44px -24px -20px; --pph-top:36px; }
     #peopleSection.ppl-fullscreen-graph{ margin:-44px -24px -20px; padding:10px 24px 10px; }
@@ -2294,6 +2298,7 @@
       <div class="brand-sub" id="todayLabel">// loading…</div>
 
       <nav class="side-nav" id="sideNav">
+        <button class="side-link" data-section="command" id="navCommand" type="button"><span class="sl-glyph">◈</span>Command Center</button>
         <button class="side-link" data-section="focus" id="navToday" type="button"><span class="sl-glyph">◉</span>Today</button>
         <button class="side-link active" data-section="home" id="navClassicHome" type="button"><span class="sl-glyph">⌂</span>Home</button>
         <button class="side-link" data-section="inbox" type="button"><span class="sl-glyph">⇣</span>Inbox<span class="side-link-badge" id="inboxNavBadge" hidden></span></button>
@@ -3133,6 +3138,8 @@
     <section id="healthSection" style="display:none;"></section>
     <!-- Self: the redesigned notes page (notes/notes.js, mounted in a shadow root; see renderSelf). -->
     <section id="selfSection" style="display:none;"></section>
+    <!-- Command Center: tasks, events, deadlines and time blocks in one place (command/, shadow root; see renderCommand). -->
+    <section id="commandSection" style="display:none;"></section>
     <!-- Finance: the snapshot dashboard (finance/finance.js, shadow root; see renderFinancePage). The older
          accounts and transactions view stays inside the Finance area page. -->
     <section id="financeSection" style="display:none;"></section>
@@ -4479,6 +4486,7 @@
     applyThemeChrome(next);
     if(activeSection === "self") renderSelf();
     if(activeSection === "finance") renderFinancePage();
+    if(activeSection === "command") renderCommand();
   });
 
   // Sidebar hide/show. The data-sidebar-collapsed attribute (if saved) is already applied pre-paint
@@ -5164,7 +5172,8 @@
     hidePlanWithAI: true,       // the Gemini project planner button
     hideGeminiKey: true,        // the sidebar "gemini key" button (a key already saved keeps working)
     compactInboxReports: true,  // Inbox reports: one line per day per agent
-    showArchived: false
+    showArchived: false,
+    commandCenter: true         // Command Center is the opening page; hides the old Today page, the Time group and Personal > Planner
   };
   (function applyUiFlags(){
     function hide(on, sel){ var el = on && document.querySelector(sel); if(el) el.style.display = "none"; }
@@ -5180,6 +5189,17 @@
       document.getElementById("navToday").classList.add("active");
     }
     hide(UI_FLAGS.hideHistory, '[data-section="timeline"]');
+    hide(!UI_FLAGS.commandCenter, "#navCommand");
+    hide(UI_FLAGS.commandCenter, "#navToday");
+    hide(UI_FLAGS.commandCenter, "#sideLinkTimeToggle");
+    hide(UI_FLAGS.commandCenter, "#sideSubmenuTime");
+    hide(UI_FLAGS.commandCenter, '[data-section="planner"]');
+    if(UI_FLAGS.commandCenter && !UI_FLAGS.classicHome){
+      document.getElementById("focusSection").style.display = "none";
+      document.getElementById("commandSection").style.display = "";
+      document.getElementById("navToday").classList.remove("active");
+      document.getElementById("navCommand").classList.add("active");
+    }
     hide(UI_FLAGS.hideTracker, '[data-section="tracker"]');
     hide(UI_FLAGS.hideEventsTab, '#plannerTabs [data-tab="events"]');
     hide(UI_FLAGS.hidePlanWithAI, "#aiPlanOpenBtn");
@@ -5335,7 +5355,8 @@
     state.projects = (results[1].data || []).map(function(r){ return { id:r.id, goalId:r.goal_id, secondaryGoalIds:r.secondary_goal_ids || [], title:r.title, priority:r.priority, due:r.due, hours:Number(r.hours), done:r.done, position:r.position||0, healthOverride:r.health_override||null, healthPctOverride:(r.health_pct_override!=null?r.health_pct_override:null), icon:r.icon||null, wbX:(r.whiteboard_x!=null?r.whiteboard_x:null), wbY:(r.whiteboard_y!=null?r.whiteboard_y:null), categories:r.categories||[], planJson:r.plan_json||null, notesMd:r.notes_md||"", linkedPeopleIds:r.linked_people_ids||[], filesSlug:r.files_slug||"" }; });
     state.projects.sort(function(a,b){ return a.position - b.position; });
     var loadedActions = (results[2].data || []).map(function(r){ return { id:r.id, archivedAt:r.archived_at||null, focusDate:r.focus_date||null, parentType:r.parent_type, parentId:r.parent_id, title:r.title, priority:r.priority, date:r.date, done:r.done, position:r.position||0, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null, secondaryCategories:r.secondary_categories || [], isMilestone:!!r.is_milestone, isDecision:!!r.is_decision,
-      locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), notesMd:r.notes_md||"", dependencies:r.dependencies||[], linkedPeopleIds:r.linked_people_ids||[], source:r.source||null, externalId:r.external_id||null }; });
+      locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), notesMd:r.notes_md||"", dependencies:r.dependencies||[], linkedPeopleIds:r.linked_people_ids||[], source:r.source||null, externalId:r.external_id||null,
+      kind:r.kind||(r.is_milestone ? "deadline" : "task"), someday:!!r.someday, allDay:!!r.all_day, estimateMin:r.estimate_min||null, recurrence:r.recurrence||null, recurrenceExceptions:r.recurrence_exceptions||[], recurrenceDone:r.recurrence_done||[], reminders:r.reminders||[], muted:!!r.muted }; });
     state.archivedActions = UI_FLAGS.showArchived ? [] : loadedActions.filter(function(a){ return a.archivedAt; });
     state.actions = UI_FLAGS.showArchived ? loadedActions : loadedActions.filter(function(a){ return !a.archivedAt; });
     state.actions.sort(function(a,b){ return a.position - b.position; });
@@ -5372,7 +5393,8 @@
     // the query itself errors — same graceful-degradation shape as every other not-yet-migrated
     // surface above: caught by the blanket console.error loop, || [] keeps state.events usable).
     state.events = (results[16].data || []).filter(function(r){ return UI_FLAGS.showArchived || !r.archived_at; }).map(function(r){ return { id:r.id, title:r.title, date:r.date, timeOfDay:r.time_of_day ? r.time_of_day.slice(0,5) : null, durationMinutes:r.duration_minutes||null, category:r.category||null, secondaryCategories:r.secondary_categories||[],
-      locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), linkedPeopleIds:r.linked_people_ids||[], notesMd:r.notes_md||"", position:r.position||0, source:r.source||null }; });
+      locationAddress:r.location_address||"", locationLat:(r.location_lat!=null?r.location_lat:null), locationLng:(r.location_lng!=null?r.location_lng:null), linkedPeopleIds:r.linked_people_ids||[], notesMd:r.notes_md||"", position:r.position||0, source:r.source||null,
+      allDay:!!r.all_day, recurrence:r.recurrence||null, recurrenceExceptions:r.recurrence_exceptions||[], reminders:r.reminders||[], muted:!!r.muted }; });
     state.events.sort(function(a,b){ return a.position - b.position; });
     // Empty until migration_action_scenarios.sql has been run — same graceful-degradation shape as
     // every other not-yet-migrated table here. Actions just can't be flagged as decisions until then.
@@ -5387,7 +5409,7 @@
     state.agentMemory = (results[20].data || []).map(memoryMapEntry);
   }
   /* ---------------- Top-level + planner tabs ---------------- */
-  var activeSection = UI_FLAGS.classicHome ? "home" : "focus";
+  var activeSection = UI_FLAGS.classicHome ? "home" : UI_FLAGS.commandCenter ? "command" : "focus";
   var activePlannerTab = "areas";
   // "open" is the default everywhere; the last choice per list is remembered in this browser.
   var FILTERS_KEY = "pp_filters_v1";
@@ -5413,7 +5435,7 @@
     });
   }
 
-  var ALL_SECTION_IDS = ["focusSection","homeSection","todaySection","plannerSection","trackerSection","timelineSection","journalSection","peopleSection","locationSection","futureSection","goalDetailSection","areaDetailSection","entityPageSection","inboxSection","memorySection","healthSection","selfSection","financeSection"];
+  var ALL_SECTION_IDS = ["focusSection","homeSection","todaySection","plannerSection","trackerSection","timelineSection","journalSection","peopleSection","locationSection","futureSection","goalDetailSection","areaDetailSection","entityPageSection","inboxSection","memorySection","healthSection","selfSection","financeSection","commandSection"];
   // Sidebar dropdown groups — a parent nav item with no page of its own, bundling a set of section
   // names under one submenu. See showSection() (active/auto-open) and the sideNav click handler
   // (data-toggle-submenu, open/close).
@@ -19724,6 +19746,7 @@
     activityReady = !r.error;
     activityLog = r.error ? [] : (r.data || []);
     if(activeSection === "focus") renderFocus();
+    if(activeSection === "command") renderCommand();
   }
   function fxPrioRank(a){ return ({ P0:0, P1:1, P2:2, P3:3 })[a.priority] != null ? ({ P0:0, P1:1, P2:2, P3:3 })[a.priority] : 2; }
   function fxByTimeThenPrio(a, b){
@@ -20005,7 +20028,7 @@
   });
   // Coming back to the page picks up whatever Claude has changed in the meantime.
   document.addEventListener("visibilitychange", function(){
-    if(document.visibilityState === "visible" && currentUser && activeSection === "focus") loadAll().then(function(){ renderAll(); loadActivityLog(); });
+    if(document.visibilityState === "visible" && currentUser && (activeSection === "focus" || activeSection === "command")) loadAll().then(function(){ renderAll(); loadActivityLog(); });
   });
 
   var SECTION_RENDERERS = {
@@ -20023,6 +20046,7 @@
     health: [renderHealth],
     self: [renderSelf],
     finance: [renderFinancePage],
+    command: [renderCommand],
     timeline: [renderTimeline],
     journal: [renderJournal],
     people: [renderPeople],
@@ -20293,6 +20317,162 @@
     }).catch(function(err){
       var missing = err && /finance_snapshots|schema cache|does not exist/i.test(err.message || "");
       if(!host.shadowRoot) host.innerHTML = '<div class="empty-note" style="padding:60px 24px;">' + (missing ? "The Finance page needs its database table first (migration_finance_snapshots.sql)." : "The Finance page couldn’t load. Check your connection and open it again.") + '</div>';
+      console.warn(err);
+    });
+  }
+  /* Command Center (command/): one page for tasks, events, deadlines and time blocks. The module only
+     draws; every save goes through the functions below, so the activity log and undo keep working.
+     Bump COMMAND_VER with each release of command/*. */
+  var COMMAND_VER = "1", commandLoading = null, commandHandle = null;
+  // Hours that count as booked in the free-time bars. Change here if the work pattern changes.
+  var COMMAND_WORK = { days:[1, 2, 3, 4, 5], start:"09:00", end:"18:00" };
+  function commandLoadScripts(){
+    if(commandLoading) return commandLoading;
+    commandLoading = ["core", "view", "command"].reduce(function(chain, f){
+      return chain.then(function(){
+        return new Promise(function(resolve, reject){
+          var el = document.createElement("script");
+          el.src = "command/" + f + ".js?v=" + COMMAND_VER;
+          el.onload = resolve;
+          el.onerror = function(){ reject(new Error("Could not load command/" + f + ".js")); };
+          document.head.appendChild(el);
+        });
+      });
+    }, Promise.resolve());
+    commandLoading.catch(function(){ commandLoading = null; });
+    return commandLoading;
+  }
+  function commandPeople(ids){
+    return (ids || []).map(function(id){ var p = state.people.find(function(x){ return x.id === id; }); return p ? p.name : null; }).filter(Boolean);
+  }
+  function commandData(){
+    var items = state.actions.map(function(a){
+      var proj = a.parentType === "project" ? projectById(a.parentId) : null, goalId = resolveGoalIdForAction(a), goal = goalId ? goalById(goalId) : null;
+      return { id:a.id, table:"actions", kind:a.kind || "task", title:a.title, date:a.date || null, time:a.timeOfDay || null, dur:a.durationMinutes || null, allDay:!!a.allDay, est:a.estimateMin || null,
+        area:actionCategory(a) || "", priority:a.priority || null, done:!!a.done, someday:!!a.someday, recurrence:a.recurrence || null, exceptions:a.recurrenceExceptions || [], doneDates:a.recurrenceDone || [],
+        reminders:a.reminders || [], muted:!!a.muted, notes:a.notesMd || "", location:a.locationAddress || "", people:commandPeople(a.linkedPeopleIds),
+        dependsOn:(a.dependencies || []).map(function(d){ return d.id; }), goalId:goalId || null, projectId:proj ? proj.id : null, parentLabel:proj ? proj.title : goal ? goal.title : "", source:a.source || "me" };
+    }).concat(state.events.map(function(e){
+      return { id:e.id, table:"events", kind:"event", title:e.title, date:e.date || null, time:e.timeOfDay || null, dur:e.durationMinutes || null, allDay:!!e.allDay, est:null, area:eventCategory(e) || "", priority:null,
+        done:false, someday:false, recurrence:e.recurrence || null, exceptions:e.recurrenceExceptions || [], doneDates:[], reminders:e.reminders || [], muted:!!e.muted, notes:e.notesMd || "", location:e.locationAddress || "",
+        people:commandPeople(e.linkedPeopleIds), dependsOn:[], goalId:null, projectId:null, parentLabel:"", source:e.source || "me" };
+    }));
+    var today = todayStr(), main = fxMainAction(today);
+    return {
+      items: items, today: today, mainId: main ? main.id : null, work: COMMAND_WORK, theme: currentTheme(),
+      goals: state.goals.map(function(g){ return { id:g.id, title:g.title, area:g.category || "", due:g.ongoing ? null : (g.due || null), ongoing:!!g.ongoing, progress:Math.round(goalProgress(g)) || 0,
+        open: state.actions.filter(function(a){ return !a.done && resolveGoalIdForAction(a) === g.id; }).length }; }),
+      projects: state.projects.map(function(p){
+        var acts = state.actions.filter(function(a){ return a.parentType === "project" && a.parentId === p.id; }), dates = acts.map(function(a){ return a.date; }).filter(Boolean).sort();
+        return { id:p.id, goalId:p.goalId, title:p.title, due:p.due || null, done:!!p.done, progress:Math.round(projectProgress(p)) || 0, start:dates[0] || null, doneCount:acts.filter(function(a){ return a.done; }).length, total:acts.length };
+      }),
+      feed: fxFeedEntries().slice(0, 8).map(function(e){
+        var d = new Date(e.created_at), same = d.toDateString() === new Date().toDateString();
+        return { id:String(e.id), text:fxChangeText(e), when:(same ? "" : d.toLocaleDateString("en-GB", { weekday:"short" }) + " ") + d.toLocaleTimeString("en-GB", { hour:"2-digit", minute:"2-digit" }) };
+      }),
+      feedNote: activityReady === false ? "The change log starts once its database update has been run." : "No changes in the last 24 hours."
+    };
+  }
+  // The module's field names → table columns, and → the fields on the loaded object.
+  var COMMAND_COLS = { title:"title", kind:"kind", date:"date", time:"time_of_day", dur:"duration_minutes", allDay:"all_day", est:"estimate_min", area:"category", priority:"priority", done:"done", someday:"someday",
+    recurrence:"recurrence", exceptions:"recurrence_exceptions", doneDates:"recurrence_done", reminders:"reminders", muted:"muted", notes:"notes_md", location:"location_address" };
+  var COMMAND_LOCAL = { title:"title", kind:"kind", date:"date", time:"timeOfDay", dur:"durationMinutes", allDay:"allDay", est:"estimateMin", area:"category", priority:"priority", done:"done", someday:"someday",
+    recurrence:"recurrence", exceptions:"recurrenceExceptions", doneDates:"recurrenceDone", reminders:"reminders", muted:"muted", notes:"notesMd", location:"locationAddress" };
+  var COMMAND_EVENT_ONLY_SKIP = { kind:1, est:1, priority:1, done:1, someday:1, doneDates:1 };
+  function commandFind(id){
+    var a = state.actions.find(function(x){ return x.id === id; });
+    if(a) return { table:"actions", obj:a };
+    var e = state.events.find(function(x){ return x.id === id; });
+    return e ? { table:"events", obj:e } : null;
+  }
+  async function commandPatch(id, patch, label){
+    var hit = commandFind(id);
+    if(!hit) return;
+    var payload = {}, before = {}, keys = [];
+    Object.keys(patch).forEach(function(k){
+      if(!COMMAND_COLS[k] || (hit.table === "events" && COMMAND_EVENT_ONLY_SKIP[k])) return;
+      if(k === "priority" && !patch[k]) return;                       // actions always carry a priority
+      if(k === "recurrence" && patch[k] && window.PPCommandCore.ruleError(patch[k])) return;
+      keys.push(k); before[k] = hit.obj[COMMAND_LOCAL[k]];
+      payload[COMMAND_COLS[k]] = k === "notes" ? (patch[k] || "") : patch[k];
+    });
+    if(!keys.length) return;
+    if(hit.table === "actions" && patch.kind) payload.is_milestone = patch.kind === "deadline";
+    var res = await safeUpdate(hit.table, id, payload);
+    if(res.error){ dbErrorToast(res.error, "Couldn't save"); return; }
+    if(res.droppedFields && res.droppedFields.length){ toast("Some of that needs the Command Center database update (migration_command_center.sql)."); }
+    keys.forEach(function(k){ hit.obj[COMMAND_LOCAL[k]] = patch[k]; });
+    if(payload.is_milestone !== undefined) hit.obj.isMilestone = payload.is_milestone;
+    renderAll();
+    pushUndo((label || "edit") + ' "' + hit.obj.title + '"', async function(){
+      var back = {};
+      keys.forEach(function(k){ back[COMMAND_COLS[k]] = before[k] === undefined ? null : before[k]; hit.obj[COMMAND_LOCAL[k]] = before[k]; });
+      await safeUpdate(hit.table, id, back);
+      renderAll();
+    });
+  }
+  // Returns the new item's id, or false when it could not be saved (the draft then stays on screen).
+  async function commandCreate(d){
+    var isEvent = d.kind === "event", res;
+    var common = { title:d.title, date:d.date || null, time_of_day:d.time || null, duration_minutes:d.dur || null, category:d.area || null, all_day:!!d.allDay, recurrence:d.recurrence || null, notes_md:d.notes || "", source:"me" };
+    if(isEvent){
+      if(!common.date) common.date = todayStr();                      // an event always has a day
+      res = await safeInsert("events", common, state.events);
+    } else {
+      res = await safeInsert("actions", Object.assign(common, { kind:d.kind || "task", is_milestone:d.kind === "deadline", priority:d.priority || "P2", parent_type:"none", parent_id:null, done:false, type:"Task" }), state.actions);
+    }
+    if(res.error){ dbErrorToast(res.error, "Couldn't add"); return false; }
+    await loadAll();
+    renderAll();
+    var id = res.data.id, table = isEvent ? "events" : "actions";
+    pushUndo('add "' + d.title + '"', async function(){
+      await safeUpdate(table, id, { archived_at:new Date().toISOString() });
+      await loadAll(); renderAll();
+    });
+    return id;
+  }
+  async function commandArchive(id){
+    var hit = commandFind(id);
+    if(!hit) return;
+    if(hit.table === "actions"){ await fxArchive(id); return; }
+    var res = await safeUpdate("events", id, { archived_at:new Date().toISOString() });
+    if(res.error){ dbErrorToast(res.error, "Couldn't archive"); return; }
+    state.events = state.events.filter(function(x){ return x.id !== id; });
+    renderAll();
+    pushUndo('archive "' + hit.obj.title + '"', async function(){
+      await safeUpdate("events", id, { archived_at:null });
+      state.events.push(hit.obj);
+      renderAll();
+    });
+  }
+  async function commandHistory(id){
+    var r = await sb.from("activity_log").select("*").eq("row_id", id).order("created_at", { ascending:false }).limit(12);
+    if(r.error) return [];
+    return (r.data || []).map(function(e){
+      return fxChangeText(e) + " · " + (e.actor === "me" ? "you" : e.actor) + " · " + new Date(e.created_at).toLocaleString("en-GB", { day:"numeric", month:"short", hour:"2-digit", minute:"2-digit" }) + (e.undone_at ? " · undone" : "");
+    });
+  }
+  function renderCommand(){
+    if(activeSection !== "command") return;
+    var host = document.getElementById("commandSection");
+    commandLoadScripts().then(function(){
+      if(activeSection !== "command") return;
+      var d = commandData();
+      if(commandHandle){ commandHandle.update(d); return; }
+      commandHandle = window.PPCommand.mount(host, Object.assign(d, {
+        css: "command/command.css?v=" + COMMAND_VER, areas: CATEGORIES,
+        onCreate: commandCreate, onPatch: commandPatch, onArchive: commandArchive, onHistory: commandHistory,
+        onSetMain: function(id){ return fxSetMain(id, todayStr()); },
+        onUndo: function(logId){ return fxUndo(logId); },
+        onOpenFull: function(id){ var hit = commandFind(id); if(hit && hit.table === "events") editEvent(id); else editAction(id); },
+        onOpenGoal: function(id){ openGoalDetailPage(id); },
+        onOpenProject: function(id){ editProject(id); },
+        onNewGoal: function(){ openGoalModal(null); },
+        onNewProject: function(){ openProjectModal(null, null); }
+      }));
+      if(activityReady === null) loadActivityLog();
+    }).catch(function(err){
+      if(!host.shadowRoot) host.innerHTML = '<div class="empty-note" style="padding:60px 24px;">The Command Center couldn’t load. Check your connection and open it again.</div>';
       console.warn(err);
     });
   }
