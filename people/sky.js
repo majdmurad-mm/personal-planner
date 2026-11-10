@@ -5,7 +5,7 @@
   var C = window.PPPeopleCore, RINGS = C.RINGS, QL = C.QL;
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
   function glyph(q) { return '<svg viewBox="0 0 38 12" aria-hidden="true"><path class="ln show q-' + q + '" d="' + C.linePath(1, 6, 37, 6, q) + '"/></svg>'; }
-  function av(p) { return '<span class="av">' + esc(p.ini) + "</span>"; }
+  function av(p) { return '<span class="av"' + (p.color ? ' style="background:' + esc(p.color) + ';color:#0B1430"' : "") + ">" + esc(p.ini) + "</span>"; }
 
   /* does this person pass the search box and the filter chips? */
   function match(p, st) {
@@ -29,6 +29,7 @@
     for (c = 1; c <= 5; c++) h += '<circle class="ringc" r="' + C.RLINE[c] + '"/>';
     secs.forEach(function (s, i) {
       if (secs.length > 1) { var a = (s.a0 - 1.6) * Math.PI / 180; h += '<line class="sec-div" x1="' + (Math.cos(a) * 50).toFixed(1) + '" y1="' + (Math.sin(a) * 50).toFixed(1) + '" x2="' + (Math.cos(a) * 496).toFixed(1) + '" y2="' + (Math.sin(a) * 496).toFixed(1) + '"/>'; }
+      var gc = M.colors[s.g.id]; if (gc && secs.length > 1) h += '<path class="sec-c" style="stroke:' + esc(gc) + '" d="' + C.arc(497.5, s.a0 + .6, s.a1 - .6) + '"/>';
       var lab = s.g.label, room = (s.a1 - s.a0) * 8.6, per = (narrow ? 6 : 8.4) * K;
       if (lab.length * per > room) lab = lab.slice(0, Math.max(3, Math.floor(room / per) - 1)) + "…";
       h += '<text class="sec-t" style="font-size:' + fs(narrow ? 8.5 : 12) + "px" + (narrow ? ";letter-spacing:.08em" : "") + '"><textPath href="#sa' + i + '" startOffset="50%" text-anchor="middle">' + esc(lab) + "</textPath></text>";
@@ -45,8 +46,8 @@
     });
     h += '<g id="links"></g>';
     vis.forEach(function (p) {
-      var r = p.r, lbl = p.circle <= (narrow ? 0 : 2), first = p.name.split(" ")[0], below = p.y > -20 || p.circle === 1;
-      h += '<g class="nd c' + p.circle + '" data-id="' + p.id + '" tabindex="0" role="button" aria-label="' + esc(p.name + ", " + RINGS[p.circle] + " circle, " + QL[p.quality] + (p.threads.length ? ", open thread" : "") + (p.drift ? ", drifting" : "") + (p.bday != null && p.bday <= 14 ? ", birthday " + C.inDays(p.bday) : "")) + '" transform="translate(' + p.x.toFixed(1) + "," + p.y.toFixed(1) + ')">';
+      var r = p.r, lbl = p.circle <= (narrow ? 0 : 2), first = p.first, below = p.y > -20 || p.circle === 1;
+      h += '<g class="nd c' + p.circle + (p.color ? ' gc" style="--gc:' + esc(p.color) : "") + '" data-id="' + p.id + '" tabindex="0" role="button" aria-label="' + esc(p.name + ", " + RINGS[p.circle] + " circle, " + QL[p.quality] + (p.threads.length ? ", open thread" : "") + (p.drift ? ", drifting" : "") + (p.bday != null && p.bday <= 14 ? ", birthday " + C.inDays(p.bday) : "")) + '" transform="translate(' + p.x.toFixed(1) + "," + p.y.toFixed(1) + ')">';
       if (p.fresh != null) h += '<circle class="halo" r="' + (r + 7 + 7 * p.fresh).toFixed(1) + '" opacity="' + (.08 + .5 * p.fresh).toFixed(2) + '"/>';
       h += '<circle class="star" r="' + (r * 1.55).toFixed(1) + '"/><circle r="' + Math.max(r + 6, 11 * K).toFixed(1) + '" fill="transparent"/><circle class="disc" r="' + r.toFixed(1) + '"/>';
       if (p.circle <= 2) h += '<text class="ini" style="font-size:' + (r * .82).toFixed(1) + 'px">' + esc(p.ini) + "</text>";
@@ -54,7 +55,7 @@
       if (p.bday != null && p.bday <= 14) h += '<g transform="translate(' + (-r * .8).toFixed(1) + "," + (-r * .8).toFixed(1) + ')"><circle class="cake" r="' + (6.5 * K).toFixed(1) + '"/><text class="cake-t" style="font-size:' + fs(8) + 'px">🎂</text></g>';
       var lx = 0, ly = below ? r + 12.5 * K : -(r + 5 * K), anc = "middle";
       if (p.circle === 1 && lbl) { var ax = Math.cos(p.ang), ay = Math.sin(p.ang), md = Math.abs(ax) < .35; lx = ax * (r + 5 * K); ly = ay * (r + (md ? 10 : 5) * K) + 4 * K; anc = md ? "middle" : ax > 0 ? "start" : "end"; }
-      h += '<text class="nm' + (lbl ? "" : " hov") + '" style="text-anchor:' + anc + ";font-size:" + fs(lbl ? (p.circle === 1 ? 12 : 11) : 11) + "px;stroke-width:" + fs(4) + 'px" x="' + lx.toFixed(1) + '" y="' + ly.toFixed(1) + '">' + esc(lbl ? first : p.name) + "</text></g>";
+      h += '<text class="nm' + (lbl ? "" : " hov") + '" style="text-anchor:' + anc + ";font-size:calc(" + fs(lbl ? (p.circle === 1 ? 12 : 11) : 11) + "px*var(--iz,1));stroke-width:" + fs(4) + 'px" x="' + lx.toFixed(1) + '" y="' + ly.toFixed(1) + '">' + esc(lbl ? first : p.name) + "</text></g>";
     });
     h += '<g class="me"><circle class="pulse" r="' + (ME + 8).toFixed(1) + '"/><circle class="disc" r="' + ME.toFixed(1) + '"/><text style="font-size:' + fs(11) + 'px">You</text></g>';
     svg.innerHTML = h; paint(svg, M, st);
@@ -69,9 +70,9 @@
       var p = M.byId[e.getAttribute("data-id")]; if (!p) return;
       e.classList.toggle("on", !!sel && p.id === sel.id); e.classList.toggle("kin", !!kin[p.id]); e.classList.toggle("miss", !match(p, st));
     });
-    var L = "", pairs = [], calm = !sel && !st.showConn;
+    var L = "", pairs = [], calm = !sel && !st.showConn, tree = !!svg._tree;
     if (sel) sel.links.forEach(function (l) { pairs.push([sel, M.byId[l.id]]); });
-    else M.on.forEach(function (a) {
+    else if (!tree || st.showConn) M.on.forEach(function (a) {
       a.links.forEach(function (l) {
         var b = M.byId[l.id]; if (!b || b.off || !(a.id < b.id)) return;
         if (st.showConn ? Math.min(a.circle, b.circle) <= 3 : (a.circle <= 3 && b.circle <= 3 && a.g === b.g)) pairs.push([a, b]);
@@ -79,7 +80,7 @@
     });
     pairs.forEach(function (pr) {
       var a = pr[0], b = pr[1]; if (!a || !b || a.x == null || b.x == null) return;
-      var kf = calm ? 1 : .62, mx = (a.x + b.x) / 2 * kf, my = (a.y + b.y) / 2 * kf;
+      var kf = calm || tree ? 1 : .62, mx = (a.x + b.x) / 2 * kf, my = (a.y + b.y) / 2 * kf;
       L += '<path class="p2p" style="stroke-opacity:' + (sel ? .85 : calm ? .28 : .34) + ";stroke-width:" + (calm ? 1 : 1.4) + '" d="M' + a.x.toFixed(1) + "," + a.y.toFixed(1) + "Q" + mx.toFixed(1) + "," + my.toFixed(1) + " " + b.x.toFixed(1) + "," + b.y.toFixed(1) + '"/>';
     });
     var g = svg.querySelector("#links"); if (g) g.innerHTML = L;

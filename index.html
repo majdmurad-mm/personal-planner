@@ -3419,6 +3419,7 @@
       </div>
       <div class="sub-view-toggle" id="peopleSubToggle">
         <button class="sub-view-tab active" data-sub="sky" type="button">constellation</button>
+        <button class="sub-view-tab" data-sub="tree" type="button">tree</button>
         <button class="sub-view-tab" data-sub="graph" type="button">clusters</button>
         <button class="sub-view-tab" data-sub="list" type="button">list</button>
         <button class="sub-view-tab" data-sub="table" type="button">table</button>
@@ -8269,7 +8270,7 @@
       homeLat:nn(r.home_lat), homeLng:nn(r.home_lng),
       circle:nn(r.circle), quality:r.quality||null, energy:r.energy||null, lastContactAt:r.last_contact_at||null, lastContactKind:r.last_contact_kind||null,
       rhythmDays:nn(r.rhythm_days), birthdayMonth:nn(r.birthday_month), birthdayDay:nn(r.birthday_day), birthdayYear:nn(r.birthday_year),
-      archivedAt:r.archived_at||null, inMemory:!!r.in_memory };
+      archivedAt:r.archived_at||null, inMemory:!!r.in_memory, kinRole:r.kin_role||"", kinSide:r.kin_side||"" };
   }
   function personPayload(snapshot){
     return { id:snapshot.id, name:snapshot.name, relationship:snapshot.relationship, contact:snapshot.contact, notes:snapshot.notes, position:snapshot.position,
@@ -14631,7 +14632,7 @@
     var view = views.people;
     if(view === "cards") view = views.people = "list";
     if(view === "graph3d" && !people3dEnabled()) view = views.people = "sky";
-    var sky = view === "sky" || view === "list";
+    var sky = view === "sky" || view === "list" || view === "tree";
     document.getElementById("people3dTab").style.display = people3dEnabled() ? "" : "none";
     document.querySelectorAll("#peopleSubToggle .sub-view-tab").forEach(function(b){ b.classList.toggle("active", b.dataset.sub === view); });
     document.getElementById("peopleSection").classList.toggle("ppl-sky", sky);
@@ -20029,12 +20030,12 @@
   }
   /* People page (constellation and list). Same pattern as Health: loaded on first open, in order, and
      versioned against the service worker's cache-first rule: bump PEOPLE_VER with each release of people/*. */
-  var PEOPLE_VER = "1", peopleLoading = null, peopleNotesMemo = null;
+  var PEOPLE_VER = "2", peopleLoading = null, peopleNotesMemo = null;
   // The 3D graph is parked: it only shows after localStorage.setItem("pp_people_3d", "1").
   function people3dEnabled(){ try{ return localStorage.getItem("pp_people_3d") === "1"; } catch(e){ return false; } }
   function peopleLoadScripts(){
     if(peopleLoading) return peopleLoading;
-    peopleLoading = ["core", "sky", "people"].reduce(function(chain, f){
+    peopleLoading = ["core", "sky", "tree", "people"].reduce(function(chain, f){
       return chain.then(function(){
         return new Promise(function(resolve, reject){
           var el = document.createElement("script");
@@ -20067,7 +20068,7 @@
   async function peopleSavePerson(id, patch){
     var p = state.people.concat(state.peopleArchived || []).find(function(x){ return x.id === id; });
     if(!p) throw new Error("person not found");
-    var cols = { quality:"quality", energy:"energy", circle:"circle", rhythmDays:"rhythm_days", lastContactAt:"last_contact_at", lastContactKind:"last_contact_kind", birthdayMonth:"birthday_month", birthdayDay:"birthday_day" };
+    var cols = { quality:"quality", energy:"energy", circle:"circle", rhythmDays:"rhythm_days", lastContactAt:"last_contact_at", lastContactKind:"last_contact_kind", birthdayMonth:"birthday_month", birthdayDay:"birthday_day", kinRole:"kin_role", kinSide:"kin_side" };
     var payload = {}, prev = {};
     Object.keys(patch).forEach(function(k){ if(cols[k]){ payload[cols[k]] = patch[k]; prev[k] = p[k]; } });
     var r = await sb.from("people").update(payload).eq("id", id);
@@ -20086,14 +20087,14 @@
     if(activeSection !== "people") return;
     var host = document.getElementById("peopleSkyHost");
     peopleLoadScripts().then(function(){
-      if(activeSection !== "people" || (views.people !== "sky" && views.people !== "list")) return;
+      if(activeSection !== "people" || (views.people !== "sky" && views.people !== "list" && views.people !== "tree")) return;
       var all = state.people.concat(state.peopleArchived || []);
       var linked = function(arr){ return arr.filter(function(x){ return (x.linkedPeopleIds || []).length; }).map(function(x){ return { id:x.id, title:x.title, date:x.date, people:x.linkedPeopleIds }; }); };
       window.PPPeople.mount(host, {
         sb: sb, userId: currentUser ? currentUser.id : null, view: views.people,
         people: all.map(function(p){ return Object.assign({}, p, { group: parseSocialGroupField(p.socialGroup).main || "" }); }),
         ctx: function(){ return { today: todayStr(), actions: linked(state.actions.filter(function(a){ return !a.done && !a.archivedAt; })), events: linked(state.events), notes: peopleNotesFor(all) }; },
-        toast: toast, undo: pushUndo, onView: peopleSetView,
+        toast: toast, undo: pushUndo, onView: peopleSetView, groupColors: pplComputeGroupColors(),
         onNew: function(){ openPersonEditModal(null); },
         onEdit: function(id){ if(state.people.some(function(x){ return x.id === id; })) editPerson(id); else toast("Restore this person first, then edit."); },
         onOpenAction: function(id){ editAction(id); },

@@ -16,7 +16,17 @@
   function ago(n) { return n <= 0 ? "today" : n === 1 ? "yesterday" : n < 14 ? n + " days ago" : n < 60 ? Math.round(n / 7) + " weeks ago" : n < 365 ? Math.round(n / 30) + " months ago" : "over a year ago"; }
   function inDays(n) { return n === 0 ? "today" : n === 1 ? "tomorrow" : "in " + n + " days"; }
   function rhythmText(n) { for (var i = 0; i < RHYTHMS.length; i++) if (RHYTHMS[i][0] === n) return RHYTHMS[i][1].toLowerCase(); return "every " + n + " days"; }
-  function initials(name) { return String(name || "?").trim().split(/\s+/).map(function (w) { return w.charAt(0); }).join("").slice(0, 2).toUpperCase(); }
+  /* a name can carry what you call someone in brackets, "[Nick] Full Name": that is the short label */
+  function bare(name) { return String(name || "").replace(/^\s*[\[(][^\])]*[\])]\s*/, "").trim() || String(name || "?").replace(/[\[\]()]/g, "").trim() || "?"; }
+  function shortName(name) { var m = /^\s*[\[(]([^\])]+)[\])]/.exec(String(name || "")); return m ? m[1].trim() : bare(name).split(/\s+/)[0]; }
+  function initials(name) { return bare(name).split(/\s+/).map(function (w) { return w.charAt(0); }).join("").slice(0, 2).toUpperCase(); }
+  /* group colours: the same rule as the Clusters view (alphabetical walk through one palette, a chosen colour wins) */
+  var PALETTE = ["#4ADE80", "#5FA8FF", "#F15A22", "#A78BFA", "#FDE047", "#FB7185", "#2DD4BF", "#FB923C"];
+  function groupColors(names, custom) { var o = {}; names.slice().sort().forEach(function (g, i) { o[g] = (custom && custom[g]) || PALETTE[i % PALETTE.length]; }); return o; }
+  /* family roles for the Tree view; "side" only matters for the roles marked true */
+  var KIN = { father: "Father", mother: "Mother", brother: "Brother", sister: "Sister", grandfather: "Grandfather", grandmother: "Grandmother", uncle: "Uncle", aunt: "Aunt", cousin: "Cousin",
+    partner: "Partner", son: "Son", daughter: "Daughter", nephew: "Nephew", niece: "Niece", inlaw: "In-law", relative: "Relative" };
+  var KIN_SIDED = { grandfather: 1, grandmother: 1, uncle: 1, aunt: 1, cousin: 1 }, SIDE = { paternal: "Father's side", maternal: "Mother's side" };
   function isoAdd(today, n) { var d = new Date(dayNum(today) * 864e5 + n * 864e5); return d.toISOString().slice(0, 10); }
 
   /* raw: { people, actions, events, notes, sits, links, today }  ->  model */
@@ -35,7 +45,8 @@
         rel: r.relationship || "", loc: r.location || "", yearMet: r.yearMet || null, notes: r.notes || "", contact: r.contact || "",
         last: last, lastDate: r.lastContactAt || null, kind: KIND[r.lastContactKind] ? r.lastContactKind : "other", rhythm: r.rhythmDays || null,
         bday: bday, bdayText: r.birthdayMonth && r.birthdayDay ? r.birthdayDay + " " + MON[r.birthdayMonth - 1] : "", bm: r.birthdayMonth || null, bd: r.birthdayDay || null,
-        archived: !!r.archivedAt, inMemory: !!r.inMemory, sits: [], threads: [], up: [], mentions: [], links: []
+        archived: !!r.archivedAt, inMemory: !!r.inMemory, sits: [], threads: [], up: [], mentions: [], links: [],
+        first: shortName(r.name), kinRole: KIN[r.kinRole] ? r.kinRole : "", kinSide: SIDE[r.kinSide] ? r.kinSide : ""
       };
       p.off = p.archived || p.inMemory || p.quality === "cut_off";       // not on the map
       P.push(p); byId[p.id] = p;
@@ -69,7 +80,9 @@
     P.forEach(function (p) { p.g = top.indexOf(p.group) >= 0 ? p.group : "~other"; });
     if (on.some(function (p) { return p.g === "~other"; }) || !groups.length) groups.push({ id: "~other", label: groups.length ? "Other" : "Everyone" });
     var allGroups = Object.keys(P.reduce(function (o, p) { if (p.group) o[p.group] = 1; return o; }, {})).sort();
-    return { today: today, P: P, byId: byId, groups: groups, allGroups: allGroups, on: on };
+    var colors = raw.colors || groupColors(allGroups);
+    P.forEach(function (p) { p.color = colors[p.group] || ""; });
+    return { today: today, P: P, byId: byId, groups: groups, allGroups: allGroups, on: on, colors: colors };
   }
 
   /* what the pulse rail says; gentle wording, no scores */
@@ -128,17 +141,17 @@
     function add(o) { o.id = "s" + people.length; people.push(o); return o; }
     function sit(p, n, by, t) { sits.push({ id: "t" + sits.length, person_id: p.id, text: t, noted_on: d(n), author: by, created_at: d(n) }); }
     function link(a, b, q) { if (a === b) return; var x = a.id < b.id ? a : b, y = x === a ? b : a; if (links.some(function (l) { return l.person_a === x.id && l.person_b === y.id; })) return; links.push({ id: "l" + links.length, person_a: x.id, person_b: y.id, quality: q || "ok" }); }
-    var lena = add({ name: "Lena Hartwig", group: "Partner", relationship: "Partner", circle: 1, quality: "strong", energy: "nourishing", location: "Leipzig", yearMet: 2023, lastContactAt: d(0), lastContactKind: "met" });
+    var lena = add({ name: "Lena Hartwig", group: "Partner", relationship: "Partner", kinRole: "partner", circle: 1, quality: "strong", energy: "nourishing", location: "Leipzig", yearMet: 2023, lastContactAt: d(0), lastContactKind: "met" });
     sit(lena, 1, "claude", "A heavy month for both of us. She has her thesis defence on the 20th and I've been cooking so she can write."); sit(lena, 16, "me", "Talked about spending Christmas with her parents this year.");
     var jonas = add({ name: "Jonas Albrecht", group: "Hometown", relationship: "Friend", circle: 1, quality: "strong", energy: "nourishing", location: "Hamburg", yearMet: 2003, lastContactAt: d(37), lastContactKind: "call", rhythmDays: 14 });
     sit(jonas, 6, "claude", "Nothing wrong, just a busy stretch on both sides. He started the new job in October and we keep missing each other's calls.");
-    var mira = add({ name: "Mira Solberg", group: "Family", relationship: "Family", circle: 1, quality: "strong", energy: "nourishing", location: "Oslo", lastContactAt: d(3), lastContactKind: "call", rhythmDays: 14, birthdayMonth: +isoAdd(today, 6).slice(5, 7), birthdayDay: +isoAdd(today, 6).slice(8, 10) });
+    var mira = add({ name: "Mira Solberg", group: "Family", relationship: "Family", kinRole: "sister", circle: 1, quality: "strong", energy: "nourishing", location: "Oslo", lastContactAt: d(3), lastContactKind: "call", rhythmDays: 14, birthdayMonth: +isoAdd(today, 6).slice(5, 7), birthdayDay: +isoAdd(today, 6).slice(8, 10) });
     sit(mira, 3, "me", "She's settling into the new flat. Wants us all there in spring.");
     var omar = add({ name: "Omar Vidal", group: "Hometown", relationship: "Friend", circle: 1, quality: "strained", location: "Leipzig", lastContactAt: d(12), lastContactKind: "message" });
     sit(omar, 2, "claude", "The rift after the summer trip is settling. We've exchanged a few easy messages. A quiet coffee feels right before anything bigger."); sit(omar, 41, "me", "Still sore about how the trip ended. Giving it some room.");
-    var nadia = add({ name: "Nadia Keller", group: "Family", relationship: "Family", circle: 2, quality: "strained", location: "Munich", lastContactAt: d(48), lastContactKind: "message" });
+    var nadia = add({ name: "Nadia Keller", group: "Family", relationship: "Family", kinRole: "aunt", kinSide: "maternal", circle: 2, quality: "strained", location: "Munich", lastContactAt: d(48), lastContactKind: "message" });
     sit(nadia, 1, "claude", "There's still tension from the spring, but I'd like her at Christmas anyway. A warm, short invitation.");
-    var tomas = add({ name: "Tomas Brandt", group: "Family", relationship: "Family", circle: 2, quality: "ok", location: "Prague", lastContactAt: d(5), lastContactKind: "call" });
+    var tomas = add({ name: "Tomas Brandt", group: "Family", relationship: "Family", kinRole: "father", circle: 2, quality: "ok", location: "Prague", lastContactAt: d(5), lastContactKind: "call" });
     sit(tomas, 5, "claude", "I'm handling his residence paperwork. It still needs his signature and a certified copy of his passport.");
     var ada = add({ name: "Ada Lindqvist", group: "Work", relationship: "Mentor", circle: 2, quality: "strong", energy: "nourishing", location: "Berlin", lastContactAt: d(20), lastContactKind: "met", rhythmDays: 60 });
     add({ name: "Viktor Rann", group: "Work", relationship: "Colleague", circle: 4, quality: "conflict", energy: "draining", location: "Leipzig", lastContactAt: d(30), lastContactKind: "met" });
@@ -149,11 +162,11 @@
     var FN = ["Anna", "Ben", "Clara", "David", "Emil", "Freya", "Goran", "Hana", "Ivo", "Julia", "Karim", "Lotte", "Marek", "Nora", "Oskar", "Petra", "Rosa", "Sami", "Tilda", "Vera", "Willem", "Yara", "Zeno", "Alma", "Bruno", "Celia", "Dario", "Edda", "Finn", "Greta"],
       LN = ["Aalto", "Berger", "Castell", "Dahl", "Ekman", "Falk", "Gruber", "Holm", "Ivers", "Jansen", "Koller", "Lund", "Moreau", "Nyberg", "Olsen", "Pohl", "Quist", "Rieger", "Sander", "Thorn"], used = {};
     [["Family", 9], ["Hometown", 12], ["University", 9], ["Work", 12], ["Climbing", 5], ["", 6]].forEach(function (gc) {
-      var first = people.length;
+      var first = people.length, KR = [["mother"], ["brother"], ["grandmother", "maternal"], ["grandfather", "paternal"], ["uncle", "paternal"], ["cousin", "paternal"], ["cousin", "paternal"], ["cousin", "maternal"], []];
       for (var i = 0; i < gc[1]; i++) {
         var nm; do { nm = pick(FN) + " " + pick(LN); } while (used[nm]); used[nm] = 1;
         var r = rnd(), c = r < .08 ? 2 : r < .48 ? 3 : r < .88 ? 4 : 5, q = rnd();
-        add({ name: nm, group: gc[0], relationship: gc[0] === "Family" ? "Family" : gc[0] === "Work" ? "Colleague" : "Friend", circle: c, quality: c <= 3 ? (q < .2 ? "strong" : q < .88 ? "ok" : "weak") : (q < .7 ? "ok" : "weak"), location: pick(["Leipzig", "Berlin", "Vienna", "Oslo", "Hamburg"]), lastContactAt: d(Math.round(c * c * 9 * (.3 + rnd() * 1.6))), lastContactKind: pick(["call", "met", "message"]) });
+        add({ name: nm, group: gc[0], kinRole: gc[0] === "Family" ? KR[i][0] || "" : "", kinSide: gc[0] === "Family" ? KR[i][1] || "" : "", relationship: gc[0] === "Family" ? "Family" : gc[0] === "Work" ? "Colleague" : "Friend", circle: c, quality: c <= 3 ? (q < .2 ? "strong" : q < .88 ? "ok" : "weak") : (q < .7 ? "ok" : "weak"), location: pick(["Leipzig", "Berlin", "Vienna", "Oslo", "Hamburg"]), lastContactAt: d(Math.round(c * c * 9 * (.3 + rnd() * 1.6))), lastContactKind: pick(["call", "met", "message"]) });
       }
       for (i = first; i < people.length; i++) if (rnd() < .7) link(people[i], people[first + Math.floor(rnd() * (people.length - first))]);
     });
@@ -162,5 +175,5 @@
   }
 
   window.PPPeopleCore = { RINGS: RINGS, QL: QL, EN: EN, KIND: KIND, RHYTHMS: RHYTHMS, MON: MON, RLINE: RLINE, build: build, pulse: pulse, layout: layout, linePath: linePath, arc: arc,
-    sample: sample, fmtDay: fmtDay, ago: ago, inDays: inDays, rhythmText: rhythmText, dayNum: dayNum };
+    sample: sample, KIN: KIN, KIN_SIDED: KIN_SIDED, SIDE: SIDE, groupColors: groupColors, fmtDay: fmtDay, ago: ago, inDays: inDays, rhythmText: rhythmText, dayNum: dayNum };
 })();

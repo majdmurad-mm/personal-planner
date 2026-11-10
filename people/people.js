@@ -5,9 +5,10 @@
 (function () {
   "use strict";
   var SRC = document.currentScript && document.currentScript.src || "", BASE = SRC.replace(/[^\/]*$/, ""), VER = (SRC.match(/[?&]v=([^&]+)/) || [])[1] || "1";
-  var C = window.PPPeopleCore, K = window.PPPeopleSky, esc = K.esc, av = K.av, RINGS = C.RINGS, QL = C.QL, EN = C.EN;
+  var C = window.PPPeopleCore, K = window.PPPeopleSky, T = window.PPPeopleTree, esc = K.esc, av = K.av, RINGS = C.RINGS, QL = C.QL, EN = C.EN;
   var S = { opts: null, root: null, pp: null, M: null, raw: null, sits: [], links: [], loadedFor: null, sample: false, view: "sky",
     st: { sel: null, showConn: false, flt: {}, group: "", ring: "", quality: "", q: "", narrow: false }, open: null };
+  var Z = { box: { sky: null, tree: null }, ptrs: {}, n: 0, moved: false };   // zoom: the current viewBox per view (null = home)
   function $(sel) { return S.root.querySelector(sel); }
   function say(msg) { if (S.opts.toast) S.opts.toast(msg); }
   function fonts() {
@@ -23,7 +24,7 @@
     S.pp.innerHTML =
       '<div class="sample" id="sample" hidden><b>SAMPLE</b> · these people are invented. Yours appear here once you are signed in and have added someone.</div>' +
       '<header class="top"><div class="title"><div class="eyebrow">People</div><h1 id="h1"></h1></div>' +
-      '<div class="seg views" role="group" aria-label="View"><button data-view="sky">Constellation</button><button data-view="graph">Clusters</button><button data-view="list">List</button><button data-view="table">Table</button></div>' +
+      '<div class="seg views" role="group" aria-label="View"><button data-view="sky">Constellation</button><button data-view="tree">Tree</button><button data-view="graph">Clusters</button><button data-view="list">List</button><button data-view="table">Table</button></div>' +
       '<button class="btn primary" id="new">New person</button></header>' +
       '<div class="filters"><input class="search" id="q" type="search" placeholder="Search a name" aria-label="Search people">' +
       '<button class="fchip" data-f="thread" aria-pressed="false">Open thread<span class="n"></span></button><button class="fchip" data-f="drift" aria-pressed="false">Drifting<span class="n"></span></button><button class="fchip" data-f="tense" aria-pressed="false">Tension<span class="n"></span></button>' +
@@ -31,13 +32,13 @@
       '<button class="fchip" data-f="archived" aria-pressed="false">Archived<span class="n"></span></button></div>' +
       '<button class="pill" id="pill" aria-expanded="false"></button>' +
       '<main class="stage"><div class="chart" id="chart"><svg id="sky" viewBox="-520 -520 1040 1040" role="group" aria-label="Constellation of people around you"></svg>' +
-      '<div class="legend" id="legend"></div><div class="cornertools"><button class="tool" id="conn" aria-pressed="false">Show connections</button></div></div>' +
+      '<div class="legend" id="legend"></div><div class="cornertools"><button class="tool" id="conn" aria-pressed="false">Show connections</button><span class="zoom" role="group" aria-label="Zoom"><button class="tool" id="zOut" aria-label="Zoom out">−</button><button class="tool" id="zIn" aria-label="Zoom in">+</button><button class="tool" id="zHome" disabled>Reset</button></span></div></div>' +
       '<div class="list" id="list" hidden></div>' +
       '<aside class="rail" id="rail" aria-label="Pulse and person details"><div class="pulse" id="pulse"></div><div class="panel" id="panel"></div></aside></main>';
     $("#legend").innerHTML = ["strong", "ok", "weak", "strained", "conflict"].map(function (q) { return "<span>" + K.glyph(q) + QL[q] + "</span>"; }).join("") + "<span><i></i>Open thread</span>";
     $("#fRing").innerHTML = '<option value="">Circle</option>' + [1, 2, 3, 4, 5].map(function (c) { return '<option value="' + c + '">' + RINGS[c] + "</option>"; }).join("");
     $("#fQual").innerHTML = '<option value="">Quality</option>' + Object.keys(QL).map(function (q) { return '<option value="' + q + '">' + QL[q] + "</option>"; }).join("");
-    S.root.addEventListener("click", onClick);
+    S.root.addEventListener("click", onClick); zoomWire($("#sky"));
     S.root.addEventListener("keydown", function (e) {
       var n = e.target.closest && e.target.closest(".nd");
       if (n && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); select(n.getAttribute("data-id")); }
@@ -53,7 +54,7 @@
     var o = S.opts, ctx = o.ctx ? o.ctx() : {}, today = ctx.today || new Date().toISOString().slice(0, 10);
     S.sample = !o.userId || !(o.people || []).length;
     if (S.sample) { if (!S.raw || !S.raw.isSample) { S.raw = C.sample(today); S.raw.isSample = true; } return S.raw; }
-    S.raw = { people: o.people, actions: ctx.actions, events: ctx.events, notes: ctx.notes, sits: S.sits, links: S.links, today: today };
+    S.raw = { people: o.people, actions: ctx.actions, events: ctx.events, notes: ctx.notes, sits: S.sits, links: S.links, today: today, colors: o.groupColors || null };
     return S.raw;
   }
   function load() {
@@ -81,7 +82,7 @@
     $('[data-f="archived"] .n').textContent = M.P.filter(function (p) { return p.archived; }).length || "";
     var g = $("#fGroup"); g.innerHTML = '<option value="">Group</option>' + M.allGroups.map(function (x) { return '<option value="' + esc(x) + '">' + esc(x) + "</option>"; }).join(""); g.value = S.st.group; if (g.value !== S.st.group) S.st.group = "";
     [].forEach.call(S.root.querySelectorAll(".views button"), function (b) { b.setAttribute("aria-pressed", b.getAttribute("data-view") === S.view); });
-    pulse(); body(true);
+    S.pp.setAttribute("data-view", S.view); pulse(); body(true);
     var a = S.root.activeElement, typing = external && a && /TEXTAREA|INPUT|SELECT/.test(a.tagName) && a.closest(".panel");
     if (!typing) panel();
   }
@@ -90,7 +91,59 @@
     $("#chart").hidden = list; $("#list").hidden = !list;
     $("#chart").style.display = list ? "none" : ""; $("#list").style.display = list ? "" : "none";
     if (list) $("#list").innerHTML = K.listHtml(S.M, S.st);
-    else if (full) K.draw($("#sky"), S.M, S.st); else K.paint($("#sky"), S.M, S.st);
+    else {
+      var svg = $("#sky"), tree = S.view === "tree" && T;
+      if (full || svg._tree !== !!tree) { svg._tree = !!tree; svg.setAttribute("aria-label", tree ? "Family tree and the people around you" : "Constellation of people around you"); (tree ? T : K).draw(svg, S.M, S.st); setBox(Z.box[S.view]); }
+      else K.paint(svg, S.M, S.st);
+    }
+  }
+
+  /* ---------- zoom and pan: the SVG viewBox is the camera ---------- */
+  function home(svg) {
+    if (!svg._tree) { var VB = S.st.narrow ? 600 : 540; return [-VB, -VB, 2 * VB, 2 * VB]; }
+    var vb = svg._vb || [-500, -300, 1000, 700], r = svg.getBoundingClientRect(), asp = r.width ? r.height / r.width : .7, f = svg._focus, w = Math.min(vb[2], S.st.narrow ? 640 : Math.min(1250, Math.max(900, f ? f[2] + 60 : 0)));
+    var cx = vb[2] <= w ? vb[0] + vb[2] / 2 : Math.max(vb[0] + w / 2, Math.min(vb[0] + vb[2] - w / 2, 0));
+    return [cx - w / 2, vb[1], w, w * asp];
+  }
+  function span(svg, h) { return [h[2] / 9, Math.max(h[2], svg._tree && svg._vb ? svg._vb[2] : 0, svg._tree && svg._vb ? svg._vb[3] * h[2] / h[3] : 0) * 1.15]; }
+  function setBox(b) {
+    var svg = $("#sky"), h = home(svg);
+    if (b && Math.abs(b[2] - h[2]) < 1 && Math.abs(b[0] - h[0]) < 1 && Math.abs(b[1] - h[1]) < 1) b = null;
+    Z.box[S.view] = b; var v = b || h;
+    svg.setAttribute("viewBox", v.map(function (n) { return n.toFixed(1); }).join(" "));
+    svg.classList.toggle("zoomed", h[2] / v[2] >= 1.45); svg.style.setProperty("--iz", Math.min(1, Math.pow(v[2] / h[2], .55)).toFixed(3)); svg.classList.toggle("zin", !!b);
+    var z = $("#zHome"); if (z) z.disabled = !b;
+  }
+  function zoomAt(x, y, f) {
+    var svg = $("#sky"), h = home(svg), cur = Z.box[S.view] || h, m = svg.getScreenCTM(), lim = span(svg, h); if (!m || !m.a) return;
+    f = Math.max(cur[2] / lim[1], Math.min(cur[2] / lim[0], f));
+    var px = (x - m.e) / m.a, py = (y - m.f) / m.d;
+    setBox([px - (px - cur[0]) / f, py - (py - cur[1]) / f, cur[2] / f, cur[3] / f]);
+  }
+  function panBy(dx, dy) { var svg = $("#sky"), cur = Z.box[S.view] || home(svg), m = svg.getScreenCTM(); if (m && m.a) setBox([cur[0] - dx / m.a, cur[1] - dy / m.d, cur[2], cur[3]]); }
+  function zoomBtn(f) { var r = $("#sky").getBoundingClientRect(); zoomAt(r.left + r.width / 2, r.top + r.height / 2, f); }
+  function zoomWire(svg) {
+    svg.addEventListener("wheel", function (e) {
+      if (S.st.narrow && !e.ctrlKey && !Z.box[S.view] && !svg._tree) return;          // a small window: let the page scroll until you zoom in
+      e.preventDefault(); zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * (e.deltaMode ? .05 : .0016) * (e.ctrlKey ? 4 : 1)));
+    }, { passive: false });
+    svg.addEventListener("pointerdown", function (e) { if (e.button) return; if (!Z.n) Z.moved = false; Z.ptrs[e.pointerId] = { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY }; Z.n = Object.keys(Z.ptrs).length; });
+    svg.addEventListener("pointermove", function (e) {
+      var p = Z.ptrs[e.pointerId]; if (!p) return;
+      var ids = Object.keys(Z.ptrs), dx = e.clientX - p.x, dy = e.clientY - p.y;
+      if (ids.length === 1) {
+        if (!Z.moved && Math.hypot(e.clientX - p.x0, e.clientY - p.y0) < 6) return;
+        if (!Z.moved) { Z.moved = true; svg.classList.add("grab"); try { svg.setPointerCapture(e.pointerId); } catch (x) { /* fine */ } dx = e.clientX - p.x0; dy = e.clientY - p.y0; }
+        panBy(dx, dy);
+      } else if (ids.length === 2) {
+        var o = Z.ptrs[ids[0] === String(e.pointerId) ? ids[1] : ids[0]], d0 = Math.hypot(p.x - o.x, p.y - o.y), d1 = Math.hypot(e.clientX - o.x, e.clientY - o.y);
+        Z.moved = true; panBy(dx / 2, dy / 2); if (d0 > 8 && d1 > 8) zoomAt((e.clientX + o.x) / 2, (e.clientY + o.y) / 2, d1 / d0);
+      }
+      p.x = e.clientX; p.y = e.clientY;
+    });
+    var up = function (e) { delete Z.ptrs[e.pointerId]; Z.n = Object.keys(Z.ptrs).length; if (!Z.n) svg.classList.remove("grab"); };
+    svg.addEventListener("pointerup", up); svg.addEventListener("pointercancel", up);
+    svg.addEventListener("dblclick", function (e) { if (!e.target.closest(".nd")) zoomAt(e.clientX, e.clientY, 1.8); });
   }
   function pulse() {
     var D = C.pulse(S.M), it = function (p, inner) { return '<button class="item" data-id="' + p.id + '">' + av(p) + "<span>" + inner + "</span></button>"; };
@@ -114,11 +167,13 @@
     if (S.open === "sit") h += '<textarea id="sitText" aria-label="How things are with ' + esc(first) + '" placeholder="How are things with ' + esc(first) + ' right now?"></textarea><div class="acts"><button class="btn primary" id="sitSave">Save note</button><button class="btn" data-open="">Cancel</button></div>';
     else h += (s ? "<p>" + esc(s.t) + '</p><span class="by">' + by(s) + '<button class="lk" data-hide="' + s.id + '">Hide</button></span>' : '<p class="empty">Nothing written yet. Write a line here, or tell Claude how things are with ' + esc(first) + " and it lands here.</p>") + '<div class="acts"><button class="btn" data-open="sit">' + (s ? "Write an update" : "Write a note") + "</button></div>";
     if (p.sits.length > 1) h += '<details class="hist"><summary>Earlier notes (' + (p.sits.length - 1) + ")</summary><ul>" + p.sits.slice(1).map(function (x) { return "<li>" + esc(x.t) + '<span class="by">' + by(x) + '<button class="lk" data-hide="' + x.id + '">Hide</button></span></li>'; }).join("") + "</ul></details>";
-    h += '</div><div class="chips">' + chip("quality", QL[p.quality], K.glyph(p.quality)) + chip("energy", p.energy === "neutral" ? "Energy" : (p.energy === "nourishing" ? "← " : "→ ") + EN[p.energy]) + chip("circle", RINGS[p.circle] + " circle") + chip("rhythm", p.rhythm ? "Rhythm · " + C.rhythmText(p.rhythm) : "No rhythm") + "</div>" +
+    h += '</div><div class="chips">' + chip("quality", QL[p.quality], K.glyph(p.quality)) + chip("energy", p.energy === "neutral" ? "Energy" : (p.energy === "nourishing" ? "← " : "→ ") + EN[p.energy]) + chip("circle", RINGS[p.circle] + " circle") + chip("rhythm", p.rhythm ? "Rhythm · " + C.rhythmText(p.rhythm) : "No rhythm") + (p.rel === "Family" || p.rel === "Partner" || p.kinRole ? chip("kin", p.kinRole ? C.KIN[p.kinRole] + (p.kinSide ? " · " + C.SIDE[p.kinSide].toLowerCase() : "") : "Family role") : "") + "</div>" +
       opts("quality", "How it is between you", Object.keys(QL).map(function (q) { return [q, QL[q], K.glyph(q)]; }), p.quality) +
       opts("energy", "What it does to your energy", [["nourishing", "← Gives energy"], ["neutral", "Even"], ["draining", "→ Takes energy"]], p.energy) +
       opts("circle", "How close", [1, 2, 3, 4, 5].map(function (c) { return [c, RINGS[c]]; }), p.circle) +
-      opts("rhythm", "How often you'd like to be in touch. Only people with a rhythm can drift.", C.RHYTHMS, p.rhythm || 0);
+      opts("rhythm", "How often you'd like to be in touch. Only people with a rhythm can drift.", C.RHYTHMS, p.rhythm || 0) +
+      opts("kin", "Who " + esc(first) + " is to you. This places them in the Tree view.", Object.keys(C.KIN).map(function (k) { return [k, C.KIN[k]]; }).concat([["", "Not set"]]), p.kinRole) +
+      (S.open === "kin" && C.KIN_SIDED[p.kinRole] ? '<div class="opts"><div class="lab">On which side</div>' + Object.keys(C.SIDE).map(function (k) { return '<button class="chip" data-set="side:' + k + '" aria-pressed="' + (p.kinSide === k) + '">' + C.SIDE[k] + "</button>"; }).join("") + "</div>" : "");
     h += '<div class="row"><div class="lab">Last contact</div><p>' + (p.last != null ? C.KIND[p.kind] + " " + C.ago(p.last) + (p.drift ? ' <span class="soft">· a little longer than your rhythm</span>' : "") : '<span class="soft">Not noted yet.</span>') + '</p><div class="acts"><span class="soft" style="font-size:12.5px">Today I</span><button class="btn" data-log="call">talked</button><button class="btn" data-log="met">met</button><button class="btn" data-log="message">messaged</button></div></div>';
     h += '<div class="row"><div class="lab">Open between you</div>' + (p.threads.length ? p.threads.map(function (t) { return '<div class="thread"><i></i><span>' + esc(t.t) + "<small>" + (t.date ? C.fmtDay(t.date) + " · " : "") + 'planner action</small></span><button data-act="' + t.id + '">Open</button></div>'; }).join("") : '<p class="empty">Nothing open. Actions linked to ' + esc(first) + " appear here.</p>") + "</div>";
     var up = p.up.filter(function (u) { return !u.bday; });
@@ -166,13 +221,15 @@
   }
 
   function onClick(e) {
-    var t = e.target, b = t.closest("button"); if (!b && !t.closest(".nd") && t.closest("#sky")) return select(null);
+    var t = e.target, b = t.closest("button"); if (Z.moved && t.closest("#sky")) { Z.moved = false; return; }
+    if (!b && !t.closest(".nd") && t.closest("#sky")) return select(null);
     var nd = t.closest(".nd"); if (nd) return select(nd.getAttribute("data-id"));
     if (!b) return;
     var id = S.st.sel, p = person(id), d = function (k) { return b.getAttribute(k); };
-    if (d("data-view")) { var v = d("data-view"); if (v === "sky" || v === "list") { S.view = v; S.st.flt.archived = false; $('[data-f="archived"]').setAttribute("aria-pressed", "false"); refresh(); } if (S.opts.onView) S.opts.onView(v); return; }
+    if (d("data-view")) { var v = d("data-view"); if (v === "sky" || v === "list" || v === "tree") { S.view = v; S.st.flt.archived = false; $('[data-f="archived"]').setAttribute("aria-pressed", "false"); refresh(); } if (S.opts.onView) S.opts.onView(v); return; }
     if (d("data-f")) { var k = d("data-f"); S.st.flt[k] = !S.st.flt[k]; b.setAttribute("aria-pressed", !!S.st.flt[k]); return body(k === "archived"); }
     if (b.id === "new") return S.sample && !S.opts.userId ? say("Sign in to add people.") : S.opts.onNew && S.opts.onNew();
+    if (b.id === "zIn") return zoomBtn(1.5); if (b.id === "zOut") return zoomBtn(1 / 1.5); if (b.id === "zHome") return setBox(null);
     if (b.id === "conn") { S.st.showConn = !S.st.showConn; b.setAttribute("aria-pressed", S.st.showConn); return body(); }
     if (b.id === "pill") { var on = S.pp.classList.toggle("pulse-open"); b.setAttribute("aria-expanded", on); return pulse(); }
     if (b.id === "back") return select(null);
@@ -180,7 +237,10 @@
     if (!p) return;
     if (b.hasAttribute("data-open")) { S.open = S.open === d("data-open") ? null : d("data-open") || null; return panel(); }
     if (d("data-set")) { var kv = d("data-set").split(":"), f = {}; S.open = null;
-      if (kv[0] === "quality") f.quality = kv[1]; else if (kv[0] === "energy") f.energy = kv[1]; else if (kv[0] === "circle") f.circle = +kv[1]; else f.rhythmDays = +kv[1] || null;
+      if (kv[0] === "quality") f.quality = kv[1]; else if (kv[0] === "energy") f.energy = kv[1]; else if (kv[0] === "circle") f.circle = +kv[1];
+      else if (kv[0] === "kin") { f.kinRole = kv[1] || null; if (!C.KIN_SIDED[kv[1]]) f.kinSide = null; else if (!p.kinSide) S.open = "kin"; }
+      else if (kv[0] === "side") f.kinSide = kv[1] || null;
+      else f.rhythmDays = +kv[1] || null;
       return patch(id, f); }
     if (d("data-log")) return patch(id, { lastContactAt: S.raw.today, lastContactKind: d("data-log") });
     if (d("data-act")) return S.sample ? null : S.opts.onOpenAction && S.opts.onOpenAction(d("data-act"));
@@ -198,7 +258,7 @@
   /* ---------- mount ---------- */
   function mount(host, opts) {
     S.opts = opts || {};
-    if (opts.view === "sky" || opts.view === "list") S.view = opts.view;
+    if (opts.view === "sky" || opts.view === "list" || opts.view === "tree") S.view = opts.view;
     if (!S.root || S.host !== host) {
       S.host = host; S.root = host.shadowRoot || host.attachShadow({ mode: "open" }); S.root.innerHTML = "";
       var css = document.createElement("link"); css.rel = "stylesheet"; css.href = BASE + "people.css?v=" + VER;
