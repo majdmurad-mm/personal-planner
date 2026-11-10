@@ -1,0 +1,266 @@
+/* Knowledge page: graph, list, search, detail panel and the "to sort" inbox, in a shadow root.
+   It only draws and reports what the person did; the host (index.html) reads files, saves and searches. */
+(function () {
+  var K = window.PPKnowledgeCore, P = window.PPKnowledge = {};
+  var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
+  var fmtD = function (s) { var d = new Date(s); return isNaN(d) ? "" : d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }); };
+  var SRC = { upload: "uploaded", claude: "saved by Claude", me: "added by you", journal: "from your notes" };
+  function shape(kind, x, y, s) {
+    s = s || 1; var c = 'class="node"';
+    if (kind === "doc") return "<rect " + c + ' x="' + (x - 6 * s) + '" y="' + (y - 8 * s) + '" width="' + 12 * s + '" height="' + 16 * s + '" rx="2"/>';
+    if (kind === "book") return "<rect " + c + ' x="' + (x - 8 * s) + '" y="' + (y - 7 * s) + '" width="' + 16 * s + '" height="' + 14 * s + '" rx="2"/><line x1="' + (x - 3 * s) + '" y1="' + (y - 7 * s) + '" x2="' + (x - 3 * s) + '" y2="' + (y + 7 * s) + '" stroke="var(--c)" stroke-width="1.2"/>';
+    if (kind === "link") return "<circle " + c + ' cx="' + x + '" cy="' + y + '" r="' + 7 * s + '"/>';
+    if (kind === "idea") return "<rect " + c + ' x="' + (x - 6.5 * s) + '" y="' + (y - 6.5 * s) + '" width="' + 13 * s + '" height="' + 13 * s + '" transform="rotate(45 ' + x + " " + y + ')"/>';
+    if (kind === "person") return "<circle " + c + ' cx="' + x + '" cy="' + y + '" r="' + 8 * s + '"/><circle cx="' + x + '" cy="' + y + '" r="' + 3 * s + '" fill="var(--c)"/>';
+    return "<polygon " + c + ' points="' + [0, 1, 2, 3, 4, 5].map(function (i) { var a = Math.PI / 3 * i - Math.PI / 2; return (x + Math.cos(a) * 8 * s).toFixed(1) + "," + (y + Math.sin(a) * 8 * s).toFixed(1); }).join(" ") + '"/>';
+  }
+  var icon = function (zone) { return '<svg class="ic" viewBox="-10 -10 20 20" style="--c:var(--' + zone + ')" aria-hidden="true">' + shape(K.shapeOf(zone), 0, 0) + "</svg>"; };
+  var mark = function (s) { return esc(s).replace(/«/g, "<mark>").replace(/»/g, "</mark>"); };
+
+  P.mount = function (host, o) {
+    o = o || {};
+    var root = host.shadowRoot || host.attachShadow({ mode: "open" });
+    var S = { items: [], edges: [], view: null, q: "", results: null, searching: false, sel: null, edit: false, f: { zone: "", type: "", topic: "", source: "" }, sort: { key: "createdAt", dir: -1 }, cam: { x: 0, y: 0, k: 1 }, sheet: null, progress: "", sample: !!o.sample, settings: {}, usage: null, meaning: null };
+    var theme = o.theme || "light", L = null, links = [], byId = {}, W = 1000, H = 640, narrow = false, still = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches, raf = 0, searchT = 0, searchN = 0;
+    var call = function (name) { var a = [].slice.call(arguments, 1); return Promise.resolve(o[name] ? o[name].apply(null, a) : null); };
+    root.innerHTML = '<link rel="stylesheet" href="' + (o.css || "knowledge/knowledge.css") + '"><div class="kn"></div>';
+    var kn = root.querySelector(".kn"), $ = function (q) { return root.querySelector(q); };
+
+    function setData(d) {
+      ["items", "edges", "settings", "usage", "meaning"].forEach(function (k) { if (d[k] !== undefined) S[k] = d[k]; });
+      S.items.forEach(function (i) { if (!i.topic) i.topic = K.topicOf(i); });
+      byId = {}; S.items.forEach(function (i) { byId[i.id] = i; });
+      if (S.sel && (!byId[S.sel] || byId[S.sel].archived)) S.sel = null;
+      relayout();
+    }
+    function relayout() {
+      narrow = host.getBoundingClientRect().width < 900; W = narrow ? 380 : 1000; H = narrow ? 620 : 640;
+      L = K.layout(S.items, W, H, narrow ? K.REGION_TALL : null); links = K.edges(S.items, S.edges);
+      if (!S.cam.x) S.cam = { x: W / 2, y: H / 2, k: 1 };
+      if (S.view == null) S.view = narrow ? "list" : "graph";
+    }
+    var live = function () { return S.items.filter(function (i) { return !i.archived; }); };
+    var linked = function (id) { var out = []; links.forEach(function (e) { if (e.from === id) out.push([e.to, e.kind]); else if (e.to === id) out.push([e.from, e.kind]); }); return out; };
+    var degree = function (id) { return linked(id).length; };
+    var hitIds = function () { return S.results ? S.results.map(function (r) { return r.id; }).filter(function (id, i, a) { return a.indexOf(id) === i; }) : []; };
+
+    /* ----- graph ----- */
+    function graphInner() {
+      var k = S.cam.k, hits = hitIds(), focus = S.sel && byId[S.sel] ? S.sel : null, near = {}, s = "", zonesOnly = narrow && k < 1.5 && !focus && !hits.length;
+      if (focus) { near[focus] = 1; near["topic:" + byId[focus].zone + ":" + byId[focus].topic] = 1; linked(focus).forEach(function (x) { near[x[0]] = 1; }); }
+      var lit = function (id) { return focus ? !!near[id] : hits.length ? hits.indexOf(id) >= 0 : true; }, quiet = focus || hits.length;
+      L.zones.forEach(function (z) {
+        var col = "var(--" + z.id + ")";
+        s += '<ellipse cx="' + z.cx + '" cy="' + z.cy + '" rx="' + z.rx + '" ry="' + z.ry + '" fill="' + col + '" fill-opacity="var(--zfill)" stroke="' + col + '" stroke-opacity=".28"' + (zonesOnly ? ' class="zone" data-zone="' + z.id + '" tabindex="0" role="button" aria-label="' + esc(z.name + ", " + z.count + " items") + '" style="cursor:pointer"' : "") + "/>";
+        if (zonesOnly) s += '<text class="zl" text-anchor="middle" x="' + z.cx + '" y="' + (z.cy - 20) + '" style="fill:' + col + ';font-size:9.5px">' + esc(z.name) + '</text><text text-anchor="middle" x="' + z.cx + '" y="' + (z.cy + 8) + '" style="font:500 24px var(--disp)">' + z.count + "</text>" + z.topics.slice(0, 2).map(function (t, i) { return '<text class="tl" text-anchor="middle" x="' + z.cx + '" y="' + (z.cy + 26 + i * 14) + '">' + esc(t) + "</text>"; }).join("");
+        else s += '<text class="zl gt' + (focus && byId[focus].zone !== z.id ? " dim" : "") + '" x="' + (z.cx - z.rx * 0.62) + '" y="' + (z.cy - z.ry + 4) + '" style="fill:' + col + ";font-size:" + (11 / Math.sqrt(k)).toFixed(1) + 'px">' + esc(z.name) + "</text>";
+      });
+      if (zonesOnly) return s;
+      var items = live();
+      items.forEach(function (i) { var a = L.pos[i.id], b = L.pos["topic:" + i.zone + ":" + i.topic]; if (a && b) s += '<line class="edge gt' + (focus && near[i.id] && near["topic:" + i.zone + ":" + i.topic] ? " hot" : quiet ? " dim" : "") + '" x1="' + a[0].toFixed(1) + '" y1="' + a[1].toFixed(1) + '" x2="' + b[0].toFixed(1) + '" y2="' + b[1].toFixed(1) + '"/>'; });
+      links.forEach(function (e) {
+        var a = L.pos[e.from], b = L.pos[e.to], hot = focus && (e.from === focus || e.to === focus); if (!a || !b) return;
+        if (!hot && (quiet || k < 1.3)) return;                          // only the strongest links by default
+        var mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2 - Math.min(40, Math.hypot(a[0] - b[0], a[1] - b[1]) / 4);
+        s += '<path class="edge x' + (hot ? " hot" : "") + '" d="M' + a[0].toFixed(1) + "," + a[1].toFixed(1) + " Q" + mx.toFixed(1) + "," + my.toFixed(1) + " " + b[0].toFixed(1) + "," + b[1].toFixed(1) + '"/>' + (hot && Math.hypot(a[0] - b[0], a[1] - b[1]) > 110 ? '<text class="tl" x="' + (mx - 18) + '" y="' + (my + 14) + '" style="fill:var(--acc);font-size:' + (11.5 / Math.sqrt(k)).toFixed(1) + 'px">' + esc(K.EDGE_LABEL[e.kind] || e.kind) + "</text>" : "");
+      });
+      L.topics.forEach(function (t) { var on = !quiet || (focus && near[t.id]); s += '<g class="gt' + (on ? "" : " dim") + '" style="--c:var(--' + t.zone + ')"><circle class="hub" cx="' + t.x.toFixed(1) + '" cy="' + t.y.toFixed(1) + '" r="' + (4.5 / Math.sqrt(k)).toFixed(1) + '"/><text class="tl" text-anchor="middle" x="' + t.x.toFixed(1) + '" y="' + (t.y - 9).toFixed(1) + '" style="font-size:' + (11.5 / Math.sqrt(k)).toFixed(1) + 'px">' + esc(t.name) + "</text></g>"; });
+      var recent = items.slice().sort(function (a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); }).slice(0, 6).map(function (i) { return i.id; });
+      items.forEach(function (i) {
+        var p = L.pos[i.id]; if (!p) return;
+        var on = lit(i.id), isSel = i.id === focus, hit = hits.indexOf(i.id) >= 0, sc = (isSel ? 1.5 : hit ? 1.25 : 0.82 + Math.min(degree(i.id), 3) * 0.08 + (recent.indexOf(i.id) >= 0 ? 0.1 : 0)) / Math.sqrt(k);
+        var label = isSel || hit || (focus && on) || k >= 2.3 || (k >= 1.35 && (degree(i.id) >= 1 || recent.indexOf(i.id) >= 0)), title = i.title.length > 34 ? i.title.slice(0, 33) + "…" : i.title;
+        s += '<g class="n gt' + (on ? "" : " dim") + (isSel ? " on" : "") + '" data-id="' + esc(i.id) + '" tabindex="0" role="button" aria-label="' + esc(i.title + ", " + K.typeName(i.zone, i.type) + ", " + K.zoneName(i.zone)) + '" style="--c:var(--' + i.zone + ')">' + (isSel || hit ? '<circle class="halo" cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="' + ((isSel ? 26 : 20) / Math.sqrt(k)).toFixed(1) + '"/>' : "") + '<circle cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="' + (13 / Math.sqrt(k)).toFixed(1) + '" fill="transparent"/>' + shape(K.shapeOf(i.zone), +p[0].toFixed(1), +p[1].toFixed(1), sc) +
+          (label ? '<text class="nl" text-anchor="middle" x="' + p[0].toFixed(1) + '" y="' + (p[1] + 22 * sc * 1.1).toFixed(1) + '" style="font-size:' + ((isSel ? 12.5 : 11) / Math.sqrt(k)).toFixed(1) + "px" + (isSel ? ";font-weight:700" : "") + '">' + esc(title) + "</text>" : "") + "</g>";
+      });
+      return s;
+    }
+    var vb = function () { var c = S.cam; return (c.x - W / (2 * c.k)).toFixed(1) + " " + (c.y - H / (2 * c.k)).toFixed(1) + " " + (W / c.k).toFixed(1) + " " + (H / c.k).toFixed(1); };
+    function graphHtml() {
+      var types = [["doc", "Document"], ["book", "Book or paper"], ["link", "Link or media"], ["idea", "Idea"], ["person", "Author"], ["note", "My note"]];
+      return '<div class="graph"><svg id="knSvg" viewBox="' + vb() + '" role="group" aria-label="Knowledge graph: six zones, with topics and items inside each. Use Tab to move between items and Enter to open one. The List view shows the same items as a table.">' + graphInner() + '</svg><div class="legend wide">' + types.map(function (t) { return '<span style="--c:var(--muted)"><svg viewBox="-10 -10 20 20" class="ic" style="--c:var(--muted)">' + shape(t[0], 0, 0) + "</svg>" + t[1] + "</span>"; }).join("") + '</div><div class="zoom"><button data-zoom="-1" aria-label="Zoom out">−</button><button data-zoom="0" aria-label="Show everything">⤢</button><button data-zoom="1" aria-label="Zoom in">+</button></div></div>';
+    }
+    var level = function (k) { return k < 1.35 ? 0 : k < 1.5 ? 1 : k < 2.3 ? 2 : 3; };
+    function clampCam(c) { c.k = Math.max(1, Math.min(5, c.k)); var hw = W / (2 * c.k), hh = H / (2 * c.k); c.x = Math.max(hw, Math.min(W - hw, c.x)); c.y = Math.max(hh, Math.min(H - hh, c.y)); return c; }
+    function setCam(c, redraw) { var before = level(S.cam.k); S.cam = clampCam(c); var svg = $("#knSvg"); if (!svg) return; svg.setAttribute("viewBox", vb()); if (redraw || level(S.cam.k) !== before) svg.innerHTML = graphInner(); }
+    function flyTo(c) {
+      cancelAnimationFrame(raf); c = clampCam(c);
+      if (still) { setCam(c, true); return; }
+      var a = { x: S.cam.x, y: S.cam.y, k: S.cam.k }, t0 = null;
+      var step = function (ts) { if (t0 == null) t0 = ts; var t = Math.min(1, (ts - t0) / 380), e = 1 - Math.pow(1 - t, 3); setCam({ x: a.x + (c.x - a.x) * e, y: a.y + (c.y - a.y) * e, k: a.k + (c.k - a.k) * e }, t === 1); if (t < 1) raf = requestAnimationFrame(step); };
+      raf = requestAnimationFrame(step);
+    }
+    function flyToIds(ids) {
+      var pts = ids.map(function (id) { return L.pos[id]; }).filter(Boolean); if (!pts.length) return;
+      var x0 = Math.min.apply(0, pts.map(function (p) { return p[0]; })), x1 = Math.max.apply(0, pts.map(function (p) { return p[0]; })), y0 = Math.min.apply(0, pts.map(function (p) { return p[1]; })), y1 = Math.max.apply(0, pts.map(function (p) { return p[1]; }));
+      flyTo({ x: (x0 + x1) / 2, y: (y0 + y1) / 2, k: Math.max(1, Math.min(2.6, 0.7 * Math.min(W / (x1 - x0 + 160), H / (y1 - y0 + 160)))) });
+    }
+
+    /* ----- panels ----- */
+    function detail(i) {
+      var m = i.meta || {}, lk = linked(i.id), dup = i.mirror ? null : K.duplicateOf(S.items, i), kv = [], ro = !!i.mirror;
+      if (m.author) kv.push(["Author", m.author]); if (m.starts) kv.push(["Starts", m.starts]); if (m.notice) kv.push(["Notice period", m.notice]); if (m.expires) kv.push(["Valid until", m.expires]); if (m.isbn) kv.push(["ISBN", m.isbn]);
+      if ((m.named || []).length) kv.push(["Named", m.named.join(", ")]); if ((m.works || []).length) kv.push(["Works", m.works.join(", ")]); if ((m.dates || []).length) kv.push(["Dates in it", m.dates.slice(0, 5).join(", ")]); if (m.language) kv.push(["Language", m.language === "de" ? "German" : m.language === "en" ? "English" : m.language]);
+      var head = '<button class="btn sm x" data-act="close" aria-label="Close">✕</button><p class="lab" style="color:var(--' + i.zone + ')">' + esc(K.zoneName(i.zone)) + " · " + esc(K.typeName(i.zone, i.type)) + "</p>";
+      if (S.edit && !ro) {
+        var zt = []; K.ZONES.forEach(function (z) { if (z[0] === "mine" && i.zone !== "mine") return; K.TYPES[z[0]].forEach(function (t) { zt.push('<option value="' + z[0] + "|" + t[0] + '"' + (z[0] === i.zone && t[0] === i.type ? " selected" : "") + ">" + esc(z[1] + " · " + t[1]) + "</option>"); }); });
+        return head + '<h2>Edit</h2><div class="f"><label for="knT">Title</label><input class="in" id="knT" value="' + esc(i.title) + '"></div><div class="f"><label for="knZ">Zone and type</label><select class="in" id="knZ">' + zt.join("") + '</select></div><div class="f"><label for="knTo">Topic</label><input class="in" id="knTo" list="knTopics" value="' + esc(i.topic) + '"><datalist id="knTopics">' + L.topics.map(function (t) { return t.name; }).filter(function (n, k, a) { return a.indexOf(n) === k; }).map(function (n) { return '<option value="' + esc(n) + '">'; }).join("") + '</datalist></div><div class="f"><label for="knS">Summary</label><textarea class="in" id="knS">' + esc(i.summary) + '</textarea></div><div class="f"><label for="knW">Why it matters</label><input class="in" id="knW" value="' + esc(i.why) + '"></div><div class="f"><label for="knG">Tags, separated by commas</label><input class="in" id="knG" value="' + esc((i.tags || []).join(", ")) + '"></div><div class="acts"><button class="btn pri" data-act="save">Save</button><button class="btn" data-act="cancel">Cancel</button></div>';
+      }
+      return head + "<h2>" + esc(i.title) + '</h2><p class="sub">' + [SRC[i.source] || i.source, i.pages ? i.pages + (i.pages === 1 ? " page" : " pages") : "", fmtD(i.createdAt), i.needsSort ? "waiting to be sorted" : ""].filter(Boolean).map(esc).join(" · ") + "</p>" +
+        (i.summary ? '<p style="margin-top:12px">' + esc(i.summary) + "</p>" : "") + (i.why ? '<p class="sub" style="margin-top:8px">Why it matters: ' + esc(i.why) + "</p>" : "") +
+        (i.url ? '<p style="margin-top:8px;overflow-wrap:anywhere"><a href="' + esc(i.url) + '" target="_blank" rel="noopener noreferrer" style="color:var(--acc)">' + esc(i.url.replace(/^https?:\/\//, "")) + "</a></p>" : "") +
+        (kv.length ? '<dl class="kv">' + kv.map(function (x) { return "<dt>" + esc(x[0]) + "</dt><dd>" + esc(x[1]) + "</dd>"; }).join("") + "</dl>" : "") +
+        '<div class="tags"><span class="tag">topic: ' + esc(i.topic) + "</span>" + (i.tags || []).map(function (t) { return '<span class="tag">' + esc(t) + "</span>"; }).join("") + "</div>" +
+        (S.passages && S.passages.id === i.id && S.passages.list.length ? '<div class="sec"><p class="lab">Matching passages</p>' + S.passages.list.map(function (r) { return '<p class="s" style="font-size:14px;margin-top:6px">' + mark(r.snippet) + (r.page ? ' <span class="sub">· ' + (i.type === "book" && !i.pages ? "section " : "page ") + r.page + "</span>" : "") + "</p>"; }).join("") + "</div>" : "") +
+        (lk.length ? '<div class="sec"><p class="lab">Linked</p>' + lk.map(function (x) { var t = byId[x[0]]; return '<button class="lk" data-id="' + esc(t.id) + '">' + icon(t.zone) + "<span>" + esc(t.title) + "</span><small>" + esc(K.EDGE_LABEL[x[1]] || x[1]) + "</small></button>"; }).join("") + "</div>" : "") +
+        (dup ? '<div class="sec"><p class="warn">This looks the same as “' + esc(dup.title) + '”.</p><div class="acts"><button class="btn sm" data-act="merge" data-other="' + esc(dup.id) + '">Keep this one, archive the other</button></div></div>' : "") +
+        '<div class="acts">' + (i.hasFile ? '<button class="btn pri" data-act="file">Open the file</button>' : "") + (ro ? '<button class="btn" data-act="mirror">Open on the Self page</button>' : '<button class="btn" data-act="edit">Edit or change type</button><button class="btn" data-act="archive">Archive</button>') + "</div>" +
+        '<p class="sub" style="margin-top:12px">' + (ro ? "A read-only copy of one of your notes." : i.hasFile ? "Read and sorted on your device. The file is stored privately in your own database." : "Stored privately in your own database.") + "</p>";
+    }
+    function resultsHtml() {
+      var r = S.results || [];
+      return '<p class="lab">' + (S.searching ? "Searching…" : r.length + (r.length === 1 ? " result" : " results")) + "</p>" + (r.length ? r.map(function (x) { var i = byId[x.id]; if (!i) return ""; return '<button class="res" data-id="' + esc(i.id) + '" data-hit="1"><span class="t">' + icon(i.zone) + "<span>" + esc(i.title) + '</span></span><span class="s">' + mark(x.snippet || i.summary || "") + '</span><span class="m">' + [x.page ? "page " + x.page : "", K.zoneName(i.zone), K.typeName(i.zone, i.type), x.how].filter(Boolean).map(esc).join(" · ") + "</span></button>"; }).join("") : S.searching ? "" : '<p class="sub" style="margin-top:8px">Nothing matches “' + esc(S.q) + "”. Try fewer or different words.</p>") +
+        '<p class="sub" style="margin-top:12px">' + (S.meaning && S.meaning.ready ? "Searching by word and by meaning." : "Searching by word. Meaning search can be switched on under Privacy and search.") + " For a question inside a document, ask Claude; it answers from these passages.</p>";
+    }
+    function listHtml() {
+      var rows = K.filter(S.items, S.f), hits = S.results ? hitIds() : null, k = S.sort.key, dir = S.sort.dir;
+      if (hits) rows = rows.filter(function (i) { return hits.indexOf(i.id) >= 0; });
+      rows.sort(function (a, b) { var x = k === "type" ? K.typeName(a.zone, a.type) : a[k], y = k === "type" ? K.typeName(b.zone, b.type) : b[k]; return String(x || "").localeCompare(String(y || "")) * dir; });
+      var th = function (key, label, cls) { return '<th class="' + (cls || "") + '" aria-sort="' + (k === key ? (dir > 0 ? "ascending" : "descending") : "none") + '"><button data-sort="' + key + '">' + label + (k === key ? (dir > 0 ? " ↑" : " ↓") : "") + "</button></th>"; };
+      return '<div class="panel" style="padding:8px 12px">' + (rows.length ? '<table class="tbl"><thead><tr>' + th("title", "Title") + th("type", "Type", "hide") + th("topic", "Topic", "hide") + th("source", "From", "hide") + th("createdAt", "Added") + "</tr></thead><tbody>" + rows.map(function (i) { return '<tr><td><button class="ti" data-id="' + esc(i.id) + '">' + icon(i.zone) + "<span>" + esc(i.title) + '</span></button><span class="sub narrow" style="display:block">' + esc(K.typeName(i.zone, i.type) + " · " + i.topic) + '</span></td><td class="hide">' + esc(K.typeName(i.zone, i.type)) + '</td><td class="hide">' + esc(i.topic) + '</td><td class="hide">' + esc(SRC[i.source] || i.source) + '</td><td style="white-space:nowrap">' + esc(fmtD(i.createdAt)) + "</td></tr>"; }).join("") + "</tbody></table>" : '<p class="sub" style="padding:18px 8px">' + (live().length ? "Nothing matches these filters." : "Nothing here yet. Add a file, or ask Claude to save a link or an idea.") + "</p>") + "</div>";
+    }
+    function filtersHtml() {
+      var f = S.f, items = live(), types = {}, topics = {};
+      items.forEach(function (i) { if (!f.zone || i.zone === f.zone) { types[i.type] = K.typeName(i.zone, i.type); topics[i.topic] = 1; } });
+      var sel = function (key, label, opts) { return '<select class="sel" data-f="' + key + '" aria-label="' + label + '"><option value="">' + label + "</option>" + opts.map(function (x) { return '<option value="' + esc(x[0]) + '"' + (f[key] === x[0] ? " selected" : "") + ">" + esc(x[1]) + "</option>"; }).join("") + "</select>"; };
+      return '<div class="bar"><button class="chip" data-zonef="" aria-pressed="' + !f.zone + '">All zones</button>' + K.ZONES.map(function (z) { return '<button class="chip" data-zonef="' + z[0] + '" aria-pressed="' + (f.zone === z[0]) + '" style="--c:var(--' + z[0] + ')"><i></i>' + z[1] + "</button>"; }).join("") +
+        sel("type", "Any type", Object.keys(types).map(function (t) { return [t, types[t]]; })) + sel("topic", "Any topic", Object.keys(topics).sort().map(function (t) { return [t, t]; })) + sel("source", "Any source", [["upload", "Uploaded"], ["claude", "Saved by Claude"], ["me", "Added by you"], ["journal", "From your notes"]]) + "</div>";
+    }
+    function sheetHtml() {
+      if (S.sheet === "sort") {
+        var list = live().filter(function (i) { return i.needsSort; });
+        return '<button class="btn sm x" data-act="sheetclose" aria-label="Close">✕</button><p class="lab">To sort</p><h2 style="font:500 22px var(--disp)">What are these?</h2><p class="sub">Pick the right kind and confirm. Nothing is moved until you do.</p>' + (list.length ? list.map(function (i) {
+          var zt = []; K.ZONES.forEach(function (z) { if (z[0] === "mine") return; K.TYPES[z[0]].forEach(function (t) { zt.push('<option value="' + z[0] + "|" + t[0] + '"' + (z[0] === i.zone && t[0] === i.type ? " selected" : "") + ">" + esc(z[1] + " · " + t[1]) + "</option>"); }); });
+          return '<div class="sec"><p style="font-weight:600;overflow-wrap:anywhere">' + esc(i.title) + '</p><p class="sub">' + esc(i.summary ? i.summary.slice(0, 140) : "No readable text was found.") + '</p><div class="acts" style="margin-top:8px"><select class="in" style="flex:1;min-width:180px" data-sortsel="' + esc(i.id) + '" aria-label="Kind for ' + esc(i.title) + '">' + zt.join("") + '</select><button class="btn pri" data-confirm="' + esc(i.id) + '">Confirm</button></div></div>';
+        }).join("") : '<p class="sub" style="margin-top:12px">Nothing is waiting.</p>');
+      }
+      if (S.sheet === "add") return '<button class="btn sm x" data-act="sheetclose" aria-label="Close">✕</button><p class="lab">Add by hand</p><div class="f"><label for="knAK">What is it?</label><select class="in" id="knAK"><option value="web|link">A link</option><option value="ideas|idea">An idea</option><option value="ideas|question">A question I am exploring</option><option value="ideas|quote">A quote</option><option value="thinkers|author">An author or creator</option><option value="mine|note">A note to keep</option></select></div><div class="f"><label for="knAT">Title or text</label><textarea class="in" id="knAT"></textarea></div><div class="f"><label for="knAU">Web address (for a link)</label><input class="in" id="knAU" type="url" placeholder="https://"></div><div class="f"><label for="knAW">Why it matters (optional)</label><input class="in" id="knAW"></div><div class="f"><label for="knAG">Tags, separated by commas (optional)</label><input class="in" id="knAG"></div><div class="acts"><button class="btn pri" data-act="addsave">Save</button></div><p class="msg" id="knAM" role="alert"></p>';
+      var u = S.usage, m = S.meaning || {};
+      return '<button class="btn sm x" data-act="sheetclose" aria-label="Close">✕</button><p class="lab">Privacy and search</p><h2 style="font:500 22px var(--disp)">Who may read what</h2><p class="sub">Files are read and sorted on this device. Nothing is sent to an AI service by this page. The switches below decide which zones Claude may read through the connector when you ask it a question.</p>' +
+        K.ZONES.map(function (z) { var on = !!(S.settings.external || {})[z[0]]; return '<div class="lk" style="cursor:default"><span>' + esc(z[1]) + '</span><small><button class="chip" data-ext="' + z[0] + '" aria-pressed="' + on + '">' + (on ? "Claude may read" : "Kept from Claude") + "</button></small></div>"; }).join("") +
+        '<div class="sec"><p class="lab">Search by meaning</p><p class="sub">' + (m.ready ? "On. " + (m.pending ? m.pending + " passages still need preparing." : "Every passage is prepared.") : "Off. Turning it on downloads a language model once (about 120 MB) and runs it on this device. Best done on a computer, not on the phone.") + '</p><div class="acts"><button class="btn" data-act="meaning"' + (m.busy ? " disabled" : "") + ">" + (m.busy ? "Working…" : m.ready ? (m.pending ? "Prepare the remaining passages" : "Prepared") : "Turn on meaning search") + "</button></div></div>" +
+        (u ? '<div class="sec"><p class="lab">Storage</p><p class="sub">' + (u.bytes / 1048576).toFixed(1) + " MB used by your files" + (u.limit ? " of about " + Math.round(u.limit / 1048576) + " MB on the free plan" : "") + ". Single files can be up to " + Math.round((u.maxFile || 52428800) / 1048576) + " MB.</p>" + (u.limit && u.bytes > u.limit * 0.8 ? '<p class="warn">▲ Storage is nearly full.</p>' : "") + "</div>" : "");
+    }
+    function render() {
+      kn.dataset.theme = theme;
+      var items = live(), toSort = items.filter(function (i) { return i.needsSort; }).length, sel = S.sel ? byId[S.sel] : null, side = sel ? detail(sel) : S.results ? resultsHtml() : "";
+      var keepFocus = root.activeElement && root.activeElement.id === "knQ", pos = keepFocus ? root.activeElement.selectionStart : 0;
+      kn.innerHTML = (S.sample ? '<div class="ribbon" role="note"><b>SAMPLE DATA</b> · invented documents, books and names · nothing below is yours</div>' : "") +
+        '<header class="top"><div><p class="eyebrow">Knowledge</p><h1>' + items.length + (items.length === 1 ? " thing" : " things") + '</h1></div><input class="search" id="knQ" type="search" placeholder="Search by word' + (S.meaning && S.meaning.ready ? " or by meaning" : "") + '" aria-label="Search your knowledge" value="' + esc(S.q) + '">' +
+        '<div class="seg" role="group" aria-label="View"><button data-view="graph" aria-pressed="' + (S.view === "graph") + '">Graph</button><button data-view="list" aria-pressed="' + (S.view === "list") + '">List</button></div>' +
+        '<button class="btn pri" data-act="pick">+ Add files</button><button class="btn" data-act="add">+ Note or link</button><button class="btn" data-act="privacy">Privacy and search</button><input type="file" id="knFile" multiple hidden accept=".pdf,.png,.jpg,.jpeg,.webp,.epub,.docx,.txt,.md,image/*,application/pdf"></header>' +
+        (S.view === "list" || S.results ? filtersHtml() : "") +
+        (S.progress ? '<div class="note" role="status" aria-live="polite"><span>' + esc(S.progress) + "</span></div>" : "") +
+        (toSort ? '<div class="note"><span><b>' + toSort + " to sort</b> · not sure what " + (toSort === 1 ? "this is" : "these are") + ' yet</span><button class="btn sm" data-act="sort">Review</button></div>' : "") +
+        '<div class="stage' + (side && S.view === "graph" && !narrow ? " two" : "") + '">' + (S.view === "list" ? (side && narrow ? "" : listHtml()) : (side && narrow ? "" : graphHtml())) + (side ? '<aside class="panel" aria-label="' + (sel ? "Details" : "Search results") + '">' + side + "</aside>" : "") +
+        (S.view === "graph" && !side && !items.length ? '<p class="sub">Nothing here yet. Add a file, or ask Claude to save a link or an idea, and it will appear in its zone.</p>' : "") + (S.view === "graph" && narrow && !side ? '<p class="sub">Tap a zone to step into it. Pinch or use + and − to zoom from zones to topics to single items.</p>' : "") + "</div>" +
+        (S.sheet ? '<div class="shade" data-shade="1"><div class="sheet" role="dialog" aria-modal="true">' + sheetHtml() + "</div></div>" : "");
+      if (keepFocus) { var q = $("#knQ"); q.focus(); try { q.setSelectionRange(pos, pos); } catch (e) {} }
+    }
+    function select(id, fromHit) {
+      S.sel = id; S.edit = false;
+      S.passages = fromHit && S.results ? { id: id, list: S.results.filter(function (r) { return r.id === id && r.snippet && r.page !== undefined && r.how !== "title or tags"; }) } : null;
+      render();
+      if (S.view === "graph" && !narrow && id) { var near = [id].concat(linked(id).map(function (x) { return x[0]; })); flyToIds(near); }
+    }
+    function runSearch() {
+      var q = S.q.trim(), n = ++searchN;
+      if (!q) { S.results = null; S.searching = false; S.sel = null; render(); if (S.view === "graph") flyTo({ x: W / 2, y: H / 2, k: 1 }); return; }
+      var local = K.search(S.items, q); S.results = local; S.searching = !!o.onSearch; S.sel = null; render();
+      if (S.view === "graph" && local.length) flyToIds(local.map(function (r) { return r.id; }));
+      call("onSearch", q, S.f).then(function (more) {
+        if (n !== searchN) return;
+        var out = (more || []).filter(function (r) { return byId[r.id] && !byId[r.id].archived; }), seen = {};
+        out.forEach(function (r) { seen[r.id] = 1; });
+        S.results = out.concat(local.filter(function (r) { return !seen[r.id]; })); S.searching = false; if (!S.sel) { render(); if (S.view === "graph" && S.results.length) flyToIds(hitIds()); }
+      }, function () { if (n === searchN) { S.searching = false; render(); } });
+    }
+
+    kn.addEventListener("click", function (e) {
+      if (e.target.dataset && e.target.dataset.shade) { S.sheet = null; render(); return; }
+      var node = e.target.closest && e.target.closest(".n,.zone"), t = e.target.closest("button,a"), d = t ? t.dataset : {};
+      if (node && !t) { if (drag.moved) return; if (node.dataset.zone) { var z = L.zones.filter(function (x) { return x.id === node.dataset.zone; })[0]; flyTo({ x: z.cx, y: z.cy, k: 2.4 }); } else select(node.dataset.id); return; }
+      if (!t || t.disabled || t.tagName === "A") return;
+      if (d.view) { S.view = d.view; render(); }
+      else if (d.id) select(d.id, !!d.hit);
+      else if (d.zoom != null) { if (d.zoom === "0") flyTo({ x: W / 2, y: H / 2, k: 1 }); else flyTo({ x: S.cam.x, y: S.cam.y, k: S.cam.k * (d.zoom === "1" ? 1.5 : 1 / 1.5) }); }
+      else if (d.zonef != null) { S.f.zone = d.zonef; S.f.type = ""; S.f.topic = ""; render(); }
+      else if (d.sort) { if (S.sort.key === d.sort) S.sort.dir *= -1; else S.sort = { key: d.sort, dir: d.sort === "createdAt" ? -1 : 1 }; render(); }
+      else if (d.confirm) { var sv = root.querySelector('[data-sortsel="' + d.confirm + '"]').value.split("|"); call("onPatch", d.confirm, { zone: sv[0], type: sv[1], needsSort: false }); }
+      else if (d.ext) call("onSetting", d.ext, !(S.settings.external || {})[d.ext]);
+      else if (d.act === "close") { S.sel = null; S.edit = false; render(); if (S.view === "graph" && !S.results) flyTo({ x: S.cam.x, y: S.cam.y, k: S.cam.k }); }
+      else if (d.act === "pick") $("#knFile").click();
+      else if (d.act === "add" || d.act === "sort" || d.act === "privacy") { S.sheet = d.act; render(); var f = root.querySelector(".sheet .x"); if (f) f.focus(); }
+      else if (d.act === "sheetclose") { S.sheet = null; render(); }
+      else if (d.act === "edit") { S.edit = true; render(); $("#knT").focus(); }
+      else if (d.act === "cancel") { S.edit = false; render(); }
+      else if (d.act === "save" && S.sel) { var zt = $("#knZ").value.split("|"), title = $("#knT").value.trim(); if (!title) { $("#knT").focus(); return; } S.edit = false; call("onPatch", S.sel, { title: title, zone: zt[0], type: zt[1], topic: $("#knTo").value.trim() || "General", summary: $("#knS").value.trim(), why: $("#knW").value.trim(), tags: $("#knG").value.split(",").map(function (x) { return x.trim(); }).filter(Boolean), needsSort: false }); S.edit = false; }
+      else if (d.act === "archive" && S.sel) { var id = S.sel; S.sel = null; call("onArchive", id); }
+      else if (d.act === "merge" && S.sel) call("onArchive", d.other);
+      else if (d.act === "file" && S.sel) call("onOpenFile", S.sel);
+      else if (d.act === "mirror" && S.sel) call("onOpenMirror", S.sel);
+      else if (d.act === "meaning") call("onMeaning");
+      else if (d.act === "addsave") {
+        var kd = $("#knAK").value.split("|"), text = $("#knAT").value.trim(), url = $("#knAU").value.trim(), msg = $("#knAM");
+        if (!text && !url) { msg.textContent = "Write a title or some text first."; $("#knAT").focus(); return; }
+        if (kd[1] === "link" && !url) { msg.textContent = "A link needs a web address."; $("#knAU").focus(); return; }
+        t.disabled = true;
+        call("onCreate", { zone: kd[0], type: kd[1], title: (text || url).split("\n")[0].slice(0, 120), summary: text.indexOf("\n") >= 0 || text.length > 120 ? text : "", url: kd[1] === "link" ? url : "", why: $("#knAW").value.trim(), tags: $("#knAG").value.split(",").map(function (x) { return x.trim(); }).filter(Boolean) }).then(function (res) {
+          if (res && res.error) { msg.textContent = res.error; t.disabled = false; return; }
+          S.sheet = null; if (res && res.id) S.sel = res.id; render();
+        });
+      }
+    });
+    kn.addEventListener("change", function (e) {
+      if (e.target.id === "knFile") { if (e.target.files.length) call("onUpload", [].slice.call(e.target.files)); e.target.value = ""; }
+      else if (e.target.dataset && e.target.dataset.f) { S.f[e.target.dataset.f] = e.target.value; render(); }
+    });
+    kn.addEventListener("input", function (e) { if (e.target.id === "knQ") { S.q = e.target.value; clearTimeout(searchT); searchT = setTimeout(runSearch, 260); } });
+    kn.addEventListener("keydown", function (e) {
+      var n = e.target.closest && e.target.closest(".n,.zone");
+      if (n && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); n.dispatchEvent(new MouseEvent("click", { bubbles: true })); }
+      if (e.key === "Escape") { if (S.sheet) { S.sheet = null; render(); } else if (S.sel) { S.sel = null; S.edit = false; render(); } else if (S.q && e.target.id === "knQ") { S.q = ""; runSearch(); } }
+      if (e.target.id === "knQ" && e.key === "Enter") { clearTimeout(searchT); runSearch(); }
+      if (e.target.closest && e.target.closest("#knSvg") && /^Arrow/.test(e.key)) { e.preventDefault(); var st = 60 / S.cam.k; setCam({ x: S.cam.x + (e.key === "ArrowRight" ? st : e.key === "ArrowLeft" ? -st : 0), y: S.cam.y + (e.key === "ArrowDown" ? st : e.key === "ArrowUp" ? -st : 0), k: S.cam.k }); }
+    });
+    /* pan, wheel zoom and pinch on the graph */
+    var drag = { on: false, moved: false, pts: {} };
+    kn.addEventListener("pointerdown", function (e) { var svg = e.target.closest && e.target.closest("#knSvg"); if (!svg) return; drag.pts[e.pointerId] = [e.clientX, e.clientY]; drag.on = true; drag.moved = false; drag.x = e.clientX; drag.y = e.clientY; drag.pinch = 0; });
+    kn.addEventListener("pointermove", function (e) {
+      if (!drag.on || !drag.pts[e.pointerId]) return; var svg = $("#knSvg"); if (!svg) return; var r = svg.getBoundingClientRect(), ids = Object.keys(drag.pts);
+      drag.pts[e.pointerId] = [e.clientX, e.clientY];
+      if (ids.length >= 2) { var a = drag.pts[ids[0]], b = drag.pts[ids[1]], dist = Math.hypot(a[0] - b[0], a[1] - b[1]); if (drag.pinch) setCam({ x: S.cam.x, y: S.cam.y, k: S.cam.k * dist / drag.pinch }); drag.pinch = dist; drag.moved = true; return; }
+      var dx = e.clientX - drag.x, dy = e.clientY - drag.y; if (Math.abs(dx) + Math.abs(dy) < 4 && !drag.moved) return;
+      drag.moved = true; svg.classList.add("drag"); drag.x = e.clientX; drag.y = e.clientY; setCam({ x: S.cam.x - dx * (W / S.cam.k) / r.width, y: S.cam.y - dy * (H / S.cam.k) / r.height, k: S.cam.k });
+    });
+    var endDrag = function (e) { delete drag.pts[e.pointerId]; if (!Object.keys(drag.pts).length) { drag.on = false; var svg = $("#knSvg"); if (svg) svg.classList.remove("drag"); setTimeout(function () { drag.moved = false; }, 0); } drag.pinch = 0; };
+    kn.addEventListener("pointerup", endDrag); kn.addEventListener("pointercancel", endDrag);
+    kn.addEventListener("wheel", function (e) {
+      var svg = e.target.closest && e.target.closest("#knSvg"); if (!svg) return; e.preventDefault();
+      var r = svg.getBoundingClientRect(), k = S.cam.k, nk = Math.max(1, Math.min(5, k * (e.deltaY < 0 ? 1.18 : 1 / 1.18))), px = S.cam.x - W / (2 * k) + (e.clientX - r.left) / r.width * (W / k), py = S.cam.y - H / (2 * k) + (e.clientY - r.top) / r.height * (H / k);
+      setCam({ x: px - (px - S.cam.x) * k / nk, y: py - (py - S.cam.y) * k / nk, k: nk });
+    }, { passive: false });
+    /* drop files anywhere on the page */
+    kn.addEventListener("dragover", function (e) { if (e.dataTransfer && [].indexOf.call(e.dataTransfer.types || [], "Files") >= 0) { e.preventDefault(); kn.classList.add("drop"); } });
+    kn.addEventListener("dragleave", function (e) { if (e.target === kn) kn.classList.remove("drop"); });
+    kn.addEventListener("drop", function (e) { kn.classList.remove("drop"); if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) { e.preventDefault(); call("onUpload", [].slice.call(e.dataTransfer.files)); } });
+    if (window.ResizeObserver) new ResizeObserver(function () { var n = host.getBoundingClientRect().width < 900; if (n !== narrow && host.offsetParent !== null) { S.cam = { x: 0, y: 0, k: 1 }; relayout(); render(); } }).observe(host);
+
+    setData(o); render();
+    return {
+      update: function (d) { if (d.theme) theme = d.theme; var keepCam = S.cam; setData(d); S.cam = keepCam.x ? keepCam : S.cam; render(); },
+      progress: function (text) { S.progress = text || ""; var n = root.querySelector('.note[role="status"] span'); if (n && text) n.textContent = text; else render(); },
+      select: select, state: function () { return { view: S.view, sel: S.sel, results: S.results ? S.results.length : null, k: S.cam.k, sheet: S.sheet }; }
+    };
+  };
+})();

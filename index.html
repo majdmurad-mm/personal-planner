@@ -304,6 +304,8 @@
   #selfSection{ margin:-32px -40px -70px; }
   /* Command Center (command/), same full-bleed host. */
   #commandSection{ margin:-32px -40px -70px; }
+  /* Knowledge (knowledge/), same full-bleed host. */
+  #knowledgeSection{ margin:-32px -40px -70px; }
   /* Finance snapshot page (finance/), same full-bleed host. */
   #financeSection{ margin:-32px -40px -70px; }
   /* People, constellation and list views: one full-bleed host; the older header, filters and panels step aside. */
@@ -1667,6 +1669,7 @@
     #healthSection{ margin:-56px -18px -60px; --pph-top:46px; }
     #selfSection{ margin:-56px -18px -60px; --ppn-top:46px; }
     #commandSection{ margin:-56px -18px -60px; --ppc-top:46px; }
+    #knowledgeSection{ margin:-56px -18px -60px; --ppk-top:46px; }
     #financeSection{ margin:-56px -18px -60px; --ppf-top:46px; }
     #peopleSection.ppl-sky{ margin:-56px -18px -60px; --pph-top:46px; }
     #peopleSection.ppl-fullscreen-graph{ margin:-56px -18px -60px; padding:12px 18px 12px; }
@@ -1691,6 +1694,7 @@
     #healthSection{ margin:-44px -24px -20px; --pph-top:36px; }
     #selfSection{ margin:-44px -24px -20px; --ppn-top:36px; }
     #commandSection{ margin:-44px -24px -20px; --ppc-top:36px; }
+    #knowledgeSection{ margin:-44px -24px -20px; --ppk-top:36px; }
     #financeSection{ margin:-44px -24px -20px; --ppf-top:36px; }
     #peopleSection.ppl-sky{ margin:-44px -24px -20px; --pph-top:36px; }
     #peopleSection.ppl-fullscreen-graph{ margin:-44px -24px -20px; padding:10px 24px 10px; }
@@ -2323,6 +2327,7 @@
         </div>
         <button class="side-link" data-section="health" type="button"><span class="sl-glyph">♡</span>Health</button>
         <button class="side-link" data-section="finance" type="button"><span class="sl-glyph">€</span>Finance</button>
+        <button class="side-link" data-section="knowledge" type="button"><span class="sl-glyph">❖</span>Knowledge</button>
         <button class="side-link" data-section="people" type="button"><span class="sl-glyph">☺</span>People</button>
         <button class="side-link" data-section="location" type="button"><span class="sl-glyph">⚲</span>Location</button>
       </nav>
@@ -3140,6 +3145,8 @@
     <section id="selfSection" style="display:none;"></section>
     <!-- Command Center: tasks, events, deadlines and time blocks in one place (command/, shadow root; see renderCommand). -->
     <section id="commandSection" style="display:none;"></section>
+    <!-- Knowledge: files and saved items as a graph (knowledge/, shadow root; see renderKnowledge). -->
+    <section id="knowledgeSection" style="display:none;"></section>
     <!-- Finance: the snapshot dashboard (finance/finance.js, shadow root; see renderFinancePage). The older
          accounts and transactions view stays inside the Finance area page. -->
     <section id="financeSection" style="display:none;"></section>
@@ -4487,6 +4494,7 @@
     if(activeSection === "self") renderSelf();
     if(activeSection === "finance") renderFinancePage();
     if(activeSection === "command") renderCommand();
+    if(activeSection === "knowledge") renderKnowledge();
   });
 
   // Sidebar hide/show. The data-sidebar-collapsed attribute (if saved) is already applied pre-paint
@@ -5435,7 +5443,7 @@
     });
   }
 
-  var ALL_SECTION_IDS = ["focusSection","homeSection","todaySection","plannerSection","trackerSection","timelineSection","journalSection","peopleSection","locationSection","futureSection","goalDetailSection","areaDetailSection","entityPageSection","inboxSection","memorySection","healthSection","selfSection","financeSection","commandSection"];
+  var ALL_SECTION_IDS = ["focusSection","homeSection","todaySection","plannerSection","trackerSection","timelineSection","journalSection","peopleSection","locationSection","futureSection","goalDetailSection","areaDetailSection","entityPageSection","inboxSection","memorySection","healthSection","selfSection","financeSection","commandSection","knowledgeSection"];
   // Sidebar dropdown groups — a parent nav item with no page of its own, bundling a set of section
   // names under one submenu. See showSection() (active/auto-open) and the sideNav click handler
   // (data-toggle-submenu, open/close).
@@ -19872,7 +19880,7 @@
   }
   function fxFeedEntries(){
     return activityLog.filter(function(e){
-      if(e.actor === "me" || e.undone_at) return false;
+      if(e.actor === "me" || e.actor === "upload" || e.undone_at) return false;
       if(e.op !== "update") return true;
       var keys = fxChangedKeys(e);
       // Clearing the previous main thing is a side effect of choosing a new one, not a change to report.
@@ -20047,6 +20055,7 @@
     self: [renderSelf],
     finance: [renderFinancePage],
     command: [renderCommand],
+    knowledge: [renderKnowledge],
     timeline: [renderTimeline],
     journal: [renderJournal],
     people: [renderPeople],
@@ -20473,6 +20482,237 @@
       if(activityReady === null) loadActivityLog();
     }).catch(function(err){
       if(!host.shadowRoot) host.innerHTML = '<div class="empty-note" style="padding:60px 24px;">The Command Center couldn’t load. Check your connection and open it again.</div>';
+      console.warn(err);
+    });
+  }
+  /* Knowledge page (knowledge/): files and saved items, sorted and linked. Files are read in the browser;
+     rows live in the knowledge_* tables and files in the private "knowledge" bucket, all behind RLS.
+     Bump KNOWLEDGE_VER with each release of knowledge/*. */
+  var KNOWLEDGE_VER = "1", knowledgeLoading = null, knowledgeHandle = null, knowledgeFetching = null;
+  var KN = { items:null, edges:[], topics:{}, files:{}, settings:{ external:{} }, usage:null, meaning:{ ready:false, pending:0, busy:false } };
+  var KN_MAX_FILE = 50 * 1024 * 1024, KN_PLAN_LIMIT = 1024 * 1024 * 1024;   // free-plan figures, shown as a guide
+  function knowledgeLoadScripts(){
+    if(knowledgeLoading) return knowledgeLoading;
+    knowledgeLoading = ["core", "extract", "knowledge"].reduce(function(chain, f){
+      return chain.then(function(){
+        return new Promise(function(resolve, reject){
+          var el = document.createElement("script");
+          el.src = "knowledge/" + f + ".js?v=" + KNOWLEDGE_VER;
+          el.onload = resolve;
+          el.onerror = function(){ reject(new Error("Could not load knowledge/" + f + ".js")); };
+          document.head.appendChild(el);
+        });
+      });
+    }, Promise.resolve());
+    knowledgeLoading.catch(function(){ knowledgeLoading = null; });
+    return knowledgeLoading;
+  }
+  function knowledgeRow(r){
+    var f = KN.files[r.id];
+    return { id:r.id, zone:r.zone, type:r.type, title:r.title, summary:r.summary || "", why:r.why || "", url:r.url || "", tags:r.tags || [], topic:(r.topic_id && KN.topics[r.topic_id]) || "", meta:r.meta || {},
+      source:r.source || "upload", confidence:r.confidence, needsSort:!!r.needs_sort, fileHash:r.file_hash || null, createdAt:r.created_at, hasFile:!!f, pages:f ? f.pages : null };
+  }
+  async function knowledgeFetch(){
+    var res = await Promise.all([
+      sb.from("knowledge_items").select("*").is("archived_at", null).order("created_at", { ascending:false }),
+      sb.from("knowledge_files").select("item_id,storage_path,file_name,mime,size_bytes,pages"),
+      sb.from("knowledge_topics").select("id,zone,name"),
+      sb.from("knowledge_edges").select("from_id,to_id,kind"),
+      sb.from("knowledge_settings").select("external_zones").maybeSingle(),
+      sb.from("knowledge_chunks").select("id", { count:"exact", head:true }).is("embedding", null)
+    ]);
+    if(res[0].error) throw res[0].error;
+    KN.files = {}; KN.topics = {}; var bytes = 0;
+    (res[1].data || []).forEach(function(f){ KN.files[f.item_id] = f; bytes += Number(f.size_bytes) || 0; });
+    (res[2].data || []).forEach(function(t){ KN.topics[t.id] = t.name; });
+    KN.items = (res[0].data || []).map(knowledgeRow);
+    KN.edges = (res[3].data || []).map(function(e){ return { from:e.from_id, to:e.to_id, kind:e.kind }; });
+    var ext = res[4].data ? (res[4].data.external_zones || []) : ["library", "web", "ideas", "thinkers", "mine"];
+    KN.settings = { external:{} };
+    ["documents", "library", "web", "ideas", "thinkers", "mine"].forEach(function(z){ KN.settings.external[z] = ext.indexOf(z) >= 0; });
+    KN.usage = { bytes:bytes, limit:KN_PLAN_LIMIT, maxFile:KN_MAX_FILE };
+    KN.meaning.ready = safeGet(window.localStorage, "pp_kn_meaning") === "1";
+    KN.meaning.pending = res[5].error ? 0 : (res[5].count || 0);
+  }
+  // Journal notes typed idea, reference or decision appear as read-only items; reflections never do.
+  function knowledgeMirror(){
+    return state.journal.filter(function(n){ return n.noteType === "idea" || n.noteType === "reference" || n.noteType === "decision"; }).map(function(n){
+      return { id:"j:" + n.id, zone:"mine", type:n.noteType === "idea" ? "note" : n.noteType, title:n.title || String(n.text || "").split("\n")[0].slice(0, 80) || "Untitled note", summary:String(n.text || "").replace(/\s+/g, " ").slice(0, 280),
+        why:"", url:"", tags:[], topic:"Notes to keep", meta:{}, source:"journal", needsSort:false, createdAt:n.createdAt || (n.date + "T12:00:00Z"), hasFile:false, pages:null, mirror:true };
+    });
+  }
+  function knowledgeData(){
+    return { items:(KN.items || []).concat(knowledgeMirror()), edges:KN.edges, settings:KN.settings, usage:KN.usage, meaning:KN.meaning, theme:currentTheme() };
+  }
+  function knowledgeRefresh(){ if(knowledgeHandle && activeSection === "knowledge") knowledgeHandle.update(knowledgeData()); }
+  async function knowledgeTopicId(zone, name){
+    name = String(name || "").trim() || "General";
+    for(var id in KN.topics){ if(KN.topics[id] === name) { var own = await sb.from("knowledge_topics").select("id").eq("zone", zone).eq("name", name).maybeSingle(); if(own.data) return own.data.id; break; } }
+    var found = await sb.from("knowledge_topics").select("id").eq("zone", zone).eq("name", name).maybeSingle();
+    if(found.data) return found.data.id;
+    var ins = await sb.from("knowledge_topics").insert({ zone:zone, name:name }).select("id").single();
+    if(ins.error) return null;
+    KN.topics[ins.data.id] = name;
+    return ins.data.id;
+  }
+  async function knowledgeUpload(files){
+    var K = window.PPKnowledgeCore, X = window.PPKnowledgeExtract, say = function(t){ if(knowledgeHandle) knowledgeHandle.progress(t); }, lastId = null, lastMsg = "";
+    for(var n = 0; n < files.length; n++){
+      var file = files[n];
+      try{
+        if(file.size > KN_MAX_FILE){ lastMsg = "“" + file.name + "” is larger than " + Math.round(KN_MAX_FILE / 1048576) + " MB and was not added."; say(lastMsg); continue; }
+        if(KN.usage && KN.usage.bytes + file.size > KN_PLAN_LIMIT){ lastMsg = "Adding “" + file.name + "” would go over the storage limit, so it was not added."; say(lastMsg); continue; }
+        say("Reading " + file.name + "…");
+        var hash = await X.hash(file), dup = K.duplicateOf(KN.items, { fileHash:hash });
+        if(dup){ lastMsg = "“" + file.name + "” is already here as “" + dup.title + "”. Nothing was added."; lastId = dup.id; say(lastMsg); continue; }
+        var r = await X.read(file, function(label, frac){ say(label + (frac != null ? " · " + Math.round(frac * 100) + " %" : "")); });
+        var c = K.classify({ name:file.name, text:r.text }), meta = c.meta;
+        if(r.meta.author) meta.author = r.meta.author;
+        if(r.ocr) meta.ocr = true;
+        if(r.note) meta.note = r.note;
+        var draft = { zone:c.zone, title:r.meta.title || c.title, summary:c.summary, tags:[] };
+        draft.tags = K.tagsOf(draft);
+        var topicId = await knowledgeTopicId(c.zone, K.topicOf(draft));
+        say("Saving " + file.name + "…");
+        var ins = await sb.from("knowledge_items").insert({ zone:c.zone, type:c.type, title:draft.title, summary:c.summary, tags:draft.tags, topic_id:topicId, meta:meta, source:"upload", confidence:c.confidence, needs_sort:c.needsSort, file_hash:hash }).select().single();
+        if(ins.error){ lastMsg = "“" + file.name + "” could not be saved: " + ins.error.message; say(lastMsg); continue; }
+        var itemId = ins.data.id, safe = file.name.replace(/[^A-Za-z0-9._-]+/g, "_").slice(-80), path = currentUser.id + "/" + itemId + "/" + safe;
+        var up = await sb.storage.from("knowledge").upload(path, file, { contentType:file.type || "application/octet-stream", upsert:false });
+        if(up.error){
+          await sb.from("knowledge_items").update({ archived_at:new Date().toISOString() }).eq("id", itemId);
+          lastMsg = "“" + file.name + "” could not be stored (" + up.error.message + "), so it was not added."; say(lastMsg); continue;
+        }
+        await sb.from("knowledge_files").insert({ item_id:itemId, storage_path:path, file_name:file.name, mime:file.type || "", size_bytes:file.size, pages:r.pageCount || null });
+        var chunks = K.chunks(r.pages).map(function(ch){ return { item_id:itemId, page:ch.page, content:ch.content }; });
+        for(var i = 0; i < chunks.length; i += 200){
+          say("Saving the text of " + file.name + " · " + Math.round(i / chunks.length * 100) + " %");
+          var cr = await sb.from("knowledge_chunks").insert(chunks.slice(i, i + 200));
+          if(cr.error){ console.warn(cr.error); break; }
+        }
+        lastId = itemId; lastMsg = "";
+      }catch(err){ console.warn(err); lastMsg = "“" + file.name + "” could not be read: " + (err && err.message ? err.message : "unknown problem"); say(lastMsg); }
+    }
+    await knowledgeFetch();
+    knowledgeRefresh();
+    say(lastMsg);
+    if(lastId && knowledgeHandle) knowledgeHandle.select(lastId);
+  }
+  // Keyword search over the stored text, plus nearest passages by meaning when that is switched on.
+  async function knowledgeSearch(q){
+    var out = [], kw = await sb.rpc("knowledge_search", { q:q, max_n:20 });
+    if(!kw.error) (kw.data || []).forEach(function(r){ out.push({ id:r.item_id, page:r.page, snippet:r.snippet, how:"in the text" }); });
+    if(KN.meaning.ready && knowledgeEmbedderReady()){
+      try{
+        var v = await knowledgeEmbed(["query: " + q]), m = await sb.rpc("knowledge_match", { qv:"[" + v[0].join(",") + "]", max_n:8 });
+        if(!m.error) (m.data || []).forEach(function(r){ if(r.score >= 0.8 && !out.some(function(o){ return o.id === r.item_id && o.page === r.page; })) out.push({ id:r.item_id, page:r.page, snippet:r.snippet, how:"close in meaning" }); });
+      }catch(err){ console.warn(err); }
+    }
+    return out;
+  }
+  /* Meaning search runs a small multilingual model in the browser (same approach as voice notes):
+     no key, no cost, and the text never leaves this device. */
+  var knowledgePipe = null, knowledgePipeLoaded = false;
+  function knowledgeEmbedderReady(){ return knowledgePipeLoaded; }
+  function knowledgeEmbedder(){
+    if(!knowledgePipe){
+      knowledgePipe = (async function(){
+        var mod = await import("https://cdn.jsdelivr.net/npm/@huggingface/transformers@3/+esm");
+        var p = await mod.pipeline("feature-extraction", "Xenova/multilingual-e5-small", { dtype:"q8" });
+        knowledgePipeLoaded = true;
+        return p;
+      })();
+      knowledgePipe.catch(function(){ knowledgePipe = null; });
+    }
+    return knowledgePipe;
+  }
+  async function knowledgeEmbed(texts){
+    var p = await knowledgeEmbedder(), t = await p(texts, { pooling:"mean", normalize:true });
+    return t.tolist().map(function(v){ return v.map(function(x){ return Math.round(x * 1e5) / 1e5; }); });
+  }
+  async function knowledgeMeaning(){
+    if(KN.meaning.busy) return;
+    KN.meaning.busy = true; knowledgeRefresh();
+    var say = function(t){ if(knowledgeHandle) knowledgeHandle.progress(t); };
+    try{
+      say("Getting the language model ready (a one-time download of about 120 MB)…");
+      await knowledgeEmbedder();
+      safeSet(window.localStorage, "pp_kn_meaning", "1"); KN.meaning.ready = true;
+      for(var round = 0; round < 400; round++){
+        var todo = await sb.from("knowledge_chunks").select("id,content").is("embedding", null).limit(16);
+        if(todo.error || !todo.data || !todo.data.length) break;
+        var vecs = await knowledgeEmbed(todo.data.map(function(c){ return "passage: " + c.content.slice(0, 1200); }));
+        for(var i = 0; i < todo.data.length; i++) await sb.from("knowledge_chunks").update({ embedding:"[" + vecs[i].join(",") + "]" }).eq("id", todo.data[i].id);
+        var left = await sb.from("knowledge_chunks").select("id", { count:"exact", head:true }).is("embedding", null);
+        KN.meaning.pending = left.count || 0;
+        say("Preparing passages for meaning search · " + KN.meaning.pending + " to go");
+      }
+      say("");
+    }catch(err){ console.warn(err); say("Meaning search could not be switched on: " + (err && err.message ? err.message : "the model did not load") + "."); }
+    KN.meaning.busy = false; knowledgeRefresh();
+  }
+  async function knowledgePatch(id, patch){
+    var it = (KN.items || []).find(function(x){ return x.id === id; });
+    if(!it) return;
+    var payload = { updated_at:new Date().toISOString() }, zone = patch.zone || it.zone;
+    ["title", "zone", "type", "summary", "why", "tags"].forEach(function(k){ if(patch[k] !== undefined) payload[k] = patch[k]; });
+    if(patch.needsSort !== undefined) payload.needs_sort = patch.needsSort;
+    if(patch.topic !== undefined || patch.zone !== undefined) payload.topic_id = await knowledgeTopicId(zone, patch.topic !== undefined ? patch.topic : it.topic);
+    var before = { title:it.title, zone:it.zone, type:it.type, summary:it.summary, why:it.why, tags:it.tags, needs_sort:it.needsSort };
+    var res = await sb.from("knowledge_items").update(payload).eq("id", id);
+    if(res.error){ dbErrorToast(res.error, "Couldn't save"); return; }
+    await knowledgeFetch(); knowledgeRefresh();
+    pushUndo('edit "' + it.title + '"', async function(){ await sb.from("knowledge_items").update(before).eq("id", id); await knowledgeFetch(); knowledgeRefresh(); });
+  }
+  async function knowledgeArchive(id){
+    var it = (KN.items || []).find(function(x){ return x.id === id; });
+    if(!it) return;
+    var res = await sb.from("knowledge_items").update({ archived_at:new Date().toISOString() }).eq("id", id);
+    if(res.error){ dbErrorToast(res.error, "Couldn't archive"); return; }
+    await knowledgeFetch(); knowledgeRefresh();
+    pushUndo('archive "' + it.title + '"', async function(){ await sb.from("knowledge_items").update({ archived_at:null }).eq("id", id); await knowledgeFetch(); knowledgeRefresh(); });
+  }
+  async function knowledgeCreate(d){
+    var K = window.PPKnowledgeCore, url = d.url ? K.normUrl(d.url) : null, dup = K.duplicateOf(KN.items, { url:url, zone:d.zone, title:d.title });
+    if(dup) return { error:"That is already saved as “" + dup.title + "”." };
+    var topicId = await knowledgeTopicId(d.zone, K.topicOf(d));
+    var ins = await sb.from("knowledge_items").insert({ zone:d.zone, type:d.type, title:d.title, summary:d.summary || "", why:d.why || "", url:url, tags:d.tags || [], topic_id:topicId, source:"me" }).select().single();
+    if(ins.error) return { error:/duplicate/i.test(ins.error.message) ? "That link is already saved." : ins.error.message };
+    var text = [d.title, d.summary, d.why].filter(Boolean).join("\n");
+    await sb.from("knowledge_chunks").insert({ item_id:ins.data.id, page:null, content:text });
+    await knowledgeFetch(); knowledgeRefresh();
+    return { id:ins.data.id };
+  }
+  async function knowledgeOpenFile(id){
+    var f = KN.files[id];
+    if(!f) return;
+    var r = await sb.storage.from("knowledge").createSignedUrl(f.storage_path, 120);      // a private link that stops working after two minutes
+    if(r.error || !r.data){ toast("The file could not be opened."); return; }
+    window.open(r.data.signedUrl, "_blank", "noopener");
+  }
+  async function knowledgeSetting(zone, on){
+    var ext = Object.keys(KN.settings.external).filter(function(z){ return z === zone ? on : KN.settings.external[z]; });
+    var res = await sb.from("knowledge_settings").upsert({ user_id:currentUser.id, external_zones:ext, updated_at:new Date().toISOString() }, { onConflict:"user_id" });
+    if(res.error){ dbErrorToast(res.error, "Couldn't save"); return; }
+    KN.settings.external[zone] = on; knowledgeRefresh();
+  }
+  function renderKnowledge(){
+    if(activeSection !== "knowledge") return;
+    var host = document.getElementById("knowledgeSection");
+    if(!knowledgeFetching) knowledgeFetching = knowledgeFetch();
+    Promise.all([knowledgeLoadScripts(), knowledgeFetching]).then(function(){
+      if(activeSection !== "knowledge") return;
+      if(knowledgeHandle){ knowledgeHandle.update(knowledgeData()); return; }
+      knowledgeHandle = window.PPKnowledge.mount(host, Object.assign(knowledgeData(), {
+        css: "knowledge/knowledge.css?v=" + KNOWLEDGE_VER,
+        onUpload: knowledgeUpload, onSearch: knowledgeSearch, onPatch: knowledgePatch, onArchive: knowledgeArchive, onCreate: knowledgeCreate,
+        onOpenFile: knowledgeOpenFile, onSetting: knowledgeSetting, onMeaning: knowledgeMeaning,
+        onOpenMirror: function(){ showSection("self"); renderAll(); }
+      }));
+      if(KN.meaning.ready) knowledgeEmbedder().catch(function(){});
+    }).catch(function(err){
+      knowledgeFetching = null;
+      var missing = err && /knowledge_|schema cache|does not exist/i.test(err.message || "");
+      if(!host.shadowRoot) host.innerHTML = '<div class="empty-note" style="padding:60px 24px;">' + (missing ? "The Knowledge page needs its database tables first (migration_knowledge.sql)." : "The Knowledge page couldn’t load. Check your connection and open it again.") + '</div>';
       console.warn(err);
     });
   }

@@ -1001,6 +1001,177 @@ tool("reschedule", {
   },
 });
 
+// ---- Knowledge page: saved links, ideas, authors, quotes, notes, and search ----
+// Rows live in knowledge_items / knowledge_chunks (see _Memory/migration_knowledge.sql). The owner
+// decides, per zone, whether Claude may read it (knowledge_settings.external_zones); personal
+// documents are kept from Claude unless the owner switches that on in the Knowledge page.
+const KN_HINT = " (if the table is missing, run _Memory/migration_knowledge.sql in the Supabase SQL editor)";
+const KN_ZONES = ["documents", "library", "web", "ideas", "thinkers", "mine"] as const;
+const KN_ZONE_NAME: Record<string, string> = { documents: "Personal documents", library: "Library", web: "Web & media", ideas: "Ideas", thinkers: "People of thought", mine: "My constellation" };
+const KN_TYPES: Record<string, string[]> = {
+  documents: ["id", "contract", "letter", "insurance", "certificate", "payslip", "tax", "invoice", "document"],
+  library: ["book", "paper", "report", "manual"], web: ["link", "article", "website", "video", "tool"],
+  ideas: ["idea", "concept", "question", "quote"], thinkers: ["author"], mine: ["note", "reference", "decision"],
+};
+const knZoneOfType = (t: string) => KN_ZONES.find((z) => KN_TYPES[z].includes(t)) || null;
+function knNormUrl(u: string): string {
+  let x = String(u || "").trim(); if (!x) return "";
+  if (!/^[a-z]+:\/\//i.test(x)) x = "https://" + x;
+  try {
+    const p = new URL(x); p.hash = "";
+    for (const k of ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "fbclid", "gclid"]) p.searchParams.delete(k);
+    return p.protocol + "//" + p.hostname.replace(/^www\./, "").toLowerCase() + p.pathname.replace(/\/+$/, "") + (p.search || "");
+  } catch { return x; }
+}
+async function knAllowed(): Promise<string[]> {
+  const r = await db.from("knowledge_settings").select("external_zones").eq("user_id", OWNER).maybeSingle();
+  return r.data ? (r.data.external_zones || []) : ["library", "web", "ideas", "thinkers", "mine"];
+}
+const knKept = (zones: string[]) => "Kept from Claude by the owner: " + zones.map((z) => KN_ZONE_NAME[z]).join(", ") + ". The owner can allow a zone under Privacy and search on the Knowledge page.";
+// deno-lint-ignore no-explicit-any
+const knSlim = (r: any) => ({ id: r.id, zone: r.zone, type: r.type, title: r.title, summary: r.summary || "", why: r.why || "", url: r.url || null, tags: r.tags || [], meta: r.meta || {}, source: r.source, needsSort: !!r.needs_sort, createdAt: r.created_at });
+// Insert, or update the open item that is already there (same URL, or same title in the same zone).
+// deno-lint-ignore no-explicit-any
+async function knSave(row: Record<string, any>, text: string) {
+  let q = db.from("knowledge_items").select("*").eq("user_id", OWNER).is("archived_at", null);
+  q = row.url ? q.eq("url", row.url) : q.eq("zone", row.zone).ilike("title", String(row.title).replace(/[%_\\]/g, "\\$&"));
+  const found = await q.limit(1);
+  if (found.error) return fail(found.error.message + KN_HINT);
+  const cur = found.data && found.data[0];
+  if (cur) {
+    // deno-lint-ignore no-explicit-any
+    const patch: Record<string, any> = { updated_at: new Date().toISOString() };
+    if (row.why) patch.why = row.why;
+    if (row.summary) patch.summary = row.summary;
+    if (row.tags && row.tags.length) patch.tags = Array.from(new Set([...(cur.tags || []), ...row.tags]));
+    if (row.meta && Object.keys(row.meta).length) patch.meta = { ...(cur.meta || {}), ...row.meta };
+    const up = await db.from("knowledge_items").update(patch).eq("id", cur.id).eq("user_id", OWNER);
+    if (up.error) return fail(up.error.message);
+    return ok({ ok: true, id: cur.id, alreadySaved: true });
+  }
+  const ins = await db.from("knowledge_items").insert({ user_id: OWNER, source: "claude", summary: "", why: "", tags: [], meta: {}, ...row }).select("id").single();
+  if (ins.error) return fail(ins.error.message + KN_HINT);
+  if (text.trim()) await db.from("knowledge_chunks").insert({ user_id: OWNER, item_id: ins.data.id, page: null, content: text.slice(0, 8000) });
+  return ok({ ok: true, id: ins.data.id, zone: row.zone, type: row.type });
+}
+const KN_TAGS = z.array(z.string().min(1).max(40)).max(8).optional().describe("short topic tags, e.g. ['gis', 'urban planning']");
+
+tool("save_link", {
+  description: "Save a link, article, video or tool to the owner's Knowledge page (zone: Web & media). Saving the same URL again updates the existing item instead of adding a second one. Use 'why' for one line, in the owner's own words, on why it matters.",
+  inputSchema: z.object({
+    url: z.string().min(4).max(2000), title: z.string().max(200).optional(), why: z.string().max(400).optional(), tags: KN_TAGS,
+    type: z.enum(["link", "article", "website", "video", "tool"]).optional().describe("defaults to link"), summary: z.string().max(1200).optional(),
+  }),
+  handler: (a: { url: string; title?: string; why?: string; tags?: string[]; type?: string; summary?: string }) => {
+    const url = knNormUrl(a.url);
+    if (!/^https?:\/\/[^\s/]+\.[^\s/]+/i.test(url)) return fail("url must be a web address");
+    const title = (a.title || url.replace(/^https?:\/\//, "")).slice(0, 200);
+    return knSave({ zone: "web", type: a.type || "link", title, url, why: a.why || "", summary: a.summary || "", tags: a.tags || [] }, [title, a.why, a.summary].filter(Boolean).join("\n"));
+  },
+});
+
+tool("save_idea", {
+  description: "Save an idea, a product concept or a question the owner is exploring to the Knowledge page (zone: Ideas).",
+  inputSchema: z.object({ text: z.string().min(2).max(4000), title: z.string().max(200).optional(), kind: z.enum(["idea", "concept", "question"]).optional(), tags: KN_TAGS }),
+  handler: (a: { text: string; title?: string; kind?: string; tags?: string[] }) => {
+    const title = (a.title || a.text.split("\n")[0]).slice(0, 120);
+    return knSave({ zone: "ideas", type: a.kind || "idea", title, summary: a.text.length > title.length ? a.text : "", tags: a.tags || [] }, a.text);
+  },
+});
+
+tool("save_author", {
+  description: "Save an author, researcher or creator worth following to the Knowledge page (zone: People of thought). This is a knowledge entry, not a contact; it does not touch the People page.",
+  inputSchema: z.object({ name: z.string().min(2).max(120), notes: z.string().max(1200).optional(), works: z.array(z.string().max(200)).max(20).optional().describe("titles of their books, papers or channels"), tags: KN_TAGS }),
+  handler: (a: { name: string; notes?: string; works?: string[]; tags?: string[] }) =>
+    knSave({ zone: "thinkers", type: "author", title: a.name.trim(), summary: a.notes || "", tags: a.tags || [], meta: a.works && a.works.length ? { works: a.works } : {} }, [a.name, a.notes, (a.works || []).join(", ")].filter(Boolean).join("\n")),
+});
+
+tool("save_quote", {
+  description: "Save a quote to the Knowledge page (zone: Ideas), with where it comes from.",
+  inputSchema: z.object({ text: z.string().min(2).max(2000), source: z.string().max(200).optional().describe("who said it or where it is from"), tags: KN_TAGS }),
+  handler: (a: { text: string; source?: string; tags?: string[] }) =>
+    knSave({ zone: "ideas", type: "quote", title: a.text.replace(/\s+/g, " ").slice(0, 90), summary: a.text, tags: a.tags || [], meta: a.source ? { author: a.source } : {} }, a.text + (a.source ? "\n" + a.source : "")),
+});
+
+tool("save_note", {
+  description: "Save something the owner asks you to keep (a fact, a preference, a reference) to the Knowledge page (zone: My constellation).",
+  inputSchema: z.object({ text: z.string().min(2).max(4000), title: z.string().max(200).optional(), tags: KN_TAGS }),
+  handler: (a: { text: string; title?: string; tags?: string[] }) => {
+    const title = (a.title || a.text.split("\n")[0]).slice(0, 120);
+    return knSave({ zone: "mine", type: "note", title, summary: a.text.length > title.length ? a.text : "", tags: a.tags || [] }, a.text);
+  },
+});
+
+tool("search_knowledge", {
+  description: "Search the owner's Knowledge page by keyword and return the best matching passages with the item, the page number and a snippet, so you can answer a question from the text and cite the page. Try the owner's own wording and the document's language (many documents are German), and search again with other words if nothing comes back. Zones the owner has kept from Claude are not searched; the result says which.",
+  inputSchema: z.object({
+    query: z.string().min(2).max(200), zone: z.enum(KN_ZONES).optional(), type: z.string().max(40).optional(), limit: z.number().int().min(1).max(30).optional(),
+  }),
+  handler: async (a: { query: string; zone?: string; type?: string; limit?: number }) => {
+    const allowed = await knAllowed(), limit = a.limit || 12;
+    if (a.zone && !allowed.includes(a.zone)) return ok({ passages: [], note: knKept([a.zone]) });
+    const hits = await db.from("knowledge_chunks").select("item_id,page,content").eq("user_id", OWNER).textSearch("fts", a.query, { type: "websearch", config: "simple" }).limit(80);
+    if (hits.error) return fail(hits.error.message + KN_HINT);
+    const like = "%" + a.query.replace(/[%_\\]/g, "\\$&") + "%";
+    const titled = await db.from("knowledge_items").select("id").eq("user_id", OWNER).is("archived_at", null).or("title.ilike." + like.replace(/,/g, " ") + ",summary.ilike." + like.replace(/,/g, " ")).limit(20);
+    const ids = Array.from(new Set([...(hits.data || []).map((h) => h.item_id), ...((titled.data || []).map((t) => t.id))]));
+    if (!ids.length) return ok({ passages: [], note: "nothing matched; try other words or the document's language" });
+    const items = await db.from("knowledge_items").select("*").eq("user_id", OWNER).is("archived_at", null).in("id", ids);
+    if (items.error) return fail(items.error.message);
+    // deno-lint-ignore no-explicit-any
+    const byId: Record<string, any> = {}; let hidden = 0;
+    for (const it of items.data || []) { if (!allowed.includes(it.zone)) { hidden++; continue; } if (a.zone && it.zone !== a.zone) continue; if (a.type && it.type !== a.type) continue; byId[it.id] = it; }
+    const words = a.query.toLowerCase().split(/\s+/).filter((w) => w.length > 1);
+    const snip = (text: string) => { const low = text.toLowerCase(); let at = -1; for (const w of words) { at = low.indexOf(w); if (at >= 0) break; } const from = Math.max(0, at - 160); return (from > 0 ? "…" : "") + text.slice(from, from + 420).trim() + (from + 420 < text.length ? "…" : ""); };
+    // deno-lint-ignore no-explicit-any
+    const passages: any[] = [];
+    for (const h of hits.data || []) { const it = byId[h.item_id]; if (it && passages.length < limit) passages.push({ itemId: it.id, title: it.title, zone: it.zone, type: it.type, page: h.page, snippet: snip(h.content) }); }
+    for (const t of titled.data || []) { const it = byId[t.id]; if (it && passages.length < limit && !passages.some((p) => p.itemId === it.id)) passages.push({ itemId: it.id, title: it.title, zone: it.zone, type: it.type, page: null, snippet: it.summary || it.why || "" }); }
+    return ok({ passages, note: hidden ? hidden + " matching item(s) are in zones kept from Claude. " + knKept(KN_ZONES.filter((z) => !allowed.includes(z))) : undefined });
+  },
+});
+
+tool("get_knowledge_item", {
+  description: "One Knowledge item in full: its details and its text by page (for documents, books and papers). Pass page to read around one page.",
+  inputSchema: z.object({ id: z.string(), page: z.number().int().min(1).optional().describe("return only this page and its neighbours") }),
+  handler: async (a: { id: string; page?: number }) => {
+    const r = await db.from("knowledge_items").select("*").eq("id", a.id).eq("user_id", OWNER).maybeSingle();
+    if (r.error) return fail(r.error.message + KN_HINT);
+    if (!r.data) return fail("no knowledge item with that id");
+    const allowed = await knAllowed();
+    if (!allowed.includes(r.data.zone)) return fail(knKept([r.data.zone]));
+    let q = db.from("knowledge_chunks").select("page,content").eq("item_id", a.id).eq("user_id", OWNER).order("page", { ascending: true, nullsFirst: true });
+    if (a.page) q = q.gte("page", Math.max(1, a.page - 1)).lte("page", a.page + 1);
+    const c = await q.limit(40);
+    return ok({ ...knSlim(r.data), archived: !!r.data.archived_at, passages: (c.data || []).map((x) => ({ page: x.page, text: x.content })), truncated: (c.data || []).length === 40 });
+  },
+});
+
+tool("set_item_type", {
+  description: "Change what a Knowledge item is (for example from 'document' to 'contract'). The zone follows from the type. Also clears the 'to sort' flag.",
+  inputSchema: z.object({ id: z.string(), type: z.string().max(40) }),
+  handler: async (a: { id: string; type: string }) => {
+    const zone = knZoneOfType(a.type);
+    if (!zone) return fail("unknown type; use one of: " + KN_ZONES.map((z) => KN_TYPES[z].join(", ")).join(", "));
+    const up = await db.from("knowledge_items").update({ type: a.type, zone, needs_sort: false, updated_at: new Date().toISOString() }).eq("id", a.id).eq("user_id", OWNER).select("id");
+    if (up.error) return fail(up.error.message + KN_HINT);
+    if (!up.data || !up.data.length) return fail("no knowledge item with that id");
+    return ok({ ok: true, id: a.id, zone, type: a.type });
+  },
+});
+
+tool("list_recent_knowledge", {
+  description: "What was added to the Knowledge page recently (default: the last 7 days), newest first. Items in zones kept from Claude are only counted.",
+  inputSchema: z.object({ days: z.number().int().min(1).max(365).optional() }),
+  handler: async (a: { days?: number }) => {
+    const since = new Date(Date.now() - (a.days || 7) * 86400000).toISOString(), allowed = await knAllowed();
+    const r = await db.from("knowledge_items").select("*").eq("user_id", OWNER).is("archived_at", null).gte("created_at", since).order("created_at", { ascending: false }).limit(100);
+    if (r.error) return fail(r.error.message + KN_HINT);
+    const rows = r.data || [], shown = rows.filter((x) => allowed.includes(x.zone));
+    return ok({ since, items: shown.map(knSlim), keptFromClaude: rows.length - shown.length, toSort: shown.filter((x) => x.needs_sort).length });
+  },
+});
+
 // ============================ WRITE TOOLS ===================================
 // These mirror the app's in-page Agent tools (executeAgentTool in index.html).
 // Every insert sets user_id explicitly because the service-role client has no
