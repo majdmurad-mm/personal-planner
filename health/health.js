@@ -135,6 +135,7 @@
     H.charts.length = 0; S.hp.innerHTML = H.pageHTML(M);
     $$(".chip-t").forEach(function (c) { c.onclick = function () { try { localStorage.setItem(THEME_KEY, c.dataset.t); } catch (e) { } applyTheme(); }; });
     $("#refresh").onclick = function () { load(true); };
+    $$("[data-go]").forEach(function (b) { b.onclick = function () { var t = $("#" + b.dataset.go); if (t) t.scrollIntoView({ behavior: window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" }); }; });
     applyTheme(); wireBody(); wireCharts(); wirePillars(); countUp();
   }
   function fail(err) {

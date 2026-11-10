@@ -48,9 +48,10 @@
       run("health_status", t("health_status").is("archived_at", null).order("start_date")),
       run("health_flags", t("health_flags").is("archived_at", null)),
       run("health_briefs", t("health_briefs").is("archived_at", null).order("date", { ascending: false }).limit(3)),
-      run("health_settings", t("health_settings").limit(1))
+      run("health_settings", t("health_settings").limit(1)),
+      t("meals").gte("date", since(13)).order("date").then(function (x) { return x.error ? [] : (x.data || []); }, function () { return []; })
     ]).then(function (r) {
-      var raw = { daily: r[0], workouts: r[1], sets: [], muscleMap: r[2], activities: r[3], metrics: r[4], status: r[5], flags: r[6], briefs: r[7], settings: r[8][0] || null, missingTables: missing };
+      var raw = { daily: r[0], workouts: r[1], sets: [], muscleMap: r[2], activities: r[3], metrics: r[4], status: r[5], flags: r[6], briefs: r[7], settings: r[8][0] || null, meals: r[9] || [], missingTables: missing };
       var ids = raw.workouts.map(function (w) { return w.id; }), chunks = [];
       for (var i = 0; i < ids.length; i += 20) chunks.push(ids.slice(i, i + 20));
       return Promise.all(chunks.map(function (c) { return run("workout_sets", sb.from("workout_sets").select("*").in("workout_id", c).is("superseded_at", null)); })).then(function (parts) {

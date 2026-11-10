@@ -6,6 +6,7 @@
   var ic = function (s) { return '<b class="ic ' + s + '">' + STATUS[s].icon + "</b> "; };
   var kv = function (a) { return '<dl class="kv">' + a.map(function (x) { return "<div><dt>" + x[0] + "</dt><dd>" + x[1] + "</dd></div>"; }).join("") + "</dl>"; };
   var kg = function (v) { return v == null ? "–" : (Math.round(v * 10) / 10) + " kg"; };
+  var psec = function (id, n, title, inner, sub) { return '<section class="sec psec" id="' + id + '"><div class="sec-h pillar-h"><span class="pn">' + n + '</span><h2>' + title + "</h2>" + (sub ? '<p class="sec-sub">' + sub + "</p>" : "") + "</div>" + inner + "</section>"; };
   var sec = function (id, title, inner, sub) { return '<section class="sec" id="' + id + '"><div class="sec-h"><h2>' + title + "</h2>" + (sub ? '<p class="sec-sub">' + sub + "</p>" : "") + "</div>" + inner + "</section>"; };
   var hours = function (d) { return d.getHours() + d.getMinutes() / 60; };
   var tag = function (M) { return M.sample ? ' <span class="tag">SAMPLE</span>' : ""; };
@@ -69,7 +70,7 @@
   }
 
   function pillar(key, title, s, label, big, unit, delta, body) {
-    return '<article class="pillar" data-pillar="' + key + '"><header><h3>' + title + '</h3><span class="state">' + ic(s) + label + '</span></header><p class="big' + (big == null ? " nil" : "") + '"><span' + (big == null ? "" : ' data-count="' + big + '"') + ">" + fmt(big) + "</span><small>" + unit + '</small></p><p class="delta">' + delta + "</p>" + body + '<button class="expand" aria-expanded="false">See trend</button><div class="deep"></div></article>';
+    return '<article class="pillar" data-pillar="' + key + '"><header><h3>' + title + '</h3><span class="state">' + ic(s) + label + '</span></header><p class="big' + (big == null ? " nil" : "") + '"><span' + (big == null ? "" : ' data-count="' + big + '"') + ">" + fmt(big) + "</span><small>" + unit + '</small></p><p class="delta">' + delta + '</p><div class="pbody">' + body + '</div><button class="expand" aria-expanded="false">See trend</button><div class="deep"></div></article>';
   }
   var hint = function (s, t) { return '<p class="hint">' + ic(s) + t + "</p>"; };
   function pillars(M) {
@@ -93,10 +94,29 @@
     var pct = steps == null ? 0 : Math.min(100, Math.round(steps / goal * 100));
     var moveBody = '<div class="goal" role="img" aria-label="' + (steps == null ? "No steps reported" : pct + "% of the steps goal") + '"><i style="width:' + pct + '%"></i></div><div class="row">' + H.spark(M.col("steps", 8).slice(0, 7), { band: band(B.steps), label: "Steps, last 7 full days", w: 300, h: 64, wide: true }) + '<span class="cap">Last 7 full days</span></div>' +
       '<p class="lab">Intensity minutes, 7 days</p><div class="goal" role="img" aria-label="' + (iw == null ? "not reported" : iw + " of " + it + " minutes") + '"><i style="width:' + (iw == null ? 0 : Math.min(100, Math.round(iw / it * 100))) + '%"></i></div>' + kv([["Intensity", iw == null ? "not reported" : iw + " of " + it + " min"], ["Today", today.length ? today.join(", ") : "nothing logged yet"]]);
-    return '<div class="pillars">' +
-      pillar("sleep", "Sleep", ss, { good: "Good night", watch: "Fair night", low: "Rough night", none: "No data" }[ss], sl, "score", rel(sl, B.sleep_score), sleepBody) +
-      pillar("energy", "Energy &amp; recovery", hs, hs === "none" ? "No data" : M.paused ? "Resting" : M.vitals.heart.label, rhr, "bpm resting", rel(rhr, B.resting_hr), energyBody) +
-      pillar("move", "Movement", ms, ms === "none" ? "No data" : ms === "good" ? "Goal reached" : M.paused ? "No target today" : "Room to build", steps, "steps so far", "7-day average " + fmt(M.stepsAvg7) + " · goal " + fmt(goal), moveBody) + "</div>";
+    return { sleep:
+      pillar("sleep", "Last night", ss, { good: "Good night", watch: "Fair night", low: "Rough night", none: "No data" }[ss], sl, "score", rel(sl, B.sleep_score), sleepBody), vitals:
+      pillar("energy", "Heart, recovery and stress", hs, hs === "none" ? "No data" : M.paused ? "Resting" : M.vitals.heart.label, rhr, "bpm resting", rel(rhr, B.resting_hr), energyBody), move:
+      pillar("move", "Everyday movement", ms, ms === "none" ? "No data" : ms === "good" ? "Goal reached" : M.paused ? "No target today" : "Room to build", steps, "steps so far", "7-day average " + fmt(M.stepsAvg7) + " · goal " + fmt(goal), moveBody) };
+  }
+
+  /* Nutrition is shown when it is known: meals Claude or you logged. Nothing is estimated. */
+  function nutrition(M) {
+    var meals = (M.raw.meals || []), iso = function (d) { return d.getFullYear() + "-" + H.pad2(d.getMonth() + 1) + "-" + H.pad2(d.getDate()); }, today = iso(M.now), T = M.T;
+    var day = function (d) { var list = meals.filter(function (m) { return String(m.date).slice(0, 10) === d; }), p = 0, c = 0, hasC = false; list.forEach(function (m) { p += +m.protein_g || 0; if (m.calories != null) { c += +m.calories; hasC = true; } }); return { list: list, protein: Math.round(p), calories: hasC ? c : null }; };
+    var burned = T.active_calories != null ? kv([["Active calories burned today", fmt(+T.active_calories) + " kcal"]]) : "";
+    if (!meals.length) return '<div class="panel"><p class="empty">Nothing about food is known yet, so nothing is shown or guessed. Tell Claude what you ate, even roughly, and protein and calories appear here.</p>' + burned + "</div>";
+    var t = day(today), week = [], mx = 1;
+    for (var i = 6; i >= 0; i--) { var d = new Date(M.now); d.setDate(d.getDate() - i); var x = day(iso(d)); week.push({ d: d, protein: x.list.length ? x.protein : null }); if (x.protein > mx) mx = x.protein; }
+    var bars = '<div class="nbars" role="img" aria-label="Protein per day, last 7 days">' + week.map(function (w) { return '<div class="nbar"><i style="height:' + (w.protein == null ? 0 : Math.max(4, Math.round(w.protein / mx * 100))) + '%"></i><b>' + (w.protein == null ? "–" : w.protein) + "</b><span>" + wday(w.d) + "</span></div>"; }).join("") + "</div>";
+    var list = t.list.length ? '<ul class="nl">' + t.list.map(function (m) { return "<li><time>" + (m.time_of_day ? String(m.time_of_day).slice(0, 5) + " · " : "") + esc(m.label || "meal") + (m.planned === false ? " · unplanned" : "") + "</time>" + esc(m.description || "No description") + " · " + Math.round(+m.protein_g || 0) + " g protein" + (m.calories != null ? " · " + m.calories + " kcal" : "") + "</li>"; }).join("") + "</ul>" : '<p class="empty">Nothing logged for today yet.</p>';
+    return '<div class="nutri"><div class="panel"><p class="lab">Today</p><p class="num-m"><span>' + (t.list.length ? t.protein : "–") + '</span><small>g protein</small></p><p class="sub">' + (t.calories != null ? fmt(t.calories) + " kcal logged" : "Calories not logged") + "</p>" + burned + '</div><div class="panel"><p class="lab">Today’s meals</p>' + list + '</div><div class="panel"><p class="lab">Protein, last 7 days (g)</p>' + bars + '<p class="hint">Days without a bar had nothing logged. They are not counted as zero.</p></div></div>';
+  }
+  function extras(M) {
+    var T = M.T, more = [];
+    if (T.vo2_max != null) more.push(["VO₂ max", T.vo2_max]); if (T.training_readiness != null) more.push(["Training readiness (watch)", T.training_readiness]); if (T.active_calories != null) more.push(["Active calories", fmt(+T.active_calories) + " kcal"]);
+    var block = function (title, inner) { return '<div class="xblock"><h3 class="xh">' + title + "</h3>" + inner + "</div>"; };
+    return block("Body and weight", comp(M)) + (more.length ? block("Other readings from the watch", '<div class="panel">' + kv(more) + "</div>") : "") + block("Today so far", day(M)) + block("Notes and status", notes(M));
   }
 
   function training(M) {
@@ -141,8 +161,13 @@
   H.pageHTML = function (M) {
     var ribbon = M.sample ? '<div class="sample" role="note"><b>SAMPLE DATA</b> · ' + (M.missing.length ? "the health tables are not set up yet (run migration_health_v2.sql)" : "no health data has been synced yet") + " · nothing below is yours</div>" : "";
     return ribbon + '<div class="wrap">' + header(M) + hero(M) + '<div class="rest">' +
-      sec("plan", "Today's plan", plan(M)) + sec("pillars", "How you're doing", pillars(M)) + sec("training", "Training", training(M), esc(M.cfg.rotation.join(" → ")) + " · " + M.cfg.perWeek + " times a week") +
-      sec("comp", "Body", comp(M)) + sec("day", "Today so far", day(M)) + sec("notes", "Notes &amp; status", notes(M)) +
+      sec("plan", "Today's plan", plan(M)) +
+      '<nav class="pnav" aria-label="Pillars">' + [["sleep", "Sleep"], ["workout", "Workout"], ["nutrition", "Nutrition"], ["vitals", "Vitals"], ["extras", "Extras"]].map(function (p, i) { return '<button data-go="' + p[0] + '"><b>' + (i + 1) + "</b>" + p[1] + "</button>"; }).join("") + "</nav>" +
+      (function () { var P = pillars(M); return psec("sleep", 1, "Sleep", '<div class="pillars solo">' + P.sleep + "</div>", "Target: asleep by " + esc(M.cfg.bed)) +
+        psec("workout", 2, "Workout", training(M) + '<div class="pillars solo" style="margin-top:12px">' + P.move + "</div>", esc(M.cfg.rotation.join(" → ")) + " · " + M.cfg.perWeek + " times a week") +
+        psec("nutrition", 3, "Nutrition", nutrition(M), "Shown when it is known") +
+        psec("vitals", 4, "Vitals", '<div class="pillars solo">' + P.vitals + "</div>", "Resting heart rate, HRV, Body Battery, stress") +
+        psec("extras", 5, "Extras", extras(M), "Everything else: weight, the day so far, notes, flags and gaps"); })() +
       '<footer class="foot"><p>These are wellness signals from your watch and training log, not medical advice.</p>' + (M.unmapped.length ? "<p>Not yet mapped to a muscle, so missing from the body figure: " + esc(M.unmapped.join(", ")) + ".</p>" : "") +
       '<p>Body figure adapted from <a href="https://github.com/vulovix/body-muscles" target="_blank" rel="noopener">body-muscles</a> by Ivan Vulović, Apache-2.0.</p></footer></div></div><div id="tip" class="tip" hidden></div>';
   };
