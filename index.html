@@ -20499,7 +20499,7 @@
   /* Knowledge page (knowledge/): files and saved items, sorted and linked. Files are read in the browser;
      rows live in the knowledge_* tables and files in the private "knowledge" bucket, all behind RLS.
      Bump KNOWLEDGE_VER with each release of knowledge/*. */
-  var KNOWLEDGE_VER = "2", knowledgeLoading = null, knowledgeHandle = null, knowledgeFetching = null;
+  var KNOWLEDGE_VER = "3", knowledgeLoading = null, knowledgeHandle = null, knowledgeFetching = null;
   var KN = { items:null, edges:[], topics:{}, files:{}, settings:{ external:{} }, usage:null, meaning:{ ready:false, pending:0, busy:false } };
   var KN_MAX_FILE = 50 * 1024 * 1024, KN_PLAN_LIMIT = 1024 * 1024 * 1024;   // free-plan figures, shown as a guide
   function knowledgeLoadScripts(){
@@ -20697,6 +20697,56 @@
     await knowledgeFetch(); knowledgeRefresh();
     return { id:ins.data.id };
   }
+  // A private preview link for an image or a PDF; it stops working after five minutes.
+  async function knowledgePreview(id){
+    var f = KN.files[id];
+    if(!f) return { url:"" };
+    var kind = /^image\//.test(f.mime || "") || /\.(png|jpe?g|webp|gif|bmp)$/i.test(f.file_name || "") ? "image" : /pdf/.test(f.mime || "") || /\.pdf$/i.test(f.file_name || "") ? "pdf" : null;
+    if(!kind) return { url:"x", kind:null };
+    var r = await sb.storage.from("knowledge").createSignedUrl(f.storage_path, 300);
+    return r.error || !r.data ? { url:"" } : { url:r.data.signedUrl, kind:kind };
+  }
+  // The same change for many items at once (type, topic, folder).
+  async function knowledgeBulk(ids, patch){
+    var items = (KN.items || []).filter(function(x){ return ids.indexOf(x.id) >= 0; });
+    if(!items.length) return;
+    var before = items.map(function(it){ return { id:it.id, row:{ zone:it.zone, type:it.type, needs_sort:it.needsSort, meta:it.meta || {} }, topic:it.topic, zone:it.zone }; });
+    for(var i = 0; i < items.length; i++){
+      var it = items[i], payload = { updated_at:new Date().toISOString() }, zone = patch.zone || it.zone;
+      if(patch.zone){ payload.zone = patch.zone; payload.type = patch.type; payload.needs_sort = false; }
+      if(patch.topic !== undefined || patch.zone) payload.topic_id = await knowledgeTopicId(zone, patch.topic !== undefined ? patch.topic : it.topic);
+      if(patch.folder !== undefined) payload.meta = Object.assign({}, it.meta || {}, { folder:patch.folder });
+      var res = await sb.from("knowledge_items").update(payload).eq("id", it.id);
+      if(res.error){ dbErrorToast(res.error, "Couldn't save"); break; }
+    }
+    await knowledgeFetch(); knowledgeRefresh();
+    toast(items.length + (items.length === 1 ? " item" : " items") + " changed.");
+    pushUndo("change " + items.length + " items", async function(){
+      for(var j = 0; j < before.length; j++){ var b = before[j], row = Object.assign({}, b.row); row.topic_id = await knowledgeTopicId(b.zone, b.topic); await sb.from("knowledge_items").update(row).eq("id", b.id); }
+      await knowledgeFetch(); knowledgeRefresh();
+    });
+  }
+  async function knowledgeBulkArchive(ids){
+    var items = (KN.items || []).filter(function(x){ return ids.indexOf(x.id) >= 0; }).map(function(x){ return x.id; });
+    if(!items.length) return;
+    var res = await sb.from("knowledge_items").update({ archived_at:new Date().toISOString() }).in("id", items);
+    if(res.error){ dbErrorToast(res.error, "Couldn't archive"); return; }
+    await knowledgeFetch(); knowledgeRefresh();
+    toast(items.length + (items.length === 1 ? " item" : " items") + " archived.");
+    pushUndo("archive " + items.length + " items", async function(){ await sb.from("knowledge_items").update({ archived_at:null }).in("id", items); await knowledgeFetch(); knowledgeRefresh(); });
+  }
+  // Rename a topic, or merge it into another by giving it that topic's name.
+  async function knowledgeTopic(oldName, newName){
+    var items = (KN.items || []).filter(function(x){ return (x.topic || window.PPKnowledgeCore.topicOf(x)) === oldName; });
+    if(!items.length) return;
+    var byZone = {}; items.forEach(function(it){ (byZone[it.zone] = byZone[it.zone] || []).push(it.id); });
+    for(var z in byZone){ var tid = await knowledgeTopicId(z, newName), r = await sb.from("knowledge_items").update({ topic_id:tid, updated_at:new Date().toISOString() }).in("id", byZone[z]); if(r.error){ dbErrorToast(r.error, "Couldn't rename"); break; } }
+    await knowledgeFetch(); knowledgeRefresh();
+    pushUndo('rename the topic "' + oldName + '"', async function(){
+      for(var z2 in byZone){ var back = await knowledgeTopicId(z2, oldName); await sb.from("knowledge_items").update({ topic_id:back }).in("id", byZone[z2]); }
+      await knowledgeFetch(); knowledgeRefresh();
+    });
+  }
   // Links made by hand between two items. Removing a link deletes only the link row, never an item.
   async function knowledgeLink(a, b){
     if(a === b || /^j:/.test(a) || /^j:/.test(b)) return;
@@ -20734,7 +20784,7 @@
       knowledgeHandle = window.PPKnowledge.mount(host, Object.assign(knowledgeData(), {
         css: "knowledge/knowledge.css?v=" + KNOWLEDGE_VER,
         onUpload: knowledgeUpload, onSearch: knowledgeSearch, onPatch: knowledgePatch, onArchive: knowledgeArchive, onCreate: knowledgeCreate,
-        onOpenFile: knowledgeOpenFile, onSetting: knowledgeSetting, onMeaning: knowledgeMeaning, onLink: knowledgeLink, onUnlink: function(a, b){ return knowledgeUnlink(a, b); },
+        onOpenFile: knowledgeOpenFile, onSetting: knowledgeSetting, onMeaning: knowledgeMeaning, onLink: knowledgeLink, onUnlink: function(a, b){ return knowledgeUnlink(a, b); }, onPreview: knowledgePreview, onBulk: knowledgeBulk, onBulkArchive: knowledgeBulkArchive, onTopic: knowledgeTopic,
         onOpenMirror: function(){ showSection("self"); renderAll(); }
       }));
       if(KN.meaning.ready) knowledgeEmbedder().catch(function(){});
