@@ -32,18 +32,26 @@
       '<button class="fchip" data-f="archived" aria-pressed="false">Archived<span class="n"></span></button></div>' +
       '<button class="pill" id="pill" aria-expanded="false"></button>' +
       '<main class="stage"><div class="chart" id="chart"><svg id="sky" viewBox="-520 -520 1040 1040" role="group" aria-label="Constellation of people around you"></svg>' +
-      '<div class="legend" id="legend"></div><div class="cornertools"><button class="tool" id="conn" aria-pressed="false">Show connections</button><span class="zoom" role="group" aria-label="Zoom"><button class="tool" id="zOut" aria-label="Zoom out">−</button><button class="tool" id="zIn" aria-label="Zoom in">+</button><button class="tool" id="zHome" disabled>Reset</button></span></div></div>' +
+      '<div class="legend" id="legend"></div><div class="cornertools"><button class="tool" id="famBtn">Family roles</button><button class="tool" id="conn" aria-pressed="false">Show connections</button><span class="zoom" role="group" aria-label="Zoom"><button class="tool" id="zOut" aria-label="Zoom out">−</button><button class="tool" id="zIn" aria-label="Zoom in">+</button><button class="tool" id="zHome" disabled>Reset</button></span></div></div>' +
       '<div class="list" id="list" hidden></div>' +
-      '<aside class="rail" id="rail" aria-label="Pulse and person details"><div class="pulse" id="pulse"></div><div class="panel" id="panel"></div></aside></main>';
+      '<aside class="rail" id="rail" aria-label="Pulse and person details"><div class="pulse" id="pulse"></div><div class="panel" id="panel"></div></aside></main><div class="famshade" id="fam" hidden></div>';
     $("#legend").innerHTML = ["strong", "ok", "weak", "strained", "conflict"].map(function (q) { return "<span>" + K.glyph(q) + QL[q] + "</span>"; }).join("") + "<span><i></i>Open thread</span>";
     $("#fRing").innerHTML = '<option value="">Circle</option>' + [1, 2, 3, 4, 5].map(function (c) { return '<option value="' + c + '">' + RINGS[c] + "</option>"; }).join("");
     $("#fQual").innerHTML = '<option value="">Quality</option>' + Object.keys(QL).map(function (q) { return '<option value="' + q + '">' + QL[q] + "</option>"; }).join("");
     S.root.addEventListener("click", onClick); zoomWire($("#sky"));
+    S.root.addEventListener("change", function (e) {
+      var t = e.target, k = t.getAttribute && t.getAttribute("data-fam"), id = k && t.getAttribute("data-id"); if (!k) return;
+      var p = person(id); if (!p) return;
+      if (k === "role") patch(id, { kinRole: t.value || null, kinSide: C.KIN_SIDED[t.value] ? (p.kinSide || null) : null });
+      else if (k === "side") patch(id, { kinSide: t.value || null });
+      else if (k === "parent") famParent(p, t.value);
+    });
     S.root.addEventListener("keydown", function (e) {
       var n = e.target.closest && e.target.closest(".nd");
       var ex = e.target.closest && e.target.closest("[data-exes]");
       if (ex && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); ex.dispatchEvent(new MouseEvent("click", { bubbles: true })); }
       else if (n && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); select(n.getAttribute("data-id")); }
+      else if (e.key === "Escape" && S.famOpen) { S.famOpen = false; $("#fam").hidden = true; var fb2 = $("#famBtn"); if (fb2) fb2.focus(); }
       else if (e.key === "Escape" && (S.open || S.st.sel)) { if (S.open) { S.open = null; panel(); } else select(null); }
       else if (e.key === "Enter" && e.target.id === "linkName") { e.preventDefault(); addLink(); }
     });
@@ -194,8 +202,37 @@
   /* ---------- writes ---------- */
   function fail(e) { console.warn(e); say("That could not be saved. Check your connection and try again."); }
   function patch(id, fields) {
-    if (S.sample) { Object.assign(rawPerson(id), fields); refresh(); return; }
-    Promise.resolve(S.opts.savePerson(id, fields)).then(function () { refresh(); }, fail);
+    if (S.sample) { Object.assign(rawPerson(id), fields); refresh(); famDraw(); return; }
+    Promise.resolve(S.opts.savePerson(id, fields)).then(function () { refresh(); famDraw(); }, fail);
+  }
+  /* ---------- family roles: set who is who for every relative in one list ---------- */
+  function famPeople() { return S.M.P.filter(function (p) { return !p.archived && (p.rel === "Family" || (p.kinRole && p.kinRole !== "partner" && p.kinRole !== "ex")); }); }
+  function famDraw() {
+    var box = $("#fam"); if (!box || !S.famOpen) return;
+    var P = famPeople(), unset = function (p) { return !p.kinRole || (C.KIN_SIDED[p.kinRole] && !p.kinSide) ? 1 : 0; }, keep = box.querySelector(".famlist"), top = keep ? keep.scrollTop : 0, act = S.root.activeElement, fid = act && act.id;
+    P.sort(function (a, b) { return unset(b) - unset(a) || (a.name < b.name ? -1 : 1); });
+    var elders = P.filter(function (p) { return p.kinRole === "aunt" || p.kinRole === "uncle"; }), todo = P.filter(unset).length;
+    var opt = function (v, label, cur) { return '<option value="' + esc(v) + '"' + (v === (cur || "") ? " selected" : "") + ">" + esc(label) + "</option>"; };
+    var roles = [["", "Not set"]].concat(Object.keys(C.KIN).filter(function (k) { return k !== "partner" && k !== "ex"; }).map(function (k) { return [k, C.KIN[k]]; }));
+    box.innerHTML = '<div class="famsheet" role="dialog" aria-modal="true" aria-label="Family roles"><button class="tool famx" id="famClose" aria-label="Close">✕</button><div class="eyebrow">Family tree</div><h2>Who is who</h2><p class="soft">' + (P.length ? (todo ? todo + " of " + P.length + " still need a place. Pick how each person is related to you; aunts, uncles, grandparents and cousins also need a side. A cousin can be put under their parent." : "Everyone has a place in the tree.") : "Nobody is marked as family yet. Set a person’s relationship to Family first.") + '</p><div class="famlist">' +
+      P.map(function (p, i) {
+        var sided = !!C.KIN_SIDED[p.kinRole], par = p.kinRole === "cousin" ? elders.filter(function (a) { return p.links.some(function (l) { return l.id === a.id; }); })[0] : null, choices = elders.filter(function (a) { return !p.kinSide || !a.kinSide || a.kinSide === p.kinSide; });
+        return '<div class="famrow' + (unset(p) ? " todo" : "") + '"><span class="famname">' + esc(p.name) + '</span><select class="fchip" id="famR' + i + '" data-fam="role" data-id="' + p.id + '" aria-label="How ' + esc(p.name) + ' is related to you">' + roles.map(function (r) { return opt(r[0], r[1], p.kinRole); }).join("") + "</select>" +
+          (sided ? '<select class="fchip" id="famS' + i + '" data-fam="side" data-id="' + p.id + '" aria-label="Which side ' + esc(p.name) + ' is on">' + opt("", "Which side?", p.kinSide) + Object.keys(C.SIDE).map(function (k) { return opt(k, C.SIDE[k], p.kinSide); }).join("") + "</select>" : "") +
+          (p.kinRole === "cousin" && choices.length ? '<select class="fchip" id="famP' + i + '" data-fam="parent" data-id="' + p.id + '" aria-label="Whose child ' + esc(p.name) + ' is">' + opt("", "Child of…", par ? par.id : "") + choices.map(function (a) { return opt(a.id, "Child of " + a.first, par ? par.id : ""); }).join("") + "</select>" : "") + "</div>";
+      }).join("") + "</div></div>";
+    var l2 = box.querySelector(".famlist"); if (l2) l2.scrollTop = top;
+    if (fid) { var f = S.root.getElementById(fid); if (f) f.focus(); }
+  }
+  // put a cousin under an aunt or uncle (a link between the two), or take them out again
+  function famParent(p, parentId) {
+    var elders = famPeople().filter(function (a) { return a.kinRole === "aunt" || a.kinRole === "uncle"; }), old = p.links.filter(function (l) { return l.id !== parentId && elders.some(function (a) { return a.id === l.id; }); });
+    old.forEach(function (l) { hideRow("person_links", S.sample ? S.raw.links : S.links, l.linkId, "family link"); });
+    if (!parentId || p.links.some(function (l) { return l.id === parentId; })) { famDraw(); return; }
+    var a = p.id < parentId ? p.id : parentId, b = a === p.id ? parentId : p.id;
+    if (S.sample) { S.raw.links.push({ id: "l" + Date.now(), person_a: a, person_b: b, quality: "ok" }); refresh(); famDraw(); return; }
+    S.opts.sb.from("person_links").upsert({ user_id: S.opts.userId, person_a: a, person_b: b, quality: "ok", archived_at: null }, { onConflict: "person_a,person_b" }).select().single()
+      .then(function (r) { if (r.error) return fail(r.error); S.links.push(r.data); refresh(); famDraw(); }, fail);
   }
   function addSit(id, text) {
     if (S.sample) { S.raw.sits.push({ id: "t" + Date.now(), person_id: id, text: text, noted_on: S.raw.today, author: "me", created_at: new Date().toISOString() }); return refresh(); }
@@ -224,6 +261,9 @@
 
   function onClick(e) {
     var t = e.target, b = t.closest("button"); if (Z.moved && t.closest("#sky")) { Z.moved = false; return; }
+    if (b && b.id === "famBtn") { S.famOpen = true; $("#fam").hidden = false; famDraw(); var fc = $("#famClose"); if (fc) fc.focus(); return; }
+    if ((b && b.id === "famClose") || t.id === "fam") { S.famOpen = false; $("#fam").hidden = true; var fb = $("#famBtn"); if (fb) fb.focus(); return; }
+    if (t.closest("#fam")) return;
     if (!b && !t.closest(".nd") && !t.closest("[data-exes]") && t.closest("#sky")) return select(null);
     if (t.closest("[data-exes]")) { S.st.exOpen = !S.st.exOpen; var sv = $("#sky"); T.draw(sv, S.M, S.st); var again = sv.querySelector("[data-exes]"); if (again) again.focus(); return; }
     var nd = t.closest(".nd"); if (nd) return select(nd.getAttribute("data-id"));

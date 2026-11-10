@@ -211,3 +211,11 @@ svg .nd,svg .ln{transition:opacity .25s}
 .exn .ini{fill:var(--muted);text-anchor:middle;dominant-baseline:central;font-weight:600;pointer-events:none}.exn .nm{fill:var(--text);text-anchor:middle;pointer-events:none}
 .exn .cap{fill:var(--muted);font:500 9.5px var(--font-t);text-anchor:middle;letter-spacing:.04em;pointer-events:none}
 .exn:hover .disc,.exn:focus-visible .disc{stroke:var(--text);stroke-width:2}
+
+/* family roles sheet */
+.famshade{position:fixed;inset:0;z-index:30;background:rgba(0,0,0,.55);display:flex;justify-content:center;align-items:flex-start;padding:8vh 12px 12px}.famshade[hidden]{display:none}
+.famsheet{position:relative;width:100%;max-width:720px;max-height:84vh;display:flex;flex-direction:column;background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:16px;padding:22px}
+.famsheet h2{font:600 22px var(--font-d,var(--font-t));margin:4px 0 6px}.famx{position:absolute;right:14px;top:14px}
+.famlist{overflow-y:auto;margin-top:14px;border-top:1px solid var(--line)}
+.famrow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:9px 2px;border-bottom:1px solid var(--line)}.famname{flex:1;min-width:150px;font-weight:600}
+.famrow.todo .famname::before{content:"○ ";color:var(--muted)}.famrow:not(.todo) .famname::before{content:"● ";color:var(--muted)}

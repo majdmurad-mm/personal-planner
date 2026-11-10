@@ -20085,7 +20085,7 @@
   }
   /* People page (constellation and list). Same pattern as Health: loaded on first open, in order, and
      versioned against the service worker's cache-first rule: bump PEOPLE_VER with each release of people/*. */
-  var PEOPLE_VER = "3", peopleLoading = null, peopleNotesMemo = null;
+  var PEOPLE_VER = "4", peopleLoading = null, peopleNotesMemo = null;
   // The 3D graph is parked: it only shows after localStorage.setItem("pp_people_3d", "1").
   function people3dEnabled(){ try{ return localStorage.getItem("pp_people_3d") === "1"; } catch(e){ return false; } }
   function peopleLoadScripts(){
