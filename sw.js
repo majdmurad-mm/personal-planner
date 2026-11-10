@@ -4,7 +4,7 @@
 // scripts, since caching those would risk serving stale auth/data logic or breaking third-party
 // requests this app doesn't control the caching semantics of. Real data still needs a network
 // connection; this just gets the UI itself on screen fast and offline-tolerant.
-var CACHE_NAME = "planner-shell-v5";
+var CACHE_NAME = "planner-shell-v6";
 var SHELL_FILES = ["./index.html", "./manifest.json", "./icons/icon-192.png", "./icons/icon-512.png", "./icons/apple-touch-icon.png"];
 
 self.addEventListener("install", function(event){
@@ -83,4 +83,21 @@ self.addEventListener("fetch", function(event){
       });
     })
   );
+});
+
+// Reminders: show a notification when the server pushes one, and bring the app forward when it is tapped.
+self.addEventListener("push", function(event){
+  var d = {};
+  try{ d = event.data ? event.data.json() : {}; }catch(e){ d = { title: "Planner", body: event.data ? event.data.text() : "" }; }
+  event.waitUntil(self.registration.showNotification(d.title || "Planner", {
+    body: d.body || "", tag: d.tag || undefined, icon: "./icons/icon-192.png", badge: "./icons/icon-192.png", data: { url: d.url || "./index.html" }
+  }));
+});
+self.addEventListener("notificationclick", function(event){
+  event.notification.close();
+  var url = (event.notification.data && event.notification.data.url) || "./index.html";
+  event.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function(list){
+    for(var i = 0; i < list.length; i++){ if("focus" in list[i]) return list[i].focus(); }
+    return self.clients.openWindow(url);
+  }));
 });

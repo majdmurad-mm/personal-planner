@@ -155,3 +155,9 @@ textarea.in{min-height:76px;resize:vertical}
 .bzoom{position:absolute;right:12px;bottom:12px;display:flex;gap:6px}.bzoom button{width:36px;height:36px;display:grid;place-items:center;border:1px solid var(--line);border-radius:999px;background:var(--bg);font-size:18px}
 .bhint{position:absolute;left:12px;bottom:12px;right:140px;font-size:12px;color:var(--muted);pointer-events:none}
 @media (prefers-reduced-motion:reduce){.bh{transition:none}}
+
+/* reminders sheet */
+.pf{display:flex;gap:8px;align-items:flex-start;padding:5px 0;font-size:14.5px}.pf input{margin-top:4px;accent-color:var(--acc)}
+.steps{margin:6px 0 0;padding-left:20px;font-size:14px;display:grid;gap:4px;color:var(--text)}
+.tools{flex-wrap:wrap;justify-content:flex-end;min-width:0}.tools .search{min-width:0;flex:1 1 140px}
+@container cc (min-width:900px){.tools .addbtn{display:inline-flex}}

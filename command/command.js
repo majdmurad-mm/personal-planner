@@ -11,7 +11,7 @@
     var theme = o.theme || "light", fixedNow = o.now || null, busy = false;
     var call = function (name) { var a = [].slice.call(arguments, 1); return Promise.resolve(o[name] ? o[name].apply(null, a) : null); };
     function setData(d) {
-      ["items", "goals", "projects", "feed", "feedNote", "mainId", "work"].forEach(function (k) { if (d[k] !== undefined) S[k] = d[k]; });
+      ["items", "goals", "projects", "feed", "feedNote", "mainId", "work", "push"].forEach(function (k) { if (d[k] !== undefined) S[k] = d[k]; });
       if (d.board && !S.board.loaded) { S.board.pos = d.board.pos || {}; S.board.links = d.board.links || []; S.board.collapsed = d.board.collapsed || {}; S.board.loaded = true; }
       S.items = S.items || []; S.byId = {}; S.items.forEach(function (i) { S.byId[i.id] = i; });
       var n = fixedNow || new Date(); S.today = d.today || C.localIso(n); S.nowMin = n.getHours() * 60 + n.getMinutes();
@@ -27,7 +27,7 @@
       cc.dataset.theme = theme;
       cc.innerHTML = (S.sample ? '<div class="ribbon" role="note"><b>SAMPLE DATA</b> · invented items and names · nothing below is yours</div>' : "") +
         '<div class="wrap"><header class="top"><div class="seg" role="group" aria-label="View">' + VIEWS.map(function (v, i) { return '<button data-view="' + v[0] + '" aria-pressed="false" title="Press ' + (i + 1) + '">' + v[1] + "</button>"; }).join("") + '</div>' +
-        '<div class="tools"><input class="in search" id="ccSearch" type="search" placeholder="Search  ( / )" aria-label="Search everything" value=""><button class="btn pri wide" style="display:inline-flex" data-act="add">+ Add <kbd>N</kbd></button></div></header>' +
+        '<div class="tools"><input class="in search" id="ccSearch" type="search" placeholder="Search  ( / )" aria-label="Search everything" value=""><button class="btn" data-act="push" title="Reminders on your phone" aria-label="Reminders">🔔<span class="wide" style="display:inline"> Reminders</span></button><button class="btn pri wide addbtn" data-act="add">+ Add <kbd>N</kbd></button></div></header>' +
         '<main id="ccView"></main></div><button class="fab" data-act="add" aria-label="Add something">+</button><div id="ccOver"></div>';
       draw();
     }
@@ -50,8 +50,9 @@
       else if (ov.type === "pick") body = V.pick(S, it);
       else if (ov.type === "quick") body = V.quick(S, parsed());
       else if (ov.type === "review") body = V.review(S);
+      else if (ov.type === "push") body = V.push(S);
       var st = el.querySelector(".sheet"), top = st ? st.scrollTop : 0;
-      el.innerHTML = '<div class="shade' + (ov.type === "quick" || ov.type === "pick" ? " mid" : "") + '" data-shade="1"><div class="sheet" role="dialog" aria-modal="true" aria-label="' + ({ item: "Details", day: "Day", pick: "Pick a date", quick: "Quick add", review: "Weekly review" })[ov.type] + '">' + body + "</div></div>";
+      el.innerHTML = '<div class="shade' + (ov.type === "quick" || ov.type === "pick" ? " mid" : "") + '" data-shade="1"><div class="sheet" role="dialog" aria-modal="true" aria-label="' + ({ item: "Details", day: "Day", pick: "Pick a date", quick: "Quick add", review: "Weekly review", push: "Reminders" })[ov.type] + '">' + body + "</div></div>";
       var s2 = el.querySelector(".sheet"); if (s2 && fromData) s2.scrollTop = top;
       if (fid && fromData) { var f = root.getElementById(fid); if (f) f.focus(); }
     }
@@ -178,6 +179,10 @@
         else if (q === "full") { close(); call("onOpenFull", it.id); }
       }
       else if (d.act === "close") close();
+      else if (d.act === "push") { open({ type: "push" }); call("onPush", "refresh"); }
+      else if (d.act === "pushon") call("onPush", "enable");
+      else if (d.act === "pushoff") call("onPush", "disable");
+      else if (d.act === "pushtest") call("onPush", "test");
       else if (d.act === "add") { S.qa.date = null; open({ type: "quick" }); }
       else if (d.act === "qsave") guard(saveQuick(false));
       else if (d.act === "qmore") guard(saveQuick(true));
@@ -199,6 +204,7 @@
       else if (e.target.id === "ccQ") { S.qa.text = e.target.value; S.qa.msg = ""; $("#ccParsed").innerHTML = V.parsed(S, parsed()); }
     });
     cc.addEventListener("change", function (e) {
+      var pf = e.target.dataset && e.target.dataset.pf; if (pf) { var pv = {}; pv[pf] = e.target.type === "checkbox" ? e.target.checked : e.target.value; if (e.target.type !== "checkbox" && !pv[pf]) return; call("onPushSettings", pv); return; }
       var f = e.target.dataset && e.target.dataset.f, ov = S.over, it = ov && ov.id ? S.byId[ov.id] : null; if (!f || !it) return;
       var v = e.target.value, patch = {};
       if (f === "title") { v = v.trim(); if (!v) { e.target.value = it.title; return; } }

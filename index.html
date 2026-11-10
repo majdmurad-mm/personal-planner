@@ -20332,7 +20332,7 @@
   /* Command Center (command/): one page for tasks, events, deadlines and time blocks. The module only
      draws; every save goes through the functions below, so the activity log and undo keep working.
      Bump COMMAND_VER with each release of command/*. */
-  var COMMAND_VER = "3", commandLoading = null, commandHandle = null, commandBoard = null, commandBoardLoad = null;
+  var COMMAND_VER = "4", commandLoading = null, commandHandle = null, commandBoard = null, commandBoardLoad = null;
   // Hours that count as booked in the free-time bars. Change here if the work pattern changes.
   var COMMAND_WORK = { days:[1, 2, 3, 4, 5], start:"09:00", end:"18:00" };
   function commandLoadScripts(){
@@ -20362,6 +20362,66 @@
     var res = await sb.from("strategy_board").upsert({ user_id:currentUser.id, layout:layout, updated_at:new Date().toISOString() }, { onConflict:"user_id" });
     if(res.error) console.warn(res.error);
   }
+  /* Reminders on this device (Web Push). The browser subscribes with the public key the connector hands
+     out; the subscription and the settings live in push_* tables behind RLS. The server sends. */
+  var commandPush = { supported:("serviceWorker" in navigator) && ("PushManager" in window) && ("Notification" in window), permission:(window.Notification ? Notification.permission : "default"),
+    subscribed:false, devices:null, busy:false, msg:"", settings:{}, standalone:!!(window.matchMedia && matchMedia("(display-mode: standalone)").matches) };
+  var PUSH_BASE = SUPABASE_URL + "/functions/v1/planner-mcp/push/";
+  function commandPushShow(){ if(commandHandle && activeSection === "command") commandHandle.update({ push:Object.assign({}, commandPush) }); }
+  async function commandPushSub(){
+    if(!commandPush.supported) return null;
+    var reg = await navigator.serviceWorker.ready;
+    return { reg:reg, sub:await reg.pushManager.getSubscription() };
+  }
+  async function commandPushRefresh(){
+    try{
+      var s = await commandPushSub();
+      commandPush.permission = window.Notification ? Notification.permission : "default";
+      commandPush.subscribed = !!(s && s.sub);
+      var res = await Promise.all([ sb.from("push_settings").select("*").maybeSingle(), sb.from("push_subscriptions").select("id", { count:"exact", head:true }).is("failed_at", null) ]);
+      commandPush.settings = res[0].data || {};
+      commandPush.devices = res[1].error ? null : (res[1].count || 0);
+    }catch(err){ console.warn(err); }
+    commandPushShow();
+  }
+  function pushKeyBytes(b64){ var t = String(b64).replace(/-/g, "+").replace(/_/g, "/"), bin = atob(t + "=".repeat((4 - (t.length % 4)) % 4)), out = new Uint8Array(bin.length); for(var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i); return out; }
+  async function commandPushAction(what){
+    if(what === "refresh") return commandPushRefresh();
+    if(commandPush.busy) return;
+    commandPush.busy = true; commandPush.msg = ""; commandPushShow();
+    try{
+      var s = await commandPushSub();
+      if(what === "enable"){
+        var perm = await Notification.requestPermission();
+        commandPush.permission = perm;
+        if(perm !== "granted") throw new Error(perm === "denied" ? "Notifications were blocked. Allow them in the site settings, then try again." : "Notifications were not allowed, so nothing was switched on.");
+        var kr = await fetch(PUSH_BASE + "key").then(function(r){ return r.ok ? r.json() : null; }, function(){ return null; });
+        if(!kr || !kr.publicKey) throw new Error("The reminder service is not live yet. It starts once the connector update is deployed in Supabase.");
+        var sub = (s && s.sub) || await s.reg.pushManager.subscribe({ userVisibleOnly:true, applicationServerKey:pushKeyBytes(kr.publicKey) }), j = sub.toJSON();
+        var device = (/Android/.test(navigator.userAgent) ? "Android" : /iPhone|iPad/.test(navigator.userAgent) ? "iPhone" : /Windows/.test(navigator.userAgent) ? "Windows" : /Mac/.test(navigator.userAgent) ? "Mac" : "Browser") + (commandPush.standalone ? " app" : "");
+        var up = await sb.from("push_subscriptions").upsert({ user_id:currentUser.id, endpoint:j.endpoint, p256dh:j.keys.p256dh, auth:j.keys.auth, device:device, failed_at:null }, { onConflict:"endpoint" });
+        if(up.error) throw new Error(up.error.message);
+        commandPush.msg = "Reminders are on for this device. Send a test to be sure.";
+      } else if(what === "disable"){
+        if(s && s.sub){ var ep = s.sub.endpoint; await s.sub.unsubscribe(); await sb.from("push_subscriptions").delete().eq("endpoint", ep); }
+        commandPush.msg = "Reminders are off for this device.";
+      } else if(what === "test"){
+        var sess = await sb.auth.getSession(), tok = sess.data && sess.data.session ? sess.data.session.access_token : "";
+        var tr = await fetch(PUSH_BASE + "test", { method:"POST", headers:{ Authorization:"Bearer " + tok, "Content-Type":"application/json" }, body:"{}" }).then(function(r){ return r.json().catch(function(){ return null; }); }, function(){ return null; });
+        if(!tr || !tr.ok) throw new Error("The test could not be sent. The reminder service may not be live yet.");
+        commandPush.msg = tr.sent ? "Sent. A notification should arrive within a few seconds." : "Nothing could be delivered. Turn reminders off and on again on this device.";
+      }
+    }catch(err){ commandPush.msg = (err && err.message) || "That did not work. Try again."; }
+    commandPush.busy = false;
+    await commandPushRefresh();
+  }
+  async function commandPushSettings(patch){
+    var row = Object.assign({ user_id:currentUser.id, updated_at:new Date().toISOString() }, patch);
+    var res = await sb.from("push_settings").upsert(row, { onConflict:"user_id" });
+    if(res.error){ dbErrorToast(res.error, "Couldn't save"); return; }
+    Object.assign(commandPush.settings, patch);
+    commandPushShow();
+  }
   function commandPeople(ids){
     return (ids || []).map(function(id){ var p = state.people.find(function(x){ return x.id === id; }); return p ? p.name : null; }).filter(Boolean);
   }
@@ -20379,7 +20439,7 @@
     }));
     var today = todayStr(), main = fxMainAction(today);
     return {
-      items: items, today: today, mainId: main ? main.id : null, work: COMMAND_WORK, theme: currentTheme(), board: commandBoard || undefined,
+      items: items, today: today, mainId: main ? main.id : null, work: COMMAND_WORK, theme: currentTheme(), board: commandBoard || undefined, push: Object.assign({}, commandPush),
       goals: state.goals.map(function(g){ return { id:g.id, title:g.title, area:g.category || "", due:g.ongoing ? null : (g.due || null), ongoing:!!g.ongoing, progress:Math.round(goalProgress(g)) || 0,
         open: state.actions.filter(function(a){ return !a.done && resolveGoalIdForAction(a) === g.id; }).length }; }),
       projects: state.projects.map(function(p){
@@ -20481,7 +20541,7 @@
       if(commandHandle){ commandHandle.update(d); return; }
       commandHandle = window.PPCommand.mount(host, Object.assign(d, {
         css: "command/command.css?v=" + COMMAND_VER, areas: CATEGORIES,
-        onCreate: commandCreate, onPatch: commandPatch, onArchive: commandArchive, onHistory: commandHistory, onBoardSave: commandBoardSave,
+        onCreate: commandCreate, onPatch: commandPatch, onArchive: commandArchive, onHistory: commandHistory, onBoardSave: commandBoardSave, onPush: commandPushAction, onPushSettings: commandPushSettings,
         onSetMain: function(id){ return fxSetMain(id, todayStr()); },
         onUndo: function(logId){ return fxUndo(logId); },
         onOpenFull: function(id){ var hit = commandFind(id); if(hit && hit.table === "events") editEvent(id); else editAction(id); },

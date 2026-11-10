@@ -3149,6 +3149,154 @@ tool("memory_archive", {
 const httpHandler = new StreamableHttpTransport().bind(mcp);
 const agentHttpHandler = new StreamableHttpTransport().bind(mcpAgent);
 
+// ---- Reminders on the phone (Web Push) -----------------------------------------
+// Three small routes next to the MCP endpoint:
+//   GET  .../push/key   the public key a browser needs to subscribe (not a secret)
+//   POST .../push/run   called every few minutes by a database schedule; sends what is due
+//   POST .../push/test  sends one test notification; needs the owner's own sign-in token
+// Subscriptions, settings and a "sent" log live in push_* tables (see
+// _Memory/migration_push.sql). The signing key pair comes from the VAPID_PUBLIC_KEY and
+// VAPID_PRIVATE_KEY secrets when they are set; otherwise one is created on first use and kept in
+// push_config, a table no browser key can read. Web Push is implemented here with WebCrypto
+// (RFC 8291 + RFC 8292), so the function has no extra dependency.
+const PUSH_SITE = "https://majdmurad-mm.github.io/personal-planner/";
+const b64u = (buf: ArrayBuffer | Uint8Array) => { const b = buf instanceof Uint8Array ? buf : new Uint8Array(buf); let s = ""; for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]); return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); };
+const unb64u = (s: string) => { const t = String(s).replace(/-/g, "+").replace(/_/g, "/"), bin = atob(t + "=".repeat((4 - (t.length % 4)) % 4)); const out = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i); return out; };
+const pushCat = (...parts: Uint8Array[]) => { const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0)); let o = 0; for (const p of parts) { out.set(p, o); o += p.length; } return out; };
+const pushUtf8 = (s: string) => new TextEncoder().encode(s);
+async function pushHkdf(salt: Uint8Array, ikm: Uint8Array, info: Uint8Array, len: number) {
+  const key = await crypto.subtle.importKey("raw", ikm, "HKDF", false, ["deriveBits"]);
+  return new Uint8Array(await crypto.subtle.deriveBits({ name: "HKDF", hash: "SHA-256", salt, info }, key, len * 8));
+}
+async function pushNewKeys() {
+  const kp = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+  const pub = new Uint8Array(await crypto.subtle.exportKey("raw", kp.publicKey)), jwk = await crypto.subtle.exportKey("jwk", kp.privateKey);
+  return { publicKey: b64u(pub), privateKey: String(jwk.d) };
+}
+// The signed token that tells the push service who is sending (RFC 8292).
+async function pushVapidHeader(endpoint: string, publicKey: string, privateKey: string, subject: string, nowSec: number) {
+  const pub = unb64u(publicKey);
+  const key = await crypto.subtle.importKey("jwk", { kty: "EC", crv: "P-256", d: privateKey, x: b64u(pub.slice(1, 33)), y: b64u(pub.slice(33, 65)), ext: true }, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
+  const head = b64u(pushUtf8(JSON.stringify({ typ: "JWT", alg: "ES256" }))), body = b64u(pushUtf8(JSON.stringify({ aud: new URL(endpoint).origin, exp: nowSec + 12 * 3600, sub: subject })));
+  const sig = await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, key, pushUtf8(head + "." + body));
+  return "vapid t=" + head + "." + body + "." + b64u(sig) + ", k=" + publicKey;
+}
+// Encrypts the message for one browser (RFC 8291, aes128gcm). salt and the one-off key pair can be
+// passed in for tests; normally they are random.
+// deno-lint-ignore no-explicit-any
+async function pushEncrypt(p256dh: string, auth: string, payload: Uint8Array, fixed?: { salt: Uint8Array; keys: any }) {
+  const ua = unb64u(p256dh), secret = unb64u(auth);
+  const keys = fixed ? fixed.keys : await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
+  const as = new Uint8Array(await crypto.subtle.exportKey("raw", keys.publicKey));
+  const uaKey = await crypto.subtle.importKey("raw", ua, { name: "ECDH", namedCurve: "P-256" }, false, []);
+  const shared = new Uint8Array(await crypto.subtle.deriveBits({ name: "ECDH", public: uaKey }, keys.privateKey, 256));
+  const ikm = await pushHkdf(secret, shared, pushCat(pushUtf8("WebPush: info\0"), ua, as), 32);
+  const salt = fixed ? fixed.salt : crypto.getRandomValues(new Uint8Array(16));
+  const cek = await pushHkdf(salt, ikm, pushUtf8("Content-Encoding: aes128gcm\0"), 16), nonce = await pushHkdf(salt, ikm, pushUtf8("Content-Encoding: nonce\0"), 12);
+  const aes = await crypto.subtle.importKey("raw", cek, "AES-GCM", false, ["encrypt"]);
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce }, aes, pushCat(payload, new Uint8Array([2]))));
+  return pushCat(salt, new Uint8Array([0, 0, 16, 0]), new Uint8Array([as.length]), as, ct);
+}
+// deno-lint-ignore no-explicit-any
+async function pushSend(sub: any, message: unknown, vapid: { publicKey: string; privateKey: string }): Promise<number> {
+  try {
+    const body = await pushEncrypt(sub.p256dh, sub.auth, pushUtf8(JSON.stringify(message)));
+    const res = await fetch(sub.endpoint, { method: "POST", body, headers: { "Content-Encoding": "aes128gcm", "Content-Type": "application/octet-stream", TTL: "3600", Urgency: "normal", Authorization: await pushVapidHeader(sub.endpoint, vapid.publicKey, vapid.privateKey, PUSH_SITE, Math.floor(Date.now() / 1000)) } });
+    return res.status;
+  } catch (_e) { return 0; }
+}
+async function pushKeys(): Promise<{ publicKey: string; privateKey: string } | null> {
+  const ePub = Deno.env.get("VAPID_PUBLIC_KEY"), ePriv = Deno.env.get("VAPID_PRIVATE_KEY");
+  if (ePub && ePriv) return { publicKey: ePub, privateKey: ePriv };
+  const cur = await db.from("push_config").select("public_key,private_key").eq("id", 1).maybeSingle();
+  if (cur.error) return null;
+  if (cur.data) return { publicKey: cur.data.public_key, privateKey: cur.data.private_key };
+  const made = await pushNewKeys();
+  const ins = await db.from("push_config").insert({ id: 1, public_key: made.publicKey, private_key: made.privateKey });
+  if (ins.error) { const again = await db.from("push_config").select("public_key,private_key").eq("id", 1).maybeSingle(); return again.data ? { publicKey: again.data.public_key, privateKey: again.data.private_key } : null; }
+  return made;
+}
+// What is due right now. Pure: takes rows and "now" in Berlin, returns [{ key, title, body }].
+// deno-lint-ignore no-explicit-any
+function pushDue(actions: any[], events: any[], settings: any, today: string, nowMin: number, windowMin: number) {
+  const hm = (t: string | null, d: number) => t ? +String(t).slice(0, 2) * 60 + +String(t).slice(3, 5) : d;
+  const qf = hm(settings.quiet_from, 23 * 60), qt = hm(settings.quiet_to, 8 * 60), quiet = qf === qt ? false : qf < qt ? nowMin >= qf && nowMin < qt : nowMin >= qf || nowMin < qt;
+  // deno-lint-ignore no-explicit-any
+  const out: any[] = [];
+  if (settings.enabled === false || quiet) return out;
+  const days = [today, ccAdd(today, 1), ccAdd(today, 2)], clock = (m: number) => String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
+  // deno-lint-ignore no-explicit-any
+  const each = (rows: any[], table: string) => {
+    for (const r of rows) {
+      if (r.muted || r.someday || !(r.reminders || []).length) continue;
+      const kind = ccKind(r, table);
+      for (const d of ccDates(r, today, days[2])) {
+        if (table === "actions" && (kind === "task" || kind === "deadline") && (r.recurrence ? (r.recurrence_done || []).includes(d) : r.done)) continue;
+        const timed = !!r.time_of_day && !r.all_day, start = days.indexOf(d) * 1440 + (timed ? hm(r.time_of_day, 540) : 540);
+        for (const off of r.reminders) {
+          const at = start - Number(off);
+          if (at <= nowMin && at > nowMin - windowMin) out.push({ key: "r:" + r.id + ":" + d + ":" + off, title: r.title, body: (d === today ? "Today" : d === days[1] ? "Tomorrow" : d) + (timed ? " at " + String(r.time_of_day).slice(0, 5) : "") + (kind === "deadline" ? " · due" : "") });
+        }
+      }
+    }
+  };
+  each(actions, "actions"); each(events, "events");
+  const digestAt = hm(settings.digest_time, 8 * 60);
+  if (settings.digest_on !== false && nowMin >= digestAt && nowMin < digestAt + 60) {
+    const occ = ccOccurrences(actions, events, today, today), main = actions.find((a) => a.focus_date === today && !a.done), ev = occ.filter((o) => o.kind === "event" || o.kind === "block"), tasks = occ.filter((o) => (o.kind === "task" || o.kind === "deadline") && !o.done);
+    const first = ev.filter((o) => o.timeOfDay)[0];
+    out.push({ key: "d:" + today, title: main ? "Today: " + main.title : tasks.length ? "Today: " + tasks.length + (tasks.length === 1 ? " thing" : " things") + " on the list" : "Today is open", body: (ev.length ? ev.length + (ev.length === 1 ? " event" : " events") + (first ? ", first " + first.title + " at " + first.timeOfDay : "") : "No events") + (main && tasks.length > 1 ? " · " + (tasks.length - 1) + " other " + (tasks.length - 1 === 1 ? "task" : "tasks") : "") });
+  }
+  if (settings.deadline_on !== false && nowMin >= 18 * 60 && nowMin < 19 * 60) {
+    for (const a of actions) if (ccKind(a, "actions") === "deadline" && !a.done && !a.muted && !a.someday && ccDates(a, days[1], days[1]).length) out.push({ key: "dl:" + a.id + ":" + days[1], title: "Due tomorrow: " + a.title, body: "A heads-up, so tomorrow is calm." });
+  }
+  void clock;
+  return out;
+}
+function berlinNow(now: Date) {
+  const p = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(now), g = (t: string) => p.find((x) => x.type === t)?.value || "00";
+  return { today: g("year") + "-" + g("month") + "-" + g("day"), nowMin: +g("hour") * 60 + +g("minute") };
+}
+const PUSH_DEFAULTS = { enabled: true, quiet_from: "23:00", quiet_to: "08:00", digest_on: true, digest_time: "08:00", deadline_on: true };
+// deno-lint-ignore no-explicit-any
+async function pushDeliver(messages: any[]) {
+  const subs = await db.from("push_subscriptions").select("*").eq("user_id", OWNER).is("failed_at", null);
+  if (subs.error || !subs.data || !subs.data.length) return { sent: 0, devices: 0 };
+  const vapid = await pushKeys(); if (!vapid) return { sent: 0, devices: subs.data.length };
+  let sent = 0;
+  for (const m of messages) for (const s of subs.data) {
+    const status = await pushSend(s, { title: m.title, body: m.body, tag: m.key, url: PUSH_SITE }, vapid);
+    if (status === 404 || status === 410) await db.from("push_subscriptions").update({ failed_at: new Date().toISOString() }).eq("id", s.id);
+    else if (status >= 200 && status < 300) { sent++; await db.from("push_subscriptions").update({ last_ok_at: new Date().toISOString() }).eq("id", s.id); }
+  }
+  return { sent, devices: subs.data.length };
+}
+async function pushRun() {
+  if (!OWNER) return { ok: false };
+  const set = await db.from("push_settings").select("*").eq("user_id", OWNER).maybeSingle();
+  if (set.error) return { ok: false };
+  const L = await ccLoad(); if (L.error) return { ok: false };
+  const t = berlinNow(new Date()), due = pushDue(L.actions, L.events, { ...PUSH_DEFAULTS, ...(set.data || {}) }, t.today, t.nowMin, 15), fresh = [];
+  for (const m of due) { const ins = await db.from("push_log").insert({ user_id: OWNER, key: m.key }); if (!ins.error) fresh.push(m); }   // the unique key stops a second send
+  const r = fresh.length ? await pushDeliver(fresh) : { sent: 0, devices: 0 };
+  return { ok: true, due: fresh.length, sent: r.sent };
+}
+const PUSH_CORS = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "authorization, content-type, apikey", "Access-Control-Allow-Methods": "GET, POST, OPTIONS" };
+async function pushRoute(req: Request, pathname: string): Promise<Response> {
+  const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json", ...PUSH_CORS } });
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: PUSH_CORS });
+  if (pathname.endsWith("/push/key")) { const k = await pushKeys(); return k ? json({ publicKey: k.publicKey }) : json({ error: "reminders are not set up yet (run _Memory/migration_push.sql)" }, 503); }
+  if (pathname.endsWith("/push/run") && req.method === "POST") return json(await pushRun());
+  if (pathname.endsWith("/push/test") && req.method === "POST") {
+    const token = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
+    const who = token ? await db.auth.getUser(token) : null;
+    if (!who || who.error || !who.data.user || who.data.user.id !== OWNER) return json({ error: "sign in first" }, 401);
+    const r = await pushDeliver([{ key: "test:" + Date.now(), title: "Reminders are working", body: "This is a test from your planner." }]);
+    return json({ ok: true, sent: r.sent, devices: r.devices });
+  }
+  return json({ error: "not found" }, 404);
+}
+
 const app = new Hono();
 
 // Token gate. The token may arrive any of three ways, and any of them is accepted:
@@ -3183,6 +3331,7 @@ function tokenRole(req: Request): "owner" | "agent" | null {
 // everything else is the unauthenticated health check.
 app.all("*", async (c) => {
   const pathname = new URL(c.req.url).pathname;
+  if (/\/push\/(key|run|test)$/.test(pathname)) return await pushRoute(c.req.raw, pathname);
   if (pathname.endsWith("/mcp")) {
     const role = tokenRole(c.req.raw);
     if (!role) return c.json({ error: "unauthorized" }, 401);
