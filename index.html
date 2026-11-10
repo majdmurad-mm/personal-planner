@@ -20065,7 +20065,7 @@
   };
   /* Health page. Its code is loaded on first open, in order, and versioned so the service worker's
      cache-first rule for static files can never serve a stale copy: bump HEALTH_VER with each release. */
-  var HEALTH_VER = "3", healthLoading = null;
+  var HEALTH_VER = "4", healthLoading = null;
   function healthLoadScripts(){
     if(healthLoading) return healthLoading;
     var files = ["body", "model", "charts", "view", "health"];
@@ -20488,7 +20488,7 @@
   /* Knowledge page (knowledge/): files and saved items, sorted and linked. Files are read in the browser;
      rows live in the knowledge_* tables and files in the private "knowledge" bucket, all behind RLS.
      Bump KNOWLEDGE_VER with each release of knowledge/*. */
-  var KNOWLEDGE_VER = "1", knowledgeLoading = null, knowledgeHandle = null, knowledgeFetching = null;
+  var KNOWLEDGE_VER = "2", knowledgeLoading = null, knowledgeHandle = null, knowledgeFetching = null;
   var KN = { items:null, edges:[], topics:{}, files:{}, settings:{ external:{} }, usage:null, meaning:{ ready:false, pending:0, busy:false } };
   var KN_MAX_FILE = 50 * 1024 * 1024, KN_PLAN_LIMIT = 1024 * 1024 * 1024;   // free-plan figures, shown as a guide
   function knowledgeLoadScripts(){
@@ -20560,6 +20560,7 @@
     for(var n = 0; n < files.length; n++){
       var file = files[n];
       try{
+        if(!X.kind(file)){ if(files.length === 1){ lastMsg = "“" + file.name + "” is a kind of file that cannot be read yet. Use PDF, an image, EPUB, DOCX, TXT or MD."; say(lastMsg); } continue; }
         if(file.size > KN_MAX_FILE){ lastMsg = "“" + file.name + "” is larger than " + Math.round(KN_MAX_FILE / 1048576) + " MB and was not added."; say(lastMsg); continue; }
         if(KN.usage && KN.usage.bytes + file.size > KN_PLAN_LIMIT){ lastMsg = "Adding “" + file.name + "” would go over the storage limit, so it was not added."; say(lastMsg); continue; }
         say("Reading " + file.name + "…");
@@ -20570,6 +20571,8 @@
         if(r.meta.author) meta.author = r.meta.author;
         if(r.ocr) meta.ocr = true;
         if(r.note) meta.note = r.note;
+        var rel = file.webkitRelativePath || "";
+        if(rel.indexOf("/") > 0) meta.folder = rel.split("/").slice(0, -1).join(" / ");
         var draft = { zone:c.zone, title:r.meta.title || c.title, summary:c.summary, tags:[] };
         draft.tags = K.tagsOf(draft);
         var topicId = await knowledgeTopicId(c.zone, K.topicOf(draft));
@@ -20655,6 +20658,7 @@
     if(!it) return;
     var payload = { updated_at:new Date().toISOString() }, zone = patch.zone || it.zone;
     ["title", "zone", "type", "summary", "why", "tags"].forEach(function(k){ if(patch[k] !== undefined) payload[k] = patch[k]; });
+    if(patch.folder !== undefined){ var m2 = Object.assign({}, it.meta || {}); if(patch.folder) m2.folder = patch.folder; else delete m2.folder; payload.meta = m2; }
     if(patch.needsSort !== undefined) payload.needs_sort = patch.needsSort;
     if(patch.topic !== undefined || patch.zone !== undefined) payload.topic_id = await knowledgeTopicId(zone, patch.topic !== undefined ? patch.topic : it.topic);
     var before = { title:it.title, zone:it.zone, type:it.type, summary:it.summary, why:it.why, tags:it.tags, needs_sort:it.needsSort };
@@ -20682,6 +20686,20 @@
     await knowledgeFetch(); knowledgeRefresh();
     return { id:ins.data.id };
   }
+  // Links made by hand between two items. Removing a link deletes only the link row, never an item.
+  async function knowledgeLink(a, b){
+    if(a === b || /^j:/.test(a) || /^j:/.test(b)) return;
+    var res = await sb.from("knowledge_edges").insert({ from_id:a, to_id:b, kind:"related" });
+    if(res.error && !/duplicate/i.test(res.error.message)){ dbErrorToast(res.error, "Couldn't link"); return; }
+    await knowledgeFetch(); knowledgeRefresh();
+    pushUndo("link two items", function(){ return knowledgeUnlink(a, b, true); });
+  }
+  async function knowledgeUnlink(a, b, quiet){
+    var res = await sb.from("knowledge_edges").delete().or("and(from_id.eq." + a + ",to_id.eq." + b + "),and(from_id.eq." + b + ",to_id.eq." + a + ")");
+    if(res.error){ dbErrorToast(res.error, "Couldn't remove the link"); return; }
+    await knowledgeFetch(); knowledgeRefresh();
+    if(!quiet) pushUndo("remove a link", function(){ return knowledgeLink(a, b); });
+  }
   async function knowledgeOpenFile(id){
     var f = KN.files[id];
     if(!f) return;
@@ -20705,7 +20723,7 @@
       knowledgeHandle = window.PPKnowledge.mount(host, Object.assign(knowledgeData(), {
         css: "knowledge/knowledge.css?v=" + KNOWLEDGE_VER,
         onUpload: knowledgeUpload, onSearch: knowledgeSearch, onPatch: knowledgePatch, onArchive: knowledgeArchive, onCreate: knowledgeCreate,
-        onOpenFile: knowledgeOpenFile, onSetting: knowledgeSetting, onMeaning: knowledgeMeaning,
+        onOpenFile: knowledgeOpenFile, onSetting: knowledgeSetting, onMeaning: knowledgeMeaning, onLink: knowledgeLink, onUnlink: function(a, b){ return knowledgeUnlink(a, b); },
         onOpenMirror: function(){ showSection("self"); renderAll(); }
       }));
       if(KN.meaning.ready) knowledgeEmbedder().catch(function(){});

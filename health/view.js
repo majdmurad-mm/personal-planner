@@ -100,6 +100,29 @@
       pillar("move", "Everyday movement", ms, ms === "none" ? "No data" : ms === "good" ? "Goal reached" : M.paused ? "No target today" : "Room to build", steps, "steps so far", "7-day average " + fmt(M.stepsAvg7) + " · goal " + fmt(goal), moveBody) };
   }
 
+  /* Training calendar: the days a strength session or a gym-type activity was actually logged.
+     Other sport (a swim, a run) is marked differently; walks are left out. Nothing is inferred. */
+  function trainCal(M) {
+    var key = function (d) { return d.getFullYear() + "-" + H.pad2(d.getMonth() + 1) + "-" + H.pad2(d.getDate()); }, days = {}, GYM = /strength|gym|fitness|weight|hiit|workout|crossfit|cardio/i, SKIP = /walk|steps|hike|commute/i;
+    M.sessions.forEach(function (s) { var k = key(s.d); (days[k] = days[k] || { gym: [], other: [] }).gym.push(s.routine || "Strength session"); });
+    M.acts.forEach(function (a) { var label = (a.name || a.type || "Activity") + (a.mins ? " " + Math.round(a.mins) + " min" : ""), k = key(a.d), t = (a.type || "") + " " + (a.name || ""); if (SKIP.test(t)) return; var o = days[k] = days[k] || { gym: [], other: [] }; if (GYM.test(t)) { if (!o.gym.length) o.gym.push(label); } else o.other.push(label); });
+    var now = M.now, today = key(now), months = [], inPeriod = function (d) { return M.periods.some(function (p) { return d >= p.from && (!p.to || d <= p.to); }); };
+    for (var m = 2; m >= 0; m--) months.push(new Date(now.getFullYear(), now.getMonth() - m, 1));
+    var total30 = 0, total90 = 0; Object.keys(days).forEach(function (k) { if (!days[k].gym.length) return; var age = Math.round((new Date(today + "T12:00:00") - new Date(k + "T12:00:00")) / 864e5); if (age >= 0 && age < 30) total30++; if (age >= 0 && age < 90) total90++; });
+    var grid = months.map(function (first) {
+      var lead = (first.getDay() + 6) % 7, n = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate(), cells = "", count = 0;
+      for (var i = 0; i < lead; i++) cells += '<span class="tcd blank"></span>';
+      for (var d = 1; d <= n; d++) {
+        var dt = new Date(first.getFullYear(), first.getMonth(), d), k = key(dt), o = days[k], future = k > today, cls = "tcd" + (o && o.gym.length ? " gym" : o && o.other.length ? " other" : "") + (k === today ? " today" : "") + (future ? " future" : "") + (!future && inPeriod(dt) ? " paused" : "");
+        if (o && o.gym.length) count++;
+        var what = o && o.gym.length ? o.gym.concat(o.other).join(", ") : o && o.other.length ? o.other.join(", ") : future ? "" : inPeriod(dt) ? "sick, injured or on a break" : "no training logged";
+        cells += '<span class="' + cls + '" role="img" aria-label="' + esc(wday(dt) + " " + d + " " + first.toLocaleDateString("en-GB", { month: "long" }) + (what ? ": " + what : "")) + '" title="' + esc(what) + '">' + d + (o && o.gym.length ? '<i aria-hidden="true">●</i>' : o && o.other.length ? '<i aria-hidden="true">○</i>' : "") + "</span>";
+      }
+      return '<div class="tcm"><p class="lab">' + first.toLocaleDateString("en-GB", { month: "long", year: "numeric" }) + ' <span class="tcn">' + count + (count === 1 ? " day" : " days") + '</span></p><div class="tcw">' + ["M", "T", "W", "T", "F", "S", "S"].map(function (x) { return "<b>" + x + "</b>"; }).join("") + "</div>" + '<div class="tcg">' + cells + "</div></div>";
+    }).join("");
+    return '<div class="panel tcal"><div class="tch"><p class="lab">Training calendar</p><p class="sub">' + total30 + (total30 === 1 ? " training day" : " training days") + " in the last 30 days · " + total90 + ' in the last 90</p></div><div class="tcms">' + grid + '</div><p class="hint"><span class="tck gym">●</span> strength or gym session &nbsp; <span class="tck">○</span> other sport &nbsp; <span class="tck pz">▒</span> sick, injured or a break. A day counts only if something was logged for it.</p></div>';
+  }
+
   /* Nutrition is shown when it is known: meals Claude or you logged. Nothing is estimated. */
   function nutrition(M) {
     var meals = (M.raw.meals || []), iso = function (d) { return d.getFullYear() + "-" + H.pad2(d.getMonth() + 1) + "-" + H.pad2(d.getDate()); }, today = iso(M.now), T = M.T;
@@ -164,7 +187,7 @@
       sec("plan", "Today's plan", plan(M)) +
       '<nav class="pnav" aria-label="Pillars">' + [["sleep", "Sleep"], ["workout", "Workout"], ["nutrition", "Nutrition"], ["vitals", "Vitals"], ["extras", "Extras"]].map(function (p, i) { return '<button data-go="' + p[0] + '"><b>' + (i + 1) + "</b>" + p[1] + "</button>"; }).join("") + "</nav>" +
       (function () { var P = pillars(M); return psec("sleep", 1, "Sleep", '<div class="pillars solo">' + P.sleep + "</div>", "Target: asleep by " + esc(M.cfg.bed)) +
-        psec("workout", 2, "Workout", training(M) + '<div class="pillars solo" style="margin-top:12px">' + P.move + "</div>", esc(M.cfg.rotation.join(" → ")) + " · " + M.cfg.perWeek + " times a week") +
+        psec("workout", 2, "Workout", trainCal(M) + '<div style="height:12px"></div>' + training(M) + '<div class="pillars solo" style="margin-top:12px">' + P.move + "</div>", esc(M.cfg.rotation.join(" → ")) + " · " + M.cfg.perWeek + " times a week") +
         psec("nutrition", 3, "Nutrition", nutrition(M), "Shown when it is known") +
         psec("vitals", 4, "Vitals", '<div class="pillars solo">' + P.vitals + "</div>", "Resting heart rate, HRV, Body Battery, stress") +
         psec("extras", 5, "Extras", extras(M), "Everything else: weight, the day so far, notes, flags and gaps"); })() +

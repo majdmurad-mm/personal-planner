@@ -138,9 +138,12 @@
       var ea = (A.tags || []).filter(function (t) { return /^(flat|wohnung|project|case)\b/i.test(t); });
       if (ea.some(function (t) { return (B.tags || []).indexOf(t) >= 0; })) push(A.id, B.id, "same subject");
     }
+    // a tag only a few items share links them; a tag on many items would just be noise
+    var tagUse = {}; live.forEach(function (i) { (i.tags || []).forEach(function (t) { var k = String(t).toLowerCase(); (tagUse[k] = tagUse[k] || []).push(i.id); }); });
+    Object.keys(tagUse).forEach(function (k) { var ids = tagUse[k]; if (ids.length < 2 || ids.length > 5) return; for (var a = 0; a < ids.length; a++) for (var b = a + 1; b < ids.length; b++) push(ids[a], ids[b], "same tag"); });
     return out;
   };
-  K.EDGE_LABEL = { author: "author", cites: "cites", derived: "inspired by", "same name": "same name", "same subject": "same subject", same_entity: "same subject" };
+  K.EDGE_LABEL = { author: "author", cites: "cites", derived: "inspired by", "same name": "same name", "same subject": "same subject", same_entity: "same subject", "same tag": "same tag", related: "linked by you" };
 
   /* ---------- graph layout: fixed zone regions, topics on a ring, items around their topic ---------- */
   var hash = function (s) { var h = 2166136261; s = String(s); for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0) / 4294967295; };

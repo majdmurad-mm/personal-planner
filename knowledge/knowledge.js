@@ -20,8 +20,8 @@
   P.mount = function (host, o) {
     o = o || {};
     var root = host.shadowRoot || host.attachShadow({ mode: "open" });
-    var S = { items: [], edges: [], view: null, q: "", results: null, searching: false, sel: null, edit: false, f: { zone: "", type: "", topic: "", source: "" }, sort: { key: "createdAt", dir: -1 }, cam: { x: 0, y: 0, k: 1 }, sheet: null, progress: "", sample: !!o.sample, settings: {}, usage: null, meaning: null };
-    var theme = o.theme || "light", L = null, links = [], byId = {}, W = 1000, H = 640, narrow = false, still = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches, raf = 0, searchT = 0, searchN = 0;
+    var S = { items: [], edges: [], view: null, q: "", results: null, searching: false, sel: null, edit: false, f: { zone: "", type: "", topic: "", source: "" }, sort: { key: "createdAt", dir: -1 }, cam: { x: 0, y: 0, k: 1 }, group: "zone", linking: false, sheet: null, progress: "", sample: !!o.sample, settings: {}, usage: null, meaning: null };
+    var theme = o.theme || "light", links = [], byId = {}, W = 1000, H = 640, narrow = false, still = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches, raf = 0, searchT = 0, searchN = 0;
     var call = function (name) { var a = [].slice.call(arguments, 1); return Promise.resolve(o[name] ? o[name].apply(null, a) : null); };
     root.innerHTML = '<link rel="stylesheet" href="' + (o.css || "knowledge/knowledge.css") + '"><div class="kn"></div>';
     var kn = root.querySelector(".kn"), $ = function (q) { return root.querySelector(q); };
@@ -34,9 +34,9 @@
       relayout();
     }
     function relayout() {
-      narrow = host.getBoundingClientRect().width < 900; W = narrow ? 380 : 1000; H = narrow ? 620 : 640;
-      L = K.layout(S.items, W, H, narrow ? K.REGION_TALL : null); links = K.edges(S.items, S.edges);
-      if (!S.cam.x) S.cam = { x: W / 2, y: H / 2, k: 1 };
+      narrow = host.getBoundingClientRect().width < 900;
+      links = K.edges(S.items, S.edges); buildSim();
+      if (!S.cam.set) { S.cam = home(); S.cam.set = 1; } else S.cam = clampCam(S.cam);
       if (S.view == null) S.view = narrow ? "list" : "graph";
     }
     var live = function () { return S.items.filter(function (i) { return !i.archived; }); };
@@ -44,56 +44,109 @@
     var degree = function (id) { return linked(id).length; };
     var hitIds = function () { return S.results ? S.results.map(function (r) { return r.id; }).filter(function (id, i, a) { return a.indexOf(id) === i; }) : []; };
 
-    /* ----- graph ----- */
-    function graphInner() {
-      var k = S.cam.k, hits = hitIds(), focus = S.sel && byId[S.sel] ? S.sel : null, near = {}, s = "", zonesOnly = narrow && k < 1.5 && !focus && !hits.length;
-      if (focus) { near[focus] = 1; near["topic:" + byId[focus].zone + ":" + byId[focus].topic] = 1; linked(focus).forEach(function (x) { near[x[0]] = 1; }); }
-      var lit = function (id) { return focus ? !!near[id] : hits.length ? hits.indexOf(id) >= 0 : true; }, quiet = focus || hits.length;
-      L.zones.forEach(function (z) {
-        var col = "var(--" + z.id + ")";
-        s += '<ellipse cx="' + z.cx + '" cy="' + z.cy + '" rx="' + z.rx + '" ry="' + z.ry + '" fill="' + col + '" fill-opacity="var(--zfill)" stroke="' + col + '" stroke-opacity=".28"' + (zonesOnly ? ' class="zone" data-zone="' + z.id + '" tabindex="0" role="button" aria-label="' + esc(z.name + ", " + z.count + " items") + '" style="cursor:pointer"' : "") + "/>";
-        if (zonesOnly) s += '<text class="zl" text-anchor="middle" x="' + z.cx + '" y="' + (z.cy - 20) + '" style="fill:' + col + ';font-size:9.5px">' + esc(z.name) + '</text><text text-anchor="middle" x="' + z.cx + '" y="' + (z.cy + 8) + '" style="font:500 24px var(--disp)">' + z.count + "</text>" + z.topics.slice(0, 2).map(function (t, i) { return '<text class="tl" text-anchor="middle" x="' + z.cx + '" y="' + (z.cy + 26 + i * 14) + '">' + esc(t) + "</text>"; }).join("");
-        else s += '<text class="zl gt' + (focus && byId[focus].zone !== z.id ? " dim" : "") + '" x="' + (z.cx - z.rx * 0.62) + '" y="' + (z.cy - z.ry + 4) + '" style="fill:' + col + ";font-size:" + (11 / Math.sqrt(k)).toFixed(1) + 'px">' + esc(z.name) + "</text>";
+    /* ----- graph: a live layout. Items float, are pulled to their group and sub-group, push each other
+       apart, and linked items are drawn together. Change "Group by" and they fly to new clusters. ----- */
+    var GROUPS = [["zone", "Zone"], ["type", "Type"], ["topic", "Topic"], ["folder", "Folder"]], SIM = null, DOM = null, loop = 0, BX = 0, BY = 0;
+    var hash = function (x) { var h = 2166136261; x = String(x); for (var i = 0; i < x.length; i++) { h ^= x.charCodeAt(i); h = Math.imul(h, 16777619); } return (h >>> 0) / 4294967295; };
+    var keyOf = function (i, g) { return g === "zone" ? i.zone : g === "type" ? K.typeName(i.zone, i.type) : g === "topic" ? (i.topic || "General") : ((i.meta && i.meta.folder) || "No folder"); };
+    function buildSim() {
+      var items = live(), g = S.group, sub = g === "topic" ? "type" : "topic", old = SIM ? SIM.byId : {}, map = {}, order = [];
+      items.forEach(function (i) { var k = keyOf(i, g), c = map[k]; if (!c) { c = map[k] = { key: k, label: g === "zone" ? K.zoneName(k) : k, color: g === "zone" ? "var(--" + k + ")" : "var(--muted)", n: 0, subs: {}, subOrder: [] }; order.push(k); } c.n++; var sk = keyOf(i, sub); if (!c.subs[sk]) { c.subs[sk] = { key: sk, n: 0 }; c.subOrder.push(sk); } c.subs[sk].n++; });
+      if (g === "zone") order = K.ZONES.map(function (z) { return z[0]; }).filter(function (k) { return map[k]; }); else order.sort(function (a, b) { return map[b].n - map[a].n || (a < b ? -1 : 1); });
+      var cl = order.map(function (k) { return map[k]; }), aspect = narrow ? 380 / 620 : 1000 / 640;
+      cl.forEach(function (c, i) { c.R = 34 + 17 * Math.sqrt(c.n); var a = i * 2.39996, d = 60 * Math.sqrt(i + 0.3) * 3; c.x = Math.cos(a) * d * (narrow ? 0.7 : 1.3); c.y = Math.sin(a) * d * (narrow ? 1.3 : 0.7); });
+      for (var it = 0; it < 400; it++) {                                  // settle the group centres: no overlap, pulled together
+        for (var a2 = 0; a2 < cl.length; a2++) for (var b2 = a2 + 1; b2 < cl.length; b2++) { var A = cl[a2], B = cl[b2], dx = B.x - A.x, dy = B.y - A.y, d2 = Math.sqrt(dx * dx + dy * dy) || 0.01, min = A.R + B.R + 26; if (d2 < min) { var p = (min - d2) / 2; A.x -= dx / d2 * p; A.y -= dy / d2 * p; B.x += dx / d2 * p; B.y += dy / d2 * p; } }
+        cl.forEach(function (c) { c.x -= c.x * 0.02 * (narrow ? 1.6 : 0.7); c.y -= c.y * 0.02 * (narrow ? 0.7 : 1.6); });
+      }
+      var x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9; cl.forEach(function (c) { x0 = Math.min(x0, c.x - c.R); x1 = Math.max(x1, c.x + c.R); y0 = Math.min(y0, c.y - c.R); y1 = Math.max(y1, c.y + c.R); });
+      if (!cl.length) { x0 = y0 = -200; x1 = y1 = 200; }
+      var bw = x1 - x0 + 90, bh = y1 - y0 + 110; if (bw / bh < aspect) bw = bh * aspect; else bh = bw / aspect; bw = Math.max(bw, narrow ? 380 : 760); bh = bw / aspect;
+      BX = (x0 + x1) / 2 - bw / 2; BY = (y0 + y1) / 2 - bh / 2; W = bw; H = bh;
+      cl.forEach(function (c) { var m = c.subOrder.length; c.subOrder.sort(); c.subOrder.forEach(function (sk, j) { var su = c.subs[sk], ang = m === 1 ? 0 : j / m * Math.PI * 2 + hash(c.key) * 3, d = m === 1 ? 0 : c.R * 0.46; su.x = c.x + Math.cos(ang) * d; su.y = c.y + Math.sin(ang) * d; }); c.hx = c.x; c.hy = c.y; c.hr = c.R; });
+      var recent = items.slice().sort(function (a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); }).slice(0, 6).map(function (i) { return i.id; }), byId2 = {};
+      var nodes = items.map(function (i) {
+        var c = map[keyOf(i, g)], su = c.subs[keyOf(i, sub)], o = old[i.id], h1 = hash(i.id), h2 = hash(i.id + "y");
+        var nd = { id: i.id, it: i, c: c, sub: su, x: o ? o.x : su.x + (h1 - 0.5) * 60, y: o ? o.y : su.y + (h2 - 0.5) * 60, vx: 0, vy: 0, fx: null, fy: null, ph: h1, r: 11, imp: degree(i.id) >= 1 || recent.indexOf(i.id) >= 0, sc: 0.86 + Math.min(degree(i.id), 3) * 0.08 };
+        byId2[i.id] = nd; return nd;
       });
-      if (zonesOnly) return s;
-      var items = live();
-      items.forEach(function (i) { var a = L.pos[i.id], b = L.pos["topic:" + i.zone + ":" + i.topic]; if (a && b) s += '<line class="edge gt' + (focus && near[i.id] && near["topic:" + i.zone + ":" + i.topic] ? " hot" : quiet ? " dim" : "") + '" x1="' + a[0].toFixed(1) + '" y1="' + a[1].toFixed(1) + '" x2="' + b[0].toFixed(1) + '" y2="' + b[1].toFixed(1) + '"/>'; });
-      links.forEach(function (e) {
-        var a = L.pos[e.from], b = L.pos[e.to], hot = focus && (e.from === focus || e.to === focus); if (!a || !b) return;
-        if (!hot && (quiet || k < 1.3)) return;                          // only the strongest links by default
-        var mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2 - Math.min(40, Math.hypot(a[0] - b[0], a[1] - b[1]) / 4);
-        s += '<path class="edge x' + (hot ? " hot" : "") + '" d="M' + a[0].toFixed(1) + "," + a[1].toFixed(1) + " Q" + mx.toFixed(1) + "," + my.toFixed(1) + " " + b[0].toFixed(1) + "," + b[1].toFixed(1) + '"/>' + (hot && Math.hypot(a[0] - b[0], a[1] - b[1]) > 110 ? '<text class="tl" x="' + (mx - 18) + '" y="' + (my + 14) + '" style="fill:var(--acc);font-size:' + (11.5 / Math.sqrt(k)).toFixed(1) + 'px">' + esc(K.EDGE_LABEL[e.kind] || e.kind) + "</text>" : "");
-      });
-      L.topics.forEach(function (t) { var on = !quiet || (focus && near[t.id]); s += '<g class="gt' + (on ? "" : " dim") + '" style="--c:var(--' + t.zone + ')"><circle class="hub" cx="' + t.x.toFixed(1) + '" cy="' + t.y.toFixed(1) + '" r="' + (4.5 / Math.sqrt(k)).toFixed(1) + '"/><text class="tl" text-anchor="middle" x="' + t.x.toFixed(1) + '" y="' + (t.y - 9).toFixed(1) + '" style="font-size:' + (11.5 / Math.sqrt(k)).toFixed(1) + 'px">' + esc(t.name) + "</text></g>"; });
-      var recent = items.slice().sort(function (a, b) { return String(b.createdAt).localeCompare(String(a.createdAt)); }).slice(0, 6).map(function (i) { return i.id; });
-      items.forEach(function (i) {
-        var p = L.pos[i.id]; if (!p) return;
-        var on = lit(i.id), isSel = i.id === focus, hit = hits.indexOf(i.id) >= 0, sc = (isSel ? 1.5 : hit ? 1.25 : 0.82 + Math.min(degree(i.id), 3) * 0.08 + (recent.indexOf(i.id) >= 0 ? 0.1 : 0)) / Math.sqrt(k);
-        var label = isSel || hit || (focus && on) || k >= 2.3 || (k >= 1.35 && (degree(i.id) >= 1 || recent.indexOf(i.id) >= 0)), title = i.title.length > 34 ? i.title.slice(0, 33) + "…" : i.title;
-        s += '<g class="n gt' + (on ? "" : " dim") + (isSel ? " on" : "") + '" data-id="' + esc(i.id) + '" tabindex="0" role="button" aria-label="' + esc(i.title + ", " + K.typeName(i.zone, i.type) + ", " + K.zoneName(i.zone)) + '" style="--c:var(--' + i.zone + ')">' + (isSel || hit ? '<circle class="halo" cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="' + ((isSel ? 26 : 20) / Math.sqrt(k)).toFixed(1) + '"/>' : "") + '<circle cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="' + (13 / Math.sqrt(k)).toFixed(1) + '" fill="transparent"/>' + shape(K.shapeOf(i.zone), +p[0].toFixed(1), +p[1].toFixed(1), sc) +
-          (label ? '<text class="nl" text-anchor="middle" x="' + p[0].toFixed(1) + '" y="' + (p[1] + 22 * sc * 1.1).toFixed(1) + '" style="font-size:' + ((isSel ? 12.5 : 11) / Math.sqrt(k)).toFixed(1) + "px" + (isSel ? ";font-weight:700" : "") + '">' + esc(title) + "</text>" : "") + "</g>";
-      });
-      return s;
+      SIM = { nodes: nodes, byId: byId2, clusters: cl, links: links.map(function (e) { return { a: byId2[e.from], b: byId2[e.to], kind: e.kind }; }).filter(function (l) { return l.a && l.b; }), alpha: 1, sub: sub };
+      if (still) for (var q = 0; q < 320; q++) tick();
     }
-    var vb = function () { var c = S.cam; return (c.x - W / (2 * c.k)).toFixed(1) + " " + (c.y - H / (2 * c.k)).toFixed(1) + " " + (W / c.k).toFixed(1) + " " + (H / c.k).toFixed(1); };
+    function tick() {
+      var N = SIM.nodes, a = SIM.alpha;
+      N.forEach(function (n) { if (n.fx != null) { n.x = n.fx; n.y = n.fy; n.vx = n.vy = 0; return; } n.vx += (n.sub.x - n.x) * 0.045 * a + (n.c.x - n.x) * 0.012 * a; n.vy += (n.sub.y - n.y) * 0.045 * a + (n.c.y - n.y) * 0.012 * a; });
+      SIM.links.forEach(function (l) { var dx = l.b.x - l.a.x, dy = l.b.y - l.a.y, d = Math.sqrt(dx * dx + dy * dy) || 0.01; if (d < 70) return; var f = (d - 70) * 0.0035 * a; if (l.a.fx == null) { l.a.vx += dx / d * f; l.a.vy += dy / d * f; } if (l.b.fx == null) { l.b.vx -= dx / d * f; l.b.vy -= dy / d * f; } });
+      N.forEach(function (n) { if (n.fx != null) return; n.vx *= 0.8; n.vy *= 0.8; n.x += n.vx; n.y += n.vy; });
+      for (var i = 0; i < N.length; i++) for (var j = i + 1; j < N.length; j++) {
+        var A = N[i], B = N[j], dx = B.x - A.x, dy = B.y - A.y, d2 = dx * dx + dy * dy, min = 31; if (d2 >= min * min) continue;
+        var d = Math.sqrt(d2) || 0.01, p = (min - d) / 2, ux = d > 0.02 ? dx / d : Math.cos(i + j), uy = d > 0.02 ? dy / d : Math.sin(i + j);
+        if (A.fx == null) { A.x -= ux * p; A.y -= uy * p; } if (B.fx == null) { B.x += ux * p; B.y += uy * p; }
+      }
+      SIM.clusters.forEach(function (c) { var sx = 0, sy = 0, m = 0; N.forEach(function (n) { if (n.c === c) { sx += n.x; sy += n.y; m++; } }); if (!m) return; sx /= m; sy /= m; var r = 0; N.forEach(function (n) { if (n.c === c) r = Math.max(r, Math.hypot(n.x - sx, n.y - sy)); }); c.hx += (sx - c.hx) * 0.2; c.hy += (sy - c.hy) * 0.2; c.hr += (r + 30 - c.hr) * 0.2; });
+      SIM.alpha = Math.max(0, a * 0.985);
+    }
+    var level = function (k) { return k < 1.3 ? 0 : k < 2.2 ? 2 : 3; };
     function graphHtml() {
-      var types = [["doc", "Document"], ["book", "Book or paper"], ["link", "Link or media"], ["idea", "Idea"], ["person", "Author"], ["note", "My note"]];
-      return '<div class="graph"><svg id="knSvg" viewBox="' + vb() + '" role="group" aria-label="Knowledge graph: six zones, with topics and items inside each. Use Tab to move between items and Enter to open one. The List view shows the same items as a table.">' + graphInner() + '</svg><div class="legend wide">' + types.map(function (t) { return '<span style="--c:var(--muted)"><svg viewBox="-10 -10 20 20" class="ic" style="--c:var(--muted)">' + shape(t[0], 0, 0) + "</svg>" + t[1] + "</span>"; }).join("") + '</div><div class="zoom"><button data-zoom="-1" aria-label="Zoom out">−</button><button data-zoom="0" aria-label="Show everything">⤢</button><button data-zoom="1" aria-label="Zoom in">+</button></div></div>';
+      var types = [["doc", "Document"], ["book", "Book or paper"], ["link", "Link or media"], ["idea", "Idea"], ["person", "Author"], ["note", "My note"]], sv = "";
+      SIM.clusters.forEach(function (c, i) { sv += '<g class="hull" data-c="' + i + '"><circle fill="' + c.color + '" fill-opacity="var(--zfill)" stroke="' + c.color + '" stroke-opacity=".3"/><text class="zl" text-anchor="middle" style="fill:' + c.color + '">' + esc(c.label) + '</text><text class="tl cn" text-anchor="middle">' + c.n + (c.n === 1 ? " item" : " items") + "</text></g>"; });
+      SIM.clusters.forEach(function (c, i) { if (c.subOrder.length > 1) c.subOrder.forEach(function (sk, j) { sv += '<text class="tl sl" data-c="' + i + '" data-s="' + j + '" text-anchor="middle">' + esc(sk) + "</text>"; }); });
+      sv += '<g id="knEdges">' + SIM.links.map(function (l, i) { return '<line class="edge x" data-l="' + i + '"/>'; }).join("") + '</g><g id="knNodes">';
+      SIM.nodes.forEach(function (n) {
+        var i = n.it, title = i.title.length > 34 ? i.title.slice(0, 33) + "…" : i.title;
+        sv += '<g class="n' + (n.imp ? " imp" : "") + '" data-id="' + esc(i.id) + '" tabindex="0" role="button" aria-label="' + esc(i.title + ", " + K.typeName(i.zone, i.type) + ", " + K.zoneName(i.zone) + ", in " + n.c.label) + '" style="--c:var(--' + i.zone + ')"><circle class="halo" r="22"/><circle r="14" fill="transparent"/>' + shape(K.shapeOf(i.zone), 0, 0, 1) + '<text class="nl lbl" text-anchor="middle" y="24">' + esc(title) + "</text></g>";
+      });
+      return '<div class="graph"><svg id="knSvg" viewBox="' + vb() + '" data-lvl="' + level(S.cam.k) + '" role="group" aria-label="Knowledge graph: items float in groups by ' + S.group + '. Use Tab to move between items and Enter to open one; drag an item to move it. The List view shows the same items as a table.">' + sv + "</g></svg>" +
+        '<div class="gby"><span>Group by</span><div class="seg" role="group" aria-label="Group items by">' + GROUPS.map(function (x) { return '<button data-group="' + x[0] + '" aria-pressed="' + (S.group === x[0]) + '">' + x[1] + "</button>"; }).join("") + "</div></div>" +
+        '<div class="legend wide">' + types.map(function (t) { return '<span><svg viewBox="-10 -10 20 20" class="ic" style="--c:var(--muted)">' + shape(t[0], 0, 0) + "</svg>" + t[1] + "</span>"; }).join("") + '</div><div class="zoom"><button data-zoom="-1" aria-label="Zoom out">−</button><button data-zoom="0" aria-label="Show everything">⤢</button><button data-zoom="1" aria-label="Zoom in">+</button></div></div>';
     }
-    var level = function (k) { return k < 1.35 ? 0 : k < 1.5 ? 1 : k < 2.3 ? 2 : 3; };
-    function clampCam(c) { c.k = Math.max(1, Math.min(5, c.k)); var hw = W / (2 * c.k), hh = H / (2 * c.k); c.x = Math.max(hw, Math.min(W - hw, c.x)); c.y = Math.max(hh, Math.min(H - hh, c.y)); return c; }
-    function setCam(c, redraw) { var before = level(S.cam.k); S.cam = clampCam(c); var svg = $("#knSvg"); if (!svg) return; svg.setAttribute("viewBox", vb()); if (redraw || level(S.cam.k) !== before) svg.innerHTML = graphInner(); }
+    function mountGraph() {
+      var svg = $("#knSvg"); if (!svg) { DOM = null; return; }
+      DOM = { svg: svg, nodes: {}, lines: [].slice.call(svg.querySelectorAll("#knEdges line")), hulls: [].slice.call(svg.querySelectorAll(".hull")), subs: [].slice.call(svg.querySelectorAll(".sl")) };
+      [].forEach.call(svg.querySelectorAll(".n"), function (el) { DOM.nodes[el.getAttribute("data-id")] = el; });
+      paintClasses(); frame(0, true);
+      if (!loop && !still) loop = requestAnimationFrame(run);
+    }
+    function paintClasses() {
+      if (!DOM) return;
+      var hits = hitIds(), focus = S.sel && SIM.byId[S.sel] ? S.sel : null, near = {}, quiet = focus || hits.length;
+      if (focus) { near[focus] = 1; linked(focus).forEach(function (x) { near[x[0]] = 1; }); }
+      SIM.nodes.forEach(function (n) { var el = DOM.nodes[n.id]; if (!el) return; var on = n.id === focus, hit = hits.indexOf(n.id) >= 0, lit = focus ? !!near[n.id] : hits.length ? hit : true; el.setAttribute("class", "n" + (n.imp ? " imp" : "") + (on ? " on" : "") + (hit ? " hit" : "") + (focus && lit && !on ? " near" : "") + (lit ? "" : " dim")); n.big = on ? 1.5 : hit ? 1.25 : n.sc; });
+      SIM.links.forEach(function (l, i) { var hot = focus && (l.a.id === focus || l.b.id === focus); DOM.lines[i].setAttribute("class", "edge x" + (hot ? " hot" : quiet ? " off" : "")); });
+      DOM.svg.classList.toggle("quiet", !!quiet);
+    }
+    function frame(t, force) {
+      if (!DOM) return;
+      var k = S.cam.k, z = 1 / Math.sqrt(k), wob = still ? 0 : 2.4;
+      SIM.nodes.forEach(function (n) { var el = DOM.nodes[n.id]; if (!el) return; var dx = n.fx != null ? 0 : Math.sin(t * 0.0007 * (0.6 + n.ph) + n.ph * 6.28) * wob, dy = n.fx != null ? 0 : Math.cos(t * 0.0006 * (0.7 + n.ph) + n.ph * 9.1) * wob; n.dx = n.x + dx; n.dy = n.y + dy; el.setAttribute("transform", "translate(" + n.dx.toFixed(1) + "," + n.dy.toFixed(1) + ") scale(" + ((n.big || n.sc) * z).toFixed(3) + ")"); });
+      SIM.links.forEach(function (l, i) { var e = DOM.lines[i]; e.setAttribute("x1", l.a.dx.toFixed(1)); e.setAttribute("y1", l.a.dy.toFixed(1)); e.setAttribute("x2", l.b.dx.toFixed(1)); e.setAttribute("y2", l.b.dy.toFixed(1)); });
+      if (force || SIM.alpha > 0.02 || SIM.dragging) {
+        DOM.hulls.forEach(function (h) { var c = SIM.clusters[+h.getAttribute("data-c")], ci = h.firstChild, a = ci.nextSibling, b = a.nextSibling; ci.setAttribute("cx", c.hx.toFixed(1)); ci.setAttribute("cy", c.hy.toFixed(1)); ci.setAttribute("r", Math.max(24, c.hr).toFixed(1)); a.setAttribute("x", c.hx.toFixed(1)); a.setAttribute("y", (c.hy - Math.max(24, c.hr) - 7 * z).toFixed(1)); a.style.fontSize = (9.5 * z).toFixed(1) + "px"; b.setAttribute("x", c.hx.toFixed(1)); b.setAttribute("y", (c.hy - Math.max(24, c.hr) + 12 * z).toFixed(1)); b.style.fontSize = (9 * z).toFixed(1) + "px"; });
+        DOM.subs.forEach(function (e) { var c = SIM.clusters[+e.getAttribute("data-c")], su = c.subs[c.subOrder[+e.getAttribute("data-s")]]; e.setAttribute("x", (su.x + c.hx - c.x).toFixed(1)); e.setAttribute("y", (su.y + c.hy - c.y - 20).toFixed(1)); e.style.fontSize = (10.5 * z).toFixed(1) + "px"; });
+      }
+    }
+    function run(ts) {
+      loop = 0;
+      if (!DOM || !DOM.svg.isConnected) { DOM = null; return; }
+      if (host.offsetParent !== null && !document.hidden) { if (SIM.alpha > 0.02 || SIM.dragging) tick(); frame(ts); }
+      loop = requestAnimationFrame(run);
+    }
+    var heat = function (v) { if (SIM) SIM.alpha = Math.max(SIM.alpha, v); if (still && SIM) { for (var q = 0; q < 200; q++) tick(); frame(0, true); } };
+    var vb = function () { var c = S.cam; return (c.x - W / (2 * c.k)).toFixed(1) + " " + (c.y - H / (2 * c.k)).toFixed(1) + " " + (W / c.k).toFixed(1) + " " + (H / c.k).toFixed(1); };
+    var home = function () { return { x: BX + W / 2, y: BY + H / 2, k: 1 }; };
+    function clampCam(c) { c.k = Math.max(1, Math.min(6, c.k)); var hw = W / (2 * c.k), hh = H / (2 * c.k); c.x = Math.max(BX + hw, Math.min(BX + W - hw, c.x)); c.y = Math.max(BY + hh, Math.min(BY + H - hh, c.y)); return c; }
+    function setCam(c) { S.cam = clampCam(c); var svg = $("#knSvg"); if (!svg) return; svg.setAttribute("viewBox", vb()); svg.setAttribute("data-lvl", level(S.cam.k)); frame(performance.now(), true); }
     function flyTo(c) {
       cancelAnimationFrame(raf); c = clampCam(c);
-      if (still) { setCam(c, true); return; }
+      if (still) { setCam(c); return; }
       var a = { x: S.cam.x, y: S.cam.y, k: S.cam.k }, t0 = null;
-      var step = function (ts) { if (t0 == null) t0 = ts; var t = Math.min(1, (ts - t0) / 380), e = 1 - Math.pow(1 - t, 3); setCam({ x: a.x + (c.x - a.x) * e, y: a.y + (c.y - a.y) * e, k: a.k + (c.k - a.k) * e }, t === 1); if (t < 1) raf = requestAnimationFrame(step); };
+      var step = function (ts) { if (t0 == null) t0 = ts; var t = Math.min(1, (ts - t0) / 380), e = 1 - Math.pow(1 - t, 3); setCam({ x: a.x + (c.x - a.x) * e, y: a.y + (c.y - a.y) * e, k: a.k + (c.k - a.k) * e }); if (t < 1) raf = requestAnimationFrame(step); };
       raf = requestAnimationFrame(step);
     }
     function flyToIds(ids) {
-      var pts = ids.map(function (id) { return L.pos[id]; }).filter(Boolean); if (!pts.length) return;
+      var pts = ids.map(function (id) { var n = SIM.byId[id]; return n ? [n.x, n.y] : null; }).filter(Boolean); if (!pts.length) return;
       var x0 = Math.min.apply(0, pts.map(function (p) { return p[0]; })), x1 = Math.max.apply(0, pts.map(function (p) { return p[0]; })), y0 = Math.min.apply(0, pts.map(function (p) { return p[1]; })), y1 = Math.max.apply(0, pts.map(function (p) { return p[1]; }));
-      flyTo({ x: (x0 + x1) / 2, y: (y0 + y1) / 2, k: Math.max(1, Math.min(2.6, 0.7 * Math.min(W / (x1 - x0 + 160), H / (y1 - y0 + 160)))) });
+      flyTo({ x: (x0 + x1) / 2, y: (y0 + y1) / 2, k: Math.max(1, Math.min(2.8, 0.7 * Math.min(W / (x1 - x0 + 180), H / (y1 - y0 + 180)))) });
     }
 
     /* ----- panels ----- */
@@ -104,7 +157,7 @@
       var head = '<button class="btn sm x" data-act="close" aria-label="Close">✕</button><p class="lab" style="color:var(--' + i.zone + ')">' + esc(K.zoneName(i.zone)) + " · " + esc(K.typeName(i.zone, i.type)) + "</p>";
       if (S.edit && !ro) {
         var zt = []; K.ZONES.forEach(function (z) { if (z[0] === "mine" && i.zone !== "mine") return; K.TYPES[z[0]].forEach(function (t) { zt.push('<option value="' + z[0] + "|" + t[0] + '"' + (z[0] === i.zone && t[0] === i.type ? " selected" : "") + ">" + esc(z[1] + " · " + t[1]) + "</option>"); }); });
-        return head + '<h2>Edit</h2><div class="f"><label for="knT">Title</label><input class="in" id="knT" value="' + esc(i.title) + '"></div><div class="f"><label for="knZ">Zone and type</label><select class="in" id="knZ">' + zt.join("") + '</select></div><div class="f"><label for="knTo">Topic</label><input class="in" id="knTo" list="knTopics" value="' + esc(i.topic) + '"><datalist id="knTopics">' + L.topics.map(function (t) { return t.name; }).filter(function (n, k, a) { return a.indexOf(n) === k; }).map(function (n) { return '<option value="' + esc(n) + '">'; }).join("") + '</datalist></div><div class="f"><label for="knS">Summary</label><textarea class="in" id="knS">' + esc(i.summary) + '</textarea></div><div class="f"><label for="knW">Why it matters</label><input class="in" id="knW" value="' + esc(i.why) + '"></div><div class="f"><label for="knG">Tags, separated by commas</label><input class="in" id="knG" value="' + esc((i.tags || []).join(", ")) + '"></div><div class="acts"><button class="btn pri" data-act="save">Save</button><button class="btn" data-act="cancel">Cancel</button></div>';
+        return head + '<h2>Edit</h2><div class="f"><label for="knT">Title</label><input class="in" id="knT" value="' + esc(i.title) + '"></div><div class="f"><label for="knZ">Zone and type</label><select class="in" id="knZ">' + zt.join("") + '</select></div><div class="f"><label for="knTo">Topic</label><input class="in" id="knTo" list="knTopics" value="' + esc(i.topic) + '"><datalist id="knTopics">' + live().map(function (t) { return t.topic; }).filter(function (n, k, a) { return n && a.indexOf(n) === k; }).map(function (n) { return '<option value="' + esc(n) + '">'; }).join("") + '</datalist></div><div class="f"><label for="knFo">Folder (optional, groups items in the graph)</label><input class="in" id="knFo" value="' + esc((i.meta && i.meta.folder) || "") + '"></div><div class="f"><label for="knS">Summary</label><textarea class="in" id="knS">' + esc(i.summary) + '</textarea></div><div class="f"><label for="knW">Why it matters</label><input class="in" id="knW" value="' + esc(i.why) + '"></div><div class="f"><label for="knG">Tags, separated by commas</label><input class="in" id="knG" value="' + esc((i.tags || []).join(", ")) + '"></div><div class="acts"><button class="btn pri" data-act="save">Save</button><button class="btn" data-act="cancel">Cancel</button></div>';
       }
       return head + "<h2>" + esc(i.title) + '</h2><p class="sub">' + [SRC[i.source] || i.source, i.pages ? i.pages + (i.pages === 1 ? " page" : " pages") : "", fmtD(i.createdAt), i.needsSort ? "waiting to be sorted" : ""].filter(Boolean).map(esc).join(" · ") + "</p>" +
         (i.summary ? '<p style="margin-top:12px">' + esc(i.summary) + "</p>" : "") + (i.why ? '<p class="sub" style="margin-top:8px">Why it matters: ' + esc(i.why) + "</p>" : "") +
@@ -112,10 +165,16 @@
         (kv.length ? '<dl class="kv">' + kv.map(function (x) { return "<dt>" + esc(x[0]) + "</dt><dd>" + esc(x[1]) + "</dd>"; }).join("") + "</dl>" : "") +
         '<div class="tags"><span class="tag">topic: ' + esc(i.topic) + "</span>" + (i.tags || []).map(function (t) { return '<span class="tag">' + esc(t) + "</span>"; }).join("") + "</div>" +
         (S.passages && S.passages.id === i.id && S.passages.list.length ? '<div class="sec"><p class="lab">Matching passages</p>' + S.passages.list.map(function (r) { return '<p class="s" style="font-size:14px;margin-top:6px">' + mark(r.snippet) + (r.page ? ' <span class="sub">· ' + (i.type === "book" && !i.pages ? "section " : "page ") + r.page + "</span>" : "") + "</p>"; }).join("") + "</div>" : "") +
-        (lk.length ? '<div class="sec"><p class="lab">Linked</p>' + lk.map(function (x) { var t = byId[x[0]]; return '<button class="lk" data-id="' + esc(t.id) + '">' + icon(t.zone) + "<span>" + esc(t.title) + "</span><small>" + esc(K.EDGE_LABEL[x[1]] || x[1]) + "</small></button>"; }).join("") + "</div>" : "") +
+        '<div class="sec"><p class="lab">Linked</p>' + (lk.length ? lk.map(function (x) { var t = byId[x[0]], mine = S.edges.some(function (e) { return (e.from === i.id && e.to === t.id) || (e.to === i.id && e.from === t.id); }); return '<div class="lkrow"><button class="lk" data-id="' + esc(t.id) + '">' + icon(t.zone) + "<span>" + esc(t.title) + "</span><small>" + esc(K.EDGE_LABEL[x[1]] || x[1]) + "</small></button>" + (mine && !ro ? '<button class="btn sm" data-unlink="' + esc(t.id) + '" aria-label="Remove the link to ' + esc(t.title) + '">✕</button>' : "") + "</div>"; }).join("") : '<p class="sub">Not linked to anything yet.</p>') +
+          (ro ? "" : S.linking ? '<div class="f"><label for="knLq">Link this to…</label><input class="in" id="knLq" placeholder="Type part of a title" value="' + esc(S.linkQ || "") + '"><div id="knLr">' + linkChoices(i) + '</div></div><div class="acts"><button class="btn sm" data-act="linkdone">Done</button></div>' : '<div class="acts" style="margin-top:8px"><button class="btn sm" data-act="linkpick">+ Link to another item</button></div>') + "</div>" +
         (dup ? '<div class="sec"><p class="warn">This looks the same as “' + esc(dup.title) + '”.</p><div class="acts"><button class="btn sm" data-act="merge" data-other="' + esc(dup.id) + '">Keep this one, archive the other</button></div></div>' : "") +
         '<div class="acts">' + (i.hasFile ? '<button class="btn pri" data-act="file">Open the file</button>' : "") + (ro ? '<button class="btn" data-act="mirror">Open on the Self page</button>' : '<button class="btn" data-act="edit">Edit or change type</button><button class="btn" data-act="archive">Archive</button>') + "</div>" +
         '<p class="sub" style="margin-top:12px">' + (ro ? "A read-only copy of one of your notes." : i.hasFile ? "Read and sorted on your device. The file is stored privately in your own database." : "Stored privately in your own database.") + "</p>";
+    }
+    function linkChoices(i) {
+      var q = (S.linkQ || "").toLowerCase().trim(), taken = {}; taken[i.id] = 1; linked(i.id).forEach(function (x) { taken[x[0]] = 1; });
+      var list = live().filter(function (t) { return !taken[t.id] && !t.mirror && (!q || t.title.toLowerCase().indexOf(q) >= 0 || (t.topic || "").toLowerCase().indexOf(q) >= 0); }).slice(0, 6);
+      return list.length ? list.map(function (t) { return '<button class="lk" data-linkto="' + esc(t.id) + '">' + icon(t.zone) + "<span>" + esc(t.title) + "</span><small>" + esc(K.zoneName(t.zone)) + "</small></button>"; }).join("") : '<p class="sub" style="margin-top:6px">' + (q ? "No other item matches." : "Nothing else to link to yet.") + "</p>";
     }
     function resultsHtml() {
       var r = S.results || [];
@@ -158,24 +217,25 @@
       kn.innerHTML = (S.sample ? '<div class="ribbon" role="note"><b>SAMPLE DATA</b> · invented documents, books and names · nothing below is yours</div>' : "") +
         '<header class="top"><div><p class="eyebrow">Knowledge</p><h1>' + items.length + (items.length === 1 ? " thing" : " things") + '</h1></div><input class="search" id="knQ" type="search" placeholder="Search by word' + (S.meaning && S.meaning.ready ? " or by meaning" : "") + '" aria-label="Search your knowledge" value="' + esc(S.q) + '">' +
         '<div class="seg" role="group" aria-label="View"><button data-view="graph" aria-pressed="' + (S.view === "graph") + '">Graph</button><button data-view="list" aria-pressed="' + (S.view === "list") + '">List</button></div>' +
-        '<button class="btn pri" data-act="pick">+ Add files</button><button class="btn" data-act="add">+ Note or link</button><button class="btn" data-act="privacy">Privacy and search</button><input type="file" id="knFile" multiple hidden accept=".pdf,.png,.jpg,.jpeg,.webp,.epub,.docx,.txt,.md,image/*,application/pdf"></header>' +
+        '<button class="btn pri" data-act="pick">+ Add files</button><button class="btn" data-act="pickdir">+ Add a folder</button><input type="file" id="knDir" webkitdirectory multiple hidden><button class="btn" data-act="add">+ Note or link</button><button class="btn" data-act="privacy">Privacy and search</button><input type="file" id="knFile" multiple hidden accept=".pdf,.png,.jpg,.jpeg,.webp,.epub,.docx,.txt,.md,image/*,application/pdf"></header>' +
         (S.view === "list" || S.results ? filtersHtml() : "") +
         (S.progress ? '<div class="note" role="status" aria-live="polite"><span>' + esc(S.progress) + "</span></div>" : "") +
         (toSort ? '<div class="note"><span><b>' + toSort + " to sort</b> · not sure what " + (toSort === 1 ? "this is" : "these are") + ' yet</span><button class="btn sm" data-act="sort">Review</button></div>' : "") +
         '<div class="stage' + (side && S.view === "graph" && !narrow ? " two" : "") + '">' + (S.view === "list" ? (side && narrow ? "" : listHtml()) : (side && narrow ? "" : graphHtml())) + (side ? '<aside class="panel" aria-label="' + (sel ? "Details" : "Search results") + '">' + side + "</aside>" : "") +
-        (S.view === "graph" && !side && !items.length ? '<p class="sub">Nothing here yet. Add a file, or ask Claude to save a link or an idea, and it will appear in its zone.</p>' : "") + (S.view === "graph" && narrow && !side ? '<p class="sub">Tap a zone to step into it. Pinch or use + and − to zoom from zones to topics to single items.</p>' : "") + "</div>" +
+        (S.view === "graph" && !side && !items.length ? '<p class="sub">Nothing here yet. Add a file, or ask Claude to save a link or an idea, and it will appear in its zone.</p>' : "") + (S.view === "graph" && !side && items.length ? '<p class="sub">Drag an item to move it; the rest make room. Pinch, scroll or use + and − to zoom in until every title shows.</p>' : "") + "</div>" +
         (S.sheet ? '<div class="shade" data-shade="1"><div class="sheet" role="dialog" aria-modal="true">' + sheetHtml() + "</div></div>" : "");
       if (keepFocus) { var q = $("#knQ"); q.focus(); try { q.setSelectionRange(pos, pos); } catch (e) {} }
+      mountGraph();
     }
     function select(id, fromHit) {
-      S.sel = id; S.edit = false;
+      S.sel = id; S.edit = false; S.linking = false; S.linkQ = "";
       S.passages = fromHit && S.results ? { id: id, list: S.results.filter(function (r) { return r.id === id && r.snippet && r.page !== undefined && r.how !== "title or tags"; }) } : null;
       render();
-      if (S.view === "graph" && !narrow && id) { var near = [id].concat(linked(id).map(function (x) { return x[0]; })); flyToIds(near); }
+      if (S.view === "graph" && !narrow && id && SIM) { var near = [id].concat(linked(id).map(function (x) { return x[0]; })); flyToIds(near); }
     }
     function runSearch() {
       var q = S.q.trim(), n = ++searchN;
-      if (!q) { S.results = null; S.searching = false; S.sel = null; render(); if (S.view === "graph") flyTo({ x: W / 2, y: H / 2, k: 1 }); return; }
+      if (!q) { S.results = null; S.searching = false; S.sel = null; render(); if (S.view === "graph") flyTo(home()); return; }
       var local = K.search(S.items, q); S.results = local; S.searching = !!o.onSearch; S.sel = null; render();
       if (S.view === "graph" && local.length) flyToIds(local.map(function (r) { return r.id; }));
       call("onSearch", q, S.f).then(function (more) {
@@ -188,23 +248,29 @@
 
     kn.addEventListener("click", function (e) {
       if (e.target.dataset && e.target.dataset.shade) { S.sheet = null; render(); return; }
-      var node = e.target.closest && e.target.closest(".n,.zone"), t = e.target.closest("button,a"), d = t ? t.dataset : {};
-      if (node && !t) { if (drag.moved) return; if (node.dataset.zone) { var z = L.zones.filter(function (x) { return x.id === node.dataset.zone; })[0]; flyTo({ x: z.cx, y: z.cy, k: 2.4 }); } else select(node.dataset.id); return; }
+      var node = e.target.closest && e.target.closest(".n"), t = e.target.closest("button,a"), d = t ? t.dataset : {};
+      if (node && !t) { if (drag.moved) return; select(node.getAttribute("data-id")); return; }
       if (!t || t.disabled || t.tagName === "A") return;
       if (d.view) { S.view = d.view; render(); }
       else if (d.id) select(d.id, !!d.hit);
-      else if (d.zoom != null) { if (d.zoom === "0") flyTo({ x: W / 2, y: H / 2, k: 1 }); else flyTo({ x: S.cam.x, y: S.cam.y, k: S.cam.k * (d.zoom === "1" ? 1.5 : 1 / 1.5) }); }
+      else if (d.zoom != null) { if (d.zoom === "0") flyTo(home()); else flyTo({ x: S.cam.x, y: S.cam.y, k: S.cam.k * (d.zoom === "1" ? 1.5 : 1 / 1.5) }); }
+      else if (d.group) { S.group = d.group; var keep = S.cam.k; relayout(); S.cam = home(); S.cam.set = 1; if (SIM) SIM.alpha = 1; render(); if (still) frame(0, true); void keep; }
+      else if (d.linkto && S.sel) { S.linkQ = ""; call("onLink", S.sel, d.linkto); }
+      else if (d.unlink && S.sel) call("onUnlink", S.sel, d.unlink);
+      else if (d.act === "linkpick") { S.linking = true; S.linkQ = ""; render(); var lq = $("#knLq"); if (lq) lq.focus(); }
+      else if (d.act === "linkdone") { S.linking = false; render(); }
       else if (d.zonef != null) { S.f.zone = d.zonef; S.f.type = ""; S.f.topic = ""; render(); }
       else if (d.sort) { if (S.sort.key === d.sort) S.sort.dir *= -1; else S.sort = { key: d.sort, dir: d.sort === "createdAt" ? -1 : 1 }; render(); }
       else if (d.confirm) { var sv = root.querySelector('[data-sortsel="' + d.confirm + '"]').value.split("|"); call("onPatch", d.confirm, { zone: sv[0], type: sv[1], needsSort: false }); }
       else if (d.ext) call("onSetting", d.ext, !(S.settings.external || {})[d.ext]);
-      else if (d.act === "close") { S.sel = null; S.edit = false; render(); if (S.view === "graph" && !S.results) flyTo({ x: S.cam.x, y: S.cam.y, k: S.cam.k }); }
+      else if (d.act === "close") { S.sel = null; S.edit = false; S.linking = false; render(); }
       else if (d.act === "pick") $("#knFile").click();
+      else if (d.act === "pickdir") $("#knDir").click();
       else if (d.act === "add" || d.act === "sort" || d.act === "privacy") { S.sheet = d.act; render(); var f = root.querySelector(".sheet .x"); if (f) f.focus(); }
       else if (d.act === "sheetclose") { S.sheet = null; render(); }
       else if (d.act === "edit") { S.edit = true; render(); $("#knT").focus(); }
       else if (d.act === "cancel") { S.edit = false; render(); }
-      else if (d.act === "save" && S.sel) { var zt = $("#knZ").value.split("|"), title = $("#knT").value.trim(); if (!title) { $("#knT").focus(); return; } S.edit = false; call("onPatch", S.sel, { title: title, zone: zt[0], type: zt[1], topic: $("#knTo").value.trim() || "General", summary: $("#knS").value.trim(), why: $("#knW").value.trim(), tags: $("#knG").value.split(",").map(function (x) { return x.trim(); }).filter(Boolean), needsSort: false }); S.edit = false; }
+      else if (d.act === "save" && S.sel) { var zt = $("#knZ").value.split("|"), title = $("#knT").value.trim(); if (!title) { $("#knT").focus(); return; } S.edit = false; call("onPatch", S.sel, { title: title, zone: zt[0], type: zt[1], topic: $("#knTo").value.trim() || "General", folder: $("#knFo").value.trim(), summary: $("#knS").value.trim(), why: $("#knW").value.trim(), tags: $("#knG").value.split(",").map(function (x) { return x.trim(); }).filter(Boolean), needsSort: false }); S.edit = false; }
       else if (d.act === "archive" && S.sel) { var id = S.sel; S.sel = null; call("onArchive", id); }
       else if (d.act === "merge" && S.sel) call("onArchive", d.other);
       else if (d.act === "file" && S.sel) call("onOpenFile", S.sel);
@@ -222,45 +288,49 @@
       }
     });
     kn.addEventListener("change", function (e) {
-      if (e.target.id === "knFile") { if (e.target.files.length) call("onUpload", [].slice.call(e.target.files)); e.target.value = ""; }
+      if (e.target.id === "knFile" || e.target.id === "knDir") { if (e.target.files.length) call("onUpload", [].slice.call(e.target.files)); e.target.value = ""; }
       else if (e.target.dataset && e.target.dataset.f) { S.f[e.target.dataset.f] = e.target.value; render(); }
     });
-    kn.addEventListener("input", function (e) { if (e.target.id === "knQ") { S.q = e.target.value; clearTimeout(searchT); searchT = setTimeout(runSearch, 260); } });
+    kn.addEventListener("input", function (e) { if (e.target.id === "knLq") { S.linkQ = e.target.value; var box = $("#knLr"), cur = S.sel && byId[S.sel]; if (box && cur) box.innerHTML = linkChoices(cur); return; } if (e.target.id === "knQ") { S.q = e.target.value; clearTimeout(searchT); searchT = setTimeout(runSearch, 260); } });
     kn.addEventListener("keydown", function (e) {
-      var n = e.target.closest && e.target.closest(".n,.zone");
+      var n = e.target.closest && e.target.closest(".n");
       if (n && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); n.dispatchEvent(new MouseEvent("click", { bubbles: true })); }
       if (e.key === "Escape") { if (S.sheet) { S.sheet = null; render(); } else if (S.sel) { S.sel = null; S.edit = false; render(); } else if (S.q && e.target.id === "knQ") { S.q = ""; runSearch(); } }
       if (e.target.id === "knQ" && e.key === "Enter") { clearTimeout(searchT); runSearch(); }
       if (e.target.closest && e.target.closest("#knSvg") && /^Arrow/.test(e.key)) { e.preventDefault(); var st = 60 / S.cam.k; setCam({ x: S.cam.x + (e.key === "ArrowRight" ? st : e.key === "ArrowLeft" ? -st : 0), y: S.cam.y + (e.key === "ArrowDown" ? st : e.key === "ArrowUp" ? -st : 0), k: S.cam.k }); }
     });
-    /* pan, wheel zoom and pinch on the graph */
-    var drag = { on: false, moved: false, pts: {} };
-    kn.addEventListener("pointerdown", function (e) { var svg = e.target.closest && e.target.closest("#knSvg"); if (!svg) return; drag.pts[e.pointerId] = [e.clientX, e.clientY]; drag.on = true; drag.moved = false; drag.x = e.clientX; drag.y = e.clientY; drag.pinch = 0; });
+    /* drag an item, pan the board, wheel zoom and pinch */
+    var drag = { on: false, moved: false, pts: {}, node: null };
+    var toBoard = function (e) { var svg = $("#knSvg"), r = svg.getBoundingClientRect(), k = S.cam.k; return [S.cam.x - W / (2 * k) + (e.clientX - r.left) / r.width * (W / k), S.cam.y - H / (2 * k) + (e.clientY - r.top) / r.height * (H / k)]; };
+    kn.addEventListener("pointerdown", function (e) { var svg = e.target.closest && e.target.closest("#knSvg"); if (!svg) return; drag.pts[e.pointerId] = [e.clientX, e.clientY]; drag.on = true; drag.moved = false; drag.x = e.clientX; drag.y = e.clientY; drag.sx = e.clientX; drag.sy = e.clientY; drag.pinch = 0; var nd = e.target.closest(".n"); drag.node = nd && SIM ? SIM.byId[nd.getAttribute("data-id")] : null; });
     kn.addEventListener("pointermove", function (e) {
       if (!drag.on || !drag.pts[e.pointerId]) return; var svg = $("#knSvg"); if (!svg) return; var r = svg.getBoundingClientRect(), ids = Object.keys(drag.pts);
       drag.pts[e.pointerId] = [e.clientX, e.clientY];
-      if (ids.length >= 2) { var a = drag.pts[ids[0]], b = drag.pts[ids[1]], dist = Math.hypot(a[0] - b[0], a[1] - b[1]); if (drag.pinch) setCam({ x: S.cam.x, y: S.cam.y, k: S.cam.k * dist / drag.pinch }); drag.pinch = dist; drag.moved = true; return; }
-      var dx = e.clientX - drag.x, dy = e.clientY - drag.y; if (Math.abs(dx) + Math.abs(dy) < 4 && !drag.moved) return;
-      drag.moved = true; svg.classList.add("drag"); drag.x = e.clientX; drag.y = e.clientY; setCam({ x: S.cam.x - dx * (W / S.cam.k) / r.width, y: S.cam.y - dy * (H / S.cam.k) / r.height, k: S.cam.k });
+      if (ids.length >= 2) { var a = drag.pts[ids[0]], b = drag.pts[ids[1]], dist = Math.hypot(a[0] - b[0], a[1] - b[1]); if (drag.pinch) setCam({ x: S.cam.x, y: S.cam.y, k: S.cam.k * dist / drag.pinch }); drag.pinch = dist; drag.moved = true; if (drag.node) { drag.node.fx = drag.node.fy = null; drag.node = null; } return; }
+      if (!drag.moved && Math.abs(e.clientX - drag.sx) + Math.abs(e.clientY - drag.sy) < 5) return;
+      drag.moved = true; svg.classList.add("drag");
+      if (drag.node) { var p = toBoard(e); drag.node.fx = p[0]; drag.node.fy = p[1]; SIM.dragging = true; heat(0.35); if (still) frame(0, true); return; }
+      var dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY; setCam({ x: S.cam.x - dx * (W / S.cam.k) / r.width, y: S.cam.y - dy * (H / S.cam.k) / r.height, k: S.cam.k });
     });
-    var endDrag = function (e) { delete drag.pts[e.pointerId]; if (!Object.keys(drag.pts).length) { drag.on = false; var svg = $("#knSvg"); if (svg) svg.classList.remove("drag"); setTimeout(function () { drag.moved = false; }, 0); } drag.pinch = 0; };
+    var endDrag = function (e) { delete drag.pts[e.pointerId]; if (!Object.keys(drag.pts).length) { drag.on = false; if (drag.node) { drag.node.x = drag.node.fx != null ? drag.node.fx : drag.node.x; drag.node.y = drag.node.fy != null ? drag.node.fy : drag.node.y; drag.node.fx = drag.node.fy = null; drag.node = null; if (SIM) { SIM.dragging = false; heat(0.5); } } var svg = $("#knSvg"); if (svg) svg.classList.remove("drag"); setTimeout(function () { drag.moved = false; }, 0); } drag.pinch = 0; };
     kn.addEventListener("pointerup", endDrag); kn.addEventListener("pointercancel", endDrag);
     kn.addEventListener("wheel", function (e) {
       var svg = e.target.closest && e.target.closest("#knSvg"); if (!svg) return; e.preventDefault();
-      var r = svg.getBoundingClientRect(), k = S.cam.k, nk = Math.max(1, Math.min(5, k * (e.deltaY < 0 ? 1.18 : 1 / 1.18))), px = S.cam.x - W / (2 * k) + (e.clientX - r.left) / r.width * (W / k), py = S.cam.y - H / (2 * k) + (e.clientY - r.top) / r.height * (H / k);
-      setCam({ x: px - (px - S.cam.x) * k / nk, y: py - (py - S.cam.y) * k / nk, k: nk });
+      var k = S.cam.k, nk = Math.max(1, Math.min(6, k * (e.deltaY < 0 ? 1.18 : 1 / 1.18))), p = toBoard(e);
+      setCam({ x: p[0] - (p[0] - S.cam.x) * k / nk, y: p[1] - (p[1] - S.cam.y) * k / nk, k: nk });
     }, { passive: false });
     /* drop files anywhere on the page */
     kn.addEventListener("dragover", function (e) { if (e.dataTransfer && [].indexOf.call(e.dataTransfer.types || [], "Files") >= 0) { e.preventDefault(); kn.classList.add("drop"); } });
     kn.addEventListener("dragleave", function (e) { if (e.target === kn) kn.classList.remove("drop"); });
     kn.addEventListener("drop", function (e) { kn.classList.remove("drop"); if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) { e.preventDefault(); call("onUpload", [].slice.call(e.dataTransfer.files)); } });
-    if (window.ResizeObserver) new ResizeObserver(function () { var n = host.getBoundingClientRect().width < 900; if (n !== narrow && host.offsetParent !== null) { S.cam = { x: 0, y: 0, k: 1 }; relayout(); render(); } }).observe(host);
+    if (window.ResizeObserver) new ResizeObserver(function () { var n = host.getBoundingClientRect().width < 900; if (n !== narrow && host.offsetParent !== null) { S.cam = { x: 0, y: 0, k: 1 }; relayout(); S.cam = home(); S.cam.set = 1; render(); } }).observe(host);
 
     setData(o); render();
     return {
-      update: function (d) { if (d.theme) theme = d.theme; var keepCam = S.cam; setData(d); S.cam = keepCam.x ? keepCam : S.cam; render(); },
+      update: function (d) { if (d.theme) theme = d.theme; setData(d); if (SIM) SIM.alpha = Math.max(SIM.alpha, 0.6); render(); },
       progress: function (text) { S.progress = text || ""; var n = root.querySelector('.note[role="status"] span'); if (n && text) n.textContent = text; else render(); },
-      select: select, state: function () { return { view: S.view, sel: S.sel, results: S.results ? S.results.length : null, k: S.cam.k, sheet: S.sheet }; }
+      select: select, state: function () { return { view: S.view, sel: S.sel, results: S.results ? S.results.length : null, k: S.cam.k, sheet: S.sheet, group: S.group, clusters: SIM ? SIM.clusters.map(function (c) { return [c.label, c.n]; }) : [], alpha: SIM ? SIM.alpha : 0 }; },
+      node: function (id) { var n = SIM && SIM.byId[id]; return n ? { x: n.x, y: n.y, cluster: n.c.label } : null; }
     };
   };
 })();

@@ -210,3 +210,17 @@ h1{font-size:30px}.sec{margin-top:44px}}
 .pillars.solo .pillar{display:grid;grid-template-columns:minmax(200px,260px) minmax(0,1fr);column-gap:36px;align-items:start}
 .pillars.solo .pillar>header,.pillars.solo .pillar>.big,.pillars.solo .pillar>.delta{grid-column:1}.pillars.solo .pillar>.pbody{grid-column:2;grid-row:1/span 3}.pillars.solo .pillar>.expand,.pillars.solo .pillar>.deep{grid-column:1/-1}.pillars.solo .pillar>.expand{margin-top:16px}}
 .pillars.solo .pbody{max-width:680px}.xblock .panel{max-width:900px}
+
+/* training calendar */
+.tcal{max-width:none}.tch{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:baseline;justify-content:space-between}
+.tcms{display:grid;gap:18px 28px;grid-template-columns:minmax(0,1fr);margin-top:12px}
+.tcm .lab{display:flex;justify-content:space-between;gap:8px}.tcn{letter-spacing:0;text-transform:none;font-weight:400}
+.tcw,.tcg{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}.tcw b{font:600 10.5px var(--font-t);color:var(--muted);text-align:center;padding:4px 0}
+.tcd{position:relative;display:grid;place-items:center;aspect-ratio:1;max-height:44px;border-radius:8px;font-size:12px;color:var(--muted);border:1px solid transparent}
+.tcd i{position:absolute;bottom:1px;font-style:normal;font-size:8px;line-height:1}
+.tcd.gym{background:var(--text);color:var(--bg);font-weight:600}.tcd.gym i{display:none}
+.tcd.other{border-color:var(--text);color:var(--text)}.tcd.other i{display:none}
+.tcd.today{outline:2px solid var(--text);outline-offset:1px}.tcd.future{opacity:.35}
+.tcd.paused:not(.gym){background:repeating-linear-gradient(45deg,var(--line) 0 3px,transparent 3px 6px)}
+.tck{display:inline-block;font-size:11px}.tck.gym{color:var(--text)}
+@container hp (min-width:700px){.tcms{grid-template-columns:repeat(3,minmax(0,1fr))}}
