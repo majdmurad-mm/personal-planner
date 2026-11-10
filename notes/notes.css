@@ -92,6 +92,7 @@ button.pill:hover{border-color:var(--g2)}
 .body img{max-width:100%}
 .acts{display:flex;flex-wrap:wrap;gap:8px;border-top:1px solid var(--line);padding-top:14px}
 .back{display:none}
+.arcnote{margin-top:14px}
 
 /* mood map and recordings */
 .panel{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:18px;margin-top:14px;display:grid;gap:12px}
@@ -106,7 +107,7 @@ button.pill:hover{border-color:var(--g2)}
 .work{grid-template-columns:minmax(260px,340px) minmax(0,1fr)}.rail{grid-column:1/-1;grid-template-columns:minmax(200px,280px) 1fr 1fr;align-items:start}.rail .links{display:none}
 .list{max-height:calc(100vh - 40px);overflow-y:auto;position:sticky;top:12px}}
 @container np (min-width:1100px){.ov-grid{grid-template-columns:1.25fr 1.25fr 1fr 1fr}
-.work{grid-template-columns:210px minmax(280px,360px) minmax(0,1fr)}.rail{grid-column:auto;grid-template-columns:minmax(0,1fr);position:sticky;top:12px}.rail .links{display:grid}}
+.work{grid-template-columns:210px minmax(280px,360px) minmax(0,1fr)}.rail{grid-column:auto;grid-template-columns:minmax(0,1fr);position:sticky;top:12px}.rail .links{display:grid}.work.arc{grid-template-columns:minmax(280px,360px) minmax(0,1fr)}}
 @container np (max-width:699px){
 .np[data-open] .rail,.np[data-open] .list,.np[data-open] .cap,.np[data-open] .ov,.np[data-open] .top{display:none}
 .np:not([data-open]) .reader{display:none}.rail{gap:8px}.fgroup{display:flex;flex-wrap:wrap;gap:6px}.fgroup .lab{display:none}.f{width:auto;gap:6px;padding:4px 11px;border:1px solid var(--line);border-radius:99px;font-size:13px}.back{display:inline-flex}.reader{padding:18px 16px;border:0;background:none}}

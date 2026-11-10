@@ -81,26 +81,28 @@
     var a = []; if (S.type) a.push(["type", typeOf(S.type)[1]]); if (S.area) a.push(["area", S.area]); if (S.link) a.push(["link", S.link]); if (S.day) a.push(["day", fmtD(S.day)]); if (S.week) a.push(["week", "Week of " + fmtD(S.week, { day: "numeric", month: "short" })]);
     return a.length ? '<div class="active">' + a.map(function (x) { return '<button class="pill" data-clear="' + x[0] + '" aria-label="Remove filter ' + esc(x[1]) + '">' + esc(x[1]) + " ✕</button>"; }).join("") + (a.length > 1 ? '<button class="pill" data-clear="all">Clear all</button>' : "") + "</div>" : "";
   }
-  function list(S, V) {
-    if (!V.length) return '<div class="list"><p class="none">' + (S.notes.length ? "No notes match these filters." : "No notes yet. Write the first one above.") + "</p></div>";
+  function list(S, V, arc) {
+    var selId = arc ? S.asel : S.sel;
+    if (!V.length) return '<div class="list"><p class="none">' + (arc ? "Nothing is archived. A note you archive is kept here, and you can restore it." : S.notes.length ? "No notes match these filters." : "No notes yet. Write the first one above.") + "</p></div>";
     var out = "", cur = "";
     V.forEach(function (n) {
       var m = n.date.slice(0, 7); if (m !== cur) { cur = m; out += '<div class="mon lab"><span>' + fmtD(m + "-01", { month: "long", year: "numeric" }) + "</span><span>" + V.filter(function (x) { return x.date.slice(0, 7) === m; }).length + "</span></div>"; }
       var t = typeOf(n.type), ex = plain(n.text);
-      out += '<button class="row" data-id="' + esc(n.id) + '" aria-current="' + (S.sel === n.id) + '"><span class="meta"><span>' + fmtD(n.date) + (n.time ? " · " + n.time : "") + '</span><span class="right">' + (n.hasAudio ? '<span title="Has a recording">♪</span>' : "") + (n.type !== "reflection" ? '<span title="' + t[1] + '">' + t[2] + "</span>" : "") + moodDot(n) + '</span></span><span class="t">' + esc(n.title || ex.slice(0, 60) || "Untitled") + "</span>" + (ex && n.title ? '<span class="x">' + esc(ex.slice(0, 180)) + "</span>" : "") + "</button>";
+      out += '<button class="row" data-id="' + esc(n.id) + '" aria-current="' + (selId === n.id) + '"><span class="meta"><span>' + fmtD(n.date) + (n.time ? " · " + n.time : "") + '</span><span class="right">' + (n.hasAudio ? '<span title="Has a recording">♪</span>' : "") + (n.type !== "reflection" ? '<span title="' + t[1] + '">' + t[2] + "</span>" : "") + moodDot(n) + '</span></span><span class="t">' + esc(n.title || ex.slice(0, 60) || "Untitled") + "</span>" + (ex && n.title ? '<span class="x">' + esc(ex.slice(0, 180)) + "</span>" : "") + "</button>";
     });
-    return '<div class="list" id="npList" role="list" aria-label="Notes">' + out + "</div>";
+    return '<div class="list" id="npList" role="list" aria-label="' + (arc ? "Archived notes" : "Notes") + '">' + out + "</div>";
   }
-  function reader(S, o) {
-    var n = S.notes.filter(function (x) { return x.id === S.sel; })[0];
-    if (!n) return '<article class="reader"><p class="none">Pick a note to read it here.</p></article>';
+  function reader(S, o, arc) {
+    var n = (arc ? S.arch : S.notes).filter(function (x) { return x.id === (arc ? S.asel : S.sel); })[0];
+    if (!n) return '<article class="reader"><p class="none">' + (arc ? (S.arch.length ? "Pick an archived note to read it here." : "") : "Pick a note to read it here.") + "</p></article>";
+    var pd = function (p) { return arc ? "<span class=\"pill\">" + p + "</span>" : p; };
     var t = typeOf(n.type), v = N.valence(n), body = o.bodyHtml ? o.bodyHtml(n) : "<p>" + esc(n.text).replace(/\n{2,}/g, "</p><p>").replace(/\n/g, "<br>") + "</p>";
-    return '<article class="reader" aria-label="Note"><button class="btn back" data-act="back">← All notes</button><p class="meta"><span>' + fmtD(n.date, { weekday: "long", day: "numeric", month: "long", year: "numeric" }) + (n.time ? " · " + n.time : "") + '</span><span class="pill">' + t[2] + " " + t[1].replace(/s$/, "") + "</span>" + (n.priority ? '<span class="pill">' + esc(n.priority) + "</span>" : "") + (n.source ? '<span class="pill">via ' + esc(n.source) + "</span>" : "") + "</p>" +
+    return '<article class="reader" aria-label="Note"><button class="btn back" data-act="back">' + (arc ? "← Archive" : "← All notes") + '</button><p class="meta"><span>' + fmtD(n.date, { weekday: "long", day: "numeric", month: "long", year: "numeric" }) + (n.time ? " · " + n.time : "") + '</span><span class="pill">' + t[2] + " " + t[1].replace(/s$/, "") + "</span>" + (n.priority ? '<span class="pill">' + esc(n.priority) + "</span>" : "") + (n.source ? '<span class="pill">via ' + esc(n.source) + "</span>" : "") + (arc ? '<span class="pill">Archived' + (n.archivedAt ? " " + fmtD(String(n.archivedAt).slice(0, 10)) : "") + "</span>" : "") + "</p>" +
       "<h2>" + esc(n.title || "Untitled") + "</h2>" +
-      ((n.areas || []).length || (n.links || []).length ? '<p class="meta">' + (n.areas || []).map(function (a) { return '<button class="pill" data-area="' + esc(a) + '">' + esc(a) + "</button>"; }).join("") + (n.links || []).map(function (l) { return '<button class="pill" data-link="' + esc(l.label) + '">' + (l.kind === "person" ? "@" : "#") + esc(l.label) + "</button>"; }).join("") + "</p>" : "") +
+      ((n.areas || []).length || (n.links || []).length ? '<p class="meta">' + (n.areas || []).map(function (a) { return arc ? pd(esc(a)) : '<button class="pill" data-area="' + esc(a) + '">' + esc(a) + "</button>"; }).join("") + (n.links || []).map(function (l) { var tx = (l.kind === "person" ? "@" : "#") + esc(l.label); return arc ? pd(tx) : '<button class="pill" data-link="' + esc(l.label) + '">' + tx + "</button>"; }).join("") + "</p>" : "") +
       ((n.sentiment || []).length ? '<p class="meta"><i class="mood" style="' + moodCss(v) + '"></i><span>Mood: ' + moodWord(v) + "</span>" + n.sentiment.map(function (s) { return '<span class="pill">' + esc(s) + "</span>"; }).join("") + "</p>" : "") +
       (n.hasAudio ? '<p><button class="btn" data-act="play">♪ Play the recording</button></p>' : "") +
-      '<div class="body">' + (body || '<p class="sub">This note has no text.</p>') + '</div><div class="acts"><button class="btn pri" data-act="edit">Edit</button>' + (n.type === "reflection" ? '<button class="btn" data-act="sentiment">Read the mood</button>' : "") + '<button class="btn" data-act="autofill">Fill in title and links</button><button class="btn" data-act="archive">Archive</button></div></article>';
+      '<div class="body">' + (body || '<p class="sub">This note has no text.</p>') + "</div>" + (arc ? '<div class="acts"><button class="btn pri" data-act="restore">Restore to notes</button></div></article>' : "") + (arc ? "" : '<div class="acts"><button class="btn pri" data-act="edit">Edit</button>' + (n.type === "reflection" ? '<button class="btn" data-act="sentiment">Read the mood</button>' : "") + '<button class="btn" data-act="autofill">Fill in title and links</button><button class="btn" data-act="archive">Archive</button></div></article>');
   }
   function capture(S) {
     var opt = function (a, cur) { return a.map(function (x) { return '<option value="' + esc(x[0]) + '"' + (x[0] === cur ? " selected" : "") + ">" + esc(x[1]) + "</option>"; }).join(""); };
@@ -123,7 +125,7 @@
     o = o || {};
     var root = host.shadowRoot || host.attachShadow({ mode: "open" }), now = o.now || new Date();
     var sortN = function (a) { return a.slice().sort(function (x, y) { return x.date !== y.date ? y.date.localeCompare(x.date) : String(y.time || "").localeCompare(String(x.time || "")); }); };
-    var S = { notes: sortN(o.notes || []), recs: o.recordings || [], now: now, q: "", type: "", area: "", link: "", day: "", week: "", sel: null, view: "list", cap: false, ov: o.overviewOpen !== false, sample: !!o.sample,
+    var S = { notes: sortN(o.notes || []), arch: sortN(o.archived || []), asel: null, recs: o.recordings || [], now: now, q: "", type: "", area: "", link: "", day: "", week: "", sel: null, view: "list", cap: false, ov: o.overviewOpen !== false, sample: !!o.sample,
       draft: { text: "", title: "", date: iso(now), time: pad(now.getHours()) + ":" + pad(now.getMinutes()), type: "reflection", area: "", priority: "" } };
     var theme = o.theme === "dark" || o.theme === "light" ? o.theme : (window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
     var narrow = function () { return host.getBoundingClientRect().width < 700; };
@@ -134,19 +136,23 @@
     function draw(keep) {
       var V = visible(S), act = root.activeElement, fid = keep && act && act.id, pos = fid && act.selectionStart, lst = root.querySelector("#npList"), st = lst ? lst.scrollTop : 0;
       if (S.sel && !V.some(function (n) { return n.id === S.sel; }) && S.view === "list") S.sel = V.length && !narrow() ? V[0].id : null;
+      if (S.asel && !S.arch.some(function (n) { return n.id === S.asel; })) S.asel = null;
+      if (!S.asel && S.arch.length && !narrow()) S.asel = S.arch[0].id;
+      if (S.view === "archive" && !S.asel) S.open = false;
       np.dataset.theme = theme; if (S.open) np.dataset.open = "1"; else delete np.dataset.open;
-      var seg = [["list", "List"], ["map", "Mood map"], ["recordings", "Recordings"]].map(function (v) { return '<button data-view="' + v[0] + '" aria-pressed="' + (S.view === v[0]) + '">' + v[1] + "</button>"; }).join("");
-      np.innerHTML = (S.sample ? '<div class="ribbon" role="note"><b>SAMPLE NOTES</b> · invented text to show the page · nothing below is yours</div>' : "") + '<div class="wrap"><header class="top"><div class="title"><p class="eyebrow">Notes</p><h1>' + S.notes.length + " note" + (S.notes.length === 1 ? "" : "s") + '</h1></div><div class="seg" role="group" aria-label="View">' + seg + "</div></header>" + capture(S) +
-        (S.view === "recordings" ? recordings(S) : '<details class="ov"' + (S.ov ? " open" : "") + '><summary><span class="lab">Overview</span><span class="sub">Click a day, a week, an area or a name to filter the notes.</span></summary><div class="ov-grid">' + calendar(S) + moodChart(S) + mix(S) + linked(S) + "</div></details>" +
+      var seg = [["list", "List"], ["map", "Mood map"], ["recordings", "Recordings"], ["archive", "Archive" + (S.arch.length ? " " + S.arch.length : "")]].map(function (v) { return '<button data-view="' + v[0] + '" aria-pressed="' + (S.view === v[0]) + '">' + v[1] + "</button>"; }).join("");
+      np.innerHTML = (S.sample ? '<div class="ribbon" role="note"><b>SAMPLE NOTES</b> · invented text to show the page · nothing below is yours</div>' : "") + '<div class="wrap"><header class="top"><div class="title"><p class="eyebrow">Notes</p><h1>' + S.notes.length + " note" + (S.notes.length === 1 ? "" : "s") + '</h1></div><div class="seg" role="group" aria-label="View">' + seg + "</div></header>" + (S.view === "archive" ? "" : capture(S)) +
+        (S.view === "archive" ? '<p class="sub arcnote">Archived notes are kept, not deleted. They stay out of the list, the charts and the counts until you restore them.</p><div class="work arc">' + list(S, S.arch, true) + reader(S, o, true) + "</div>" : S.view === "recordings" ? recordings(S) : '<details class="ov"' + (S.ov ? " open" : "") + '><summary><span class="lab">Overview</span><span class="sub">Click a day, a week, an area or a name to filter the notes.</span></summary><div class="ov-grid">' + calendar(S) + moodChart(S) + mix(S) + linked(S) + "</div></details>" +
           (S.view === "map" ? activeFilters(S) + moodMap(S, V) : '<div class="work">' + rail(S) + '<div style="display:grid;gap:10px;align-content:start;min-width:0">' + activeFilters(S) + list(S, V) + "</div>" + reader(S, o) + "</div>")) + '</div><div class="tip" id="npTip" hidden></div>';
       if (fid) { var el = root.getElementById(fid); if (el) { el.focus(); if (pos != null && el.setSelectionRange) try { el.setSelectionRange(pos, pos); } catch (e) {} } }
       var l2 = root.querySelector("#npList"); if (l2) l2.scrollTop = st;
     }
     var call = function (name, a) { if (o[name]) return o[name](a); };
-    var selNote = function () { return S.notes.filter(function (x) { return x.id === S.sel; })[0]; };
+    var selNote = function () { var a = S.view === "archive"; return (a ? S.arch : S.notes).filter(function (x) { return x.id === (a ? S.asel : S.sel); })[0]; };
     np.addEventListener("click", function (e) {
       var t = e.target.closest("button,[data-day],[data-week]"); if (!t) return; var d = t.dataset;
       if (d.view) { S.view = d.view; S.open = false; }
+      else if (d.id && S.view === "archive") { S.asel = d.id; S.open = true; }
       else if (d.id) { S.sel = d.id; if (d.goto) S.view = "list"; S.open = true; call("onOpen", selNote()); }
       else if (d.type != null) S.type = S.type === d.type ? "" : d.type;
       else if (d.area) S.area = S.area === d.area ? "" : d.area;
@@ -158,13 +164,13 @@
       else if (d.transcribe) { call("onTranscribe", d.transcribe); return; }
       else if (d.act === "back") S.open = false;
       else if (d.act === "record") { call("onRecord"); return; }
-      else if (d.act) { var n = selNote(); if (n) call({ edit: "onEdit", sentiment: "onSentiment", autofill: "onAutoFill", archive: "onArchive", play: "onPlayNote" }[d.act], n); return; }
+      else if (d.act) { var n = selNote(); if (n) call({ edit: "onEdit", sentiment: "onSentiment", autofill: "onAutoFill", archive: "onArchive", restore: "onRestore", play: "onPlayNote" }[d.act], n); return; }
       else return;
       draw();
     });
     np.addEventListener("keydown", function (e) {
       if ((e.key === "Enter" || e.key === " ") && e.target.matches && e.target.matches("[data-day],[data-week]")) { e.preventDefault(); e.target.dispatchEvent(new MouseEvent("click", { bubbles: true })); }
-      if ((e.key === "ArrowDown" || e.key === "ArrowUp") && e.target.classList && e.target.classList.contains("row")) { e.preventDefault(); var r = [].slice.call(root.querySelectorAll(".row")), i = r.indexOf(e.target) + (e.key === "ArrowDown" ? 1 : -1); if (r[i]) { S.sel = r[i].dataset.id; draw(); var x = root.querySelector('.row[data-id="' + S.sel + '"]'); if (x) x.focus(); } }
+      if ((e.key === "ArrowDown" || e.key === "ArrowUp") && e.target.classList && e.target.classList.contains("row")) { e.preventDefault(); var r = [].slice.call(root.querySelectorAll(".row")), i = r.indexOf(e.target) + (e.key === "ArrowDown" ? 1 : -1); if (r[i]) { var nid = r[i].dataset.id; if (S.view === "archive") S.asel = nid; else S.sel = nid; draw(); var x = root.querySelector('.row[data-id="' + nid + '"]'); if (x) x.focus(); } }
       if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && e.target.id === "npText") { e.preventDefault(); root.getElementById("npCap").requestSubmit(); }
     });
     np.addEventListener("input", function (e) {
@@ -186,7 +192,7 @@
     np.addEventListener("pointerleave", function () { var tp = tipEl(); if (tp) tp.hidden = true; });
     draw();
     return {
-      update: function (u) { if (u.notes) S.notes = sortN(u.notes); if (u.recordings) S.recs = u.recordings; if (u.theme) theme = u.theme; if (u.select) { S.sel = u.select; S.view = "list"; } draw(true); },
+      update: function (u) { if (u.notes) S.notes = sortN(u.notes); if (u.archived) S.arch = sortN(u.archived); if (u.recordings) S.recs = u.recordings; if (u.theme) theme = u.theme; if (u.select) { S.sel = u.select; S.view = "list"; } draw(true); },
       state: function () { return { view: S.view, sel: S.sel }; }
     };
   };
