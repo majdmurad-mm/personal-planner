@@ -302,6 +302,8 @@
   #healthSection{ margin:-32px -40px -70px; }
   /* Self (the redesigned notes page, notes/) paints its own background the same way. */
   #selfSection{ margin:-32px -40px -70px; }
+  /* Finance snapshot page (finance/), same full-bleed host. */
+  #financeSection{ margin:-32px -40px -70px; }
   /* People, constellation and list views: one full-bleed host; the older header, filters and panels step aside. */
   #peopleSkyHost{ display:none; }
   #peopleSection.ppl-sky{ margin:-32px -40px -70px; }
@@ -1662,6 +1664,7 @@
     #locationSection{ margin:-56px -18px -60px; padding:12px 18px 12px; }
     #healthSection{ margin:-56px -18px -60px; --pph-top:46px; }
     #selfSection{ margin:-56px -18px -60px; --ppn-top:46px; }
+    #financeSection{ margin:-56px -18px -60px; --ppf-top:46px; }
     #peopleSection.ppl-sky{ margin:-56px -18px -60px; --pph-top:46px; }
     #peopleSection.ppl-fullscreen-graph{ margin:-56px -18px -60px; padding:12px 18px 12px; }
     /* #homeSection.home-cockpit's mobile margins can't live here — see the note beside its base rule. */
@@ -1684,6 +1687,7 @@
     #locationSection{ margin:-44px -24px -20px; padding:10px 24px 10px; }
     #healthSection{ margin:-44px -24px -20px; --pph-top:36px; }
     #selfSection{ margin:-44px -24px -20px; --ppn-top:36px; }
+    #financeSection{ margin:-44px -24px -20px; --ppf-top:36px; }
     #peopleSection.ppl-sky{ margin:-44px -24px -20px; --pph-top:36px; }
     #peopleSection.ppl-fullscreen-graph{ margin:-44px -24px -20px; padding:10px 24px 10px; }
   }
@@ -2313,6 +2317,7 @@
           <button class="side-link side-sublink" data-section="self" type="button"><span class="sl-glyph">◎</span>Self</button>
         </div>
         <button class="side-link" data-section="health" type="button"><span class="sl-glyph">♡</span>Health</button>
+        <button class="side-link" data-section="finance" type="button"><span class="sl-glyph">€</span>Finance</button>
         <button class="side-link" data-section="people" type="button"><span class="sl-glyph">☺</span>People</button>
         <button class="side-link" data-section="location" type="button"><span class="sl-glyph">⚲</span>Location</button>
       </nav>
@@ -3128,6 +3133,9 @@
     <section id="healthSection" style="display:none;"></section>
     <!-- Self: the redesigned notes page (notes/notes.js, mounted in a shadow root; see renderSelf). -->
     <section id="selfSection" style="display:none;"></section>
+    <!-- Finance: the snapshot dashboard (finance/finance.js, shadow root; see renderFinancePage). The older
+         accounts and transactions view stays inside the Finance area page. -->
+    <section id="financeSection" style="display:none;"></section>
 
     <!-- ===== AGENT MEMORY: the memory of the Agent PgM bots =====
          The planner is the agents' long-term memory. The Agent PgM bots write here directly through the
@@ -4470,6 +4478,7 @@
     safeSet(window.localStorage, "pp_theme_v1", next);
     applyThemeChrome(next);
     if(activeSection === "self") renderSelf();
+    if(activeSection === "finance") renderFinancePage();
   });
 
   // Sidebar hide/show. The data-sidebar-collapsed attribute (if saved) is already applied pre-paint
@@ -5404,7 +5413,7 @@
     });
   }
 
-  var ALL_SECTION_IDS = ["focusSection","homeSection","todaySection","plannerSection","trackerSection","timelineSection","journalSection","peopleSection","locationSection","futureSection","goalDetailSection","areaDetailSection","entityPageSection","inboxSection","memorySection","healthSection","selfSection"];
+  var ALL_SECTION_IDS = ["focusSection","homeSection","todaySection","plannerSection","trackerSection","timelineSection","journalSection","peopleSection","locationSection","futureSection","goalDetailSection","areaDetailSection","entityPageSection","inboxSection","memorySection","healthSection","selfSection","financeSection"];
   // Sidebar dropdown groups — a parent nav item with no page of its own, bundling a set of section
   // names under one submenu. See showSection() (active/auto-open) and the sideNav click handler
   // (data-toggle-submenu, open/close).
@@ -20013,6 +20022,7 @@
     memory: [renderMemory],
     health: [renderHealth],
     self: [renderSelf],
+    finance: [renderFinancePage],
     timeline: [renderTimeline],
     journal: [renderJournal],
     people: [renderPeople],
@@ -20229,6 +20239,60 @@
       });
     }).catch(function(err){
       if(!host.shadowRoot) host.innerHTML = '<div class="empty-note" style="padding:60px 24px;">The Self page couldn’t load. Check your connection and open it again.</div>';
+      console.warn(err);
+    });
+  }
+  /* Finance page: the snapshot dashboard (finance/). The numbers live only in the finance_snapshots table
+     (private to the signed-in owner by row level security); this repo holds the code and an invented sample.
+     Bump FINANCE_VER with each release of finance/*. */
+  var FINANCE_VER = "1", financeLoading = null, financeSnaps = null, financeHandle = null, financeTheme = null, financeSample = false;
+  function financeLoadScripts(){
+    if(financeLoading) return financeLoading;
+    financeLoading = ["finance", "sample"].reduce(function(chain, f){
+      return chain.then(function(){
+        return new Promise(function(resolve, reject){
+          var el = document.createElement("script");
+          el.src = "finance/" + f + ".js?v=" + FINANCE_VER;
+          el.onload = resolve;
+          el.onerror = function(){ reject(new Error("Could not load finance/" + f + ".js")); };
+          document.head.appendChild(el);
+        });
+      });
+    }, Promise.resolve());
+    financeLoading.catch(function(){ financeLoading = null; });
+    return financeLoading;
+  }
+  async function financeFetch(){
+    var r = await sb.from("finance_snapshots").select("as_of,snapshot").order("as_of", { ascending:false });
+    if(r.error) throw r.error;
+    return (r.data || []).map(function(x){ return x.snapshot; }).filter(Boolean);
+  }
+  // Same as_of replaces that snapshot; other dates are left alone (they are the history).
+  async function financeSaveSnapshot(snap){
+    var r = await sb.from("finance_snapshots").upsert({ user_id: currentUser.id, as_of: String(snap.as_of).slice(0, 10), schema_version: String(snap.schema_version), snapshot: snap, source: "file", imported_at: new Date().toISOString() }, { onConflict: "user_id,as_of" });
+    if(r.error) throw new Error(r.error.message);
+    financeSnaps = (financeSnaps || []).filter(function(x){ return x.as_of !== snap.as_of; }).concat([snap]);
+    financeSample = false;
+  }
+  function financeMount(host){
+    financeTheme = currentTheme();
+    financeHandle = window.PPFinance.mount(host, {
+      snapshots: financeSample ? window.PPFinanceSample : financeSnaps, sample: financeSample, theme: financeTheme,
+      css: "finance/finance.css?v=" + FINANCE_VER, onImport: financeSaveSnapshot,
+      onSample: function(){ financeSample = true; financeMount(host); }
+    });
+  }
+  function renderFinancePage(){
+    if(activeSection !== "finance") return;
+    var host = document.getElementById("financeSection");
+    if(financeHandle){ if(financeTheme !== currentTheme()){ financeTheme = currentTheme(); financeHandle.setTheme(financeTheme); } return; }
+    financeLoadScripts().then(function(){ return financeSnaps || financeFetch(); }).then(function(list){
+      financeSnaps = list;
+      if(activeSection !== "finance" || financeHandle) return;
+      financeMount(host);
+    }).catch(function(err){
+      var missing = err && /finance_snapshots|schema cache|does not exist/i.test(err.message || "");
+      if(!host.shadowRoot) host.innerHTML = '<div class="empty-note" style="padding:60px 24px;">' + (missing ? "The Finance page needs its database table first (migration_finance_snapshots.sql)." : "The Finance page couldn’t load. Check your connection and open it again.") + '</div>';
       console.warn(err);
     });
   }

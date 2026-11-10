@@ -706,6 +706,69 @@ tool("get_finance", {
   },
 });
 
+// ---- Finance snapshots (the Finance page) ------------------------------------
+// One row per as_of in finance_snapshots (see _Memory/migration_finance_snapshots.sql). The same
+// rules as F.validate in finance/finance.js. Older snapshots are the history and are never deleted.
+const FIN_VERSIONS = ["1", "1.0"];
+const FIN_LISTS = ["accounts", "monthly", "balances_eom", "categories", "food", "subscriptions", "loans", "investments", "property", "income_sources", "actions"];
+const FIN_HINT = " (if the table is missing, run _Memory/migration_finance_snapshots.sql in the Supabase SQL editor)";
+function financeProblems(snap: any): string[] {
+  const e: string[] = [];
+  if (!snap || typeof snap !== "object" || Array.isArray(snap)) return ["snapshot must be an object"];
+  if (!FIN_VERSIONS.includes(String(snap.schema_version))) e.push("unknown schema_version " + JSON.stringify(snap.schema_version) + "; supported: " + FIN_VERSIONS[0]);
+  if (!/^\d{4}-\d{2}-\d{2}/.test(String(snap.as_of || ""))) e.push("as_of must be a date like 2026-11-10");
+  for (const k of FIN_LISTS) if (snap[k] != null && !Array.isArray(snap[k])) e.push(k + " must be a list");
+  if (snap.kpis != null && typeof snap.kpis !== "object") e.push("kpis must be an object");
+  (Array.isArray(snap.accounts) ? snap.accounts : []).forEach((x: any, i: number) => {
+    if (!["checking", "savings", "credit_card", "investment", "loan", "equity_share"].includes(x?.type)) e.push("accounts[" + i + "].type is not a known account type");
+  });
+  (Array.isArray(snap.actions) ? snap.actions : []).forEach((x: any, i: number) => {
+    if (!["open", "waiting", "done"].includes(x?.status)) e.push("actions[" + i + "].status must be open, waiting or done");
+  });
+  return e;
+}
+
+tool("import_finance_snapshot", {
+  description:
+    "Store a finance snapshot for the Finance page. The snapshot is one object: schema_version ('1'), as_of (YYYY-MM-DD), currency, period, sources, accounts[], monthly[], balances_eom[], categories[], food[], subscriptions[], loans[], investments[], property[], income_sources[], kpis, actions[]. Use null for a number that is unknown, never 0. Importing the same as_of again replaces that snapshot; other dates are kept as history.",
+  inputSchema: z.object({
+    snapshot: z.record(z.any()).describe("the whole snapshot object"),
+  }),
+  handler: async (args: { snapshot: any }) => {
+    const snap = args.snapshot;
+    const problems = financeProblems(snap);
+    if (problems.length) return fail("snapshot rejected: " + problems.slice(0, 8).join("; "));
+    const as_of = String(snap.as_of).slice(0, 10);
+    const found = await db.from("finance_snapshots").select("id").eq("user_id", OWNER).eq("as_of", as_of).limit(1);
+    if (found.error) return fail(found.error.message + FIN_HINT);
+    const row = { schema_version: String(snap.schema_version), snapshot: snap, source: "mcp", imported_at: new Date().toISOString() };
+    const existing = found.data && found.data[0];
+    const w = existing
+      ? await db.from("finance_snapshots").update(row).eq("id", existing.id).eq("user_id", OWNER)
+      : await db.from("finance_snapshots").insert({ user_id: OWNER, as_of, ...row });
+    if (w.error) return fail(w.error.message + FIN_HINT);
+    const count = await db.from("finance_snapshots").select("id", { count: "exact", head: true }).eq("user_id", OWNER);
+    return ok({ ok: true, as_of, result: existing ? "replaced" : "created", snapshotsStored: count.count ?? null });
+  },
+});
+
+tool("get_finance_snapshot", {
+  description: "Read a finance snapshot back: the latest one, or the one for a given as_of date. Also lists the dates of all stored snapshots.",
+  inputSchema: z.object({
+    as_of: z.string().optional().describe("YYYY-MM-DD; omit for the latest snapshot"),
+  }),
+  handler: async (args: { as_of?: string }) => {
+    const all = await db.from("finance_snapshots").select("as_of,imported_at,source").eq("user_id", OWNER).order("as_of", { ascending: false });
+    if (all.error) return fail(all.error.message + FIN_HINT);
+    if (!all.data || !all.data.length) return ok({ snapshot: null, available: [], note: "no snapshot stored yet" });
+    const want = args.as_of ? String(args.as_of).slice(0, 10) : all.data[0].as_of;
+    const one = await db.from("finance_snapshots").select("snapshot,imported_at,source").eq("user_id", OWNER).eq("as_of", want).limit(1);
+    if (one.error) return fail(one.error.message);
+    if (!one.data || !one.data[0]) return fail("no snapshot for " + want + "; available: " + all.data.map((x) => x.as_of).join(", "));
+    return ok({ as_of: want, importedAt: one.data[0].imported_at, source: one.data[0].source, available: all.data.map((x) => x.as_of), snapshot: one.data[0].snapshot });
+  },
+});
+
 // ============================ WRITE TOOLS ===================================
 // These mirror the app's in-page Agent tools (executeAgentTool in index.html).
 // Every insert sets user_id explicitly because the service-role client has no
