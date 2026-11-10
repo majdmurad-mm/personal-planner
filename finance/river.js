@@ -30,7 +30,7 @@
     ["freelance", "Freelance & extra", /freelance|side work|consult|invoice|bonus/i]
   ];
   var ORDER_OUT = ["housing", "loans", "bills", "groceries", "eating", "transport", "shopping", "travel", "other", "rest", "savings", "buffer"];
-  var ORDER_IN = ["salary", "income", "sublet", "shared", "freelance", "refunds", "otherin", "drawn", "gap"];
+  var ORDER_IN = ["inc", "salary", "income", "sublet", "shared", "freelance", "refunds", "otherin", "drawn", "gap"];
   var match = function (rules, name) { for (var i = 0; i < rules.length; i++) if (rules[i][2].test(name)) return rules[i]; return null; };
   R.streamOfCategory = function (name) { var m = match(OUT, String(name || "")); return m ? m[0] : "other"; };
   R.streamOfIncome = function (name) { var m = match(INC, String(name || "")); return m ? m[0] : "otherin"; };
@@ -75,14 +75,27 @@
     if (!ls.length || !sum) { add(outs, "loans", total); return; }
     ls.forEach(function (l, i) { add(outs, "loans:" + i, total * z(l.payment) / sum, l.loan || "Loan " + (i + 1)); });
   }
+  // One stream per income source. Money taken out of savings is kept apart (it is not income).
+  var incKey = function (name) { return R.streamOfIncome(name) === "drawn" ? "drawn" : "inc:" + name; };
+  R.incomeKey = incKey;
+  function sourcesInto(M, list, nameKey, valKey, scale) {
+    list.slice().sort(function (a, b) { return z(b[valKey]) - z(a[valKey]); }).forEach(function (c) { var k = incKey(c[nameKey]); add(M.ins, k, z(c[valKey]) * scale, k === "drawn" ? NAMES.drawn : String(c[nameKey])); });
+  }
   R.month = function (s, month) {
     var row = arr(s.monthly).filter(function (m) { return m.month === month; })[0], M = { month: month, mode: "month", ins: [], outs: [], coarse: true, missing: [] };
     if (!row) { M.missing.push("no figures for this month"); return finish(M, s.currency); }
     M.partial = !!(s.period && s.period.partial_month === month);
     var cats = arr(s.monthly_categories).filter(function (c) { return c.month === month; }), incs = arr(s.monthly_income).filter(function (c) { return c.month === month; });
     // income
-    if (incs.length) incs.forEach(function (c) { add(M.ins, R.streamOfIncome(c.source), z(c.amount)); });
-    else { if (n(row.income) == null) M.missing.push("income"); add(M.ins, "income", z(row.income)); add(M.ins, "drawn", z(row.liquidated)); }
+    if (incs.length) sourcesInto(M, incs, "source", "amount", 1);
+    else {
+      if (n(row.income) == null) M.missing.push("income");
+      // No per-month income in the snapshot: split the month's income in the proportions of the whole period.
+      var real = arr(s.income_sources).filter(function (c) { return incKey(c.source) !== "drawn" && z(c.total) > 0; }), tot = real.reduce(function (t, c) { return t + z(c.total); }, 0);
+      if (real.length > 1 && tot > 0 && z(row.income) > 0) { sourcesInto(M, real, "source", "total", z(row.income) / tot); M.incomeEstimated = true; }
+      else add(M.ins, "income", z(row.income));
+      add(M.ins, "drawn", z(row.liquidated));
+    }
     // spending
     var spend = n(row.spend);
     if (cats.length) {
@@ -107,12 +120,13 @@
     if (detailed || !arr(s.categories).length) {
       var parts = ms.map(function (m) { return R.month(s, m); });
       parts.forEach(function (p) { p.ins.concat(p.outs).forEach(function (x) { if (x.key === "buffer" || x.key === "gap") return; add(p.ins.indexOf(x) >= 0 ? M.ins : M.outs, x.key, x.v / parts.length, x.name); }); });
+      M.incomeEstimated = parts.some(function (p) { return p.incomeEstimated; });
       M.label = ms.length ? "Average of " + monY(ms[0]) + " to " + monY(ms[ms.length - 1]) : "No full months yet"; M.coarse = !detailed;
       return finish(M, s.currency);
     }
     var k = periodMonths(s), rows = arr(s.monthly);
     arr(s.categories).forEach(function (c) { var key = R.streamOfCategory(c.category); if (key !== "loans") add(M.outs, key, z(c.total) / k); });
-    if (arr(s.income_sources).length) arr(s.income_sources).forEach(function (c) { add(M.ins, R.streamOfIncome(c.source), z(c.total) / k); });
+    if (arr(s.income_sources).length) sourcesInto(M, arr(s.income_sources), "source", "total", 1 / k);
     else { add(M.ins, "income", rows.reduce(function (t, r) { return t + z(r.income); }, 0) / k); add(M.ins, "drawn", rows.reduce(function (t, r) { return t + z(r.liquidated); }, 0) / k); }
     loansInto(M.outs, s, rows.reduce(function (t, r) { return t + z(r.loans); }, 0) / k); add(M.outs, "savings", rows.reduce(function (t, r) { return t + z(r.invest); }, 0) / k);
     M.label = "Average per month over the whole snapshot period"; M.period = true;
@@ -125,16 +139,16 @@
   var tone = function (x, i, side) { var b = x.key.split(":")[0]; return b === "gap" || b === "drawn" ? "gap" : b === "savings" ? "save" : b === "buffer" ? "lake" : side === "in" ? "in" + (Math.min(i, 4) + 1) : "sp" + ((i % 4) + 1); };
   function info(M, x, side, prev) {
     var cur = M.cur, share = M.income > 0 ? Math.round(x.v / M.income * 100) + " % of income" : "", p = prev ? prev.ins.concat(prev.outs).filter(function (y) { return y.key === x.key; })[0] : null, d = prev ? x.v - (p ? p.v : 0) : null;
-    return { tip: x.name + "\n" + eur(x.v, cur) + (share && side === "out" ? " · " + share : "") + (d == null || M.mode !== "month" ? "" : "\n" + (Math.abs(d) < 0.5 ? "Same as the month before" : (d > 0 ? "+" : "−") + eur(Math.abs(d), cur) + " vs the month before")), share: share, delta: d };
+    return { tip: x.name + "\n" + eur(x.v, cur) + (side === "in" && M.incomeEstimated && x.key.indexOf("inc:") === 0 ? " (estimated share of the month’s income)" : "") + (share && side === "out" ? " · " + share : "") + (share && side === "in" && x.key.indexOf("inc:") === 0 ? " · " + share : "") + (d == null || M.mode !== "month" ? "" : "\n" + (Math.abs(d) < 0.5 ? "Same as the month before" : (d > 0 ? "+" : "−") + eur(Math.abs(d), cur) + " vs the month before")), share: share, delta: d };
   }
   var attrs = function (M, x, side, prev, sel) { var I = info(M, x, side, prev); return ' class="rs' + (sel === x.key ? " on" : "") + '" data-stream="' + esc(x.key) + '" tabindex="0" role="button" aria-pressed="' + (sel === x.key) + '" aria-label="' + esc(I.tip.replace(/\n/g, ", ")) + '" data-tip="' + esc(I.tip) + '"'; };
   var shim = function (d) { return '<path class="shim" d="' + d + '"/>'; };
   function wide(M, prev, sel) {
-    var W = 1100, gap = 9, nIn = M.ins.length, nOut = M.outs.length, H = Math.max(360, Math.min(560, 150 + Math.max(nIn, nOut) * 34)), k = (H - 50 - gap * Math.max(nOut - 1, (nIn - 1) * 2)) / M.total;
-    var xl = 200, xm = 520, mw = 60, xr = 870, nw = 10, sumIn = M.ins.reduce(function (t, x) { return t + x.v; }, 0), sumOut = M.outs.reduce(function (t, x) { return t + x.v; }, 0);
+    var W = 1180, gap = 9, nIn = M.ins.length, nOut = M.outs.length, H = Math.max(360, Math.min(560, 150 + Math.max(nIn, nOut) * 34)), k = (H - 50 - gap * Math.max(nOut - 1, (nIn - 1) * 2)) / M.total;
+    var xl = 330, xm = 620, mw = 60, xr = 940, nw = 10, sumIn = M.ins.reduce(function (t, x) { return t + x.v; }, 0), sumOut = M.outs.reduce(function (t, x) { return t + x.v; }, 0);
     var my = (H - M.total * k) / 2 + 8, ly = (H - (sumIn * k + gap * 2 * (nIn - 1))) / 2 + 8, ry = (H - (sumOut * k + gap * (nOut - 1))) / 2 + 8, a = my + (M.total - sumIn) * k / 2, b = my + (M.total - sumOut) * k / 2, svg = "";
     var rib = function (x0, y0, x1, y1, h, c, at) { var mx = (x0 + x1) / 2, hh = Math.max(1.2, h); return "<g" + at + '><path class="rib" fill="var(--r-' + c + ')" d="M' + x0 + "," + y0 + " C" + mx + "," + y0 + " " + mx + "," + y1 + " " + x1 + "," + y1 + " L" + x1 + "," + (y1 + hh) + " C" + mx + "," + (y1 + hh) + " " + mx + "," + (y0 + hh) + " " + x0 + "," + (y0 + hh) + ' Z"/>' + (h > 14 ? shim("M" + x0 + "," + (y0 + h / 2) + " C" + mx + "," + (y0 + h / 2) + " " + mx + "," + (y1 + h / 2) + " " + x1 + "," + (y1 + h / 2)) : "") + "</g>"; };
-    M.ins.forEach(function (x, i) { var h = x.v * k, c = tone(x, i, "in"); svg += rib(xl + nw, ly, xm, a, h, c, attrs(M, x, "in", prev, sel)) + '<rect x="' + xl + '" y="' + ly + '" width="' + nw + '" height="' + Math.max(2, h) + '" rx="3" fill="var(--r-' + c + ')"/><text class="big" text-anchor="end" x="' + (xl - 10) + '" y="' + (ly + h / 2 - 1) + '">' + (c === "gap" ? "▲ " : "") + esc(x.name) + '</text><text class="amt" text-anchor="end" x="' + (xl - 10) + '" y="' + (ly + h / 2 + 15) + '">' + eur(x.v, M.cur) + "</text>"; ly += h + gap * 2; a += h; });
+    M.ins.forEach(function (x, i) { var h = x.v * k, c = tone(x, i, "in"); svg += rib(xl + nw, ly, xm, a, h, c, attrs(M, x, "in", prev, sel)) + '<rect x="' + xl + '" y="' + ly + '" width="' + nw + '" height="' + Math.max(2, h) + '" rx="3" fill="var(--r-' + c + ')"/><text text-anchor="end" x="' + (xl - 10) + '" y="' + (ly + h / 2 + 4) + '"><tspan class="big">' + (c === "gap" ? "▲ " : "") + esc(x.name.length > 30 ? x.name.slice(0, 29) + "…" : x.name) + '</tspan><tspan class="amt" dx="8">' + eur(x.v, M.cur) + "</tspan></text>"; ly += h + gap * 2; a += h; });
     svg += '<rect x="' + xm + '" y="' + my + '" width="' + mw + '" height="' + M.total * k + '" rx="8" fill="var(--r-trunk)"/><text class="big" text-anchor="middle" x="' + (xm + mw / 2) + '" y="' + (my - 12) + '">' + (M.mode === "average" ? "An average month" : "This month’s money") + '</text><text class="amt" text-anchor="middle" x="' + (xm + mw / 2) + '" y="' + (my + M.total * k + 20) + '">' + eur(M.total, M.cur) + "</text>";
     M.outs.forEach(function (x, i) { var h = x.v * k, c = tone(x, i, "out"), lake = c === "lake"; svg += rib(xm + mw, b, xr, ry, h, c, attrs(M, x, "out", prev, sel)) + (lake ? '<ellipse cx="' + (xr + 26) + '" cy="' + (ry + h / 2) + '" rx="30" ry="' + Math.max(12, h / 2 + 4) + '" fill="var(--r-lake)" opacity=".85"/>' : '<rect x="' + xr + '" y="' + ry + '" width="' + nw + '" height="' + Math.max(2, h) + '" rx="3" fill="var(--r-' + c + ')"/>') + '<text x="' + (xr + (lake ? 66 : 20)) + '" y="' + (ry + h / 2 + 4) + '"><tspan class="big">' + esc(x.name) + '</tspan><tspan class="amt" dx="8">' + eur(x.v, M.cur) + (M.income > 0 ? " · " + Math.round(x.v / M.income * 100) + " %" : "") + "</tspan></text>"; ry += h + gap; b += h; });
     return '<svg viewBox="0 0 ' + W + " " + (H + 16) + '" role="group" aria-label="Money river: income on the left flows into spending, savings and the buffer on the right">' + svg + "</svg>";

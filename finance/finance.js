@@ -138,7 +138,7 @@
   }
   function incomeSrc(s) {
     var a = arr(s.income_sources).slice().sort(function (x, y) { return (n(y.total) || 0) - (n(x.total) || 0); }), t = sum(a, "total");
-    return card("s6 st-salary st-sublet st-shared st-refunds st-freelance st-otherin st-drawn st-income", "Income sources", t.v == null ? "" : eur(t.v) + " in total", !a.length ? none("Income sources") : ranked(a.map(function (x) { return { name: x.source, stream: R.streamOfIncome(x.source), v: n(x.total), tip: x.source + "\n" + eur(x.total) + (t.v && n(x.total) != null ? "\n" + pct(x.total / t.v * 100, 0) + " of income" : "") }; })));
+    return card("s6 st-inc st-drawn st-income", "Income sources", t.v == null ? "" : eur(t.v) + " in total", !a.length ? none("Income sources") : ranked(a.map(function (x) { return { name: x.source, stream: R.incomeKey(x.source), v: n(x.total), tip: x.source + "\n" + eur(x.total) + (t.v && n(x.total) != null ? "\n" + pct(x.total / t.v * 100, 0) + " of income" : "") }; })));
   }
   function subscriptions(s, H) {
     var a = arr(s.subscriptions).slice().sort(function (x, y) { return (n(y.monthly) || 0) - (n(x.monthly) || 0); }), m = H.subs;
@@ -203,6 +203,7 @@
       if (M.mode === "average") notes.push(esc(M.label) + ".");
       if (part && M.mode === "month") notes.push("This month is not finished yet, so the figures are only so far.");
       if (M.coarse && !M.empty) notes.push("Only housing, loans, food and savings are known month by month. Everything else is one stream until the snapshot carries per-month categories. Switch to the average to see every stream.");
+      if (M.incomeEstimated) notes.push("The snapshot has income per source only for the whole period, so each month’s income is split in those proportions. That split is an estimate until the snapshot carries per-month income.");
       if (M.missing && M.missing.length) notes.push("Not provided yet: " + esc(M.missing.join(", ")) + ".");
       return '<div class="rtop"><div class="mon"><button class="rbtn" data-rv="step" data-val="-1" aria-label="Previous month"' + (i <= 0 ? " disabled" : "") + '>‹</button><span aria-live="polite">' + esc(R.monY(RV.month)) + '</span><button class="rbtn" data-rv="step" data-val="1" aria-label="Next month"' + (i >= ms.length - 1 ? " disabled" : "") + ">›</button></div>" +
         seg("mode", RV.mode, [["month", "This month"], ["average", "Average"]]) + seg("table", RV.table ? "1" : "", [["", "River"], ["1", "View as table"]]) + "</div>" +
@@ -215,7 +216,7 @@
       var fp = root.querySelector(".fp"), base = RV.sel ? RV.sel.split(":")[0] : "";
       if (!fp) return;
       if (base) fp.dataset.sel = base; else delete fp.dataset.sel;
-      [].forEach.call(fp.querySelectorAll(".bar[data-stream]"), function (b) { b.classList.toggle("hit", !!base && b.getAttribute("data-stream") === base); });
+      [].forEach.call(fp.querySelectorAll(".bar[data-stream]"), function (b) { var k = b.getAttribute("data-stream"); b.classList.toggle("hit", !!base && (k === base || k === RV.sel)); });
       [].forEach.call(fp.querySelectorAll(".card"), function (c) { c.classList.toggle("hit", !!base && c.classList.contains("st-" + base)); });
     }
     function riverDraw(animate) {
