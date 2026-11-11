@@ -157,8 +157,7 @@ async function callback(req: Request) {
   const j = await r.json().catch(() => ({}));
   if (!r.ok || !j.refresh_token) {
     const code = (j.error || (r.ok ? "no_refresh_token" : "http_" + r.status)) + ((j.error_codes || []).length ? " " + j.error_codes.join(",") : "");
-    console.error("onedrive token exchange failed:", code, String(j.error_description || "").split(/?
-/)[0].slice(0, 200));
+    console.error("onedrive token exchange failed:", code, String(j.error_description || "").split(String.fromCharCode(10))[0].trim().slice(0, 200));
     return back(st.return_to, "failed", code);
   }
   let label = "";
