@@ -20065,7 +20065,7 @@
   };
   /* Health page. Its code is loaded on first open, in order, and versioned so the service worker's
      cache-first rule for static files can never serve a stale copy: bump HEALTH_VER with each release. */
-  var HEALTH_VER = "5", healthLoading = null;
+  var HEALTH_VER = "6", healthLoading = null;
   function healthLoadScripts(){
     if(healthLoading) return healthLoading;
     var files = ["body", "model", "charts", "view", "today", "health"];

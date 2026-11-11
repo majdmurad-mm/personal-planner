@@ -37,7 +37,7 @@
   function todayCard(M, ui) {
     var T = M.T, now = M.now, rows = [];
     var bbn = T.body_battery_now != null ? +T.body_battery_now : null, bbh = T.body_battery_high != null ? +T.body_battery_high : null, rs = M.paused ? "none" : st(M.ready);
-    rows.push(["Energy", bbn == null && bbh == null ? '<span class="v nil">No Body Battery yet</span>' : '<span class="v">' + (bbn != null ? bbn : bbh) + "<small>" + (bbn != null ? "Body Battery now" : "Body Battery this morning") + (bbn != null && bbh != null ? " · " + bbh + " this morning" : "") + "</small></span>", '<span class="pill">' + ic(rs) + (M.ready == null ? "No readiness yet" : "Ready " + M.ready) + "</span>"]);
+    rows.push(["Energy", bbn == null && bbh == null ? '<span class="v nil">No Body Battery yet</span>' : '<span class="v">' + (bbn != null ? bbn : bbh) + "<small>" + (bbn != null ? "Body Battery now" : "Body Battery this morning") + (bbn != null && bbh != null ? " · " + bbh + " this morning" : "") + "</small></span>", '<button class="pill btn-s" data-detail="readiness">' + ic(rs) + (M.ready == null ? "No readiness yet" : "Ready " + M.ready) + "</button>"]);
     var sm = T.sleep_minutes != null ? +T.sleep_minutes : null, ss = T.sleep_score != null ? +T.sleep_score : null;
     rows.push(["Sleep last night", sm == null && ss == null ? '<span class="v nil">No sleep recorded</span>' : '<span class="v">' + hmin(sm) + "<small>" + (ss != null ? "score " + ss + " · " : "") + (T.bed_time ? clock(T.bed_time) + " to " + clock(T.wake_time) : "") + (T.corrected ? ", corrected" : "") + "</small></span>",
       T.corrected && T.watch ? '<span class="pill">watch said ' + hmin(T.watch.mins) + "</span>" : '<button class="pill btn-s" data-act="fixnight" data-date="' + H.iso(now) + '">Fix the times</button>']);
@@ -70,9 +70,58 @@
     return '<nav class="tiles" aria-label="At a glance">' + t.slice(0, 6).map(function (x) { return '<button class="tile" data-detail="' + x[0] + '" aria-label="' + esc(x[4]) + ', open details"><span class="lab">' + x[1] + "</span>" + x[2] + (x[3] || "") + "</button>"; }).join("") + "</nav>" +
       '<p class="later">Nutrition gets a tile here once MyFitnessPal is connected. <button class="linkish" data-detail="more">Movement, weight, notes and the day so far ›</button></p>';
   }
-  H.overviewHTML = function (M, ui, heroFigure) {
-    return '<section class="hero o" id="stage" aria-label="Today and your body"><div class="duo">' + heroFigure + '<div class="side">' + todayCard(M, ui) + "</div></div>" + H.layerControls() + "</section>" + tiles(M);
+  /* ---------------- the five pillars: one card each, a headline, a small chart, a few facts; click for depth ---------------- */
+  var bars = function (vals, o) {
+    o = o || {}; var v = vals.map(function (x) { return x == null ? null : +x; }), mx = Math.max.apply(0, v.filter(function (x) { return x != null; }).concat([o.max || 1])), w = 132, h = 40, n = v.length, bw = w / n;
+    return '<svg class="pbars ' + (o.cls || "") + '" viewBox="0 0 ' + w + " " + h + '" role="img" aria-label="' + esc(o.label || "") + '">' + v.map(function (x, i) { var bh = x == null ? 2 : Math.max(3, x / mx * (h - 4)); return '<rect x="' + (i * bw + 1.5).toFixed(1) + '" y="' + (h - bh).toFixed(1) + '" width="' + (bw - 3).toFixed(1) + '" height="' + bh.toFixed(1) + '" rx="2"' + (x == null ? ' class="none"' : o.mark && o.mark[i] ? ' class="mk"' : "") + "><title>" + esc((o.titles && o.titles[i]) || "") + "</title></rect>"; }).join("") + "</svg>";
   };
+  var line = function (vals, o) {
+    o = o || {}; var pts = [], v = vals.map(function (x) { return x == null ? null : +x; }), ok = v.filter(function (x) { return x != null; }); if (ok.length < 2) return '<div class="pviz-empty">' + esc(o.empty || "Not enough readings yet") + "</div>";
+    var w = 132, h = 40, mn = Math.min.apply(0, ok.concat(o.band ? [o.band[0]] : [])), mx = Math.max.apply(0, ok.concat(o.band ? [o.band[1]] : [])), Y = function (x) { return h - 4 - (x - mn) / ((mx - mn) || 1) * (h - 8); };
+    v.forEach(function (x, i) { if (x != null) pts.push([i / (v.length - 1) * w, Y(x)]); });
+    return '<svg class="pline ' + (o.cls || "") + '" viewBox="0 0 ' + w + " " + h + '" role="img" aria-label="' + esc(o.label || "") + '">' + (o.band ? '<rect class="pband" x="0" width="' + w + '" y="' + Y(o.band[1]).toFixed(1) + '" height="' + Math.max(1, Y(o.band[0]) - Y(o.band[1])).toFixed(1) + '"/>' : "") + '<path d="' + pts.map(function (p, i) { return (i ? "L" : "M") + p[0].toFixed(1) + "," + p[1].toFixed(1); }).join("") + '"/><circle cx="' + pts[pts.length - 1][0].toFixed(1) + '" cy="' + pts[pts.length - 1][1].toFixed(1) + '" r="3"/></svg>';
+  };
+  var facts = function (rows) { return '<dl class="pfacts">' + rows.filter(Boolean).map(function (r) { return "<div><dt>" + r[0] + "</dt><dd>" + r[1] + "</dd></div>"; }).join("") + "</dl>"; };
+  function pillarCard(n, key, detail, title, state, big, unit, sub, viz, rows, label) {
+    return '<button class="pcard" data-detail="' + detail + '" data-pillar-card="' + key + '" aria-label="' + esc(title + ": " + label + ". Open the details") + '"><span class="ph"><span class="pnum" aria-hidden="true">' + n + "</span><span class=\"pt\">" + title + '</span><span class="pst">' + ic(state[0]) + state[1] + '</span></span><span class="pbig">' + big + (unit ? "<small>" + unit + "</small>" : "") + '</span><span class="psub">' + sub + '</span><span class="pviz">' + viz + "</span>" + facts(rows) + '<span class="pmore">Details ›</span></button>';
+  }
+  function pillarCards(M) {
+    var now = M.now, T = M.T, B = M.B, out = [];
+    /* 1 sleep */
+    var week = M.days.slice(-7), sm = T.sleep_minutes != null ? +T.sleep_minutes : null, ss = T.sleep_score != null ? +T.sleep_score : null, sst = st(ss);
+    var late = null; if (T.bed_time) { var nb = function (m) { return m < 720 ? m + 1440 : m; }; late = nb(H.hm(T.bed_time)) - nb(H.hm(M.cfg.bed)); }
+    out.push(pillarCard(1, "sleep", "sleep", "Sleep", [sst, { good: "Good night", watch: "Fair night", low: "Rough night", none: "No data" }[sst]], sm == null ? "–" : hmin(sm), ss != null ? "score " + ss : "", sm == null ? "No sleep recorded last night" : (T.bed_time ? clock(T.bed_time) + " to " + clock(T.wake_time) : "") + (T.corrected ? " · corrected" : ""),
+      bars(week.map(function (x) { return x.r ? x.r.sleep_minutes : null; }), { cls: "s2", max: 540, label: "Sleep, last 7 nights", titles: week.map(function (x) { return wday(x.d) + ": " + (x.r && x.r.sleep_minutes != null ? hmin(+x.r.sleep_minutes) : "no data"); }), mark: week.map(function (x) { return !!(x.r && x.r.corrected); }) }),
+      [["7-night average", hmin(M.sleep7)], ["Target", "asleep by " + esc(M.cfg.bed) + (late == null ? "" : late > 15 ? " · " + (late >= 60 ? Math.floor(late / 60) + " h " + pad2(late % 60) : late + " min") + " later last night" : " · on time")]], (sm == null ? "no sleep recorded" : hmin(sm) + " last night") + ", 7-night average " + hmin(M.sleep7)));
+    /* 2 workout */
+    var per = M.cfg.perWeek, done = M.weekDone, days28 = []; for (var i = 27; i >= 0; i--) { var d = H.addDays(now, -i), k = H.iso(d); days28.push(M.sessions.some(function (x) { return H.iso(x.d) === k; })); }
+    var wst = M.paused ? "none" : done >= per ? "good" : done + 1 >= per || dd(now, H.addDays(now, -((now.getDay() + 6) % 7))) < 3 ? "good" : "watch";
+    var grid = '<span class="pgrid" role="img" aria-label="Training days in the last 4 weeks: ' + days28.filter(Boolean).length + '">' + days28.map(function (on, j) { return '<i class="' + (on ? "on" : "") + (j === 27 ? " today" : "") + '"></i>'; }).join("") + "</span>";
+    var neg = M.exercises.filter(function (e) { return e.lastAgo > 14; })[0], ns = M.nextSession;
+    out.push(pillarCard(2, "workout", "workouts", "Workout", [wst, M.paused ? "Paused" : done >= per ? "Week complete" : "On the way"], done + "<small> of " + per + "</small>", "", "this week" + (M.last ? " · last " + ago(M.last.ago) + ", " + esc(M.last.routine) : ""), grid,
+      [["Next", ns.d ? when(ns.d, now) + (ns.time ? " " + ns.time : "") + " · " + esc(ns.routine || "") : esc(ns.routine || "Not planned")], neg ? ["Not trained lately", esc(neg.name) + " · " + ago(neg.lastAgo)] : M.prs.length ? ["Latest record", esc(M.prs[0].name) + " " + kg(M.prs[0].w)] : null], done + " of " + per + " workouts this week"));
+    /* 3 nutrition (reserved; shows what is known) */
+    var meals = (M.raw.meals || []), tIso = H.iso(now), today = meals.filter(function (m) { return String(m.date).slice(0, 10) === tIso; }), prot = today.reduce(function (a, m) { return a + (+m.protein_g || 0); }, 0);
+    var p7 = []; for (var q = 6; q >= 0; q--) { var dk = H.iso(H.addDays(now, -q)), lm = meals.filter(function (m) { return String(m.date).slice(0, 10) === dk; }); p7.push(lm.length ? lm.reduce(function (a, m) { return a + (+m.protein_g || 0); }, 0) : null); }
+    out.push(pillarCard(3, "nutrition", "more", "Nutrition", meals.length ? ["good", "Logged"] : ["none", "Coming later"], meals.length ? (today.length ? Math.round(prot) : "–") : "–", meals.length ? "g protein" : "", meals.length ? (today.length ? today.length + (today.length === 1 ? " meal" : " meals") + " logged today" : "Nothing logged today") : "Calories and protein from MyFitnessPal, once connected",
+      meals.length ? bars(p7, { label: "Protein per day, last 7 days" }) : '<div class="pviz-empty">Nothing is guessed</div>', [T.active_calories != null ? ["Burned today", fmt(+T.active_calories) + " kcal active"] : null, ["Steps today", T.steps != null ? fmt(+T.steps) + " of " + fmt(M.cfg.stepsGoal) : "not reported"]], meals.length ? "protein logged" : "coming later"));
+    /* 4 vitals */
+    var rhr = T.resting_hr != null ? +T.resting_hr : null, hs = M.vitals.heart.s, bp = M.bp[M.bp.length - 1];
+    out.push(pillarCard(4, "vitals", "vitals", "Vitals", [hs, hs === "none" ? "No data" : M.vitals.heart.label], rhr == null ? "–" : rhr, rhr == null ? "" : "bpm resting", (T.hrv_avg != null ? "HRV " + T.hrv_avg + " ms" : "No HRV reading") + (M.ready != null ? ' · <span class="plink" data-detail="readiness">ready ' + M.ready + "</span>" : ""),
+      line(M.col("resting_hr", 14), { band: B.resting_hr ? [B.resting_hr.lo, B.resting_hr.hi] : null, label: "Resting heart rate, last 14 days", cls: "good" }),
+      [["Body Battery", T.body_battery_now != null || T.body_battery_high != null ? (T.body_battery_now != null ? T.body_battery_now + " now" : "") + (T.body_battery_now != null && T.body_battery_high != null ? " · " : "") + (T.body_battery_high != null ? T.body_battery_high + " this morning" : "") : "no reading"], ["Blood pressure", bp ? bp.sys + "/" + bp.dia + " · " + ago(dd(now, bp.d)) : "no readings yet"]], rhr == null ? "no resting heart rate today" : "resting heart rate " + rhr));
+    /* 5 extras: milestones, check-ups, weight */
+    var sf = M.smokeFree, w = M.weightMA.filter(function (x) { return x != null; }), wNow = w.length ? w[w.length - 1] : null, nc = M.nextCheckup;
+    var nextMs = sf ? [[365, "1 year"], [3652, "10 years"], [5479, "15 years"]].filter(function (m) { return sf.days < m[0]; })[0] : null;
+    var prog = sf && nextMs ? '<span class="pprog" role="img" aria-label="' + Math.round(sf.days / nextMs[0] * 100) + '% of the way to ' + nextMs[1] + '"><i style="width:' + Math.min(100, Math.round(sf.days / nextMs[0] * 100)) + '%"></i></span><span class="pprog-l">' + Math.round(sf.days / nextMs[0] * 100) + "% of the way to " + nextMs[1] + "</span>" : line(M.weightMA.slice(-60), { label: "Weight, 7-day average, last 60 days", empty: "No weigh-ins yet" });
+    out.push(pillarCard(5, "extras", "records", "Extras", sf ? ["good", "Going strong"] : ["none", "Records"], sf ? fmt(sf.days) : wNow != null ? wNow.toFixed(1) : "–", sf ? "days smoke-free" : wNow != null ? "kg, 7-day average" : "", sf ? (sf.days >= 60 ? span(sf.days) + " · " : "") + "since " + dstr(sf.since) : "Milestones, check-ups and weight", prog,
+      [["Next check-up", nc ? dstr(nc.next) + " · in " + span(dd(nc.next, now)) : "none set"], wNow != null && sf ? ["Weight", wNow.toFixed(1) + " kg, 7-day average"] : ["Pains", M.pains.length ? M.pains.map(function (f) { return esc(f.label); }).join(", ") : "none active"]], sf ? sf.days + " days smoke-free" : "records"));
+    return '<nav class="pcards" aria-label="Health pillars">' + out.join("") + '</nav><p class="later"><span>Each pillar opens its details. Nutrition fills in once MyFitnessPal is connected.</span><button class="linkish" data-detail="more">Movement, weight, notes and the day so far ›</button></p>';
+  }
+  H.overviewHTML = function (M, ui, heroFigure) {
+    return '<section class="hero o" id="stage" aria-label="Today and your body"><div class="duo">' + heroFigure + '<div class="side">' + todayCard(M, ui) + "</div></div>" + H.layerControls() + "</section>" + pillarCards(M);
+  };
+  void tiles;
 
   /* ---------------- details ---------------- */
   var head = function (title, sub) { return '<div class="dhead"><button class="back" data-act="back" aria-label="Back to Health">← Health</button><div><p class="lab">' + esc(sub || "Health") + "</p><h1>" + esc(title) + "</h1></div></div>"; };
