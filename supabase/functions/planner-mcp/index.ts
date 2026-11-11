@@ -4524,7 +4524,7 @@ function tokenRole(req: Request): "owner" | "agent" | null {
 app.all("*", async (c) => {
   const pathname = new URL(c.req.url).pathname;
   if (/\/push\/(key|run|test)$/.test(pathname)) return await pushRoute(c.req.raw, pathname);
-  if (pathname.endsWith("/mcp")) {
+  if (pathname.endsWith("/mcp") && !pathname.includes("/.well-known/")) {
     const role = tokenRole(c.req.raw);
     if (!role) return c.json({ error: "unauthorized" }, 401);
     if (!OWNER) return c.json({ error: "server not configured: OWNER_USER_ID is unset" }, 500);
