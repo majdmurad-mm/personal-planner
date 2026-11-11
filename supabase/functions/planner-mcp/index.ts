@@ -1068,6 +1068,12 @@ async function knAllowed(): Promise<string[]> {
   const r = await db.from("knowledge_settings").select("external_zones").eq("user_id", OWNER).maybeSingle();
   return r.data ? (r.data.external_zones || []) : ["library", "web", "ideas", "thinkers", "mine"];
 }
+// A OneDrive file follows its source's level: "links" shows name, path, type, dates and webUrl (never text), "index" also its text.
+// Private files are already left out by knItems. Everything else follows the zone's "Claude may read" switch.
+// deno-lint-ignore no-explicit-any
+const knCan = (r: any, allowed: string[]) => r.provider ? r.privacy !== "private" : allowed.includes(r.zone);
+// deno-lint-ignore no-explicit-any
+const knNoText = (r: any) => !!r.provider && r.privacy !== "index";
 const knKept = (zones: string[]) => "Kept from Claude by the owner: " + zones.map((z) => (KN_ZONE_NAME as Record<string, string>)[z] || z).join(", ") + ". The owner can allow a zone under Privacy and search on the Knowledge page.";
 // deno-lint-ignore no-explicit-any
 const knSlim = (r: any) => ({ webUrl: r.web_url || undefined, onedrive: r.provider ? { path: r.remote_path, modified: r.remote_modified_at, indexStatus: r.index_status, noLongerInOneDrive: !!r.gone_at } : undefined, id: r.id, zone: r.zone, type: r.type, title: r.title, summary: r.summary || "", why: r.why || "", url: r.url || null, tags: r.tags || [], meta: r.meta || {}, source: r.source, needsSort: !!r.needs_sort, createdAt: r.created_at });
@@ -1150,7 +1156,6 @@ tool("search_knowledge", {
   }),
   handler: async (a: { query: string; zone?: string; type?: string; limit?: number }) => {
     const allowed = await knAllowed(), limit = a.limit || 12;
-    if (a.zone && !allowed.includes(a.zone)) return ok({ passages: [], note: knKept([a.zone]) });
     const hits = await db.from("knowledge_chunks").select("item_id,page,content").eq("user_id", OWNER).textSearch("fts", a.query, { type: "websearch", config: "simple" }).limit(80);
     if (hits.error) return fail(hits.error.message + KN_HINT);
     const like = "%" + a.query.replace(/[%_\\]/g, "\\$&") + "%";
@@ -1161,13 +1166,13 @@ tool("search_knowledge", {
     if (items.error) return fail(items.error.message);
     // deno-lint-ignore no-explicit-any
     const byId: Record<string, any> = {}; let hidden = 0;
-    for (const it of items.data || []) { if (!allowed.includes(it.zone)) { hidden++; continue; } if (a.zone && it.zone !== a.zone) continue; if (a.type && it.type !== a.type) continue; byId[it.id] = it; }
+    for (const it of items.data || []) { if (!knCan(it, allowed)) { hidden++; continue; } if (a.zone && it.zone !== a.zone) continue; if (a.type && it.type !== a.type) continue; byId[it.id] = it; }
     const words = a.query.toLowerCase().split(/\s+/).filter((w) => w.length > 1);
     const snip = (text: string) => { const low = text.toLowerCase(); let at = -1; for (const w of words) { at = low.indexOf(w); if (at >= 0) break; } const from = Math.max(0, at - 160); return (from > 0 ? "…" : "") + text.slice(from, from + 420).trim() + (from + 420 < text.length ? "…" : ""); };
     // deno-lint-ignore no-explicit-any
     const passages: any[] = [];
-    for (const h of hits.data || []) { const it = byId[h.item_id]; if (it && passages.length < limit) passages.push({ itemId: it.id, title: it.title, zone: it.zone, type: it.type, page: h.page, snippet: snip(h.content) }); }
-    for (const t of titled.data || []) { const it = byId[t.id]; if (it && passages.length < limit && !passages.some((p) => p.itemId === it.id)) passages.push({ itemId: it.id, title: it.title, zone: it.zone, type: it.type, page: null, snippet: it.summary || it.why || "" }); }
+    for (const h of hits.data || []) { const it = byId[h.item_id]; if (it && !knNoText(it) && passages.length < limit) passages.push({ itemId: it.id, title: it.title, zone: it.zone, type: it.type, page: h.page, snippet: snip(h.content) }); }
+    for (const t of titled.data || []) { const it = byId[t.id]; if (it && passages.length < limit && !passages.some((p) => p.itemId === it.id)) passages.push({ itemId: it.id, title: it.title, zone: it.zone, type: it.type, page: null, snippet: it.summary || it.why || "", webUrl: it.web_url || undefined, path: it.remote_path || undefined }); }
     return ok({ passages, note: hidden ? hidden + " matching item(s) are in zones kept from Claude. " + knKept(KN_ZONES.filter((z) => !allowed.includes(z))) : undefined });
   },
 });
@@ -1180,7 +1185,8 @@ tool("get_knowledge_item", {
     if (r.error) return fail(r.error.message + KN_HINT);
     if (!r.data) return fail("no knowledge item with that id");
     const allowed = await knAllowed();
-    if (!allowed.includes(r.data.zone)) return fail(knKept([r.data.zone]));
+    if (!knCan(r.data, allowed)) return fail(knKept([r.data.zone]));
+    if (knNoText(r.data)) { await knTrace("read", a.id, null, r.data.title); return ok({ ...knSlim(r.data), archived: !!r.data.archived_at, passages: [], note: "Links only: the owner shares this file's name, path, dates and link, not its text. Open it with webUrl." }); }
     let q = db.from("knowledge_chunks").select("page,content").eq("item_id", a.id).eq("user_id", OWNER).order("page", { ascending: true, nullsFirst: true });
     if (a.page) q = q.gte("page", Math.max(1, a.page - 1)).lte("page", a.page + 1);
     const c = await q.limit(40);
@@ -1206,7 +1212,7 @@ tool("map_knowledge", {
   handler: async () => {
     const allowed = await knAllowed();
     const [it, tp, ed, ch] = await Promise.all([
-      knItems("*").eq("user_id", OWNER).is("archived_at", null).order("created_at", { ascending: false }).limit(500),
+      knItems("*").eq("user_id", OWNER).is("archived_at", null).order("created_at", { ascending: false }).limit(3000),
       db.from("knowledge_topics").select("id,name").eq("user_id", OWNER),
       db.from("knowledge_edges").select("from_id,to_id,kind").eq("user_id", OWNER).limit(2000),
       db.from("knowledge_chunks").select("item_id").eq("user_id", OWNER).limit(20000),
@@ -1214,12 +1220,24 @@ tool("map_knowledge", {
     if (it.error) return fail(it.error.message + KN_HINT);
     const tn: Record<string, string> = {}; for (const t of tp.data || []) tn[t.id] = t.name;
     const withText = new Set((ch.data || []).map((c) => c.item_id));
-    const rows = it.data || [], shown = rows.filter((r) => allowed.includes(r.zone)), ids = new Set(shown.map((r) => r.id));
+    const rows = it.data || [], shown = rows.filter((r) => knCan(r, allowed)), ids = new Set(shown.map((r) => r.id));
+    // what stays hidden, and why: counts only, never names
+    const hz: Record<string, number> = {}; for (const r of rows) if (!knCan(r, allowed)) hz[r.zone] = (hz[r.zone] || 0) + 1;
+    const [pv, src] = await Promise.all([
+      db.from("knowledge_items").select("id", { count: "exact", head: true }).eq("user_id", OWNER).is("archived_at", null).eq("privacy", "private"),
+      db.from("knowledge_sources").select("id,privacy,zone,privacy_overrides").eq("user_id", OWNER).is("archived_at", null),
+    ]);
+    const hidden: { what: string; items: number; why: string }[] = Object.keys(hz).map((z2) => ({ what: "zone: " + ((KN_ZONE_NAME as Record<string, string>)[z2] || z2), items: hz[z2], why: "'Claude may read' is off for this zone (Knowledge page, Privacy and search)" }));
+    if (pv.count) hidden.push({ what: "OneDrive files marked private", items: pv.count, why: "their source or subfolder is set to private, which never reaches Claude" });
     await knTrace("note", null, null, "Looking over " + shown.length + " items");
     return ok({
-      items: shown.map((r) => ({ id: r.id, title: r.title, zone: r.zone, type: r.type, topic: r.topic_id ? tn[r.topic_id] || null : null, folder: (r.meta || {}).folder || null, tags: r.tags || [], summary: String(r.summary || r.why || "").slice(0, 240), hasText: withText.has(r.id), toSort: !!r.needs_sort })),
+      items: shown.map((r) => ({ id: r.id, title: r.title, zone: r.zone, type: r.type, topic: r.topic_id ? tn[r.topic_id] || null : null, folder: (r.meta || {}).folder || null, tags: r.tags || [], summary: String(r.summary || r.why || "").slice(0, 240), hasText: withText.has(r.id) && !knNoText(r), toSort: !!r.needs_sort,
+        ...(r.provider ? { access: r.privacy === "index" ? "text" : "links only", path: r.remote_path, webUrl: r.web_url || undefined, modified: r.remote_modified_at, created: r.created_at } : {}) })),
       links: (ed.data || []).filter((e) => ids.has(e.from_id) && ids.has(e.to_id)),
-      keptFromClaude: rows.length - shown.length,
+      keptFromClaude: rows.length - shown.length + (pv.count || 0),
+      hidden,
+      oneDriveSources: (src.data || []).map((x) => ({ id: x.id, privacy: x.privacy, zone: x.zone, privateSubfolders: Object.values(x.privacy_overrides || {}).filter((v) => v === "private").length })),
+      truncated: rows.length === 3000 || undefined,
     });
   },
 });
@@ -1229,11 +1247,11 @@ tool("cluster_knowledge", {
   inputSchema: z.object({ itemIds: z.array(z.string()).min(1).max(100), topic: z.string().min(2).max(60), folder: z.string().max(80).optional(), why: z.string().max(300).optional() }),
   handler: async (a: { itemIds: string[]; topic: string; folder?: string; why?: string }) => {
     const allowed = await knAllowed();
-    const r = await knItems("id,zone,title,meta").eq("user_id", OWNER).is("archived_at", null).in("id", a.itemIds);
+    const r = await knItems("id,zone,title,meta,provider,privacy").eq("user_id", OWNER).is("archived_at", null).in("id", a.itemIds);
     if (r.error) return fail(r.error.message + KN_HINT);
     let done = 0, skipped = 0;
     for (const it of r.data || []) {
-      if (!allowed.includes(it.zone)) { skipped++; continue; }
+      if (!knCan(it, allowed)) { skipped++; continue; }
       // deno-lint-ignore no-explicit-any
       const patch: Record<string, any> = { topic_id: await knTopicId(it.zone, a.topic.trim()), updated_at: new Date().toISOString() };
       if (a.folder) patch.meta = { ...(it.meta || {}), folder: a.folder.trim() };
@@ -1250,10 +1268,10 @@ tool("link_knowledge", {
   handler: async (a: { fromId: string; toId: string; why?: string }) => {
     if (a.fromId === a.toId) return fail("an item cannot be linked to itself");
     const allowed = await knAllowed();
-    const r = await knItems("id,zone,title").eq("user_id", OWNER).is("archived_at", null).in("id", [a.fromId, a.toId]);
+    const r = await knItems("id,zone,title,provider,privacy").eq("user_id", OWNER).is("archived_at", null).in("id", [a.fromId, a.toId]);
     if (r.error) return fail(r.error.message + KN_HINT);
     if ((r.data || []).length !== 2) return fail("one or both items were not found");
-    if ((r.data || []).some((x) => !allowed.includes(x.zone))) return fail(knKept((r.data || []).map((x) => x.zone).filter((z2) => !allowed.includes(z2))));
+    if ((r.data || []).some((x) => !knCan(x, allowed))) return fail(knKept((r.data || []).filter((x) => !knCan(x, allowed)).map((x) => x.zone)));
     const ins = await db.from("knowledge_edges").insert({ user_id: OWNER, from_id: a.fromId, to_id: a.toId, kind: "related" });
     if (ins.error && !/duplicate/i.test(ins.error.message)) return fail(ins.error.message);
     await knTrace("link", a.fromId, a.toId, a.why || "");
@@ -1287,7 +1305,7 @@ tool("list_recent_knowledge", {
     const since = new Date(Date.now() - (a.days || 7) * 86400000).toISOString(), allowed = await knAllowed();
     const r = await knItems("*").eq("user_id", OWNER).is("archived_at", null).gte("created_at", since).order("created_at", { ascending: false }).limit(100);
     if (r.error) return fail(r.error.message + KN_HINT);
-    const rows = r.data || [], shown = rows.filter((x) => allowed.includes(x.zone));
+    const rows = r.data || [], shown = rows.filter((x) => knCan(x, allowed));
     return ok({ since, items: shown.map(knSlim), keptFromClaude: rows.length - shown.length, toSort: shown.filter((x) => x.needs_sort).length });
   },
 });
@@ -2350,7 +2368,7 @@ const mins = () => z.number().int().min(0).max(1440).nullable().optional();
 
 tool("upsert_health_day", {
   description:
-    "Save one day of Garmin data (sleep, heart, Body Battery, stress, movement) for the Health page. Idempotent per date: call it again as the day fills in, sending only the fields you actually read. NEVER send 0 or a guess for something that was not measured — leave the field out (or send null to clear a wrong value). If the watch was not worn at night, simply omit the sleep fields. Sleep belongs to the date the night ENDED on. Clock times are local 24h HH:MM.",
+    "Save one day of Garmin data (sleep, heart, Body Battery, stress, movement) for the Health page. Idempotent per date: call it again as the day fills in, sending only the fields you actually read. NEVER send 0 or a guess for something that was not measured — leave the field out (or send null to clear a wrong value). If the watch was not worn at night, simply omit the sleep fields. Read the overnight HRV (hrvAvg, hrvStatus), Body Battery high and low, and training readiness too whenever Garmin shows them: the reply lists which of these the day still lacks. Sleep belongs to the date the night ENDED on. Clock times are local 24h HH:MM.",
   inputSchema: z.object({
     date: DAY.optional().describe("the day; defaults to today (Berlin)"),
     sleepScore: pct(), sleepMinutes: mins().describe("time asleep, in minutes"),
@@ -2391,7 +2409,11 @@ tool("upsert_health_day", {
     if (!Object.values(fields).some((v) => v !== undefined)) return fail("Nothing to save: send at least one measured field.");
     const r = await healthUpsert("health_daily", { date }, fields, ["updated_at", "synced_at"]);
     if (r.error) return fail(r.error);
-    return ok({ ok: true, date, result: r.result, changed: r.changed });
+    // which recovery readings this day still lacks, so a sync that never reads them is visible
+    const row = await owned("health_daily").eq("date", date).maybeSingle();
+    const want: Record<string, string> = { hrv_avg: "hrvAvg", hrv_status: "hrvStatus", body_battery_high: "bodyBatteryHigh", body_battery_low: "bodyBatteryLow", training_readiness: "trainingReadiness" };
+    const stillEmpty = row.data ? Object.keys(want).filter((k) => row.data[k] == null).map((k) => want[k]) : [];
+    return ok({ ok: true, date, result: r.result, changed: r.changed, stillEmpty: stillEmpty.length ? stillEmpty : undefined });
   },
 });
 
@@ -2765,9 +2787,12 @@ async function hvNextSession() {
   const blocks = await owned("actions").is("archived_at", null).eq("kind", "block");
   const t = berlinNow(new Date()), GYM = /gym|workout|training|lift|strength|full body/i;
   let when: { date: string; time: string | null; from: string } | null = null;
+  const trained = await owned("workouts").is("archived_at", null).gte("date", today);
+  const doneDays = new Set((trained.data || []).map((x: any) => String(x.date).slice(0, 10)));
   for (const b of (blocks.data || []).filter((x: any) => GYM.test(x.title || ""))) {
     for (const d of ccDates(b, today, ccAdd(today, 21))) {
       const tm = b.time_of_day ? String(b.time_of_day).slice(0, 5) : null;
+      if (doneDays.has(d)) continue;
       if (d === today && tm && (ccMins(tm) as number) < t.nowMin) continue;
       if (!when || d + (tm || "") < when.date + (when.time || "")) when = { date: d, time: tm, from: "Command Center: " + b.title };
       break;
@@ -2775,9 +2800,9 @@ async function hvNextSession() {
   }
   if (!when) {
     const ps = await plannerSettings();
-    for (let i = 0; i < 8 && !when; i++) { const d = ccAdd(today, i), dow = ccDow(d) || 7; if ((ps.gymDays || []).includes(dow)) when = { date: d, time: null, from: "base gym days" }; }
+    for (let i = 0; i < 8 && !when; i++) { const d = ccAdd(today, i), dow = ccDow(d) || 7; if (!doneDays.has(d) && (ps.gymDays || []).includes(dow)) when = { date: d, time: null, from: "base gym days" }; }
   }
-  return { date: when ? when.date : null, time: when ? when.time : null, scheduledBy: when ? when.from : "nothing scheduled", routine, lastRoutine, lastWorkoutDate: last.data && last.data[0] ? last.data[0].date : null, rotation };
+  return { date: when ? when.date : null, time: when ? when.time : null, scheduledBy: when ? when.from : "nothing scheduled", trainedToday: doneDays.has(today), routine, lastRoutine, lastWorkoutDate: last.data && last.data[0] ? last.data[0].date : null, rotation };
 }
 
 tool("upsert_routine", {
@@ -4202,10 +4227,10 @@ tool("list_topics", {
   inputSchema: z.object({}),
   handler: async () => {
     const allowed = await knAllowed();
-    const [t, it] = await Promise.all([db.from("knowledge_topics").select("id,zone,name").eq("user_id", OWNER), knItems("topic_id,zone").eq("user_id", OWNER).is("archived_at", null)]);
+    const [t, it] = await Promise.all([db.from("knowledge_topics").select("id,zone,name").eq("user_id", OWNER), knItems("topic_id,zone,provider,privacy").eq("user_id", OWNER).is("archived_at", null)]);
     if (t.error) return fail(t.error.message + KN_HINT);
-    const n: Record<string, number> = {}; for (const x of it.data || []) if (x.topic_id && allowed.includes(x.zone)) n[x.topic_id] = (n[x.topic_id] || 0) + 1;
-    return ok({ topics: (t.data || []).filter((x) => allowed.includes(x.zone)).map((x) => ({ id: x.id, zone: x.zone, name: x.name, items: n[x.id] || 0 })).sort((a, b) => b.items - a.items) });
+    const n: Record<string, number> = {}; for (const x of it.data || []) if (x.topic_id && knCan(x, allowed)) n[x.topic_id] = (n[x.topic_id] || 0) + 1;
+    return ok({ topics: (t.data || []).filter((x) => allowed.includes(x.zone) || n[x.id]).map((x) => ({ id: x.id, zone: x.zone, name: x.name, items: n[x.id] || 0 })).sort((a, b) => b.items - a.items) });
   },
 });
 async function topicMove(fromNames: string[], into: string) {
@@ -4277,7 +4302,7 @@ tool("search_everything", {
     for (const r of pe.data || []) hits.push({ type: "person", id: r.id, title: r.name, snippet: snip(r.notes || r.social_group || r.name) });
     for (const r of go.data || []) if (!r.archived_at) hits.push({ type: "goal", id: r.id, title: r.title, snippet: snip(r.notes_md || r.title) });
     for (const r of pr.data || []) if (!r.archived_at) hits.push({ type: "project", id: r.id, title: r.title, snippet: snip(r.notes_md || r.title) });
-    for (const r of kn.data || []) if (allowed.includes(r.zone)) hits.push({ type: "knowledge_item", id: r.id, title: r.title, snippet: snip(r.summary || r.why || r.title), zone: r.zone });
+    for (const r of kn.data || []) if (knCan(r, allowed)) hits.push({ type: "knowledge_item", id: r.id, title: r.title, snippet: snip(r.summary || r.why || r.title), zone: r.zone, webUrl: r.web_url || undefined });
     for (const r of me.data || []) hits.push({ type: "memory", id: r.id, title: r.title, snippet: snip(r.body_md) });
     return ok({ query: a.query, total: hits.length, hits: hits.slice(0, lim * 2) });
   },
