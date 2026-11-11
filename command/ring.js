@@ -125,3 +125,32 @@
     return '<div class="sun">' + left + '<div class="sun-r">' + r + "</div></div>";
   };
 })();
+
+/* Horizon: the Terrain (3D) with the roadmap (2D) as the other face of the same view */
+(function () {
+  var C = window.PPCommandCore, V = window.PPCommandView, LANES = [["work", "Work"], ["task", "Tasks & money"], ["health", "Health"], ["growth", "Growth"], ["people", "People"]];
+  V.roadmap = V.horizon;
+  /* weekly hours per area: four weeks back (what was done or happened), 26 ahead (what is booked) */
+  V.terrainData = function (S) {
+    var start = C.add(C.monday(S.today), -28), WEEKS = 30, occ = C.expand(S.items, start, C.add(start, WEEKS * 7 - 1)), byDate = {};
+    occ.forEach(function (o) { (byDate[o.date] = byDate[o.date] || []).push(o); });
+    var lanes = LANES.map(function (l) { return { key: l[0], name: l[1], hours: [] }; }), total = [], weeks = [];
+    for (var w = 0; w < WEEKS; w++) {
+      var sum = {}, ws = C.add(start, w * 7); weeks.push(ws);
+      for (var d = 0; d < 7; d++) { var date = C.add(ws, d), list = byDate[date] || []; if (date < S.today) list = list.filter(function (o) { return o.done || !C.hasDone(o.item); });
+        var L = V.dayLoad(S, list, date); Object.keys(L.by).forEach(function (k) { sum[k] = (sum[k] || 0) + L.by[k]; });
+        list.forEach(function (o) { var it = o.item; if ((!it.time || it.allDay) && it.est && C.hasDone(it)) { var k = C.areaKey(it.area); sum[k] = (sum[k] || 0) + it.est; } }); }
+      var tot = 0; lanes.forEach(function (l) { var h = Math.round((sum[l.key] || 0) / 6) / 10; l.hours.push(h); tot += h; }); total.push(Math.round(tot * 10) / 10);
+    }
+    var end = C.add(start, WEEKS * 7 - 1), laneOf = function (a) { var k = C.areaKey(a); return LANES.some(function (l) { return l[0] === k; }) ? k : "task"; }, wk = function (d) { return C.diff(start, d) / 7; };
+    return { weeks: weeks, today: 4 + ((C.dow(S.today) + 6) % 7) / 7, lanes: lanes, total: total, ceiling: S.sustain || 50,
+      deadlines: S.items.filter(function (i) { return i.kind === "deadline" && !i.done && !i.archived && i.date && i.date >= S.today && i.date <= end; }).slice(0, 14).map(function (i) { return { lane: laneOf(i.area), week: wk(i.date), title: i.title, date: i.date }; }),
+      goals: (S.goals || []).filter(function (g) { return g.due && g.due > S.today && g.area; }).slice(0, 8).map(function (g) { return { lane: laneOf(g.area), from: 4, to: Math.min(WEEKS - 1, wk(g.due)), title: g.title, progress: (g.progress || 0) / 100 }; }) };
+  };
+  V.horizon = function (S) {
+    var seg = '<div class="hzbar"><div class="seg" role="group" aria-label="Horizon view"><button data-act="hz3d" aria-pressed="' + !!S.hz3d + '">Terrain</button><button data-act="hz2d" aria-pressed="' + !S.hz3d + '">Roadmap</button></div>' + (S.hz3d ? '<button class="btn sm" data-act="hzflat">Flatten to roadmap</button>' : "") + (S.hzNote ? '<span class="sub">' + V.esc(S.hzNote) + "</span>" : "") + "</div>";
+    if (!S.hz3d) return seg + V.roadmap(S);
+    return '<div class="head"><div><p class="eyebrow">Horizon</p><h1>The next six months</h1><p class="sub" style="margin-top:6px">Height is booked hours per week in each area; the grey ridge at the back is everything together, under your sustainable week. Drag to orbit, scroll to move along time, click a week to open it.</p></div></div>' + seg +
+      '<div class="terrain" id="ccTerrain" role="img" aria-label="Workload over the next six months as a landscape. The Roadmap button shows the same period as a list."><p class="tr-wait mono">Loading the terrain…</p></div>';
+  };
+})();

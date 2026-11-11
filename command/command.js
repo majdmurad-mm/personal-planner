@@ -8,7 +8,7 @@
     o = o || {};
     var root = host.shadowRoot || host.attachShadow({ mode: "open" });
     var S = { view: o.view || "today", q: "", pickerOpen: false, overdueOpen: false, over: null, qa: { text: "", kind: null, msg: "" }, hist: null, sample: !!o.sample, classicToday: !!o.classicToday, areas: o.areas || [], smode: null, board: { pos: {}, links: [], collapsed: {}, cam: { x: 20, y: 20, k: 1 }, linkFrom: null, undo: null, fitted: false, loaded: false } };
-    var theme = o.theme || "light", fixedNow = o.now || null, busy = false;
+    var theme = o.theme || "light", fixedNow = o.now || null, busy = false, terrain = null;
     try { if (localStorage.getItem("pp_cc_actual") === "0") S.showActual = false; } catch (x) {}
     var call = function (name) { var a = [].slice.call(arguments, 1); return Promise.resolve(o[name] ? o[name].apply(null, a) : null); };
     function setData(d) {
@@ -42,7 +42,19 @@
       var all = S.items; if (S.areaFilter) S.items = all.filter(function (i) { return C.areaKey(i.area) === S.areaFilter; });
       [].forEach.call(root.querySelectorAll(".seg button"), function (b) { b.setAttribute("aria-pressed", String(!S.q && b.dataset.view === S.view)); });
       if (v === "strategy" && S.smode == null) S.smode = host.getBoundingClientRect().width >= 900 ? "board" : "outline";
+      if (v === "horizon" && S.hz3d == null) { var pref = null; try { pref = localStorage.getItem("pp_cc_terrain"); } catch (x) {} S.hz3d = pref === "1" || (pref !== "0" && host.getBoundingClientRect().width >= 900 && !(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches)); }
+      if (terrain) { terrain.destroy(); terrain = null; }
       $("#ccView").innerHTML = '<div class="view" data-v="' + v + '">' + V[v](S) + "</div>"; S.items = all;
+      if (v === "horizon" && S.hz3d && window.PPTerrain) {
+        var tb = $("#ccTerrain"), fall = function (msg) { S.hz3d = false; S.hzNote = msg; draw(); };
+        window.PPTerrain.load().then(function () {
+          if (!tb.isConnected || S.view !== "horizon") return;
+          try { terrain = window.PPTerrain.mount(tb, V.terrainData(S), { themeEl: cc, only: S.areaFilter && S.areaFilter !== "none" && S.areaFilter !== "sol" ? S.areaFilter : null, noGuard: !!o.noGuard,
+            onWeek: function (date, key) { S.view = "week"; S.cursor = date; S.areaFilter = key === "total" ? null : key; draw(); },
+            onSlow: function (f) { fall("The 3D view ran at " + f + " frames per second on this device, so this is the roadmap."); },
+            onFlat: function () { S.hz3d = false; S.hzNote = ""; draw(); } }); } catch (err) { if (window.console) console.warn(err); fall("The 3D view is not available in this browser, so this is the roadmap."); }
+        }, function () { fall("The 3D view could not be loaded, so this is the roadmap."); });
+      }
       if (v === "strategy" && S.smode === "board") { if (!S.board.fitted) { S.board.fitted = true; fitBoard(); } }
       drawOver(true);
     }
@@ -194,6 +206,8 @@
         else if (q === "full") { close(); call("onOpenFull", it.id); }
       }
       else if (d.act === "close") close();
+      else if (d.act === "hz3d" || d.act === "hz2d") { S.hz3d = d.act === "hz3d"; S.hzNote = ""; try { localStorage.setItem("pp_cc_terrain", S.hz3d ? "1" : "0"); } catch (x) {} draw(); }
+      else if (d.act === "hzflat" && terrain) terrain.flatten();
       else if (d.pal != null) runPal(+d.pal);
       else if (d.pattern) { S.pattern = S.pattern === d.pattern ? null : d.pattern; draw(); }
       else if (d.ropen) open({ type: "item", id: d.ropen, date: S.today });
@@ -311,6 +325,7 @@
     return {
       update: function (d) { if (d.theme) theme = d.theme; setData(d); cc.dataset.theme = theme; draw(); },
       setView: function (v) { S.view = v; draw(); },
+      terrain: function () { return terrain; },
       open: open, state: function () { return { view: S.view, over: S.over && S.over.type, smode: S.smode, board: { pos: Object.keys(S.board.pos).length, links: S.board.links.length, k: S.board.cam.k } }; },
       destroy: function () { document.removeEventListener("keydown", onKey); clearInterval(tick); }
     };

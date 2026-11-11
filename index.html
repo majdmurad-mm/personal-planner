@@ -20347,12 +20347,12 @@
   /* Command Center (command/): one page for tasks, events, deadlines and time blocks. The module only
      draws; every save goes through the functions below, so the activity log and undo keep working.
      Bump COMMAND_VER with each release of command/*. */
-  var COMMAND_VER = "8", commandLoading = null, commandHandle = null, commandBoard = null, commandBoardLoad = null;
+  var COMMAND_VER = "9", commandLoading = null, commandHandle = null, commandBoard = null, commandBoardLoad = null;
   // Hours that count as booked in the free-time bars. Change here if the work pattern changes.
   var COMMAND_WORK = { days:[1, 2, 3, 4, 5], start:"09:00", end:"18:00" };
   function commandLoadScripts(){
     if(commandLoading) return commandLoading;
-    commandLoading = ["core", "view", "ring", "board", "command"].reduce(function(chain, f){
+    commandLoading = ["core", "view", "ring", "terrain", "board", "command"].reduce(function(chain, f){
       return chain.then(function(){
         return new Promise(function(resolve, reject){
           var el = document.createElement("script");
