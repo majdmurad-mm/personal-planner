@@ -20876,8 +20876,8 @@
     if(odReturned) return; odReturned = true;
     var q = new URLSearchParams(location.search), v = q.get("onedrive");
     if(!v) return;
-    q.delete("onedrive"); history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q.toString() : "") + location.hash);
-    toast({ connected:"OneDrive is connected. Pick the folders to map under Privacy and search.", cancelled:"OneDrive was not connected.", expired:"That sign-in took too long. Press Connect OneDrive again.", failed:"OneDrive could not be connected. Try again in a minute." }[v] || "OneDrive: " + v);
+    var why = q.get("onedrive_reason"); q.delete("onedrive"); q.delete("onedrive_reason"); history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q.toString() : "") + location.hash);
+    toast({ connected:"OneDrive is connected. Pick the folders to map under Privacy and search.", cancelled:"OneDrive was not connected.", expired:"That sign-in took too long. Press Connect OneDrive again.", failed:"OneDrive could not be connected" + (why ? " (" + why + ")" : "") + ". Try again in a minute." }[v] || "OneDrive: " + v);
     showSection("knowledge"); renderAll();
     if(v === "connected") setTimeout(function(){ if(knowledgeHandle && knowledgeHandle.openSheet) knowledgeHandle.openSheet("onedrive"); }, 900);
   }

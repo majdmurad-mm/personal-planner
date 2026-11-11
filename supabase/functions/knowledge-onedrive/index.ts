@@ -141,8 +141,8 @@ async function start(req: Request, uid: string) {
   const q = new URLSearchParams({ client_id: CLIENT_ID, response_type: "code", redirect_uri: CALLBACK, response_mode: "query", scope: SCOPES, state, code_challenge: challenge, code_challenge_method: "S256", prompt: "select_account" });
   return json(req, { url: AUTHORITY + "/authorize?" + q.toString() });
 }
-function back(returnTo: string, result: string) {
-  const u = new URL(returnTo); u.searchParams.set("onedrive", result); u.hash = "knowledge";
+function back(returnTo: string, result: string, reason?: string) {
+  const u = new URL(returnTo); u.searchParams.set("onedrive", result); if (reason) u.searchParams.set("onedrive_reason", reason.slice(0, 120)); u.hash = "knowledge";
   return new Response(null, { status: 302, headers: { Location: u.toString(), "Cache-Control": "no-store" } });
 }
 async function callback(req: Request) {
@@ -155,11 +155,16 @@ async function callback(req: Request) {
   if (u.searchParams.get("error") || !code) return back(st.return_to, "cancelled");
   const r = await fetch(AUTHORITY + "/token", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ client_id: CLIENT_ID, client_secret: CLIENT_SECRET, grant_type: "authorization_code", code, redirect_uri: CALLBACK, code_verifier: st.verifier, scope: SCOPES }) });
   const j = await r.json().catch(() => ({}));
-  if (!r.ok || !j.refresh_token) return back(st.return_to, "failed");
+  if (!r.ok || !j.refresh_token) {
+    const code = (j.error || (r.ok ? "no_refresh_token" : "http_" + r.status)) + ((j.error_codes || []).length ? " " + j.error_codes.join(",") : "");
+    console.error("onedrive token exchange failed:", code, String(j.error_description || "").split(/?
+/)[0].slice(0, 200));
+    return back(st.return_to, "failed", code);
+  }
   let label = "";
   try { const d = await fetch(GRAPH + "/me/drive?$select=id,owner", { headers: { Authorization: "Bearer " + j.access_token } }).then((x) => x.json()); label = d?.owner?.user?.displayName || ""; } catch { /* label is optional */ }
   const set = await db.rpc("onedrive_token_set", { p_user: st.user_id, p_token: j.refresh_token, p_label: label });
-  if (set.error) return back(st.return_to, "failed");
+  if (set.error) { console.error("onedrive token store failed:", set.error.message); return back(st.return_to, "failed", "store: " + set.error.message); }
   tokenCache.set(st.user_id, { token: j.access_token, until: Date.now() + (j.expires_in || 3600) * 1000 });
   await db.from("knowledge_sources").update({ status: "ok", last_error: null }).eq("user_id", st.user_id).eq("status", "reconnect");
   return back(st.return_to, "connected");
