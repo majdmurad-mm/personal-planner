@@ -7,3 +7,6 @@ project_id = "personal-planner"
 # it — otherwise Cowork's requests would be rejected before our handler ever runs.
 [functions.planner-mcp]
 verify_jwt = false
+
+[functions.knowledge-onedrive]
+verify_jwt = false

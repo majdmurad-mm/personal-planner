@@ -62,7 +62,8 @@ deployed from the Supabase dashboard (then `connector_info` says "not stamped").
 | Knowledge | Change type | `set_item_type` |
 | Knowledge | Topics: list, rename, merge | `list_topics`, `rename_topic`, `merge_topics` |
 | Knowledge | The spider (map, cluster, link, note) | `map_knowledge`, `cluster_knowledge`, `link_knowledge`, `spider_note` |
-| Knowledge | Upload files, meaning search | missing by design: files are read in the browser |
+| Knowledge | OneDrive folders: list, browse, add, privacy, remove, sync | `list_knowledge_sources`, `browse_onedrive_folders`, `add_knowledge_source`, `set_source_privacy`, `remove_knowledge_source`, `sync_source`, `get_sync_status` |
+| Knowledge | Upload files, read OneDrive files, meaning search | missing by design: files are read in the browser |
 | Admin | Archive or restore anything | `archive_record`, `restore_record` |
 | Admin | Search everything | `search_everything` |
 | Agents | Proposals, reports, shared memory | `propose_*`, `post_report`, `list_proposals`, `list_agent_reports`, `memory_*` |
@@ -89,7 +90,7 @@ the steps before it are undone.
 
 ## Tool list
 
-`connector_info` returns the live list. In the code at the time of writing (126):
+`connector_info` returns the live list. In the code at the time of writing (133; the seven OneDrive tools are listed in the parity table):
 
 add_dependency, add_note, apply_plan, archive_action, archive_goal, archive_item, archive_project, archive_record,
 cluster_knowledge, complete_action, complete_item, connector_info, create_action, create_event, create_goal,
@@ -109,3 +110,9 @@ schedule_from_backlog, search_everything, search_items, search_knowledge, set_ac
 set_health_status, set_item_location, set_item_type, set_main_thing, set_person_situation, set_planner_settings,
 set_recurrence, set_relationship, set_reminder_settings, set_reminders, skip_occurrence, snooze, spider_note,
 uncomplete_item, upsert_activity, upsert_health_day, upsert_workout, weekly_review, write_health_brief
+
+## Knowledge privacy
+
+Items from a Private OneDrive source are never returned by any connector tool (filtered on the server in every
+Knowledge read). Links-only items carry name, path, dates and link, never content. File contents are only read in the
+owner's browser; the connector cannot fetch them.

@@ -21,6 +21,8 @@
     if (/\.(png|jpe?g|webp|bmp|gif)$/.test(n) || /^image\//.test(t)) return "image";
     if (/\.epub$/.test(n)) return "epub";
     if (/\.docx$/.test(n)) return "docx";
+    if (/\.pptx$/.test(n)) return "pptx";
+    if (/\.xlsx$/.test(n)) return "xlsx";
     if (/\.(txt|md|markdown|csv)$/.test(n) || /^text\//.test(t)) return "text";
     return "";
   };
@@ -34,7 +36,7 @@
     return (r && r.data && r.data.text) || "";
   }
   var strip = function (html) { var d = new DOMParser().parseFromString(html, "text/html"); [].forEach.call(d.querySelectorAll("script,style,nav"), function (e) { e.remove(); }); return (d.body ? d.body.textContent : "").replace(/[ \t]+/g, " ").replace(/\n\s*\n\s*\n+/g, "\n\n").trim(); };
-  async function pdf(file, progress) {
+  async function pdf(file, progress, noOcr) {
     await script(LIBS.pdf);
     window.pdfjsLib.GlobalWorkerOptions.workerSrc = LIBS.pdfWorker;
     var doc = await window.pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise, pages = [], scanned = 0, usedOcr = false, skipped = 0;
@@ -43,7 +45,7 @@
       tc.items.forEach(function (it) { if (last != null && Math.abs(it.transform[5] - last) > 2) text += "\n"; else if (text && !/\s$/.test(text)) text += " "; text += it.str; last = it.transform[5]; });
       text = text.trim();
       if (text.replace(/\s/g, "").length < 20) {
-        if (scanned < X.MAX_OCR_PAGES) {
+        if (!noOcr && scanned < X.MAX_OCR_PAGES) {
           scanned++; usedOcr = true;
           var vp = page.getViewport({ scale: 2 }), cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height;
           await page.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
@@ -82,10 +84,37 @@
     return { pages: [{ page: 1, text: paras.join("\n") }], pageCount: 1 };
   }
   // -> { kind, pages:[{page,text}], pageCount, ocr, note, meta }
-  X.read = async function (file, progress) {
-    var kind = X.kind(file), out;
-    if (!kind) throw new Error("This kind of file is not supported yet. Use PDF, an image, EPUB, DOCX, TXT or MD.");
-    if (kind === "pdf") out = await pdf(file, progress);
+  // PowerPoint without conversion: the text of each slide, numbered like the slides.
+  async function pptx(file) {
+    await script(LIBS.zip);
+    var zip = await window.JSZip.loadAsync(await file.arrayBuffer()), names = Object.keys(zip.files).filter(function (k) { return /^ppt\/slides\/slide\d+\.xml$/.test(k); });
+    names.sort(function (a, b) { return +a.match(/(\d+)\.xml$/)[1] - +b.match(/(\d+)\.xml$/)[1]; });
+    var pages = [];
+    for (var i = 0; i < names.length; i++) { var xml = await zip.file(names[i]).async("string"), t = (xml.match(/<a:t>[^<]*<\/a:t>/g) || []).map(function (x) { return x.replace(/<\/?a:t>/g, ""); }).join(" "); pages.push({ page: i + 1, text: new DOMParser().parseFromString("<b>" + t + "</b>", "text/html").body.textContent.trim() }); }
+    return { pages: pages, pageCount: names.length };
+  }
+  // Excel: only the sheet names and the first row of each sheet (the headers), never the cell data.
+  async function xlsx(file) {
+    await script(LIBS.zip);
+    var zip = await window.JSZip.loadAsync(await file.arrayBuffer()), wb = zip.file("xl/workbook.xml"), ss = zip.file("xl/sharedStrings.xml");
+    var dec = function (x) { return new DOMParser().parseFromString("<b>" + x + "</b>", "text/html").body.textContent; };
+    var shared = ss ? ((await ss.async("string")).match(/<si>[\s\S]*?<\/si>/g) || []).map(function (si) { return dec((si.match(/<t[^>]*>[^<]*<\/t>/g) || []).map(function (t) { return t.replace(/<[^>]+>/g, ""); }).join("")); }) : [];
+    var sheets = wb ? ((await wb.async("string")).match(/<sheet [^>]*name="[^"]*"/g) || []).map(function (m) { return dec(m.match(/name="([^"]*)"/)[1]); }) : [];
+    var pages = [];
+    for (var i = 0; i < sheets.length; i++) {
+      var f = zip.file("xl/worksheets/sheet" + (i + 1) + ".xml"), head = [];
+      if (f) { var xml = await f.async("string"), row = xml.match(/<row [^>]*>[\s\S]*?<\/row>/); if (row) (row[0].match(/<c [^>]*>[\s\S]*?<\/c>/g) || []).forEach(function (c) { var v = (c.match(/<v>([^<]*)<\/v>/) || [])[1], is = (c.match(/<t[^>]*>([^<]*)<\/t>/) || [])[1]; if (/t="s"/.test(c) && v != null) head.push(shared[+v] || ""); else if (is != null) head.push(dec(is)); else if (v != null) head.push(v); }); }
+      pages.push({ page: i + 1, text: "Sheet: " + sheets[i] + (head.length ? "\nColumns: " + head.filter(Boolean).join(", ") : "") });
+    }
+    return { pages: pages, pageCount: sheets.length };
+  }
+  X.read = async function (file, progress, opts) {
+    var kind = X.kind(file), out, noOcr = !!(opts && opts.ocr === false);
+    if (!kind) throw new Error("This kind of file is not supported yet. Use PDF, an image, EPUB, DOCX, PPTX, XLSX, TXT or MD.");
+    if (kind === "image" && noOcr) throw new Error("Reading images is switched off for this source.");
+    if (kind === "pdf") out = await pdf(file, progress, noOcr);
+    else if (kind === "pptx") out = await pptx(file);
+    else if (kind === "xlsx") out = await xlsx(file);
     else if (kind === "image") out = { pages: [{ page: 1, text: (await ocr(file, progress)).trim() }], pageCount: 1, ocr: true };
     else if (kind === "epub") out = await epub(file);
     else if (kind === "docx") out = await docx(file);

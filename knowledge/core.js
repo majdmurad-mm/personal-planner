@@ -12,6 +12,13 @@
     thinkers: [["author", "Author or creator"]],
     mine: [["note", "My note"], ["reference", "Reference note"], ["decision", "Decision note"]]
   };
+  // The owner's own zones (for OneDrive sources such as "Work"): listed after the built-in ones, one generic type.
+  K.CUSTOM_COLORS = [["#4E6A3C", "#A9C98F"], ["#8A3B53", "#E39AB1"], ["#2F6B6B", "#86CACA"], ["#6B5A2F", "#D9C48A"], ["#4A4F86", "#A7ACE8"]];
+  K.addZone = function (id, label) {
+    if (!id || K.ZONES.some(function (z) { return z[0] === id; })) return;
+    K.ZONES.push([id, label || id]); K.TYPES[id] = [["file", "File"], ["document", "Document"]];
+  };
+  K.isCustomZone = function (z) { return ["documents", "library", "web", "ideas", "thinkers", "mine"].indexOf(z) < 0; };
   K.zoneName = function (z) { var h = K.ZONES.filter(function (x) { return x[0] === z; })[0]; return h ? h[1] : z; };
   K.typeName = function (z, t) { var h = (K.TYPES[z] || []).filter(function (x) { return x[0] === t; })[0]; return h ? h[1] : t; };
   K.zoneOfType = function (t) { for (var z in K.TYPES) if (K.TYPES[z].some(function (x) { return x[0] === t; })) return z; return "documents"; };

@@ -1050,17 +1050,20 @@ function knNormUrl(u: string): string {
     return p.protocol + "//" + p.hostname.replace(/^www\./, "").toLowerCase() + p.pathname.replace(/\/+$/, "") + (p.search || "");
   } catch { return x; }
 }
+// Items from a Private OneDrive source never leave the server: every read of knowledge_items goes through this.
+const KN_VISIBLE = "privacy.is.null,privacy.neq.private";
+const knItems = (cols: string) => db.from("knowledge_items").select(cols).or(KN_VISIBLE);
 async function knAllowed(): Promise<string[]> {
   const r = await db.from("knowledge_settings").select("external_zones").eq("user_id", OWNER).maybeSingle();
   return r.data ? (r.data.external_zones || []) : ["library", "web", "ideas", "thinkers", "mine"];
 }
-const knKept = (zones: string[]) => "Kept from Claude by the owner: " + zones.map((z) => KN_ZONE_NAME[z]).join(", ") + ". The owner can allow a zone under Privacy and search on the Knowledge page.";
+const knKept = (zones: string[]) => "Kept from Claude by the owner: " + zones.map((z) => (KN_ZONE_NAME as Record<string, string>)[z] || z).join(", ") + ". The owner can allow a zone under Privacy and search on the Knowledge page.";
 // deno-lint-ignore no-explicit-any
-const knSlim = (r: any) => ({ id: r.id, zone: r.zone, type: r.type, title: r.title, summary: r.summary || "", why: r.why || "", url: r.url || null, tags: r.tags || [], meta: r.meta || {}, source: r.source, needsSort: !!r.needs_sort, createdAt: r.created_at });
+const knSlim = (r: any) => ({ webUrl: r.web_url || undefined, onedrive: r.provider ? { path: r.remote_path, modified: r.remote_modified_at, indexStatus: r.index_status, noLongerInOneDrive: !!r.gone_at } : undefined, id: r.id, zone: r.zone, type: r.type, title: r.title, summary: r.summary || "", why: r.why || "", url: r.url || null, tags: r.tags || [], meta: r.meta || {}, source: r.source, needsSort: !!r.needs_sort, createdAt: r.created_at });
 // Insert, or update the open item that is already there (same URL, or same title in the same zone).
 // deno-lint-ignore no-explicit-any
 async function knSave(row: Record<string, any>, text: string) {
-  let q = db.from("knowledge_items").select("*").eq("user_id", OWNER).is("archived_at", null);
+  let q = knItems("*").eq("user_id", OWNER).is("archived_at", null);
   q = row.url ? q.eq("url", row.url) : q.eq("zone", row.zone).ilike("title", String(row.title).replace(/[%_\\]/g, "\\$&"));
   const found = await q.limit(1);
   if (found.error) return fail(found.error.message + KN_HINT);
@@ -1140,10 +1143,10 @@ tool("search_knowledge", {
     const hits = await db.from("knowledge_chunks").select("item_id,page,content").eq("user_id", OWNER).textSearch("fts", a.query, { type: "websearch", config: "simple" }).limit(80);
     if (hits.error) return fail(hits.error.message + KN_HINT);
     const like = "%" + a.query.replace(/[%_\\]/g, "\\$&") + "%";
-    const titled = await db.from("knowledge_items").select("id").eq("user_id", OWNER).is("archived_at", null).or("title.ilike." + like.replace(/,/g, " ") + ",summary.ilike." + like.replace(/,/g, " ")).limit(20);
+    const titled = await knItems("id").eq("user_id", OWNER).is("archived_at", null).or("title.ilike." + like.replace(/,/g, " ") + ",summary.ilike." + like.replace(/,/g, " ")).limit(20);
     const ids = Array.from(new Set([...(hits.data || []).map((h) => h.item_id), ...((titled.data || []).map((t) => t.id))]));
     if (!ids.length) return ok({ passages: [], note: "nothing matched; try other words or the document's language" });
-    const items = await db.from("knowledge_items").select("*").eq("user_id", OWNER).is("archived_at", null).in("id", ids);
+    const items = await knItems("*").eq("user_id", OWNER).is("archived_at", null).in("id", ids);
     if (items.error) return fail(items.error.message);
     // deno-lint-ignore no-explicit-any
     const byId: Record<string, any> = {}; let hidden = 0;
@@ -1162,7 +1165,7 @@ tool("get_knowledge_item", {
   description: "One Knowledge item in full: its details and its text by page (for documents, books and papers). Pass page to read around one page.",
   inputSchema: z.object({ id: z.string(), page: z.number().int().min(1).optional().describe("return only this page and its neighbours") }),
   handler: async (a: { id: string; page?: number }) => {
-    const r = await db.from("knowledge_items").select("*").eq("id", a.id).eq("user_id", OWNER).maybeSingle();
+    const r = await knItems("*").eq("id", a.id).eq("user_id", OWNER).maybeSingle();
     if (r.error) return fail(r.error.message + KN_HINT);
     if (!r.data) return fail("no knowledge item with that id");
     const allowed = await knAllowed();
@@ -1192,7 +1195,7 @@ tool("map_knowledge", {
   handler: async () => {
     const allowed = await knAllowed();
     const [it, tp, ed, ch] = await Promise.all([
-      db.from("knowledge_items").select("*").eq("user_id", OWNER).is("archived_at", null).order("created_at", { ascending: false }).limit(500),
+      knItems("*").eq("user_id", OWNER).is("archived_at", null).order("created_at", { ascending: false }).limit(500),
       db.from("knowledge_topics").select("id,name").eq("user_id", OWNER),
       db.from("knowledge_edges").select("from_id,to_id,kind").eq("user_id", OWNER).limit(2000),
       db.from("knowledge_chunks").select("item_id").eq("user_id", OWNER).limit(20000),
@@ -1215,7 +1218,7 @@ tool("cluster_knowledge", {
   inputSchema: z.object({ itemIds: z.array(z.string()).min(1).max(100), topic: z.string().min(2).max(60), folder: z.string().max(80).optional(), why: z.string().max(300).optional() }),
   handler: async (a: { itemIds: string[]; topic: string; folder?: string; why?: string }) => {
     const allowed = await knAllowed();
-    const r = await db.from("knowledge_items").select("id,zone,title,meta").eq("user_id", OWNER).is("archived_at", null).in("id", a.itemIds);
+    const r = await knItems("id,zone,title,meta").eq("user_id", OWNER).is("archived_at", null).in("id", a.itemIds);
     if (r.error) return fail(r.error.message + KN_HINT);
     let done = 0, skipped = 0;
     for (const it of r.data || []) {
@@ -1236,7 +1239,7 @@ tool("link_knowledge", {
   handler: async (a: { fromId: string; toId: string; why?: string }) => {
     if (a.fromId === a.toId) return fail("an item cannot be linked to itself");
     const allowed = await knAllowed();
-    const r = await db.from("knowledge_items").select("id,zone,title").eq("user_id", OWNER).is("archived_at", null).in("id", [a.fromId, a.toId]);
+    const r = await knItems("id,zone,title").eq("user_id", OWNER).is("archived_at", null).in("id", [a.fromId, a.toId]);
     if (r.error) return fail(r.error.message + KN_HINT);
     if ((r.data || []).length !== 2) return fail("one or both items were not found");
     if ((r.data || []).some((x) => !allowed.includes(x.zone))) return fail(knKept((r.data || []).map((x) => x.zone).filter((z2) => !allowed.includes(z2))));
@@ -1271,7 +1274,7 @@ tool("list_recent_knowledge", {
   inputSchema: z.object({ days: z.number().int().min(1).max(365).optional() }),
   handler: async (a: { days?: number }) => {
     const since = new Date(Date.now() - (a.days || 7) * 86400000).toISOString(), allowed = await knAllowed();
-    const r = await db.from("knowledge_items").select("*").eq("user_id", OWNER).is("archived_at", null).gte("created_at", since).order("created_at", { ascending: false }).limit(100);
+    const r = await knItems("*").eq("user_id", OWNER).is("archived_at", null).gte("created_at", since).order("created_at", { ascending: false }).limit(100);
     if (r.error) return fail(r.error.message + KN_HINT);
     const rows = r.data || [], shown = rows.filter((x) => allowed.includes(x.zone));
     return ok({ since, items: shown.map(knSlim), keptFromClaude: rows.length - shown.length, toSort: shown.filter((x) => x.needs_sort).length });
@@ -3900,7 +3903,7 @@ tool("list_topics", {
   inputSchema: z.object({}),
   handler: async () => {
     const allowed = await knAllowed();
-    const [t, it] = await Promise.all([db.from("knowledge_topics").select("id,zone,name").eq("user_id", OWNER), db.from("knowledge_items").select("topic_id,zone").eq("user_id", OWNER).is("archived_at", null)]);
+    const [t, it] = await Promise.all([db.from("knowledge_topics").select("id,zone,name").eq("user_id", OWNER), knItems("topic_id,zone").eq("user_id", OWNER).is("archived_at", null)]);
     if (t.error) return fail(t.error.message + KN_HINT);
     const n: Record<string, number> = {}; for (const x of it.data || []) if (x.topic_id && allowed.includes(x.zone)) n[x.topic_id] = (n[x.topic_id] || 0) + 1;
     return ok({ topics: (t.data || []).filter((x) => allowed.includes(x.zone)).map((x) => ({ id: x.id, zone: x.zone, name: x.name, items: n[x.id] || 0 })).sort((a, b) => b.items - a.items) });
@@ -3964,7 +3967,7 @@ tool("search_everything", {
       owned("people").is("archived_at", null).or("name.ilike." + like + ",notes.ilike." + like + ",social_group.ilike." + like).limit(lim),
       owned("goals").or("title.ilike." + like + ",notes_md.ilike." + like).limit(lim),
       owned("projects").or("title.ilike." + like + ",notes_md.ilike." + like).limit(lim),
-      owned("knowledge_items").is("archived_at", null).or("title.ilike." + like + ",summary.ilike." + like + ",why.ilike." + like).limit(lim),
+      owned("knowledge_items").or(KN_VISIBLE).is("archived_at", null).or("title.ilike." + like + ",summary.ilike." + like + ",why.ilike." + like).limit(lim),
       owned("agent_memory").is("archived_at", null).or("title.ilike." + like + ",body_md.ilike." + like).limit(lim),
     ]);
     // deno-lint-ignore no-explicit-any
@@ -3986,6 +3989,55 @@ tool("connector_info", {
   handler: () => ok({ commit: BUILD_COMMIT.startsWith("__") ? "not stamped (deployed by hand from the dashboard)" : BUILD_COMMIT, deployedAt: BUILD_TIME.startsWith("__") ? null : BUILD_TIME, instanceStartedAt: BOOTED_AT, toolCount: OWNER_TOOLS.length, tools: OWNER_TOOLS.slice().sort(), timezone: "Europe/Berlin" }),
 }, "both");
 // ==== V2-END ====
+
+// ==== OD-BEGIN ====
+// ============================ KNOWLEDGE: ONEDRIVE SOURCES ============================
+// These call the knowledge-onedrive function, which holds the OneDrive sign-in. Read-only: nothing here can
+// write, move, rename or delete anything in OneDrive. File contents are never read through the connector.
+async function odCall(route: string, body: Record<string, unknown> = {}) {
+  const r = await fetch(SUPABASE_URL + "/functions/v1/knowledge-onedrive" + route, { method: "POST", headers: { "Content-Type": "application/json", "x-internal-key": SERVICE_KEY }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => ({ error: "knowledge-onedrive returned " + r.status }));
+  if (r.status === 404 && !j.error) return fail("the knowledge-onedrive function is not deployed yet");
+  if (j.error === "reconnect") return fail("OneDrive needs to be reconnected: the owner presses Reconnect OneDrive on the Knowledge page");
+  return j.error ? fail(j.error) : ok(j);
+}
+const OD_PRIVACY = z.enum(["index", "links", "private"]).describe("index: text is read for search and summaries; links: only name, path, dates and link, content never read; private: visible to the owner only, never returned to Claude");
+tool("list_knowledge_sources", {
+  description: "The OneDrive folders mapped into Knowledge, each with its privacy level, zone, last sync, item and indexed counts, and whether OneDrive is connected.",
+  inputSchema: z.object({}),
+  handler: () => odCall("/status"),
+});
+tool("get_sync_status", {
+  description: "Same as list_knowledge_sources, focused on sync: which sources are syncing, last synced time, errors, and whether a reconnect is needed.",
+  inputSchema: z.object({}),
+  handler: () => odCall("/status"),
+});
+tool("browse_onedrive_folders", {
+  description: "List the subfolders of a OneDrive folder (folder names only, never files or contents). Omit folder_id for the top level; use a returned id to go deeper. Code and hidden folders are left out.",
+  inputSchema: z.object({ folder_id: z.string().max(200).optional() }),
+  handler: (a: { folder_id?: string }) => odCall("/browse", { folderId: a.folder_id }),
+});
+tool("add_knowledge_source", {
+  description: "Map a OneDrive folder into Knowledge (idempotent: the same folder is not added twice). privacy defaults to links. zone: documents, library, web, ideas, thinkers, mine, or one of the owner's own zones. The first sync starts right away.",
+  inputSchema: z.object({ folder_id: z.string().max(200).describe("from browse_onedrive_folders"), privacy: OD_PRIVACY.optional(), zone: z.string().regex(/^[a-z][a-z0-9_-]{1,29}$/).optional(), include_subfolders: z.boolean().optional(), file_types: z.array(z.string()).max(40).optional().describe("only these extensions, e.g. pdf, docx; empty = every supported type"), excludes: z.array(z.string()).max(40).optional().describe("name patterns to leave out, * as wildcard"), max_index_mb: z.number().int().min(1).max(500).optional() }),
+  handler: (a: Record<string, unknown>) => odCall("/sources/add", { folderId: a.folder_id, privacy: a.privacy, zone: a.zone, includeSubfolders: a.include_subfolders, fileTypes: a.file_types, excludes: a.excludes, maxIndexMb: a.max_index_mb }),
+});
+tool("set_source_privacy", {
+  description: "Change a source's privacy level, its per-subfolder overrides ({ \"Sub/Folder\": \"private\" }), its zone or its filters. Lowering a level removes text that is no longer allowed; the folder is walked again.",
+  inputSchema: z.object({ source_id: z.string(), privacy: OD_PRIVACY.optional(), overrides: z.record(z.string(), z.enum(["index", "links", "private"])).optional(), zone: z.string().regex(/^[a-z][a-z0-9_-]{1,29}$/).optional(), include_subfolders: z.boolean().optional(), file_types: z.array(z.string()).max(40).optional(), excludes: z.array(z.string()).max(40).optional(), max_index_mb: z.number().int().min(1).max(500).optional() }),
+  handler: (a: Record<string, unknown>) => odCall("/sources/update", { id: a.source_id, privacy: a.privacy, overrides: a.overrides, zone: a.zone, includeSubfolders: a.include_subfolders, fileTypes: a.file_types, excludes: a.excludes, maxIndexMb: a.max_index_mb }),
+});
+tool("remove_knowledge_source", {
+  description: "Stop mapping a OneDrive folder: the source and its items are archived in the planner. Nothing in OneDrive is touched.",
+  inputSchema: z.object({ source_id: z.string() }),
+  handler: (a: { source_id: string }) => odCall("/sources/remove", { id: a.source_id }),
+});
+tool("sync_source", {
+  description: "Sync a source now. full: true walks the whole folder again instead of only fetching changes.",
+  inputSchema: z.object({ source_id: z.string(), full: z.boolean().optional() }),
+  handler: (a: { source_id: string; full?: boolean }) => odCall("/sync", { id: a.source_id, full: !!a.full }),
+});
+// ==== OD-END ====
 
 const httpHandler = new StreamableHttpTransport().bind(mcp);
 const agentHttpHandler = new StreamableHttpTransport().bind(mcpAgent);

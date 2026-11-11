@@ -5320,7 +5320,7 @@
     if(session && session.user){
       currentUser = session.user;
       showApp();
-      loadAll().then(function(){ renderAll(); trackerLoadSummaryIntoInput(); loadWbConnections(); loadActivityLog(); });
+      loadAll().then(function(){ renderAll(); trackerLoadSummaryIntoInput(); loadWbConnections(); loadActivityLog(); odReturnCheck(); });
     } else {
       currentUser = null;
       showAuthScreen();
@@ -20559,7 +20559,7 @@
   /* Knowledge page (knowledge/): files and saved items, sorted and linked. Files are read in the browser;
      rows live in the knowledge_* tables and files in the private "knowledge" bucket, all behind RLS.
      Bump KNOWLEDGE_VER with each release of knowledge/*. */
-  var KNOWLEDGE_VER = "4", knowledgeLoading = null, knowledgeHandle = null, knowledgeFetching = null;
+  var KNOWLEDGE_VER = "5", knowledgeLoading = null, knowledgeHandle = null, knowledgeFetching = null;
   var KN = { items:null, edges:[], topics:{}, files:{}, settings:{ external:{} }, usage:null, meaning:{ ready:false, pending:0, busy:false } };
   var KN_MAX_FILE = 50 * 1024 * 1024, KN_PLAN_LIMIT = 1024 * 1024 * 1024;   // free-plan figures, shown as a guide
   function knowledgeLoadScripts(){
@@ -20581,7 +20581,8 @@
   function knowledgeRow(r){
     var f = KN.files[r.id];
     return { id:r.id, zone:r.zone, type:r.type, title:r.title, summary:r.summary || "", why:r.why || "", url:r.url || "", tags:r.tags || [], topic:(r.topic_id && KN.topics[r.topic_id]) || "", meta:r.meta || {},
-      source:r.source || "upload", confidence:r.confidence, needsSort:!!r.needs_sort, fileHash:r.file_hash || null, createdAt:r.created_at, hasFile:!!f, pages:f ? f.pages : null };
+      source:r.source || "upload", confidence:r.confidence, needsSort:!!r.needs_sort, fileHash:r.file_hash || null, createdAt:r.created_at, hasFile:!!f, pages:f ? f.pages : null,
+      onedrive:r.provider === "onedrive" ? { sourceId:r.source_id, path:r.remote_path || "", webUrl:r.web_url || "", modified:r.remote_modified_at, size:Number(r.size_bytes) || 0, privacy:r.privacy, indexStatus:r.index_status, gone:!!r.gone_at, saved:!!r.saved_copy } : null };
   }
   async function knowledgeFetch(){
     var res = await Promise.all([
@@ -20589,7 +20590,7 @@
       sb.from("knowledge_files").select("item_id,storage_path,file_name,mime,size_bytes,pages"),
       sb.from("knowledge_topics").select("id,zone,name"),
       sb.from("knowledge_edges").select("from_id,to_id,kind"),
-      sb.from("knowledge_settings").select("external_zones").maybeSingle(),
+      sb.from("knowledge_settings").select("external_zones,custom_zones").maybeSingle(),
       sb.from("knowledge_chunks").select("id", { count:"exact", head:true }).is("embedding", null)
     ]);
     if(res[0].error) throw res[0].error;
@@ -20599,8 +20600,9 @@
     KN.items = (res[0].data || []).map(knowledgeRow);
     KN.edges = (res[3].data || []).map(function(e){ return { from:e.from_id, to:e.to_id, kind:e.kind }; });
     var ext = res[4].data ? (res[4].data.external_zones || []) : ["library", "web", "ideas", "thinkers", "mine"];
-    KN.settings = { external:{} };
-    ["documents", "library", "web", "ideas", "thinkers", "mine"].forEach(function(z){ KN.settings.external[z] = ext.indexOf(z) >= 0; });
+    KN.settings = { external:{}, customZones:(res[4].data && res[4].data.custom_zones) || [] };
+    if(window.PPKnowledgeCore && window.PPKnowledgeCore.addZone) KN.settings.customZones.forEach(function(z){ window.PPKnowledgeCore.addZone(z.id, z.label); });
+    ["documents", "library", "web", "ideas", "thinkers", "mine"].concat(KN.settings.customZones.map(function(z){ return z.id; })).forEach(function(z){ KN.settings.external[z] = ext.indexOf(z) >= 0; });
     KN.usage = { bytes:bytes, limit:KN_PLAN_LIMIT, maxFile:KN_MAX_FILE };
     KN.meaning.ready = safeGet(window.localStorage, "pp_kn_meaning") === "1";
     KN.meaning.pending = res[5].error ? 0 : (res[5].count || 0);
@@ -20635,7 +20637,7 @@
     knSpiderTimer = setTimeout(knowledgeSpiderPoll, live ? 3000 : 15000);
   }
   function knowledgeData(){
-    return { items:(KN.items || []).concat(knowledgeMirror()), edges:KN.edges, settings:KN.settings, usage:KN.usage, meaning:KN.meaning, theme:currentTheme(), spider:{ events:knSpider.events, prompt:knSpider.prompt } };
+    return { items:(KN.items || []).concat(knowledgeMirror()), edges:KN.edges, settings:KN.settings, usage:KN.usage, meaning:KN.meaning, theme:currentTheme(), spider:{ events:knSpider.events, prompt:knSpider.prompt }, onedrive:KN.od };
   }
   function knowledgeRefresh(){ if(knowledgeHandle && activeSection === "knowledge") knowledgeHandle.update(knowledgeData()); }
   async function knowledgeTopicId(zone, name){
@@ -20856,19 +20858,137 @@
     if(res.error){ dbErrorToast(res.error, "Couldn't save"); return; }
     KN.settings.external[zone] = on; knowledgeRefresh();
   }
+  /* OneDrive sources. The sign-in and every Graph call live in the knowledge-onedrive function; this page
+     never sees a Microsoft token. Files of Index sources are read here, one at a time, through /fetch:
+     the bytes pass through, the text is kept as chunks, the file itself is not stored. */
+  KN.od = { loaded:false, configured:false, connected:false, status:"disconnected", account:"", sources:[], reading:null, browse:null };
+  async function odApi(route, body){
+    var sess = await sb.auth.getSession(), token = sess && sess.data && sess.data.session ? sess.data.session.access_token : "";
+    var r = await fetch(SUPABASE_URL + "/functions/v1/knowledge-onedrive" + route, { method:"POST", headers:{ "Content-Type":"application/json", "Authorization":"Bearer " + token, "apikey":SUPABASE_ANON_KEY }, body:JSON.stringify(body || {}) });
+    if(route === "/fetch"){ if(!r.ok){ var e = await r.json().catch(function(){ return {}; }); throw new Error(e.error || ("OneDrive returned " + r.status)); } return r; }
+    var j = await r.json().catch(function(){ return { error:r.status === 404 ? "not deployed" : "no answer" }; });
+    if(r.status === 404 && j.error === "not deployed") j.notDeployed = true;
+    return j;
+  }
+  // Back from the Microsoft sign-in: say how it went, open Knowledge, and drop the marker from the address.
+  var odReturned = false;
+  function odReturnCheck(){
+    if(odReturned) return; odReturned = true;
+    var q = new URLSearchParams(location.search), v = q.get("onedrive");
+    if(!v) return;
+    q.delete("onedrive"); history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q.toString() : "") + location.hash);
+    toast({ connected:"OneDrive is connected. Pick the folders to map under Privacy and search.", cancelled:"OneDrive was not connected.", expired:"That sign-in took too long. Press Connect OneDrive again.", failed:"OneDrive could not be connected. Try again in a minute." }[v] || "OneDrive: " + v);
+    showSection("knowledge"); renderAll();
+    if(v === "connected") setTimeout(function(){ if(knowledgeHandle && knowledgeHandle.openSheet) knowledgeHandle.openSheet("onedrive"); }, 900);
+  }
+  async function knowledgeOdStatus(){
+    try{
+      var j = await odApi("/status");
+      if(j.error){ KN.od = Object.assign(KN.od, { loaded:true, unavailable:true, note:j.notDeployed ? "The OneDrive connection is not deployed yet." : j.error }); }
+      else KN.od = Object.assign(KN.od, { loaded:true, unavailable:false, note:"", configured:j.configured, connected:j.connected, status:j.status, account:j.account, sources:j.sources || [] });
+    }catch(err){ KN.od = Object.assign(KN.od, { loaded:true, unavailable:true, note:"OneDrive could not be reached." }); }
+    knowledgeRefresh();
+  }
+  async function knowledgeOd(action, a){
+    a = a || {};
+    var say = function(t){ if(knowledgeHandle) knowledgeHandle.progress(t); }, j;
+    if(action === "connect"){
+      j = await odApi("/start", { returnTo:location.origin + location.pathname });
+      if(j.url){ location.href = j.url; return; }
+      toast(j.error || "OneDrive could not be connected."); return;
+    }
+    if(action === "disconnect"){ j = await odApi("/disconnect"); toast(j.error ? j.error : "OneDrive is disconnected. Your items stay; nothing in OneDrive was touched."); await knowledgeOdStatus(); return j; }
+    if(action === "browse"){ KN.od.browse = { loading:true, folders:[], folder:null }; knowledgeRefresh(); j = await odApi("/browse", { folderId:a.folderId || null }); KN.od.browse = j.error ? { error:j.error === "reconnect" ? "OneDrive needs to be reconnected." : j.error, folders:[] } : { folder:j.folder, folders:j.folders }; knowledgeRefresh(); return j; }
+    if(action === "zone"){
+      var label = String(a.label || "").trim().slice(0, 30), id = label.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 28);
+      if(!id || !/^[a-z]/.test(id)) { toast("Give the zone a name that starts with a letter."); return null; }
+      if(window.PPKnowledgeCore.ZONES.some(function(z){ return z[0] === id; })) return id;
+      var list = (KN.settings.customZones || []).concat([{ id:id, label:label }]);
+      var r = await sb.from("knowledge_settings").upsert({ user_id:currentUser.id, custom_zones:list, external_zones:Object.keys(KN.settings.external).filter(function(z){ return KN.settings.external[z]; }), updated_at:new Date().toISOString() }, { onConflict:"user_id" });
+      if(r.error){ dbErrorToast(r.error, "Couldn't add the zone"); return null; }
+      window.PPKnowledgeCore.addZone(id, label); KN.settings.customZones = list; KN.settings.external[id] = false; knowledgeRefresh();
+      return id;
+    }
+    var route = { add:"/sources/add", update:"/sources/update", remove:"/sources/remove", sync:"/sync" }[action];
+    if(!route) return;
+    say(action === "add" ? "Adding the folder and listing its files…" : action === "sync" ? "Syncing…" : action === "remove" ? "Removing the source…" : "Saving…");
+    j = await odApi(route, a);
+    say("");
+    if(j.error) toast(j.error === "reconnect" ? "OneDrive needs to be reconnected." : j.error);
+    else if(action === "remove") toast("Source removed: " + j.itemsArchived + " items archived. Nothing in OneDrive was touched.");
+    else if(action === "add" && j.alreadyExisted) toast("That folder is already a source.");
+    await knowledgeFetch(); await knowledgeOdStatus(); knowledgeRefresh();
+    knowledgeIndexQueue();
+    return j;
+  }
+  // Read the text of OneDrive files marked to be read, one at a time, while this page is open.
+  async function knowledgeIndexQueue(){
+    if(KN.od.reading || !currentUser) return;
+    var X = window.PPKnowledgeExtract, K = window.PPKnowledgeCore;
+    if(!X || !K) return;
+    KN.od.reading = { done:0, left:0 };
+    try{
+      for(var round = 0; round < 500; round++){
+        var todo = await sb.from("knowledge_items").select("id,title,mime_type,size_bytes,source_id").eq("provider", "onedrive").eq("index_status", "pending").is("archived_at", null).order("remote_modified_at", { ascending:false }).limit(1);
+        if(todo.error || !todo.data || !todo.data.length) break;
+        var it = todo.data[0], src = (KN.od.sources || []).find(function(x){ return x.id === it.source_id; }) || {};
+        var left = await sb.from("knowledge_items").select("id", { count:"exact", head:true }).eq("provider", "onedrive").eq("index_status", "pending").is("archived_at", null);
+        KN.od.reading.left = left.count || 0; knowledgeRefresh();
+        try{
+          var office = /\.(docx?|pptx?|odt|odp|rtf)$/i.test(it.title), res = null, name = it.title;
+          if(office){ try{ res = await odApi("/fetch", { itemId:it.id, pdf:true }); name = it.title.replace(/\.[^.]+$/, "") + ".pdf"; }catch(e1){ res = null; } }
+          if(!res) res = await odApi("/fetch", { itemId:it.id });
+          var blob = await res.blob(), file = new File([blob], /\.csv$/i.test(name) ? name.replace(/\.csv$/i, ".txt") : name, { type:blob.type });
+          var r = await X.read(file, function(){}, { ocr:!!src.ocr });
+          await sb.from("knowledge_chunks").delete().eq("item_id", it.id);
+          var chunks = K.chunks(r.pages).map(function(ch){ return { item_id:it.id, page:ch.page, content:ch.content }; });
+          for(var i = 0; i < chunks.length; i += 200){ var cr = await sb.from("knowledge_chunks").insert(chunks.slice(i, i + 200)); if(cr.error) throw cr.error; }
+          var c = K.classify({ name:it.title, text:r.text });
+          await sb.from("knowledge_items").update({ index_status:"indexed", summary:c.summary || "", updated_at:new Date().toISOString() }).eq("id", it.id).eq("index_status", "pending");
+          KN.od.reading.done++;
+        }catch(err){
+          console.warn("OneDrive read", err && err.message);
+          await sb.from("knowledge_items").update({ index_status:"failed", updated_at:new Date().toISOString() }).eq("id", it.id);
+        }
+      }
+    } finally {
+      var did = KN.od.reading.done; KN.od.reading = null;
+      if(did){ await knowledgeFetch(); if(KN.meaning.ready) knowledgeMeaning(); }
+      knowledgeRefresh();
+    }
+  }
+  // "Save a copy in the planner": the owner's explicit choice to keep this one file in private storage.
+  async function knowledgeSaveCopy(id){
+    var it = (KN.items || []).find(function(x){ return x.id === id; });
+    if(!it || !it.onedrive) return;
+    var say = function(t){ if(knowledgeHandle) knowledgeHandle.progress(t); };
+    try{
+      say("Copying “" + it.title + "” into the planner…");
+      var res = await odApi("/fetch", { itemId:id, purpose:"save" }), blob = await res.blob();
+      if(KN.usage && KN.usage.bytes + blob.size > KN_PLAN_LIMIT){ say(""); toast("That would go over the storage limit, so no copy was saved."); return; }
+      var safe = it.title.replace(/[^A-Za-z0-9._-]+/g, "_").slice(-80), path = currentUser.id + "/" + id + "/" + safe;
+      var up = await sb.storage.from("knowledge").upload(path, blob, { contentType:blob.type || "application/octet-stream", upsert:true });
+      if(up.error) throw up.error;
+      await sb.from("knowledge_files").insert({ item_id:id, storage_path:path, file_name:it.title, mime:blob.type || "", size_bytes:blob.size, pages:null });
+      await sb.from("knowledge_items").update({ saved_copy:true }).eq("id", id);
+      await knowledgeFetch(); knowledgeRefresh(); say(""); toast("A copy is saved in the planner. The file in OneDrive is unchanged.");
+    }catch(err){ say(""); toast("No copy was saved: " + (err && err.message ? err.message : "unknown problem")); }
+  }
   function renderKnowledge(){
     if(activeSection !== "knowledge") return;
     var host = document.getElementById("knowledgeSection");
     if(!knowledgeFetching) knowledgeFetching = knowledgeFetch();
     Promise.all([knowledgeLoadScripts(), knowledgeFetching]).then(function(){
       if(activeSection !== "knowledge") return;
-      if(knowledgeHandle){ knowledgeHandle.update(knowledgeData()); knowledgeSpiderPoll(); return; }
+      if(knowledgeHandle){ knowledgeHandle.update(knowledgeData()); knowledgeSpiderPoll(); if(!KN.od.loaded) knowledgeOdStatus().then(knowledgeIndexQueue); return; }
       knowledgeHandle = window.PPKnowledge.mount(host, Object.assign(knowledgeData(), {
         css: "knowledge/knowledge.css?v=" + KNOWLEDGE_VER,
         onUpload: knowledgeUpload, onSearch: knowledgeSearch, onPatch: knowledgePatch, onArchive: knowledgeArchive, onCreate: knowledgeCreate,
         onOpenFile: knowledgeOpenFile, onSetting: knowledgeSetting, onMeaning: knowledgeMeaning, onLink: knowledgeLink, onUnlink: function(a, b){ return knowledgeUnlink(a, b); }, onPreview: knowledgePreview, onBulk: knowledgeBulk, onBulkArchive: knowledgeBulkArchive, onTopic: knowledgeTopic,
-        onOpenMirror: function(){ showSection("self"); renderAll(); }
+        onOpenMirror: function(){ showSection("self"); renderAll(); },
+        onOneDrive: knowledgeOd, onSaveCopy: knowledgeSaveCopy
       }));
+      knowledgeOdStatus().then(knowledgeIndexQueue);
       if(KN.meaning.ready) knowledgeEmbedder().catch(function(){});
       knowledgeSpiderPoll();
     }).catch(function(err){

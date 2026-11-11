@@ -91,3 +91,11 @@ svg text{font-family:var(--sans);fill:var(--text);pointer-events:none;user-selec
 @keyframes spp{50%{opacity:.3}}.spbar .btn{margin-left:auto}.spbtn .ic{width:16px;height:16px}
 @container kn (min-width:900px){.spbar{margin:0 28px 14px}}
 @media (prefers-reduced-motion:reduce){.spider.walk .leg,.spbar.live .spdot{animation:none}}
+/* OneDrive */
+.n .odb circle{fill:var(--panel);stroke:var(--c);stroke-width:1.2}
+.n .odb path{fill:none;stroke:var(--text);stroke-width:1.1;stroke-linecap:round;stroke-linejoin:round}
+.odtag{font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:0 6px;margin-left:6px;white-space:nowrap}
+.crumbs{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+.crumbs [aria-current]{color:var(--text)}
+.ck{display:flex;gap:8px;align-items:center;margin-top:8px;font-size:14px;cursor:pointer}
+.odsrc .f{margin-top:8px}
