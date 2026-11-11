@@ -2401,8 +2401,8 @@ tool("upsert_workout", {
   inputSchema: z.object({
     sourceId: z.string().min(1).describe("Hevy's workout id (from its URL). If there is none, use 'manual-YYYY-MM-DD-1'"),
     date: DAY,
-    startedAt: z.string().optional().describe("ISO timestamp with offset, e.g. 2026-11-08T18:30:00+01:00"),
-    durationMinutes: z.number().int().min(1).max(600).optional(),
+    startedAt: z.string().optional().describe("ALWAYS send it when Hevy shows it: the workout's start_time as an ISO timestamp with offset, e.g. 2026-11-08T18:30:00+01:00. Without it the Command Center cannot place the workout on the timeline"),
+    durationMinutes: z.number().int().min(1).max(600).optional().describe("Hevy's end_time minus start_time, in whole minutes (not the sum of set times)"),
     routine: z.string().optional().describe("e.g. 'Full Body A' — used for the A → B → C rotation"),
     title: z.string().optional(),
     notes: z.string().optional(),

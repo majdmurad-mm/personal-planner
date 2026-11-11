@@ -208,3 +208,6 @@ textarea.in{min-height:76px;resize:vertical}
 /* Sol is white: in light mode a thin outline keeps the white edge and dot visible on the cream card */
 .it{box-shadow:-1px 0 0 0 var(--co,transparent)}.blk{box-shadow:inset 0 0 0 1px var(--co,transparent)}
 .dot,.legend button i,.mo .dots i.e,.it .sec i{box-shadow:0 0 0 1px var(--co,transparent)}
+.wochips{display:grid;gap:6px;margin:0 0 8px}
+.wochip{display:block;width:100%;text-align:left;font-size:12.5px;padding:5px 10px;border-radius:8px;background:var(--area-health-soft);color:var(--area-health-text);border-left:3px solid var(--area-health);font-weight:500}
+.wochip .nt{font-weight:400;opacity:.8;font-size:11.5px}.wochip.sm{font-size:10.5px;padding:1px 5px;margin-top:4px;border-left-width:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
