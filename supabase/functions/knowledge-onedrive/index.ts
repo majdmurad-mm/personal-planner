@@ -355,7 +355,7 @@ async function applyPage(src: any, items: any[], folders: Record<string, { n: st
   const files = items.filter((it) => it.file || (it.deleted && !it.folder));
   if (!files.length) return;
   const ids = files.map((f) => f.id);
-  const have = await db.from("knowledge_items").select("id,provider_item_id,ctag,etag,remote_path,title,index_status,archived_at,source_id").eq("user_id", src.user_id).eq("provider", "onedrive").in("provider_item_id", ids);
+  const have = await db.from("knowledge_items").select("id,provider_item_id,ctag,etag,remote_path,title,index_status,archived_at,source_id,meta").eq("user_id", src.user_id).eq("provider", "onedrive").in("provider_item_id", ids);
   // deno-lint-ignore no-explicit-any
   const byPid: Record<string, any> = {}; for (const h of have.data || []) byPid[h.provider_item_id] = h;
   const now = new Date().toISOString();
@@ -389,7 +389,7 @@ async function applyPage(src: any, items: any[], folders: Record<string, { n: st
     if (changed || cur.index_status !== verdict.status && !(cur.index_status === "indexed" && verdict.status === "pending")) row.index_status = verdict.status;
     if (verdict.status !== "pending" && cur.index_status === "indexed") await db.from("knowledge_chunks").delete().eq("item_id", cur.id);   // stop keeping text the owner no longer allows
     if (changed && verdict.status === "pending") await db.from("knowledge_chunks").delete().eq("item_id", cur.id);
-    const meta = { folder: folderOf(src, rel), ext: ext(f.name) };
+    const meta = { ...(cur.meta || {}), folder: folderOf(src, rel), ext: ext(f.name) };
     await db.from("knowledge_items").update({ ...row, meta }).eq("id", cur.id);
   }
 }

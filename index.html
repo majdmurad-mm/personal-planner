@@ -20616,7 +20616,7 @@
   /* Knowledge page (knowledge/): files and saved items, sorted and linked. Files are read in the browser;
      rows live in the knowledge_* tables and files in the private "knowledge" bucket, all behind RLS.
      Bump KNOWLEDGE_VER with each release of knowledge/*. */
-  var KNOWLEDGE_VER = "5", knowledgeLoading = null, knowledgeHandle = null, knowledgeFetching = null;
+  var KNOWLEDGE_VER = "6", knowledgeLoading = null, knowledgeHandle = null, knowledgeFetching = null;
   var KN = { items:null, edges:[], topics:{}, files:{}, settings:{ external:{} }, usage:null, meaning:{ ready:false, pending:0, busy:false } };
   var KN_MAX_FILE = 50 * 1024 * 1024, KN_PLAN_LIMIT = 1024 * 1024 * 1024;   // free-plan figures, shown as a guide
   function knowledgeLoadScripts(){
@@ -20810,7 +20810,10 @@
     if(!it) return;
     var payload = { updated_at:new Date().toISOString() }, zone = patch.zone || it.zone;
     ["title", "zone", "type", "summary", "why", "tags"].forEach(function(k){ if(patch[k] !== undefined) payload[k] = patch[k]; });
-    if(patch.folder !== undefined){ var m2 = Object.assign({}, it.meta || {}); if(patch.folder) m2.folder = patch.folder; else delete m2.folder; payload.meta = m2; }
+    if(patch.folder !== undefined || patch.area !== undefined){ var m2 = Object.assign({}, it.meta || {});
+      if(patch.folder !== undefined && !it.onedrive){ if(patch.folder) m2.folder = patch.folder; else delete m2.folder; }
+      if(patch.area !== undefined){ if(patch.area) m2.area = patch.area; else delete m2.area; }
+      payload.meta = m2; }
     if(patch.needsSort !== undefined) payload.needs_sort = patch.needsSort;
     if(patch.topic !== undefined || patch.zone !== undefined) payload.topic_id = await knowledgeTopicId(zone, patch.topic !== undefined ? patch.topic : it.topic);
     var before = { title:it.title, zone:it.zone, type:it.type, summary:it.summary, why:it.why, tags:it.tags, needs_sort:it.needsSort };

@@ -83,6 +83,43 @@
     return { zone: K.zoneOfType(type), type: type, confidence: +conf.toFixed(2), needsSort: conf < 0.55, lang: lang, meta: meta, title: K.titleFrom(name, text), summary: K.sentences(text, 3) };
   };
 
+  /* ---------- life areas (the planner's colour code): from the owner's choice, else the name and the folders ---------- */
+  K.AREAS = [["task", "Tasks & money"], ["work", "Work"], ["health", "Health"], ["growth", "Growth & knowledge"], ["people", "People"], ["sol", "Sol"], ["none", "No area"]];
+  K.areaName = function (a) { var h = K.AREAS.filter(function (x) { return x[0] === a; })[0]; return h ? h[1] : "No area"; };
+  var AREA_RULES = [
+    ["health", /health|gesund|[aä]rzt|aerzt|klinik|krankenhaus|praxis|befund|impf|vaccin|rezept|therap|medical|medizin|diagnos|sleep|nutrition|fitness|workout/i],
+    ["work", /arbeitsvertrag|arbeitszeugnis|arbeitgeber|employer|employment|onboarding|lebenslauf|\bcv\b|resume|job.?offer|offer.?letter|minijob|career|karriere|payslip|gehalt|lohnabrechnung|entgeltabrechnung|verdienst|arbeitsagentur|jobcenter|\bjob\b/i],
+    ["task", /miet|wohnung|vermiet|nebenkosten|betriebskosten|umzug|selbstauskunft|schufa|k[uü]ndigung|rechnung|invoice|quittung|receipt|steuer|finanzamt|\btax\b|konto|ums[aä]tze|transactions|statement|\bbank|paypal|kredit|darlehen|bauspar|versicherung|insurance|krankenkasse|rundfunk|vertrag|contract|financ|finanz|depot|broker|wertpapier|aufenthalt|ausweis|passport|reisepass|anmeldung|meldebescheinigung|b[uü]rgeramt|ausl[aä]nderbeh/i],
+    ["growth", /certificat|zertifikat|zeugnis|diplom|degree|kurs\b|course|sprachkurs|universit|studium|transcript/i],
+    ["people", /\bmama\b|\bpapa\b|mutter|vater|familie|family|geburtstag|birthday|hochzeit|wedding/i]
+  ];
+  var TYPE_AREA = { payslip: "work", certificate: "growth", contract: "task", tax: "task", insurance: "task", invoice: "task", id: "task", letter: "task" };
+  var TOPIC_AREA = { "Health": "health", "Tax & pay": "task", "Finance": "task", "Insurance": "task", "Housing & tenancy": "task", "Identity & residence": "task", "Education & certificates": "growth", "GIS & remote sensing": "growth", "Urban planning": "growth", "AI": "growth", "Software & tools": "growth" };
+  var areaIn = function (s) { s = String(s || ""); for (var k = 0; k < AREA_RULES.length; k++) if (AREA_RULES[k][1].test(s)) return AREA_RULES[k][0]; return null; };
+  // folders of an item, deepest first (the closest folder says the most)
+  K.folders = function (it) {
+    var p = it.onedrive && it.onedrive.path ? String(it.onedrive.path).split("/").slice(0, -1) : String((it.meta && it.meta.folder) || "").split(" / ");
+    return p.map(function (x) { return x.trim(); }).filter(Boolean).reverse();
+  };
+  K.areaOf = function (it) {
+    var own = it.meta && it.meta.area; if (own && K.AREAS.some(function (x) { return x[0] === own; })) return own;
+    var a = areaIn(it.title); if (a) return a;
+    var f = K.folders(it); for (var k = 0; k < f.length; k++) { a = areaIn(f[k]); if (a) return a; }
+    if (TYPE_AREA[it.type]) return TYPE_AREA[it.type];
+    if (TOPIC_AREA[it.topic]) return TOPIC_AREA[it.topic];
+    return it.zone === "documents" || K.isCustomZone(it.zone) ? "none" : "growth";
+  };
+  // OneDrive: the first folder below the mapped folder is a cluster, the next one its sub-cluster
+  K.folderLevels = function (it, sources) {
+    if (!it.onedrive) { var mf = (it.meta && it.meta.folder) || "No folder"; return [mf, it.topic || "General"]; }
+    var dirs = String(it.onedrive.path || "").split("/").filter(Boolean).slice(0, -1), src = (sources || []).filter(function (s) { return s.id === it.onedrive.sourceId; })[0];
+    var base = src && src.path ? String(src.path).split("/").filter(Boolean) : [], n = 0;
+    while (n < base.length && n < dirs.length && dirs[n].toLowerCase() === base[n].toLowerCase()) n++;
+    if (!n && dirs.length > 1) n = 1;
+    var root = (base[base.length - 1] || dirs[n - 1] || "OneDrive"), rest = dirs.slice(n);
+    return [rest.length ? rest[0] : root + " (top level)", rest.length > 1 ? rest[1] : "in this folder"];
+  };
+
   /* ---------- topics ---------- */
   var TOPICS = [
     ["Housing & tenancy", /miet|wohnung|vermieter|tenan|rent\b|rental|landlord|housing|flat\b|apartment|sublet|k[uü]ndigungsfrist|notice period/i],
@@ -197,7 +234,7 @@
   K.filter = function (items, f) {
     return items.filter(function (i) {
       if (i.archived) return false;
-      if (f.zone && i.zone !== f.zone) return false; if (f.type && i.type !== f.type) return false; if (f.topic && i.topic !== f.topic) return false; if (f.source && i.source !== f.source) return false;
+      if (f.zone && i.zone !== f.zone) return false; if (f.area && K.areaOf(i) !== f.area) return false; if (f.type && i.type !== f.type) return false; if (f.topic && i.topic !== f.topic) return false; if (f.source && i.source !== f.source) return false;
       if (f.from && String(i.createdAt || "").slice(0, 10) < f.from) return false; if (f.to && String(i.createdAt || "").slice(0, 10) > f.to) return false;
       return true;
     });
