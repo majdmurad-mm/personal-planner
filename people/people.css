@@ -219,3 +219,17 @@ svg .nd,svg .ln{transition:opacity .25s}
 .famlist{overflow-y:auto;margin-top:14px;border-top:1px solid var(--line)}
 .famrow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:9px 2px;border-bottom:1px solid var(--line)}.famname{flex:1;min-width:150px;font-weight:600}
 .famrow.todo .famname::before{content:"○ ";color:var(--muted)}.famrow:not(.todo) .famname::before{content:"● ";color:var(--muted)}
+
+/* typed family tree */
+.tl.pair.lite{stroke-opacity:.38;stroke-dasharray:1 3;stroke-width:1.6}
+.nd .memring{fill:none;stroke:var(--muted);stroke-width:1;stroke-dasharray:1.5 3;opacity:.8}
+.nd.mem .disc{opacity:.78}
+.nd.hit .disc{stroke:var(--text);stroke-width:2.6}
+.fold{cursor:pointer;outline:none}.fold circle{fill:var(--bg);stroke:var(--muted);stroke-width:1.2}
+.fold text{fill:var(--muted);font:600 9px var(--font-t);text-anchor:middle;dominant-baseline:central;pointer-events:none}
+.fold:hover circle,.fold:focus-visible circle{stroke:var(--text);stroke-width:2}
+.sidebtn{cursor:pointer;outline:none}.sidebtn rect{fill:var(--bg);stroke:var(--muted);stroke-width:1}
+.sidebtn text{fill:var(--text);font:500 11.5px var(--font-t);text-anchor:middle;dominant-baseline:central;pointer-events:none}
+.sidebtn.on rect{fill:var(--text)}.sidebtn.on text{fill:var(--bg)}
+.sidebtn:focus-visible rect{stroke:var(--text);stroke-width:2}
+.nd.tr.mem .disc{fill:var(--gc,var(--peri));fill-opacity:.62}

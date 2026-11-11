@@ -55,7 +55,7 @@
     P.forEach(function (p) { p.sits.sort(function (a, b) { return a.date === b.date ? (a.at < b.at ? 1 : -1) : (a.date < b.date ? 1 : -1); }); });
     (raw.links || []).forEach(function (l) {
       var a = byId[l.person_a], b = byId[l.person_b]; if (!a || !b || l.archived_at) return;
-      a.links.push({ id: b.id, linkId: l.id, quality: l.quality }); b.links.push({ id: a.id, linkId: l.id, quality: l.quality });
+      a.links.push({ id: b.id, linkId: l.id, quality: l.quality, kind: l.kind || null, parent: l.from_person || null }); b.links.push({ id: a.id, linkId: l.id, quality: l.quality, kind: l.kind || null, parent: l.from_person || null });
     });
     (raw.actions || []).forEach(function (a) { (a.people || []).forEach(function (id) { var p = byId[id]; if (p) p.threads.push({ id: a.id, t: a.title, date: a.date || null }); }); });
     (raw.events || []).forEach(function (e) {

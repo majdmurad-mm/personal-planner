@@ -4142,7 +4142,7 @@
       <div class="field"><label for="personNameInput">name</label><input type="text" id="personNameInput" placeholder="e.g. Sam Rivera"></div>
       <div class="field"><label>relationship</label><div class="chip-select" id="personRelSelect">
         <div class="chip-opt sel" role="button" tabindex="0" data-r="Family">Family</div><div class="chip-opt" role="button" tabindex="0" data-r="Friend">Friend</div><div class="chip-opt" role="button" tabindex="0" data-r="Colleague">Colleague</div>
-        <div class="chip-opt" role="button" tabindex="0" data-r="Mentor">Mentor</div><div class="chip-opt" role="button" tabindex="0" data-r="Partner">Partner</div><div class="chip-opt" role="button" tabindex="0" data-r="Other">Other</div>
+        <div class="chip-opt" role="button" tabindex="0" data-r="Mentor">Mentor</div><div class="chip-opt" role="button" tabindex="0" data-r="Partner">Partner</div><div class="chip-opt" role="button" tabindex="0" data-r="Ex">Ex</div><div class="chip-opt" role="button" tabindex="0" data-r="Acquaintance">Acquaintance</div><div class="chip-opt" role="button" tabindex="0" data-r="Other">Other</div>
       </div></div>
       <div class="field-row">
         <div class="field"><label for="personContactInput">contact (optional)</label><input type="text" id="personContactInput" placeholder="email, phone, or handle"></div>
@@ -4840,7 +4840,7 @@
     if(icon.indexOf("data:") === 0) return icon;
     return libraryIconDataUri(icon);
   }
-  var RELATIONSHIPS = ["Family","Friend","Colleague","Mentor","Partner","Other"];
+  var RELATIONSHIPS = ["Family","Friend","Colleague","Mentor","Partner","Ex","Acquaintance","Other"];
 
   function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
   function nextPosition(arr){ return arr.length ? Math.max.apply(null, arr.map(function(x){ return x.position||0; })) + 1 : 0; }
@@ -14742,7 +14742,7 @@
     if(!del) return;
     await deletePerson(del.dataset.id);
   });
-  var PEOPLE_RELATIONSHIP_OPTS = ["Family","Friend","Colleague","Mentor","Partner","Other"];
+  var PEOPLE_RELATIONSHIP_OPTS = ["Family","Friend","Colleague","Mentor","Partner","Ex","Acquaintance","Other"];
   function renderPeopleTable(list){
     function textCell(field, val, listId){
       var listAttr = listId ? ' list="' + listId + '"' : '';
@@ -20085,7 +20085,7 @@
   }
   /* People page (constellation and list). Same pattern as Health: loaded on first open, in order, and
      versioned against the service worker's cache-first rule: bump PEOPLE_VER with each release of people/*. */
-  var PEOPLE_VER = "4", peopleLoading = null, peopleNotesMemo = null;
+  var PEOPLE_VER = "5", peopleLoading = null, peopleNotesMemo = null;
   // The 3D graph is parked: it only shows after localStorage.setItem("pp_people_3d", "1").
   function people3dEnabled(){ try{ return localStorage.getItem("pp_people_3d") === "1"; } catch(e){ return false; } }
   function peopleLoadScripts(){

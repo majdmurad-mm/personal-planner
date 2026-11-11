@@ -57,7 +57,16 @@ const BUILD_COMMIT = "__BUILD_COMMIT__", BUILD_TIME = "__BUILD_TIME__";
 const BOOTED_AT = new Date().toISOString();
 const OWNER_TOOLS: string[] = [];
 const ACTION_TYPES = ["Call", "Email", "Meeting", "Research", "Write", "Review", "Task", "Follow-up"] as const;
-const RELATIONSHIPS = ["Family", "Friend", "Colleague", "Mentor", "Partner", "Other"] as const;
+const RELATIONSHIPS = ["Family", "Friend", "Colleague", "Mentor", "Partner", "Ex", "Acquaintance", "Other"] as const;
+const LINK_KINDS = ["parent_of", "spouse", "partner", "ex_partner", "sibling", "other"] as const;
+// For parent_of, from_person is the parent (personA unless parent names personB). Other kinds have no direction.
+async function linkDirection(kind: string, aId: string, bId: string, parentRef?: string): Promise<{ from?: string | null; error?: string }> {
+  if (kind !== "parent_of") return { from: null };
+  if (!parentRef) return { from: aId };
+  const f = await findPerson(parentRef); if (!f.person) return { error: f.error };
+  if (f.person.id !== aId && f.person.id !== bId) return { error: "parent must be one of the two people" };
+  return { from: f.person.id };
+}
 const NOTE_TYPES = ["reflection", "reference", "idea", "decision"] as const;
 const WEEKDAY_ABBR = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -1974,10 +1983,12 @@ tool("set_relationship", {
 
 tool("link_people", {
   description:
-    "Record that two people in the user's network know each other, and how things are between them (quality defaults to ok). Shown as a line between them on the People map. Pass remove: true to take the link away again (it is archived, not deleted).",
+    "Record that two people in the user's network are connected, how (kind) and how things are between them (quality defaults to ok on a new link). kind: parent_of (personA is the parent of personB, unless parent names the other), spouse, partner (not married), ex_partner, sibling, other. Family kinds build the People page's family tree. Calling again updates the link; pass remove: true to take it away (archived, not deleted).",
   inputSchema: z.object({
     personA: PERSON_REF,
     personB: PERSON_REF,
+    kind: z.enum(LINK_KINDS).optional(),
+    parent: PERSON_REF.optional().describe("for parent_of: which of the two is the parent (default personA)"),
     quality: z.enum(QUALITY).optional(),
     note: z.string().max(500).optional(),
     remove: z.boolean().optional(),
@@ -1994,11 +2005,76 @@ tool("link_people", {
       if (error) return fail(error.message);
       return ok({ ok: true, removed: true, between: [fa.person.name, fb.person.name] });
     }
-    const row: Record<string, unknown> = { user_id: OWNER, person_a: a, person_b: b, quality: args.quality || "ok", archived_at: null };
+    const prev = await db.from("person_links").select("id,quality").eq("person_a", a).eq("person_b", b).maybeSingle();
+    const row: Record<string, unknown> = { user_id: OWNER, person_a: a, person_b: b, quality: args.quality || (prev.data ? prev.data.quality : "ok"), archived_at: null };
     if (args.note !== undefined) row.note = args.note;
-    const { data, error } = await db.from("person_links").upsert(row, { onConflict: "person_a,person_b" }).select().single();
+    if (args.kind !== undefined) {
+      const dir = await linkDirection(args.kind, fa.person.id, fb.person.id, args.parent);
+      if (dir.error) return fail(dir.error);
+      row.kind = args.kind; row.from_person = dir.from;
+    }
+    const { data, error } = await safeWrite((p) => db.from("person_links").upsert(p, { onConflict: "person_a,person_b" }).select().single(), row);
     if (error) return fail(error.message);
-    return ok({ ok: true, id: data.id, between: [fa.person.name, fb.person.name], quality: data.quality });
+    return ok({ ok: true, id: data.id, between: [fa.person.name, fb.person.name], quality: data.quality, kind: data.kind || null, parent: data.from_person ? (data.from_person === fa.person.id ? fa.person.name : fb.person.name) : null });
+  },
+});
+
+tool("set_link_kind", {
+  description: "Fix the kind of an existing link between two people without recreating it (note and quality stay). kind: parent_of (personA is the parent unless parent names the other), spouse, partner, ex_partner, sibling, other.",
+  inputSchema: z.object({ personA: PERSON_REF, personB: PERSON_REF, kind: z.enum(LINK_KINDS), parent: PERSON_REF.optional() }),
+  // deno-lint-ignore no-explicit-any
+  handler: async (args: any) => {
+    const fa = await findPerson(args.personA), fb = await findPerson(args.personB);
+    if (!fa.person) return fail(fa.error!); if (!fb.person) return fail(fb.error!);
+    const a = fa.person.id < fb.person.id ? fa.person.id : fb.person.id, b = a === fa.person.id ? fb.person.id : fa.person.id;
+    const cur = await db.from("person_links").select("id").eq("user_id", OWNER).eq("person_a", a).eq("person_b", b).is("archived_at", null).maybeSingle();
+    if (!cur.data) return fail("Those two are not linked yet; use link_people.");
+    const dir = await linkDirection(args.kind, fa.person.id, fb.person.id, args.parent);
+    if (dir.error) return fail(dir.error);
+    const up = await db.from("person_links").update({ kind: args.kind, from_person: dir.from }).eq("id", cur.data.id).select().single();
+    if (up.error) return fail(up.error.message + (/kind/.test(up.error.message) ? " (run _Memory/migration_people_link_kinds.sql)" : ""));
+    return ok({ ok: true, link: { id: up.data.id, between: [fa.person.name, fb.person.name], kind: up.data.kind, parent: up.data.from_person ? (up.data.from_person === fa.person.id ? fa.person.name : fb.person.name) : null, note: up.data.note, quality: up.data.quality } });
+  },
+});
+tool("get_family_tree", {
+  description: "The family tree the People page draws, rooted at the user: grandparents, parents, siblings, partner, and each side (the father's and the mother's siblings) as family units with partners and children, down the generations. Built from typed links (parent_of, spouse, partner, sibling) and the father/mother/brother/sister/partner roles. Also lists relatives not yet connected, exes (hidden on the page by default) and people in memory. Use it to check the tree after changes.",
+  inputSchema: z.object({}),
+  handler: async () => {
+    const [pp, ll] = await Promise.all([owned("people").is("archived_at", null), owned("person_links").is("archived_at", null)]);
+    if (pp.error) return fail(pp.error.message);
+    // deno-lint-ignore no-explicit-any
+    const P: Record<string, any> = {}; (pp.data || []).forEach((p: any) => { P[p.id] = p; });
+    // deno-lint-ignore no-explicit-any
+    const L = (ll.data || []).filter((l: any) => P[l.person_a] && P[l.person_b] && l.kind);
+    const other = (l: any, id: string) => l.person_a === id ? l.person_b : l.person_a;
+    const rel = (id: string, kinds: string[]) => L.filter((l: any) => (l.person_a === id || l.person_b === id) && kinds.includes(l.kind)).map((l: any) => other(l, id));
+    const children = (id: string) => L.filter((l: any) => l.kind === "parent_of" && l.from_person === id).map((l: any) => other(l, id));
+    const parents = (id: string) => L.filter((l: any) => l.kind === "parent_of" && l.from_person && l.from_person !== id && (l.person_a === id || l.person_b === id)).map((l: any) => l.from_person);
+    const placed = new Set<string>();
+    const tag = (id: string) => { placed.add(id); const p = P[id]; return { id, name: p.name, ...(p.in_memory ? { inMemory: true } : {}) }; };
+    // deno-lint-ignore no-explicit-any
+    const unit = (id: string, depth: number): any => {
+      const partners = rel(id, ["spouse", "partner"]).filter((x: string) => !placed.has(x) || x === id);
+      const me = tag(id), ps = partners.map((x: string) => ({ ...tag(x), kind: L.find((l: any) => l.kind !== "parent_of" && ((l.person_a === id && l.person_b === x) || (l.person_b === id && l.person_a === x)))?.kind }));
+      const kids = Array.from(new Set([id, ...partners].flatMap(children))).filter((k) => !placed.has(k));
+      return { ...me, partners: ps, exes: rel(id, ["ex_partner"]).map((x: string) => P[x].name), children: depth > 6 ? [] : kids.map((k) => unit(k, depth + 1)) };
+    };
+    const role = (r: string) => (pp.data || []).filter((p: any) => p.kin_role === r).map((p: any) => p.id);
+    const father = role("father")[0], mother = role("mother")[0];
+    const grand = (id?: string) => id ? parents(id).map(tag) : [];
+    const out: Record<string, unknown> = { root: "you" };
+    out.grandparents = { paternal: grand(father), maternal: grand(mother) };
+    out.parents = [father, mother].filter(Boolean).map((id) => tag(id as string));
+    const sibs = Array.from(new Set([...role("brother"), ...role("sister"), ...[father, mother].filter(Boolean).flatMap((id) => children(id as string))]));
+    out.siblings = sibs.map((id) => unit(id, 1));
+    out.partner = role("partner").map(tag);
+    const side = (id?: string) => id ? rel(id, ["sibling"]).filter((x: string) => !placed.has(x)).map((x: string) => unit(x, 0)) : [];
+    out.paternalSide = side(father);
+    out.maternalSide = side(mother);
+    out.notConnected = (pp.data || []).filter((p: any) => (p.relationship === "Family" || p.kin_role) && !placed.has(p.id) && p.kin_role !== "ex").map((p: any) => p.name);
+    out.exes = L.filter((l: any) => l.kind === "ex_partner").map((l: any) => [P[l.person_a].name, P[l.person_b].name]);
+    out.counts = { inTree: placed.size, links: L.length, untypedLinks: (ll.data || []).filter((l: any) => !l.kind).length };
+    return ok(out);
   },
 });
 
@@ -2443,14 +2519,29 @@ tool("upsert_activity", {
 
 tool("log_body_metric", {
   description:
-    "Record a body measurement for a day: weight_kg, body_fat_pct, muscle_mass_kg or waist_cm. One value per metric per day; logging again for the same day replaces it.",
+    "Record a body measurement for a day: weight_kg, body_fat_pct, muscle_mass_kg or waist_cm (one value per metric per day; logging again for the same day replaces it), or blood_pressure with systolic, diastolic and optional pulse (several readings a day are kept; the same time again updates that reading).",
   inputSchema: z.object({
-    metric: z.enum(["weight_kg", "body_fat_pct", "muscle_mass_kg", "waist_cm"]),
-    value: z.number().positive().max(500),
+    metric: z.enum(["weight_kg", "body_fat_pct", "muscle_mass_kg", "waist_cm", "blood_pressure"]),
+    value: z.number().positive().max(500).optional().describe("for every metric except blood_pressure"),
+    systolic: z.number().int().min(50).max(260).optional(), diastolic: z.number().int().min(30).max(180).optional(), pulse: z.number().int().min(25).max(230).optional(),
+    measuredAt: z.string().optional().describe("blood pressure: ISO time with offset; default now"),
+    note: z.string().max(200).optional(),
     date: DAY.optional().describe("defaults to today (Berlin)"),
     source: z.string().optional().describe("where it came from: garmin, scale, manual"),
   }),
   handler: async (a: any) => {
+    if (a.metric === "blood_pressure") {
+      if (a.systolic == null || a.diastolic == null) return fail("blood_pressure needs systolic and diastolic.");
+      if (a.diastolic >= a.systolic) return fail("diastolic should be lower than systolic; check the order.");
+      const at = a.measuredAt ? new Date(a.measuredAt) : new Date();
+      if (isNaN(at.getTime())) return fail("measuredAt is not a valid time.");
+      const day = a.date || at.toLocaleDateString("en-CA", { timeZone: "Europe/Berlin" });
+      const r = await healthUpsert("bp_readings", { measured_at: at.toISOString() }, { date: day, systolic: a.systolic, diastolic: a.diastolic, pulse: a.pulse ?? null, note: a.note ?? null, source: a.source || "manual" });
+      if (r.error) return fail(r.error + " (run _Memory/migration_health_v3.sql)");
+      const row = (await owned("bp_readings").eq("id", r.id!).single()).data;
+      return ok({ ok: true, result: r.result, reading: row });
+    }
+    if (a.value == null) return fail("value is required for " + a.metric + ".");
     const date = a.date || berlinToday();
     const r = await healthUpsert("body_metrics", { date, metric: a.metric }, { value: a.value, source: a.source });
     if (r.error) return fail(r.error);
@@ -2624,10 +2715,216 @@ tool("get_health_summary", {
       bodyMetrics: (metrics.data || []).map(strip),
       latestBrief: briefs.data && briefs.data[0] ? strip(briefs.data[0]) : null,
       settings: settings.data && settings.data[0] ? strip(settings.data[0]) : null,
+      sleepNote: "Where a night has *_corrected fields, those are the user's corrections and win over the watch's values.",
+      ...(await (async () => {
+        const [ci, cond, ms, bp] = await Promise.all([
+          owned("health_checkins").is("archived_at", null).order("date", { ascending: false }).order("updated_at", { ascending: false }).limit(3),
+          owned("health_conditions").is("archived_at", null),
+          owned("health_milestones").is("archived_at", null),
+          owned("bp_readings").is("archived_at", null).gte("date", addDays(today, -90)).order("measured_at"),
+        ]);
+        const latest = (ci.data || [])[0] || null;
+        return {
+          latestCheckin: latest ? { date: latest.date, energy: latest.energy, note: latest.note, pains: latest.pains, by: latest.source } : null,
+          activePains: (flags.data || []).filter((f: any) => f.state !== "cleared").map((f: any) => ({ region: f.region, state: f.state, since: f.since, note: f.note })),
+          nextSession: await hvNextSession(),
+          nextCheckup: (cond.data || []).filter((c: any) => c.next_checkup).sort((p: any, q: any) => p.next_checkup.localeCompare(q.next_checkup)).map((c: any) => ({ date: c.next_checkup, condition: c.name }))[0] || null,
+          conditions: (cond.data || []).map((c: any) => ({ id: c.id, name: c.name, note: c.note, checkupEveryMonths: c.checkup_every_months, nextCheckup: c.next_checkup, metrics: c.metrics })),
+          milestones: (ms.data || []).map((m: any) => ({ kind: m.kind, since: m.since_date, days: -ccDiff(today, m.since_date) })),
+          bloodPressure90d: (bp.data || []).map((r: any) => ({ at: r.measured_at, systolic: r.systolic, diastolic: r.diastolic, pulse: r.pulse })),
+        };
+      })()),
       rules: "Readiness on the page = sleep 30%, resting HR 25%, HRV 20%, morning Body Battery 15%, previous-day stress 10%, each compared with the user's own 30-day baseline; missing inputs are re-weighted. Progression: every working set at the top of the rep range → add weight next time.",
     });
   },
 });
+
+// ==== HV3-BEGIN ====
+// ---- Health v3: routines and rotation, check-ins, sleep corrections, conditions, milestones, history ----
+// Tables: migration_health_v3.sql. Condition names stay inside Health: the Command Center reminder a
+// condition creates is titled only "Health check-up".
+const PAIN = z.object({ region: z.string().min(1).describe("snake_case body region: lower_back, upper_back, neck, shoulder, left_knee ..."), level: z.number().int().min(1).max(3).optional().describe("1 mild, 2 noticeable, 3 strong"), note: z.string().max(200).optional() });
+const e1rm = (w: number | null, r: number | null) => w != null && r != null && r > 0 ? Math.round(w * (1 + Math.min(r, 12) / 30) * 10) / 10 : null;
+async function hvRotation(): Promise<string[]> {
+  const r = await owned("health_routines").is("archived_at", null).not("position", "is", null).order("position");
+  if (!r.error && r.data && r.data.length) return r.data.map((x: any) => x.title);
+  const s = await owned("health_settings").limit(1);
+  const rot = s.data && s.data[0] && s.data[0].rotation;
+  return Array.isArray(rot) && rot.length ? rot : ["Full Body A", "Full Body B", "Full Body C"];
+}
+// The next planned session: the next gym block in the Command Center (or a base gym day), and the routine
+// that follows the last completed workout in the rotation.
+async function hvNextSession() {
+  const today = berlinToday(), rotation = await hvRotation();
+  const last = await owned("workouts").is("archived_at", null).order("date", { ascending: false }).order("started_at", { ascending: false }).limit(1);
+  const lastRoutine = last.data && last.data[0] ? (last.data[0].routine || last.data[0].title) : null;
+  const idx = lastRoutine ? rotation.findIndex((t) => t.toLowerCase() === String(lastRoutine).toLowerCase()) : -1;
+  const routine = rotation.length ? rotation[(idx + 1) % rotation.length] : null;
+  const blocks = await owned("actions").is("archived_at", null).eq("kind", "block");
+  const t = berlinNow(new Date()), GYM = /gym|workout|training|lift|strength|full body/i;
+  let when: { date: string; time: string | null; from: string } | null = null;
+  for (const b of (blocks.data || []).filter((x: any) => GYM.test(x.title || ""))) {
+    for (const d of ccDates(b, today, ccAdd(today, 21))) {
+      const tm = b.time_of_day ? String(b.time_of_day).slice(0, 5) : null;
+      if (d === today && tm && (ccMins(tm) as number) < t.nowMin) continue;
+      if (!when || d + (tm || "") < when.date + (when.time || "")) when = { date: d, time: tm, from: "Command Center: " + b.title };
+      break;
+    }
+  }
+  if (!when) {
+    const ps = await plannerSettings();
+    for (let i = 0; i < 8 && !when; i++) { const d = ccAdd(today, i), dow = ccDow(d) || 7; if ((ps.gymDays || []).includes(dow)) when = { date: d, time: null, from: "base gym days" }; }
+  }
+  return { date: when ? when.date : null, time: when ? when.time : null, scheduledBy: when ? when.from : "nothing scheduled", routine, lastRoutine, lastWorkoutDate: last.data && last.data[0] ? last.data[0].date : null, rotation };
+}
+
+tool("upsert_routine", {
+  description: "Save Hevy routines and the rotation order, so the planner knows which routine comes next. Idempotent per routine (Hevy's routine id, or its title). Pass rotation as the routine titles in order (e.g. ['Full Body A','Full Body B','Full Body C']); routines left out of a given rotation are taken out of it. Returns the routines and the rotation.",
+  inputSchema: z.object({
+    routines: z.array(z.object({ sourceId: z.string().optional().describe("Hevy's routine id"), title: z.string().min(1).max(80), exercises: z.array(z.object({ name: z.string().min(1), templateId: z.string().optional(), sets: z.number().int().min(0).max(20).optional() })).max(40).optional(), notes: z.string().max(500).optional() })).max(20).optional(),
+    rotation: z.array(z.string().min(1)).max(20).optional(),
+  }),
+  handler: async (a: any) => {
+    if (!a.routines && !a.rotation) return fail("Send routines, a rotation, or both.");
+    for (const r of a.routines || []) {
+      const u = await healthUpsert("health_routines", { source: "hevy", source_id: r.sourceId || r.title }, { title: r.title, exercises: r.exercises, notes: r.notes });
+      if (u.error) return fail(u.error);
+    }
+    if (a.rotation) {
+      const all = await owned("health_routines").is("archived_at", null);
+      if (all.error) return fail(all.error.message + HEALTH_HINT);
+      const lower = a.rotation.map((x: string) => x.toLowerCase());
+      for (const t of a.rotation) if (!(all.data || []).some((r: any) => r.title.toLowerCase() === t.toLowerCase())) { const u = await healthUpsert("health_routines", { source: "hevy", source_id: t }, { title: t }); if (u.error) return fail(u.error); }
+      const fresh = await owned("health_routines").is("archived_at", null);
+      for (const r of fresh.data || []) { const pos = lower.indexOf(r.title.toLowerCase()); const want = pos >= 0 ? pos + 1 : null; if (r.position !== want) await db.from("health_routines").update({ position: want, updated_at: new Date().toISOString() }).eq("id", r.id).eq("user_id", OWNER); }
+    }
+    const out = await owned("health_routines").is("archived_at", null).order("position", { nullsFirst: false });
+    return ok({ ok: true, rotation: await hvRotation(), routines: (out.data || []).map((r: any) => ({ id: r.id, title: r.title, position: r.position, exercises: r.exercises })) });
+  },
+});
+tool("get_next_session", {
+  description: "When the next workout is and which routine it should be: the next gym block in the Command Center (or the base gym days), and the routine after the last completed workout in the rotation.",
+  inputSchema: z.object({}),
+  handler: async () => ok(await hvNextSession()),
+});
+tool("get_workout_history", {
+  description: "Workouts newest first, each with date, routine, duration, volume and every exercise with its sets (warm-ups marked). Default: the last 30 days.",
+  inputSchema: z.object({ from: DAY.optional(), to: DAY.optional(), limit: z.number().int().min(1).max(200).optional() }),
+  handler: async (a: any) => {
+    const to = a.to || berlinToday(), from = a.from || addDays(to, -30);
+    const w = await owned("workouts").is("archived_at", null).gte("date", from).lte("date", to).order("date", { ascending: false }).limit(a.limit || 60);
+    if (w.error) return fail(w.error.message + HEALTH_HINT);
+    const ids = (w.data || []).map((x: any) => x.id);
+    const sets = ids.length ? await db.from("workout_sets").select("*").in("workout_id", ids).is("superseded_at", null).order("exercise_index").order("set_index") : { data: [] as any[] };
+    return ok({ from, to, workouts: (w.data || []).map((x: any) => {
+      const byEx: Record<string, any> = {};
+      (sets.data || []).filter((s: any) => s.workout_id === x.id).forEach((s: any) => { const e = byEx[s.exercise_index] = byEx[s.exercise_index] || { exercise: s.exercise, sets: [] }; e.sets.push({ weightKg: s.weight_kg, reps: s.reps, type: s.set_type, isPr: s.is_pr }); });
+      return { id: x.id, date: x.date, routine: x.routine || x.title, durationMinutes: x.duration_minutes, volumeKg: x.volume_kg, prs: x.pr_count, exercises: Object.keys(byEx).sort((p, q) => +p - +q).map((k) => byEx[k]) };
+    }) });
+  },
+});
+tool("get_exercise_progress", {
+  description: "Progress for one exercise over the last year: per session the top set, its reps, estimated 1RM (Epley) and total volume; personal records; days since it was last trained. Matches the exercise name loosely (case-insensitive, part of the name).",
+  inputSchema: z.object({ exercise: z.string().min(2).max(80) }),
+  handler: async (a: any) => {
+    const since = addDays(berlinToday(), -365);
+    const s = await db.from("workout_sets").select("workout_id,exercise,weight_kg,reps,set_type,is_pr").eq("user_id", OWNER).is("superseded_at", null).ilike("exercise", "%" + a.exercise.replace(/[%_]/g, " ") + "%").limit(5000);
+    if (s.error) return fail(s.error.message + HEALTH_HINT);
+    if (!(s.data || []).length) return ok({ exercise: a.exercise, sessions: [], note: "No sets logged for that exercise." });
+    const ids = Array.from(new Set((s.data || []).map((x: any) => x.workout_id)));
+    const w = await owned("workouts").is("archived_at", null).gte("date", since).in("id", ids);
+    const byW: Record<string, any> = {}; (w.data || []).forEach((x: any) => { byW[x.id] = x; });
+    const names = Array.from(new Set((s.data || []).map((x: any) => x.exercise)));
+    const sessions: any[] = [];
+    for (const id of Object.keys(byW)) {
+      const work = (s.data || []).filter((x: any) => x.workout_id === id && x.set_type !== "warmup");
+      const ws = work.filter((x: any) => x.weight_kg != null);
+      const top = ws.length ? Math.max(...ws.map((x: any) => Number(x.weight_kg))) : null;
+      const topReps = top == null ? null : Math.max(...ws.filter((x: any) => Number(x.weight_kg) === top).map((x: any) => Number(x.reps) || 0));
+      sessions.push({ date: byW[id].date, routine: byW[id].routine, topSetKg: top, topReps, e1rmKg: e1rm(top, topReps), volumeKg: Math.round(work.reduce((t: number, x: any) => t + (Number(x.weight_kg) || 0) * (Number(x.reps) || 0), 0)), sets: work.length, hevyPr: work.some((x: any) => x.is_pr) });
+    }
+    sessions.sort((p, q) => p.date.localeCompare(q.date));
+    let best = -1; for (const x of sessions) { x.record = x.topSetKg != null && x.topSetKg > best && best >= 0; if (x.topSetKg != null) best = Math.max(best, x.topSetKg); }
+    const lastDate = sessions.length ? sessions[sessions.length - 1].date : null;
+    return ok({ exercise: names.length === 1 ? names[0] : a.exercise, matchedNames: names, lastTrained: lastDate, daysSinceLastTrained: lastDate ? -ccDiff(berlinToday(), lastDate) : null, bestTopSetKg: best >= 0 ? best : null, bestE1rmKg: sessions.reduce((m: number | null, x: any) => x.e1rmKg != null && (m == null || x.e1rmKg > m) ? x.e1rmKg : m, null), sessions });
+  },
+});
+tool("log_checkin", {
+  description: "Record how the body feels today: energy 1 (very low) to 5 (great), a short note in the user's words, and any pains. One check-in per day per author; sending again the same day updates it. Pains also mark the region on the body figure (as a 'watch' flag, unless one is already open). Returns the check-in.",
+  inputSchema: z.object({ energy: z.number().int().min(1).max(5), note: z.string().max(400).optional(), pains: z.array(PAIN).max(8).optional(), date: DAY.optional().describe("defaults to today (Berlin)"), source: z.enum(["claude", "me"]).optional().describe("who wrote it; default claude") }),
+  handler: async (a: any) => {
+    const date = a.date || berlinToday(), source = a.source || "claude";
+    const pains = (a.pains || []).map((p: any) => ({ region: String(p.region).trim().toLowerCase().replace(/[\s-]+/g, "_"), level: p.level || 1, note: p.note || "" }));
+    const r = await healthUpsert("health_checkins", { date, source }, { energy: a.energy, note: a.note ?? null, pains });
+    if (r.error) return fail(r.error);
+    for (const p of pains) {
+      const cur = await owned("health_flags").eq("region", p.region).maybeSingle();
+      if (!cur.data || cur.data.state === "cleared" || cur.data.archived_at) await healthUpsert("health_flags", { region: p.region }, { state: "watch", note: p.note || "Mentioned in a check-in.", since: date, archived_at: null });
+    }
+    const row = await owned("health_checkins").eq("id", r.id!).single();
+    return ok({ ok: true, result: r.result, checkin: row.data });
+  },
+});
+tool("set_sleep_correction", {
+  description: "Correct one night when the watch got the bedtime or wake time wrong. date is the day the night ENDED on. The corrected times (and the time asleep worked out from them, unless you pass minutes) are used everywhere on the page; the watch's own values are kept for reference. Send clear: true to remove a correction.",
+  inputSchema: z.object({ date: DAY, bedtime: CLOCK.optional(), waketime: CLOCK.optional(), asleepMinutes: z.number().int().min(0).max(1440).optional().describe("if you know the actual time asleep; otherwise wake minus bed"), clear: z.boolean().optional() }),
+  handler: async (a: any) => {
+    if (a.clear) { const r = await healthUpsert("health_daily", { date: a.date }, { bed_time_corrected: null, wake_time_corrected: null, sleep_minutes_corrected: null, corrected_at: null }); if (r.error) return fail(r.error); }
+    else {
+      if (!a.bedtime || !a.waketime) return fail("Send both bedtime and waketime (HH:MM), or clear: true.");
+      let m = (ccMins(a.waketime) as number) - (ccMins(a.bedtime) as number); if (m <= 0) m += 1440;
+      if (m > 960) return fail("That is more than 16 hours in bed; check the times (bedtime is the evening before the date).");
+      const r = await healthUpsert("health_daily", { date: a.date }, { bed_time_corrected: a.bedtime, wake_time_corrected: a.waketime, sleep_minutes_corrected: a.asleepMinutes ?? m, corrected_at: new Date().toISOString() });
+      if (r.error) return fail(r.error);
+    }
+    const row = await owned("health_daily").eq("date", a.date).single();
+    const d = row.data || {};
+    return ok({ ok: true, date: a.date, used: { bedtime: hhmm(d.bed_time_corrected || d.bed_time), waketime: hhmm(d.wake_time_corrected || d.wake_time), asleepMinutes: d.sleep_minutes_corrected ?? d.sleep_minutes, corrected: !!d.corrected_at }, watch: { bedtime: hhmm(d.bed_time), waketime: hhmm(d.wake_time), asleepMinutes: d.sleep_minutes } });
+  },
+});
+const BODY_AREAS = ["heart", "lungs", "brain", "liver", "kidneys", "stomach", "skin", "joints", "eyes", "other"] as const;
+tool("set_health_condition", {
+  description: "Add or update a monitored condition (matched by name; private, shown only on the Health page): a short note, a check-up rhythm, the next check-up date and the metrics to watch (e.g. blood_pressure, weight_kg). A next check-up creates or moves one Command Center reminder titled only 'Health check-up' (the name stays private). archived: true hides it and archives its reminder. Returns the condition.",
+  inputSchema: z.object({ name: z.string().min(1).max(80), note: z.string().max(400).optional(), checkup_every_months: z.number().int().min(1).max(120).nullable().optional(), next_checkup: DAY.nullable().optional(), metrics: z.array(z.string().max(40)).max(10).optional(), body_area: z.enum(BODY_AREAS).nullable().optional().describe("where the quiet 'monitored' marker sits on the body figure"), archived: z.boolean().optional() }),
+  handler: async (a: any) => {
+    const all = await owned("health_conditions").is("archived_at", null);
+    if (all.error) return fail(all.error.message + " (run _Memory/migration_health_v3.sql)");
+    const cur = (all.data || []).find((c: any) => c.name.toLowerCase() === a.name.trim().toLowerCase());
+    const now = new Date().toISOString();
+    if (a.archived) {
+      if (!cur) return fail("No condition with that name.");
+      await db.from("health_conditions").update({ archived_at: now }).eq("id", cur.id).eq("user_id", OWNER);
+      if (cur.action_id) await db.from("actions").update({ archived_at: now }).eq("id", cur.action_id).eq("user_id", OWNER);
+      return ok({ ok: true, archived: true, id: cur.id });
+    }
+    const f: Record<string, unknown> = { name: a.name.trim() };
+    for (const k of ["note", "checkup_every_months", "next_checkup", "metrics", "body_area"]) if (a[k] !== undefined) f[k] = a[k];
+    let id = cur && cur.id;
+    if (cur) { const u = await db.from("health_conditions").update({ ...f, updated_at: now }).eq("id", cur.id).eq("user_id", OWNER); if (u.error) return fail(u.error.message); }
+    else { const i = await db.from("health_conditions").insert({ user_id: OWNER, ...f }).select("id").single(); if (i.error) return fail(i.error.message); id = i.data.id; }
+    const row = (await owned("health_conditions").eq("id", id).single()).data;
+    // the Command Center reminder
+    if (row.next_checkup) {
+      const fields = { title: "Health check-up", date: row.next_checkup, kind: "deadline", is_milestone: true, category: "Health", reminders: [1440], archived_at: null, done: false };
+      const ex = row.action_id ? await owned("actions").eq("id", row.action_id).maybeSingle() : { data: null };
+      if (ex.data) await safeWrite((p) => db.from("actions").update(p).eq("id", row.action_id).eq("user_id", OWNER), fields);
+      else { const ins = await safeWrite((p) => db.from("actions").insert(p).select("id").single(), { user_id: OWNER, source: "claude", priority: "P2", type: "Task", parent_type: "none", parent_id: null, notes_md: "", ...fields }); if (!ins.error) { await db.from("health_conditions").update({ action_id: ins.data.id }).eq("id", id); row.action_id = ins.data.id; } }
+    } else if (row.action_id) await db.from("actions").update({ archived_at: now }).eq("id", row.action_id).eq("user_id", OWNER);
+    return ok({ ok: true, created: !cur, condition: row, reminder: row.next_checkup ? { id: row.action_id, date: row.next_checkup, title: "Health check-up" } : null });
+  },
+});
+tool("set_milestone", {
+  description: "Set a milestone date the page counts from, e.g. kind smoke_free with the date it started. One per kind; setting it again moves the date. archived: true hides it.",
+  inputSchema: z.object({ kind: z.enum(["smoke_free"]), since_date: DAY, note: z.string().max(200).optional(), archived: z.boolean().optional() }),
+  handler: async (a: any) => {
+    if (a.since_date > berlinToday()) return fail("since_date is in the future.");
+    const r = await healthUpsert("health_milestones", { kind: a.kind }, { since_date: a.since_date, note: a.note, archived_at: a.archived ? new Date().toISOString() : null });
+    if (r.error) return fail(r.error + " (run _Memory/migration_health_v3.sql)");
+    const row = (await owned("health_milestones").eq("id", r.id!).single()).data;
+    return ok({ ok: true, result: r.result, milestone: row, days: -ccDiff(berlinToday(), row.since_date) });
+  },
+});
+// ==== HV3-END ====
 
 // ============================ AGENT HUB =====================================
 // Everything an agent wants to change is filed as a proposal: a pending row carrying the exact

@@ -39,9 +39,10 @@
     var since = function (n) { return iso(addDays(now, -n)); }, missing = [];
     var run = function (name, q) { return q.then(function (r) { if (r.error) { if (MISSING[r.error.code]) { missing.push(name); return []; } throw r.error; } return r.data || []; }); };
     var t = function (name) { return sb.from(name).select("*").eq("user_id", userId); };
+    var opt = function (q) { return q.then(function (x) { return x.error ? [] : (x.data || []); }, function () { return []; }); };   // v3 tables: missing = empty
     return Promise.all([
       run("health_daily", t("health_daily").is("archived_at", null).gte("date", since(90)).order("date")),
-      run("workouts", t("workouts").is("archived_at", null).gte("date", since(150)).order("date")),
+      run("workouts", t("workouts").is("archived_at", null).gte("date", since(365)).order("date")),
       run("exercise_muscle_map", t("exercise_muscle_map")),
       run("activities", t("activities").is("archived_at", null).gte("date", since(90)).order("date")),
       run("body_metrics", t("body_metrics").is("archived_at", null).gte("date", since(120)).order("date")),
@@ -49,14 +50,22 @@
       run("health_flags", t("health_flags").is("archived_at", null)),
       run("health_briefs", t("health_briefs").is("archived_at", null).order("date", { ascending: false }).limit(3)),
       run("health_settings", t("health_settings").limit(1)),
-      t("meals").gte("date", since(13)).order("date").then(function (x) { return x.error ? [] : (x.data || []); }, function () { return []; })
+      t("meals").gte("date", since(13)).order("date").then(function (x) { return x.error ? [] : (x.data || []); }, function () { return []; }),
+      opt(t("health_routines").is("archived_at", null).order("position")),
+      opt(t("health_checkins").is("archived_at", null).gte("date", since(30)).order("date")),
+      opt(t("health_conditions").is("archived_at", null).order("created_at")),
+      opt(t("health_milestones").is("archived_at", null)),
+      opt(t("bp_readings").is("archived_at", null).gte("date", since(365)).order("measured_at")),
+      opt(t("actions").is("archived_at", null).eq("kind", "block")),
+      opt(t("planner_settings").limit(1))
     ]).then(function (r) {
-      var raw = { daily: r[0], workouts: r[1], sets: [], muscleMap: r[2], activities: r[3], metrics: r[4], status: r[5], flags: r[6], briefs: r[7], settings: r[8][0] || null, meals: r[9] || [], missingTables: missing };
+      var raw = { daily: r[0], workouts: r[1], sets: [], muscleMap: r[2], activities: r[3], metrics: r[4], status: r[5], flags: r[6], briefs: r[7], settings: r[8][0] || null, meals: r[9] || [], missingTables: missing,
+        routines: r[10], checkins: r[11], conditions: r[12], milestones: r[13], bp: r[14], blocks: r[15], planner: r[16][0] || null };
       var ids = raw.workouts.map(function (w) { return w.id; }), chunks = [];
       for (var i = 0; i < ids.length; i += 20) chunks.push(ids.slice(i, i + 20));
       return Promise.all(chunks.map(function (c) { return run("workout_sets", sb.from("workout_sets").select("*").in("workout_id", c).is("superseded_at", null)); })).then(function (parts) {
         parts.forEach(function (p) { raw.sets = raw.sets.concat(p); });
-        raw.empty = !raw.daily.length && !raw.workouts.length && !raw.metrics.length && !raw.activities.length;
+        raw.empty = !raw.daily.length && !raw.workouts.length && !raw.metrics.length && !raw.activities.length && !raw.checkins.length && !raw.bp.length && !raw.conditions.length && !raw.milestones.length;
         return raw;
       });
     });
@@ -107,10 +116,85 @@
     }
     if (now.getHours() >= 9) raw.activities.push({ source: "sample", source_id: "sample-walk", date: iso(now), started_at: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 8, 50).toISOString(), type: "walk", name: "Morning walk", duration_minutes: 22, distance_m: 1700 });
     raw.status.push({ status: "sick", start_date: iso(addDays(now, -sickFrom)), end_date: iso(addDays(now, -sickTo)), note: "Cold. Targets paused." });
+    raw.routines = ROT.map(function (t, i) { return { id: "r" + i, title: t, position: i + 1, exercises: R[t].map(function (e) { return { name: e[0] }; }) }; });
+    raw.checkins = [{ date: iso(now), energy: 4, note: "A bit stiff after sitting, otherwise good.", pains: [], source: "me", updated_at: new Date(now.getTime() - 3 * 36e5).toISOString() }];
+    raw.conditions = [{ id: "c1", name: "Sample condition", note: "Invented example for the layout.", checkup_every_months: 6, next_checkup: iso(addDays(now, 62)), metrics: ["blood_pressure"], body_area: "heart" }];
+    raw.milestones = [{ kind: "smoke_free", since_date: iso(addDays(now, -143)) }];
+    raw.bp = []; for (var b = 84; b >= 0; b -= 4) { var bd = addDays(now, -b); raw.bp.push({ measured_at: new Date(bd.getFullYear(), bd.getMonth(), bd.getDate(), 8, 10).toISOString(), date: iso(bd), systolic: Math.round(131 - (84 - b) * 0.06 + noise(4)), diastolic: Math.round(84 - (84 - b) * 0.03 + noise(3)), pulse: Math.round(63 + noise(3)) }); }
+    raw.blocks = [{ id: "b1", kind: "block", title: "Gym", date: iso(addDays(now, -21)), time_of_day: "18:30", duration_minutes: 75, recurrence: "FREQ=WEEKLY;BYDAY=MO,WE,FR" }];
+    raw.planner = { gym_days: [1, 3, 5] };
+    var yd = raw.daily[raw.daily.length - 1]; if (yd && yd.bed_time) { yd.bed_time_corrected = "23:40"; yd.wake_time_corrected = "06:52"; yd.sleep_minutes_corrected = 432; yd.corrected_at = new Date(now.getTime() - 2 * 36e5).toISOString(); }
     raw.flags.push({ region: "lower_back", state: "recovering", note: "Sore in early autumn, improving and cleared to train.", since: iso(addDays(now, -42)) });
     raw.briefs.push({ date: iso(now), written_by: "claude", updated_at: new Date(now.getTime() - 8 * 6e4).toISOString(), headline: null, summary: null,
       recommendations: [{ kind: "move", title: "5,000 steps", why: "Your week averaged a little over 4,000. A 20-minute walk after lunch covers most of the gap." }, { kind: "sleep", title: "In bed by 00:30", why: "Bedtimes have drifted past 01:30. An hour earlier is plenty for now." }], next_session: null });
     return raw;
+  };
+
+  /* ---------- v3: today panel, tiles, records, exercise progress ---------- */
+  var DOWS = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
+  /* the dates a Command Center block falls on, for the small RRULE subset the Command Center writes */
+  function blockDates(b, from, days) {
+    var out = [], start = b.date ? pd(b.date) : null; if (!start) return out;
+    var rule = {}; String(b.recurrence || "").replace(/^RRULE:/i, "").split(";").forEach(function (p) { var kv = p.split("="); if (kv[0]) rule[kv[0].toUpperCase()] = kv[1]; });
+    var skip = b.recurrence_exceptions || [], until = rule.UNTIL ? pd(rule.UNTIL.slice(0, 4) + "-" + rule.UNTIL.slice(4, 6) + "-" + rule.UNTIL.slice(6, 8)) : null, iv = +(rule.INTERVAL || 1);
+    for (var i = 0; i < days; i++) {
+      var d = addDays(from, i), k = iso(d); if (d < start || (until && d > until) || skip.indexOf(k) >= 0) continue;
+      if (!b.recurrence) { if (k === iso(start)) out.push(d); continue; }
+      var f = rule.FREQ, diff = dayDiff(d, start);
+      if (f === "DAILY" ? diff % iv === 0 : f === "WEEKLY" ? (rule.BYDAY ? rule.BYDAY.split(",").indexOf(DOWS[d.getDay()]) >= 0 : d.getDay() === start.getDay()) && Math.floor(diff / 7) % iv === 0 : f === "MONTHLY" ? d.getDate() === +(rule.BYMONTHDAY || start.getDate()) : f === "YEARLY" ? d.getDate() === start.getDate() && d.getMonth() === start.getMonth() : false) out.push(d);
+    }
+    return out;
+  }
+  var e1 = H.e1rm = function (w, r) { return w != null && r ? Math.round(w * (1 + Math.min(r, 12) / 30) * 10) / 10 : null; };
+  /* What each tile and the Today panel need. Missing data stays null; nothing is guessed. */
+  H.buildV3 = function (M, raw, now) {
+    var todayIso = iso(now);
+    /* check-in: the latest from the last three days */
+    var ci = (raw.checkins || []).slice().sort(function (a, b) { return String(a.date + (a.updated_at || "")).localeCompare(String(b.date + (b.updated_at || ""))); }).pop() || null;
+    M.checkin = ci && dayDiff(now, pd(ci.date)) <= 2 ? { energy: num(ci.energy), note: ci.note || "", pains: ci.pains || [], by: ci.source === "claude" ? "Claude" : "you", d: pd(ci.date), at: ci.updated_at ? new Date(ci.updated_at) : null } : null;
+    M.pains = M.flags.filter(function (f) { return f.state !== "cleared"; }).map(function (f) { f.days = f.since ? dayDiff(now, f.since) : null; return f; });
+    /* next session: the next gym block in the Command Center, else the base gym days */
+    var GYM = /gym|workout|training|lift|strength|full body/i, nowMin = now.getHours() * 60 + now.getMinutes(), best = null;
+    (raw.blocks || []).filter(function (b) { return GYM.test(b.title || ""); }).forEach(function (b) {
+      blockDates(b, now, 22).some(function (d) { var tm = b.time_of_day ? String(b.time_of_day).slice(0, 5) : null; if (iso(d) === todayIso && tm && hm(tm) < nowMin) return false; if (!best || iso(d) + (tm || "") < iso(best.d) + (best.time || "")) best = { d: d, time: tm, from: "Command Center" }; return true; });
+    });
+    if (!best) { var gd = (raw.planner && raw.planner.gym_days) || null; if (gd) for (var i = 0; i < 8 && !best; i++) { var d = addDays(now, i), dow = d.getDay() || 7; if (gd.indexOf(dow) >= 0) best = { d: d, time: null, from: "your gym days" }; } }
+    M.nextSession = best ? { d: best.d, time: best.time, from: best.from, routine: M.next } : { d: null, time: null, from: null, routine: M.next };
+    /* sleep: the last seven nights, corrected values included */
+    var mins = M.col("sleep_minutes", 7).filter(function (x) { return x != null; });
+    M.sleep7 = mins.length ? Math.round(mins.reduce(function (a, b) { return a + b; }, 0) / mins.length) : null;
+    M.sleepNights7 = mins.length;
+    /* readiness over 7 days: the same formula for each day, against the same 30-day baselines */
+    var B = M.B, at = function (i) {
+      var T = M.days[i] && M.days[i].r || {}, Y = M.days[i - 1] && M.days[i - 1].r || {};
+      var c = [[num(T.sleep_score), 30], [num(T.resting_hr) != null && B.resting_hr ? clamp(75 + (B.resting_hr.med - num(T.resting_hr)) * 6, 0, 100) : null, 25], [num(T.hrv_avg) != null && B.hrv_avg ? clamp(75 + (num(T.hrv_avg) - B.hrv_avg.med) / B.hrv_avg.med * 150, 0, 100) : null, 20], [num(T.body_battery_high), 15], [num(Y.stress_avg) == null ? null : 100 - num(Y.stress_avg), 10]].filter(function (x) { return x[0] != null; });
+      var w = c.reduce(function (s, x) { return s + x[1]; }, 0); return w >= 45 ? Math.round(c.reduce(function (s, x) { return s + x[0] * x[1]; }, 0) / w) : null;
+    };
+    M.ready7 = []; for (var k = 83; k <= 89; k++) M.ready7.push(k === 89 ? M.ready : at(k));
+    var r7 = M.ready7.filter(function (x) { return x != null; });
+    M.readyTrend = r7.length >= 3 ? (r7[r7.length - 1] - r7[0] >= 5 ? "rising" : r7[0] - r7[r7.length - 1] >= 5 ? "dipping" : "steady") : null;
+    /* records */
+    M.conditions = (raw.conditions || []).map(function (c) { return { id: c.id, name: c.name, note: c.note || "", every: num(c.checkup_every_months), next: c.next_checkup ? pd(c.next_checkup) : null, metrics: c.metrics || [], area: c.body_area || null, actionId: c.action_id || null }; });
+    M.nextCheckup = M.conditions.filter(function (c) { return c.next && dayDiff(c.next, now) >= 0; }).sort(function (a, b) { return a.next - b.next; })[0] || null;
+    var sf = (raw.milestones || []).filter(function (m) { return m.kind === "smoke_free"; })[0];
+    M.smokeFree = sf ? { since: pd(sf.since_date), days: dayDiff(now, pd(sf.since_date)) } : null;
+    M.bp = (raw.bp || []).map(function (r) { return { at: new Date(r.measured_at), d: pd(r.date), sys: num(r.systolic), dia: num(r.diastolic), pulse: num(r.pulse), note: r.note || "" }; }).sort(function (a, b) { return a.at - b.at; });
+    M.routines = (raw.routines || []).slice();
+    /* exercises: one entry per exercise ever logged, least recently trained first */
+    var byEx = {};
+    M.sessions.forEach(function (s) { s.ex.forEach(function (e) {
+      var k = e.name.trim().toLowerCase(), o = byEx[k] = byEx[k] || { name: e.name, points: [] };
+      var vol = e.work.reduce(function (t, x) { return t + (num(x.weight_kg) || 0) * (num(x.reps) || 0); }, 0);
+      o.points.push({ d: s.d, routine: s.routine, top: e.top, reps: e.topReps, e1: e1(e.top, e.topReps), vol: Math.round(vol), sets: e.work.length, pr: e.sets.some(function (x) { return x.is_pr; }) });
+    }); });
+    M.exercises = Object.keys(byEx).map(function (k) {
+      var o = byEx[k], best = -1; o.points.forEach(function (p) { p.record = p.top != null && best >= 0 && p.top > best; if (p.top != null) best = Math.max(best, p.top); });
+      var last = o.points[o.points.length - 1]; o.lastAgo = dayDiff(now, last.d); o.best = best >= 0 ? best : null; o.top = last.top; o.anyPr = o.points.some(function (p) { return p.pr || p.record; }); o.muscles = M.musclesOf(o.name);
+      return o;
+    }).sort(function (a, b) { return b.lastAgo - a.lastAgo || (a.name < b.name ? -1 : 1); });
+    /* sets per muscle in the last 30 days (the week is M.WEEK) */
+    var MONTH = M.MONTH = {}; Object.keys(H.MUSCLES).forEach(function (m) { MONTH[m] = 0; });
+    M.sessions.forEach(function (s) { if (s.ago > 29) return; s.ex.forEach(function (e) { var map = M.musclesOf(e.name); if (!map) return; if (MONTH[map[0]] != null) MONTH[map[0]] += e.work.length; (map[1] || []).forEach(function (m) { if (MONTH[m] != null) MONTH[m] += e.work.length * 0.5; }); }); });
   };
 
   /* ---------- the model: everything the page shows, computed from the raw rows ---------- */
@@ -118,6 +202,9 @@
     var S = raw.settings || {}, M = { raw: raw, now: now, sample: !!raw.sample, missing: raw.missingTables || [] };
     var cfg = M.cfg = { steps: num(S.steps_target), perWeek: num(S.strength_target_per_week) || 3, bed: S.bedtime_target ? String(S.bedtime_target).slice(0, 5) : "00:30", intensity: num(S.intensity_target) || 150,
       rotation: S.rotation && S.rotation.length ? S.rotation : ROT, repTop: num(S.rep_top) || 12, step: num(S.weight_step_kg) || 2.5 };
+    /* a corrected night wins everywhere; the watch's own values stay on r.watch for reference */
+    raw.daily.forEach(function (r) { if (r.corrected_at || r.bed_time_corrected) { if (!r.watch) r.watch = { bed: r.bed_time, wake: r.wake_time, mins: r.sleep_minutes }; if (r.bed_time_corrected) r.bed_time = r.bed_time_corrected; if (r.wake_time_corrected) r.wake_time = r.wake_time_corrected; if (r.sleep_minutes_corrected != null) r.sleep_minutes = r.sleep_minutes_corrected; r.corrected = true; } });
+    if ((raw.routines || []).some(function (x) { return x.position != null; })) cfg.rotation = raw.routines.filter(function (x) { return x.position != null; }).sort(function (a, b) { return a.position - b.position; }).map(function (x) { return x.title; });
     var byDate = {}; raw.daily.forEach(function (r) { byDate[String(r.date).slice(0, 10)] = r; });
     M.days = []; for (var i = 89; i >= 0; i--) { var d = addDays(now, -i); M.days.push({ d: d, iso: iso(d), r: byDate[iso(d)] || null }); }
     M.col = function (k, n) { return M.days.slice(-(n || 90)).map(function (x) { return x.r ? num(x.r[k]) : null; }); };
@@ -246,6 +333,7 @@
       : trainedY ? (good ? "Recovery is strong. You trained yesterday, so a walk is enough today, and " + M.next + " is up next." : "Still recovering from yesterday. A walk is enough today.")
       : good ? "Your recovery is strong. Good day for " + M.next + "." : "Recovery is middling. " + M.next + " is fine if you feel like it, with nothing forced.";
     M.synced = T.synced_at ? new Date(T.synced_at) : null;
+    H.buildV3(M, raw, now);
     return M;
   };
 })();

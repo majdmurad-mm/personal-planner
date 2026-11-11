@@ -48,14 +48,14 @@
     });
     S.root.addEventListener("keydown", function (e) {
       var n = e.target.closest && e.target.closest(".nd");
-      var ex = e.target.closest && e.target.closest("[data-exes]");
+      var ex = e.target.closest && e.target.closest("[data-exes],[data-fold],[data-side]");
       if (ex && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); ex.dispatchEvent(new MouseEvent("click", { bubbles: true })); }
       else if (n && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); select(n.getAttribute("data-id")); }
       else if (e.key === "Escape" && S.famOpen) { S.famOpen = false; $("#fam").hidden = true; var fb2 = $("#famBtn"); if (fb2) fb2.focus(); }
       else if (e.key === "Escape" && (S.open || S.st.sel)) { if (S.open) { S.open = null; panel(); } else select(null); }
       else if (e.key === "Enter" && e.target.id === "linkName") { e.preventDefault(); addLink(); }
     });
-    $("#q").addEventListener("input", function () { S.st.q = this.value.trim().toLowerCase(); body(); });
+    $("#q").addEventListener("input", function () { S.st.q = this.value.trim().toLowerCase(); body(S.view === "tree"); if (S.view === "tree") centreOnHit(); });
     [["#fGroup", "group"], ["#fRing", "ring"], ["#fQual", "quality"]].forEach(function (f) { $(f[0]).addEventListener("change", function () { S.st[f[1]] = this.value; this.classList.toggle("set", !!this.value); body(); }); });
   }
 
@@ -108,6 +108,13 @@
     }
   }
 
+  /* search in the tree: centre the first match */
+  function centreOnHit() {
+    var svg = $("#sky"), hit = svg.querySelector(".nd.hit") || svg.querySelector(".nd.tr:not(.miss)"); if (!hit || !svg._tree || !S.st.q) return;
+    var m = /translate(([-d.]+),([-d.]+))/.exec(hit.getAttribute("transform") || ""); if (!m) return;
+    var cur = (svg.getAttribute("viewBox") || "").split(/s+/).map(Number), w = cur[2] || 900, h = cur[3] || 600;
+    setBox([+m[1] - w / 2, +m[2] - h / 2, w, h]);
+  }
   /* ---------- zoom and pan: the SVG viewBox is the camera ---------- */
   function home(svg) {
     if (!svg._tree) { var VB = S.st.narrow ? 600 : 540; return [-VB, -VB, 2 * VB, 2 * VB]; }
@@ -264,7 +271,9 @@
     if (b && b.id === "famBtn") { S.famOpen = true; $("#fam").hidden = false; famDraw(); var fc = $("#famClose"); if (fc) fc.focus(); return; }
     if ((b && b.id === "famClose") || t.id === "fam") { S.famOpen = false; $("#fam").hidden = true; var fb = $("#famBtn"); if (fb) fb.focus(); return; }
     if (t.closest("#fam")) return;
-    if (!b && !t.closest(".nd") && !t.closest("[data-exes]") && t.closest("#sky")) return select(null);
+    if (!b && !t.closest(".nd") && !t.closest("[data-exes],[data-fold],[data-side]") && t.closest("#sky")) return select(null);
+    var fo = t.closest("[data-fold]"), sd = t.closest("[data-side]");
+    if (fo || sd) { if (fo) { S.st.fold = S.st.fold || {}; var k = fo.getAttribute("data-fold"); S.st.fold[k] = !S.st.fold[k]; } else S.st.side = sd.getAttribute("data-side"); var sv2 = $("#sky"); T.draw(sv2, S.M, S.st); var back = sv2.querySelector(fo ? '[data-fold="' + fo.getAttribute("data-fold") + '"]' : '[data-side="' + S.st.side + '"]'); if (back) back.focus(); return; }
     if (t.closest("[data-exes]")) { S.st.exOpen = !S.st.exOpen; var sv = $("#sky"); T.draw(sv, S.M, S.st); var again = sv.querySelector("[data-exes]"); if (again) again.focus(); return; }
     var nd = t.closest(".nd"); if (nd) return select(nd.getAttribute("data-id"));
     if (!b) return;
@@ -315,7 +324,7 @@
         var rt; new ResizeObserver(function () {
           clearTimeout(rt); rt = setTimeout(function () {
             var w = S.pp.getBoundingClientRect().width; if (!w) return;
-            var nw = w <= 820; if (nw !== S.st.narrow) { S.st.narrow = nw; if (nw) S.pp.setAttribute("data-narrow", ""); else S.pp.removeAttribute("data-narrow"); panel(); }
+            var nw = w <= 820; if (nw !== S.st.narrow) { S.st.narrow = nw; if (nw) S.pp.setAttribute("data-narrow", ""); else S.pp.removeAttribute("data-narrow"); panel(); if (S.view === "tree" && S.M) body(true); }
             if (S.M) body(true);
           }, 100);
         }).observe(S.pp);
