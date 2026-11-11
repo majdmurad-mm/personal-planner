@@ -7,12 +7,12 @@
   P.mount = function (host, o) {
     o = o || {};
     var root = host.shadowRoot || host.attachShadow({ mode: "open" });
-    var S = { view: o.view || "today", q: "", pickerOpen: false, overdueOpen: false, over: null, qa: { text: "", kind: null, msg: "" }, hist: null, sample: !!o.sample, areas: o.areas || [], smode: null, board: { pos: {}, links: [], collapsed: {}, cam: { x: 20, y: 20, k: 1 }, linkFrom: null, undo: null, fitted: false, loaded: false } };
+    var S = { view: o.view || "today", q: "", pickerOpen: false, overdueOpen: false, over: null, qa: { text: "", kind: null, msg: "" }, hist: null, sample: !!o.sample, classicToday: !!o.classicToday, areas: o.areas || [], smode: null, board: { pos: {}, links: [], collapsed: {}, cam: { x: 20, y: 20, k: 1 }, linkFrom: null, undo: null, fitted: false, loaded: false } };
     var theme = o.theme || "light", fixedNow = o.now || null, busy = false;
     try { if (localStorage.getItem("pp_cc_actual") === "0") S.showActual = false; } catch (x) {}
     var call = function (name) { var a = [].slice.call(arguments, 1); return Promise.resolve(o[name] ? o[name].apply(null, a) : null); };
     function setData(d) {
-      ["items", "goals", "projects", "feed", "feedNote", "mainId", "work", "push", "actual"].forEach(function (k) { if (d[k] !== undefined) S[k] = d[k]; });
+      ["items", "goals", "projects", "feed", "feedNote", "mainId", "work", "push", "actual", "pulse"].forEach(function (k) { if (d[k] !== undefined) S[k] = d[k]; });
       if (d.board && !S.board.loaded) { S.board.pos = d.board.pos || {}; S.board.links = d.board.links || []; S.board.collapsed = d.board.collapsed || {}; S.board.loaded = true; }
       S.items = S.items || []; S.byId = {}; S.items.forEach(function (i) { S.byId[i.id] = i; });
       var n = fixedNow || new Date(); S.today = d.today || C.localIso(n); S.nowMin = n.getHours() * 60 + n.getMinutes();
@@ -28,7 +28,7 @@
       cc.dataset.theme = theme;
       cc.innerHTML = (S.sample ? '<div class="ribbon" role="note"><b>SAMPLE DATA</b> · invented items and names · nothing below is yours</div>' : "") +
         '<div class="wrap"><header class="top"><div class="seg" role="group" aria-label="View">' + VIEWS.map(function (v, i) { return '<button data-view="' + v[0] + '" aria-pressed="false" title="Press ' + (i + 1) + '">' + v[1] + "</button>"; }).join("") + '</div>' +
-        '<div class="tools"><input class="in search" id="ccSearch" type="search" placeholder="Search  ( / )" aria-label="Search everything" value=""><button class="btn" data-act="push" title="Reminders on your phone" aria-label="Reminders">🔔<span class="wide" style="display:inline"> Reminders</span></button><button class="btn pri wide addbtn" data-act="add">+ Add <kbd>N</kbd></button></div></header>' +
+        '<div class="tools"><input class="in search" id="ccSearch" type="search" placeholder="Search ( / ) · Ctrl K" aria-label="Search everything" value=""><button class="btn" data-act="push" title="Reminders on your phone" aria-label="Reminders">🔔<span class="wide" style="display:inline"> Reminders</span></button><button class="btn pri wide addbtn" data-act="add">+ Add <kbd>N</kbd></button></div></header>' +
         '<div class="legend" id="ccLegend" role="group" aria-label="Areas: click to show one area"></div><main id="ccView"></main></div><button class="fab" data-act="add" aria-label="Add something">+</button><div id="ccOver"></div>';
       draw();
     }
@@ -49,7 +49,7 @@
     function drawOver(fromData) {
       var el = $("#ccOver"), ov = S.over, act = root.activeElement, fid = act && act.id;
       if (!ov) { el.innerHTML = ""; return; }
-      if (ov.type === "quick" && fromData && el.firstChild) return;            // never redraw under the typing cursor
+      if ((ov.type === "quick" || ov.type === "palette") && fromData && el.firstChild) return;            // never redraw under the typing cursor
       var it = ov.id ? S.byId[ov.id] : null, body = "";
       if ((ov.type === "item" || ov.type === "pick") && !it) { S.over = null; el.innerHTML = ""; return; }
       if (ov.type === "item") body = V.sheet(S, it, ov.date, S.hist);
@@ -58,8 +58,9 @@
       else if (ov.type === "quick") body = V.quick(S, parsed());
       else if (ov.type === "review") body = V.review(S);
       else if (ov.type === "push") body = V.push(S);
+      else if (ov.type === "palette") body = V.palette(S);
       var st = el.querySelector(".sheet"), top = st ? st.scrollTop : 0;
-      el.innerHTML = '<div class="shade' + (ov.type === "quick" || ov.type === "pick" ? " mid" : "") + '" data-shade="1"><div class="sheet" role="dialog" aria-modal="true" aria-label="' + ({ item: "Details", day: "Day", pick: "Pick a date", quick: "Quick add", review: "Weekly review", push: "Reminders" })[ov.type] + '">' + body + "</div></div>";
+      el.innerHTML = '<div class="shade' + (ov.type === "quick" || ov.type === "pick" || ov.type === "palette" ? " mid" : "") + '" data-shade="1"><div class="sheet" role="dialog" aria-modal="true" aria-label="' + ({ item: "Details", day: "Day", pick: "Pick a date", quick: "Quick add", review: "Weekly review", push: "Reminders", palette: "Command palette" })[ov.type] + '">' + body + "</div></div>";
       var s2 = el.querySelector(".sheet"); if (s2 && fromData) s2.scrollTop = top;
       if (fid && fromData) { var f = root.getElementById(fid); if (f) f.focus(); }
     }
@@ -109,11 +110,18 @@
     cc.addEventListener("wheel", function (e) { var el = e.target.closest && e.target.closest("#ccBoard"); if (!el) return; e.preventDefault(); var r = el.getBoundingClientRect(); zoomBoard(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX - r.left, e.clientY - r.top); }, { passive: false });
     function open(over) {
       S.over = over; S.hist = null; drawOver(false);
-      var first = over.type === "quick" ? $("#ccQ") : $("#ccOver .x"); if (first) first.focus();
+      var first = over.type === "quick" ? $("#ccQ") : over.type === "palette" ? $("#ccPal") : $("#ccOver .x"); if (first) first.focus();
       if (over.type === "quick") { var q = $("#ccQ"); q.setSelectionRange(q.value.length, q.value.length); }
       if (over.type === "item") call("onHistory", over.id).then(function (h) { if (S.over && S.over.id === over.id) { S.hist = h || []; drawOver(true); } }, function () { S.hist = []; drawOver(true); });
     }
     function close() { S.over = null; drawOver(false); }
+    function runPal(i) {
+      var r = V.paletteResults(S, S.pq)[i]; if (!r) return; S.pq = ""; S.psel = 0;
+      if (r.kind === "view") { close(); S.view = r.view; S.q = ""; S.cursor = S.today; call("onView", S.view); draw(); }
+      else if (r.kind === "item") open({ type: "item", id: r.id, date: null });
+      else if (r.kind === "move") { close(); guard(call("onPatch", r.id, { time: r.time }, "move")); }
+      else if (r.kind === "add") { close(); guard(call("onCreate", C.parseQuick(r.text, S.today, S.areas))); }
+    }
     function parsed() { var p = C.parseQuick(S.qa.text, S.today, S.areas); if (S.qa.kind) p.kind = S.qa.kind; if (S.qa.date && !p.date) p.date = S.qa.date; return p; }
     function guard(pr) { if (busy) return; busy = true; return Promise.resolve(pr).then(function () { busy = false; }, function (e) { busy = false; if (window.console) console.warn(e); }); }
     var occOf = function (key) { var i = key.lastIndexOf("@"), it = S.byId[key.slice(0, i)]; return it ? { item: it, date: key.slice(i + 1) || null } : null; };
@@ -157,7 +165,7 @@
       if (bz) { var zv = bz.getAttribute("data-bzoom"); if (zv === "0") fitBoard(); else zoomBoard(zv === "1" ? 1.3 : 1 / 1.3); return; }
       var bnode = e.target.closest && e.target.closest(".bn");
       if (bnode) { if (bd.moved) return; var nid = bnode.getAttribute("data-n"); if (S.board.linkFrom) { addLink(S.board.linkFrom, nid); S.board.linkFrom = null; draw(); } else openNode(nid); return; }
-      var t = e.target.closest("button,[data-day],.chip"); if (!t || t.disabled) return; var d = t.dataset, ov = S.over, it = ov && ov.id ? S.byId[ov.id] : null;
+      var t = e.target.closest("button,[data-day],.chip,[data-ropen],[data-workout]"); if (!t || t.disabled) return; var d = t.dataset, ov = S.over, it = ov && ov.id ? S.byId[ov.id] : null;
       if (d.view) { S.view = d.view; S.q = ""; $("#ccSearch").value = ""; S.cursor = S.today; call("onView", S.view); draw(); }
       else if (d.done) guard(toggleDone(d.done));
       else if (d.tri) guard(tri(d.tri, d.key));
@@ -186,6 +194,15 @@
         else if (q === "full") { close(); call("onOpenFull", it.id); }
       }
       else if (d.act === "close") close();
+      else if (d.pal != null) runPal(+d.pal);
+      else if (d.pattern) { S.pattern = S.pattern === d.pattern ? null : d.pattern; draw(); }
+      else if (d.ropen) open({ type: "item", id: d.ropen, date: S.today });
+      else if (d.go) { if (t.querySelector("[data-blur]") && !S.unblur) { S.unblur = true; draw(); } else call("onGo", d.go); }
+      else if (d.act === "planday") { S.plan = V.proposePlan(S); draw(); }
+      else if (d.act === "planno") { S.plan = null; draw(); }
+      else if (d.act === "planok" && S.plan) { var todo = S.plan.slice(); S.plan = null; guard(todo.reduce(function (p, x) { return p.then(function () { return call("onPatch", x.id, { date: S.today, time: x.time, someday: false }, "plan the day"); }); }, Promise.resolve())); }
+      else if (d.planone && S.plan) { var one = S.plan.filter(function (x) { return x.id === d.planone; })[0]; S.plan = S.plan.filter(function (x) { return x.id !== d.planone; }); if (!S.plan.length) S.plan = null; if (one) guard(call("onPatch", one.id, { date: S.today, time: one.time, someday: false }, "plan the day")); }
+      else if (d.eve) { if (d.eve === "done") guard(toggleDone(d.key)); else if (d.eve === "moved") { var ex = occOf(d.key); if (ex) guard(moveTo(ex.item, ex.item.recurrence ? ex.date : null, C.add(S.today, 1))); } else guard(tri("archive", d.key)); }
       else if (d.act === "actual") { S.showActual = S.showActual === false; try { localStorage.setItem("pp_cc_actual", S.showActual ? "1" : "0"); } catch (x) {} draw(); }
       else if (d.areaf) { S.areaFilter = S.areaFilter === d.areaf ? null : d.areaf; draw(); var b0 = root.querySelector('[data-areaf="' + d.areaf + '"]'); if (b0) b0.focus(); }
       else if (d.workout) call("onOpenWorkout", d.workout);
@@ -211,6 +228,7 @@
     cc.addEventListener("toggle", function (e) { var x = e.target; if (x.classList && x.classList.contains("tn")) { S.treeOpen = S.treeOpen || {}; S.treeOpen[x.dataset.tree] = x.open; } }, true);
     cc.addEventListener("input", function (e) {
       if (e.target.id === "ccSearch") { S.q = e.target.value.trim(); draw(); }
+      else if (e.target.id === "ccPal") { S.pq = e.target.value; S.psel = 0; $("#ccPalList").innerHTML = V.paletteList(V.paletteResults(S, S.pq), 0); }
       else if (e.target.id === "ccQ") { S.qa.text = e.target.value; S.qa.msg = ""; $("#ccParsed").innerHTML = V.parsed(S, parsed()); }
     });
     cc.addEventListener("change", function (e) {
@@ -232,6 +250,17 @@
       else if (bk && (e.key === "l" || e.key === "L")) { e.preventDefault(); e.stopPropagation(); if (S.board.linkFrom && S.board.linkFrom !== bk) { addLink(S.board.linkFrom, bk); S.board.linkFrom = null; } else S.board.linkFrom = S.board.linkFrom ? null : bk; draw(); var fb = root.querySelector('.bn[data-n="' + bk.replace(/"/g, "") + '"]'); if (fb) fb.focus(); }
       else if (bk && /^Arrow/.test(e.key)) { e.preventDefault(); var st = e.shiftKey ? 60 : 20, mv = branch(bk); S.board.undo = { links: S.board.links.slice(), pos: Object.assign({}, S.board.pos), collapsed: Object.assign({}, S.board.collapsed) }; mv.forEach(function (x) { S.board.pos[x.id] = [Math.round(x.x + (e.key === "ArrowRight" ? st : e.key === "ArrowLeft" ? -st : 0)), Math.round(x.y + (e.key === "ArrowDown" ? st : e.key === "ArrowUp" ? -st : 0))]; }); saveBoard(); draw(); var fm = root.querySelector('.bn[data-n="' + bk.replace(/"/g, "") + '"]'); if (fm) fm.focus(); }
       else if (e.key === "Escape" && S.board.linkFrom) { S.board.linkFrom = null; draw(); e.stopPropagation(); }
+      if (e.target.id === "ccPal" && (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter")) {
+        e.preventDefault(); var res = V.paletteResults(S, S.pq);
+        if (e.key === "Enter") { runPal(Math.min(S.psel || 0, res.length - 1)); return; }
+        S.psel = Math.max(0, Math.min(res.length - 1, (S.psel || 0) + (e.key === "ArrowDown" ? 1 : -1))); $("#ccPalList").innerHTML = V.paletteList(res, S.psel); return;
+      }
+      /* arrow keys walk through the items of a list */
+      if ((e.key === "ArrowDown" || e.key === "ArrowUp") && e.target.closest && e.target.closest(".it") && !/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) {
+        var rows = [].slice.call(root.querySelectorAll(".view .it")), at = rows.indexOf(e.target.closest(".it")), nx = rows[at + (e.key === "ArrowDown" ? 1 : -1)];
+        if (nx) { e.preventDefault(); var fb2 = nx.querySelector(e.target.classList.contains("box") ? ".box, .ti button" : ".ti button"); if (fb2) fb2.focus(); }
+      }
+      if (e.key === " " && e.target.closest && e.target.closest(".it .ti") && e.target.tagName === "BUTTON") { var bx = e.target.closest(".it").querySelector(".box"); if (bx) { e.preventDefault(); bx.click(); } }
       if (e.key === "Enter" && e.target.id === "ccQ") { e.preventDefault(); guard(saveQuick(e.ctrlKey || e.metaKey)); }
       if (e.key === "Enter" && e.target.id === "ccPick") { e.preventDefault(); $('[data-act="pickok"]').click(); }
       if (e.key === "Escape" && e.target.id === "ccSearch" && S.q) { S.q = ""; e.target.value = ""; draw(); e.stopPropagation(); }
@@ -239,19 +268,31 @@
     /* drag from the tray onto a day or a time */
     var dragId = null, clearDrop = function () { [].forEach.call(root.querySelectorAll(".drop"), function (x) { x.classList.remove("drop"); }); };
     cc.addEventListener("dragstart", function (e) { var c = e.target.closest && e.target.closest("[data-drag]"); if (!c) return; dragId = c.dataset.drag; try { e.dataTransfer.setData("text/plain", dragId); e.dataTransfer.effectAllowed = "move"; } catch (x) {} });
-    cc.addEventListener("dragover", function (e) { var z = dragId && e.target.closest("[data-dropcol],[data-dropday]"); if (!z) return; e.preventDefault(); if (!z.classList.contains("drop")) { clearDrop(); z.classList.add("drop"); } });
+    function ringTime(svg, e) {
+      var r = svg.getBoundingClientRect(), x = e.clientX - (r.left + r.width / 2), y = e.clientY - (r.top + r.height / 2), a = Math.atan2(x, -y) - Math.PI; if (a < 0) a += Math.PI * 2;
+      var m = Math.round(a / (Math.PI * 2) * 1440 / 15) * 15, it = S.byId[dragId] || {}, need = it.est || it.dur || 30, D = V.dayModel(S), gaps = D.free.filter(function (f) { return f[1] - f[0] >= Math.min(need, 15); });
+      if (!gaps.length) return C.hhmm(m);
+      var best = gaps[0], bd = 1e9; gaps.forEach(function (f) { var dist = m < f[0] ? f[0] - m : m > f[1] ? m - f[1] : 0; if (dist < bd) { bd = dist; best = f; } });
+      var g0 = Math.ceil(best[0] / 15) * 15; return C.hhmm(Math.max(g0, Math.min(m, Math.max(g0, best[1] - need))));
+    }
+    cc.addEventListener("dragover", function (e) { var rg = dragId && e.target.closest("[data-dropring]"); if (rg) { e.preventDefault(); rg.classList.add("drop"); return; } var z = dragId && e.target.closest("[data-dropcol],[data-dropday]"); if (!z) return; e.preventDefault(); if (!z.classList.contains("drop")) { clearDrop(); z.classList.add("drop"); } });
     cc.addEventListener("dragend", function () { dragId = null; clearDrop(); });
     cc.addEventListener("drop", function (e) {
+      var rg = dragId && e.target.closest("[data-dropring]");
+      if (rg) { e.preventDefault(); clearDrop(); var rid = dragId, tm = ringTime(rg, e); dragId = null; guard(call("onPatch", rid, { date: S.today, time: tm, someday: false }, "schedule")); return; }
       var z = dragId && e.target.closest("[data-dropcol],[data-dropday]"); clearDrop(); if (!z) return; e.preventDefault();
       var id = dragId, patch; dragId = null;
       if (z.dataset.dropcol) { var r = z.getBoundingClientRect(), mins = 7 * 60 + (e.clientY - r.top) / r.height * 16 * 60; patch = { date: z.dataset.dropcol, time: C.hhmm(Math.round(mins / 15) * 15), someday: false }; }
       else patch = { date: z.dataset.dropday, someday: false };
       guard(call("onPatch", id, patch, "schedule"));
     });
+    P._ringDrop = function (id, clientX, clientY) { dragId = id; var tm = ringTime($("#ccRing"), { clientX: clientX, clientY: clientY }); dragId = null; return call("onPatch", id, { date: S.today, time: tm, someday: false }, "schedule").then(function () { return tm; }); };
     P._drop = function (id, date, time) { return call("onPatch", id, time ? { date: date, time: time, someday: false } : { date: date, someday: false }, "schedule"); };
     /* keyboard: N add, / search, 1-5 views, arrows move, Esc closes, D done */
     function onKey(e) {
-      if (!host.isConnected || host.offsetParent === null || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (!host.isConnected || host.offsetParent === null) return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); S.pq = ""; S.psel = 0; open({ type: "palette" }); return; }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
       var el = e.composedPath ? e.composedPath()[0] : e.target, typing = el && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable);
       if (e.key === "Escape" && S.over) { e.preventDefault(); close(); return; }
       if (typing || document.querySelector(".modal-overlay.open,.modal.open")) return;
@@ -261,15 +302,17 @@
       else if (S.over) { if (k === "d" && S.over.type === "item") { var it = S.byId[S.over.id]; if (it && C.hasDone(it)) guard(toggleDone(it.id + "@" + (S.over.date || it.date || S.today))); } }
       else if (/^[1-6]$/.test(k)) { S.view = VIEWS[+k - 1][0]; S.q = ""; S.cursor = S.today; call("onView", S.view); draw(); }
       else if (k === "t") { S.view = "today"; S.cursor = S.today; draw(); }
+      else if (k === "w" || k === "m" || k === "h") { S.view = { w: "week", m: "month", h: "horizon" }[k]; S.q = ""; S.cursor = S.today; call("onView", S.view); draw(); }
       else if ((k === "arrowleft" || k === "arrowright") && (S.view === "week" || S.view === "month")) { var b = $(S.view === "week" ? '[data-move="' + (k === "arrowleft" ? -7 : 7) + '"]' : '[data-movem="' + (k === "arrowleft" ? -1 : 1) + '"]'); if (b) b.click(); }
     }
     document.addEventListener("keydown", onKey);
+    var tick = setInterval(function () { if (fixedNow || !host.isConnected) return; var n = new Date(), m = n.getHours() * 60 + n.getMinutes(); if (m === S.nowMin) return; S.nowMin = m; S.today = C.localIso(n); if (S.view === "today" && !S.q && !S.over && !dragId && host.offsetParent !== null) draw(); }, 20000);
     shell();
     return {
       update: function (d) { if (d.theme) theme = d.theme; setData(d); cc.dataset.theme = theme; draw(); },
       setView: function (v) { S.view = v; draw(); },
       open: open, state: function () { return { view: S.view, over: S.over && S.over.type, smode: S.smode, board: { pos: Object.keys(S.board.pos).length, links: S.board.links.length, k: S.board.cam.k } }; },
-      destroy: function () { document.removeEventListener("keydown", onKey); }
+      destroy: function () { document.removeEventListener("keydown", onKey); clearInterval(tick); }
     };
   };
 })();

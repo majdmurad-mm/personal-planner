@@ -19875,7 +19875,22 @@
       var when = function(d){ return d ? fxDay(d, { day:"numeric", month:"short" }) : "no date"; };
       return "Moved " + q + " " + when(b.date) + " → " + when(a.date);
     }
-    if(a.title !== b.title) return 'Renamed "' + b.title + '" to "' + a.title + '"';
+    if(a.title !== b.title && a.title && b.title) return 'Renamed "' + b.title + '" to "' + a.title + '"';
+    // say what changed, in plain words
+    var hhm = function(x){ return x ? String(x).slice(0, 5) : ""; }, parts = [];
+    if(hhm(a.time_of_day) !== hhm(b.time_of_day)) parts.push(a.time_of_day ? "time " + hhm(a.time_of_day) + (b.time_of_day ? " (was " + hhm(b.time_of_day) + ")" : " (was untimed)") : "no time (was " + hhm(b.time_of_day) + ")");
+    if((a.duration_minutes || null) !== (b.duration_minutes || null) && a.duration_minutes) parts.push("length " + a.duration_minutes + " min");
+    if((a.category || "") !== (b.category || "")) parts.push("area " + (a.category || "none"));
+    if((a.priority || "") !== (b.priority || "") && a.priority) parts.push("priority " + a.priority);
+    if((a.recurrence || "") !== (b.recurrence || "")) parts.push(a.recurrence ? "now repeats" : "no longer repeats");
+    if(JSON.stringify(a.reminders || []) !== JSON.stringify(b.reminders || [])) parts.push((a.reminders || []).length ? "reminders changed" : "reminders off");
+    if(!!a.someday !== !!b.someday) parts.push(a.someday ? "parked under someday" : "back from someday");
+    if(JSON.stringify(a.recurrence_done || []) !== JSON.stringify(b.recurrence_done || [])) return ((a.recurrence_done || []).length > (b.recurrence_done || []).length ? "Completed " : "Reopened ") + q + " for one day";
+    if(JSON.stringify(a.recurrence_exceptions || []) !== JSON.stringify(b.recurrence_exceptions || [])) return "Skipped one date of " + q;
+    if((a.notes_md || "") !== (b.notes_md || "")) parts.push("notes");
+    if((a.parent_id || "") !== (b.parent_id || "")) parts.push(a.parent_id ? "linked to a goal or project" : "unlinked");
+    if(t === "an item") q = "a " + String(e.table_name || "record").replace(/_/g, " ").replace(/s$/, "");
+    if(parts.length) return "Changed " + noun + q + ": " + parts.slice(0, 3).join(", ");
     return "Edited " + noun + q;
   }
   function fxFeedEntries(){
@@ -20332,12 +20347,12 @@
   /* Command Center (command/): one page for tasks, events, deadlines and time blocks. The module only
      draws; every save goes through the functions below, so the activity log and undo keep working.
      Bump COMMAND_VER with each release of command/*. */
-  var COMMAND_VER = "7", commandLoading = null, commandHandle = null, commandBoard = null, commandBoardLoad = null;
+  var COMMAND_VER = "8", commandLoading = null, commandHandle = null, commandBoard = null, commandBoardLoad = null;
   // Hours that count as booked in the free-time bars. Change here if the work pattern changes.
   var COMMAND_WORK = { days:[1, 2, 3, 4, 5], start:"09:00", end:"18:00" };
   function commandLoadScripts(){
     if(commandLoading) return commandLoading;
-    commandLoading = ["core", "view", "board", "command"].reduce(function(chain, f){
+    commandLoading = ["core", "view", "ring", "board", "command"].reduce(function(chain, f){
       return chain.then(function(){
         return new Promise(function(resolve, reject){
           var el = document.createElement("script");
@@ -20361,17 +20376,32 @@
     try{
       var r = await Promise.all([
         sb.from("workouts").select("id,date,started_at,duration_minutes,routine,title,volume_kg").is("archived_at", null).gte("date", since),
-        sb.from("health_daily").select("date,bed_time,wake_time,sleep_minutes,sleep_score,bed_time_corrected,wake_time_corrected,sleep_minutes_corrected,corrected_at").is("archived_at", null).gte("date", since)
+        sb.from("health_daily").select("date,bed_time,wake_time,sleep_minutes,sleep_score,bed_time_corrected,wake_time_corrected,sleep_minutes_corrected,corrected_at,body_battery_curve,body_battery_now,training_readiness").is("archived_at", null).gte("date", since)
       ]);
       var wk = r[0].data || [], counts = {};
       if(wk.length){ var s = await sb.from("workout_sets").select("workout_id,exercise_index").in("workout_id", wk.map(function(w){ return w.id; }).slice(0, 300)).is("superseded_at", null); (s.data || []).forEach(function(x){ (counts[x.workout_id] = counts[x.workout_id] || {})[x.exercise_index] = 1; }); }
-      var out = { workoutsBy:{}, sleepBy:{} };
+      var out = { workoutsBy:{}, sleepBy:{}, energyBy:{} };
+      (r[1].data || []).forEach(function(n){ if(Array.isArray(n.body_battery_curve) && n.body_battery_curve.length > 1) out.energyBy[String(n.date).slice(0, 10)] = n.body_battery_curve; });
       wk.forEach(function(w){ var d = String(w.date).slice(0, 10); (out.workoutsBy[d] = out.workoutsBy[d] || []).push({ title:w.routine || w.title || "Workout", start:w.started_at ? berlin(w.started_at) : null, mins:w.duration_minutes || null, volume:w.volume_kg != null ? +w.volume_kg : null, exercises:counts[w.id] ? Object.keys(counts[w.id]).length : null }); });
       (r[1].data || []).forEach(function(n){ var c = !!(n.corrected_at || n.bed_time_corrected), bed = n.bed_time_corrected || n.bed_time, wake = n.wake_time_corrected || n.wake_time, mins = n.sleep_minutes_corrected != null ? n.sleep_minutes_corrected : n.sleep_minutes;
         if(bed || mins != null) out.sleepBy[String(n.date).slice(0, 10)] = { mins:mins, bed:bed ? String(bed).slice(0, 5) : null, wake:wake ? String(wake).slice(0, 5) : null, score:n.sleep_score, corrected:c }; });
       commandActual = out; commandActualAt = Date.now();
     }catch(err){ console.warn("actual", err); }
     return commandActual;
+  }
+  /* Area pulse on Today: one number or word per area. Names only for people; money stays blurred until tapped. */
+  function commandPulse(today){
+    var out = {}, sl = commandActual && commandActual.sleepBy ? commandActual.sleepBy[today] : null;
+    out.health = sl && sl.score != null ? { big:String(sl.score), sub:"sleep score" } : sl && sl.mins ? { big:Math.floor(sl.mins / 60) + " h " + ("0" + (sl.mins % 60)).slice(-2), sub:"slept" } : { big:"–", sub:"no sleep data yet" };
+    var t0 = new Date(today + "T12:00:00"), best = null;
+    (state.people || []).forEach(function(p){ if(p.archivedAt || p.inMemory || !p.birthdayMonth || !p.birthdayDay) return; var d = new Date(t0.getFullYear(), p.birthdayMonth - 1, p.birthdayDay, 12); if(d < t0 - 43200000) d.setFullYear(d.getFullYear() + 1); var n = Math.round((d - t0) / 864e5); if(n >= 0 && n <= 7 && (!best || n < best.n)) best = { n:n, p:p, d:d }; });
+    if(best) out.people = { big:String(best.p.name || "").replace(/^\s*\[[^\]]*\]\s*/, "").split(" ")[0], sub:"birthday " + (best.n === 0 ? "today" : best.n === 1 ? "tomorrow" : best.d.toLocaleDateString("en-GB", { weekday:"short" })) };
+    else { var late = (state.people || []).filter(function(p){ return !p.archivedAt && !p.inMemory && p.rhythmDays && p.lastContactAt && (t0 - new Date(p.lastContactAt)) / 864e5 > p.rhythmDays; }).sort(function(a, b){ return new Date(a.lastContactAt) - new Date(b.lastContactAt); })[0];
+      out.people = late ? { big:String(late.name || "").replace(/^\s*\[[^\]]*\]\s*/, "").split(" ")[0], sub:"time to get in touch" } : { big:"–", sub:"nobody waiting" }; }
+    out.money = { big:"–", sub:"no money summary yet" };
+    var wk = new Date(t0.getTime() - ((t0.getDay() + 6) % 7) * 864e5).toISOString().slice(0, 10), notes = (state.journal || []).filter(function(n){ return n.date >= wk && !n.archivedAt; }).length;
+    out.growth = { big:String(notes), sub:notes === 1 ? "note this week" : "notes this week" };
+    return out;
   }
   function commandOpenWorkout(date){
     showSection("health"); renderAll();
@@ -20464,7 +20494,7 @@
     }));
     var today = todayStr(), main = fxMainAction(today);
     return {
-      items: items, today: today, mainId: main ? main.id : null, work: COMMAND_WORK, actual: commandActual || undefined, theme: currentTheme(), board: commandBoard || undefined, push: Object.assign({}, commandPush),
+      items: items, today: today, mainId: main ? main.id : null, work: COMMAND_WORK, actual: commandActual || undefined, pulse: commandPulse(today), theme: currentTheme(), board: commandBoard || undefined, push: Object.assign({}, commandPush),
       goals: state.goals.map(function(g){ return { id:g.id, title:g.title, area:g.category || "", due:g.ongoing ? null : (g.due || null), ongoing:!!g.ongoing, progress:Math.round(goalProgress(g)) || 0,
         open: state.actions.filter(function(a){ return !a.done && resolveGoalIdForAction(a) === g.id; }).length }; }),
       projects: state.projects.map(function(p){
@@ -20571,6 +20601,7 @@
         onUndo: function(logId){ return fxUndo(logId); },
         onOpenFull: function(id){ var hit = commandFind(id); if(hit && hit.table === "events") editEvent(id); else editAction(id); },
         onOpenWorkout: commandOpenWorkout,
+        onGo: function(where){ var map = { health:"health", people:"people", finance:"finance", knowledge:"knowledge", work:null }; if(map[where]){ showSection(map[where]); renderAll(); } else if(commandHandle) commandHandle.setView("week"); },
         onOpenGoal: function(id){ openGoalDetailPage(id); },
         onOpenProject: function(id){ editProject(id); },
         onNewGoal: function(){ openGoalModal(null); },
