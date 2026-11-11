@@ -1207,9 +1207,9 @@ async function knTopicId(zone: string, name: string): Promise<string | null> {
 }
 
 tool("map_knowledge", {
-  description: "The whole Knowledge page at a glance, for sorting it: every item Claude may read (id, title, zone, type, topic, folder, tags, a short summary, whether it has text to read) and the links between them. Start here before reading items with get_knowledge_item and grouping them with cluster_knowledge and link_knowledge. Zones the owner keeps from Claude are only counted.",
-  inputSchema: z.object({}),
-  handler: async () => {
+  description: "The whole Knowledge page at a glance, for sorting it: every item Claude may read (id, title, zone, type, topic, folder, tags, a short summary, whether it has text to read) and the links between them. Start here before reading items with get_knowledge_item and grouping them with cluster_knowledge and link_knowledge. Zones the owner keeps from Claude are only counted. OneDrive files come grouped by folder with id, title, type and modified date, to keep the answer small; pass folder to see one folder with each file's full path and webUrl (get_knowledge_item gives them for one file).",
+  inputSchema: z.object({ folder: z.string().max(300).optional().describe("only OneDrive files whose folder starts with this, with path and webUrl") }),
+  handler: async (a: { folder?: string }) => {
     const allowed = await knAllowed();
     const [it, tp, ed, ch] = await Promise.all([
       knItems("*").eq("user_id", OWNER).is("archived_at", null).order("created_at", { ascending: false }).limit(3000),
@@ -1230,15 +1230,27 @@ tool("map_knowledge", {
     const hidden: { what: string; items: number; why: string }[] = Object.keys(hz).map((z2) => ({ what: "zone: " + ((KN_ZONE_NAME as Record<string, string>)[z2] || z2), items: hz[z2], why: "'Claude may read' is off for this zone (Knowledge page, Privacy and search)" }));
     if (pv.count) hidden.push({ what: "OneDrive files marked private", items: pv.count, why: "their source or subfolder is set to private, which never reaches Claude" });
     await knTrace("note", null, null, "Looking over " + shown.length + " items");
-    return ok({
-      items: shown.map((r) => ({ id: r.id, title: r.title, zone: r.zone, type: r.type, topic: r.topic_id ? tn[r.topic_id] || null : null, folder: (r.meta || {}).folder || null, tags: r.tags || [], summary: String(r.summary || r.why || "").slice(0, 240), hasText: withText.has(r.id) && !knNoText(r), toSort: !!r.needs_sort,
-        ...(r.provider ? { access: r.privacy === "index" ? "text" : "links only", path: r.remote_path, webUrl: r.web_url || undefined, modified: r.remote_modified_at, created: r.created_at } : {}) })),
+    // OneDrive files: grouped by folder and kept short, so several hundred files still fit in one answer
+    const want = a.folder ? a.folder.replace(/^\/+|\/+$/g, "").toLowerCase() : null;
+    // deno-lint-ignore no-explicit-any
+    const groups: Record<string, any> = {};
+    for (const r of shown) {
+      if (!r.provider) continue;
+      const p = String(r.remote_path || ""), dir = p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : String((r.meta || {}).folder || "");
+      if (want != null && !dir.toLowerCase().startsWith(want)) continue;
+      const g = groups[dir + "|" + r.zone + "|" + r.privacy] = groups[dir + "|" + r.zone + "|" + r.privacy] || { folder: dir, zone: r.zone, access: r.privacy === "index" ? "text" : "links only", files: [] };
+      g.files.push({ id: r.id, title: r.title, type: r.type, modified: r.remote_modified_at ? String(r.remote_modified_at).slice(0, 10) : undefined, topic: r.topic_id ? tn[r.topic_id] || undefined : undefined, tags: (r.tags || []).length ? r.tags : undefined, hasText: (withText.has(r.id) && !knNoText(r)) || undefined, ...(want != null ? { path: p, webUrl: r.web_url || undefined } : {}) });
+    }
+    return { content: [{ type: "text" as const, text: JSON.stringify({
+      items: want != null ? [] : shown.filter((r) => !r.provider).map((r) => ({ id: r.id, title: r.title, zone: r.zone, type: r.type, topic: r.topic_id ? tn[r.topic_id] || null : null, folder: (r.meta || {}).folder || null, tags: r.tags || [], summary: String(r.summary || r.why || "").slice(0, 240), hasText: withText.has(r.id), toSort: !!r.needs_sort })),
+      oneDrive: Object.values(groups).sort((p, q) => String(p.folder).localeCompare(String(q.folder))),
+      oneDriveFiles: shown.filter((r) => r.provider).length,
       links: (ed.data || []).filter((e) => ids.has(e.from_id) && ids.has(e.to_id)),
       keptFromClaude: rows.length - shown.length + (pv.count || 0),
       hidden,
       oneDriveSources: (src.data || []).map((x) => ({ id: x.id, privacy: x.privacy, zone: x.zone, privateSubfolders: Object.values(x.privacy_overrides || {}).filter((v) => v === "private").length })),
       truncated: rows.length === 3000 || undefined,
-    });
+    }) }] };
   },
 });
 
