@@ -1207,7 +1207,7 @@ async function knTopicId(zone: string, name: string): Promise<string | null> {
 }
 
 tool("map_knowledge", {
-  description: "The whole Knowledge page at a glance, for sorting it: every item Claude may read (id, title, zone, type, topic, folder, tags, a short summary, whether it has text to read) and the links between them. Start here before reading items with get_knowledge_item and grouping them with cluster_knowledge and link_knowledge. Zones the owner keeps from Claude are only counted. OneDrive files come grouped by folder with id, title, type and modified date, to keep the answer small; pass folder to see one folder with each file's full path and webUrl (get_knowledge_item gives them for one file).",
+  description: "The whole Knowledge page at a glance, for sorting it: every item Claude may read (id, title, zone, type, topic, folder, tags, a short summary, whether it has text to read) and the links between them. Start here before reading items with get_knowledge_item and grouping them with cluster_knowledge and link_knowledge. Zones the owner keeps from Claude are only counted. OneDrive files come as a list of folders (file count, newest change, a few sample titles); pass folder to list that folder's files with id, title, type, modified date, path and webUrl (get_knowledge_item gives one file).",
   inputSchema: z.object({ folder: z.string().max(300).optional().describe("only OneDrive files whose folder starts with this, with path and webUrl") }),
   handler: async (a: { folder?: string }) => {
     const allowed = await knAllowed();
@@ -1243,7 +1243,12 @@ tool("map_knowledge", {
     }
     return { content: [{ type: "text" as const, text: JSON.stringify({
       items: want != null ? [] : shown.filter((r) => !r.provider).map((r) => ({ id: r.id, title: r.title, zone: r.zone, type: r.type, topic: r.topic_id ? tn[r.topic_id] || null : null, folder: (r.meta || {}).folder || null, tags: r.tags || [], summary: String(r.summary || r.why || "").slice(0, 240), hasText: withText.has(r.id), toSort: !!r.needs_sort })),
-      oneDrive: Object.values(groups).sort((p, q) => String(p.folder).localeCompare(String(q.folder))),
+      oneDrive: Object.values(groups).sort((p, q) => String(p.folder).localeCompare(String(q.folder))).map((g) => want != null ? g : {
+        folder: g.folder, zone: g.zone, access: g.access, files: g.files.length,
+        newest: g.files.map((f: { modified?: string }) => f.modified || "").sort().pop() || undefined,
+        sample: g.files.slice(0, 3).map((f: { title: string }) => f.title),
+      }),
+      next: want == null && Object.keys(groups).length ? "Call map_knowledge with folder set to one of these folders to list its files." : undefined,
       oneDriveFiles: shown.filter((r) => r.provider).length,
       links: (ed.data || []).filter((e) => ids.has(e.from_id) && ids.has(e.to_id)),
       keptFromClaude: rows.length - shown.length + (pv.count || 0),
