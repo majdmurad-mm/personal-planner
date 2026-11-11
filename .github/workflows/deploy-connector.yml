@@ -53,5 +53,5 @@ jobs:
             case "$name" in _*) continue;; esac
             [ -f "$dir/index.ts" ] || continue
             echo "Deploying $name"
-            supabase functions deploy "$name" --project-ref "$PROJECT_REF" --no-verify-jwt --use-api
+            supabase functions deploy "$name" --project-ref "$PROJECT_REF" --no-verify-jwt --use-api --yes
           done
