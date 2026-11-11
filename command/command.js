@@ -9,9 +9,10 @@
     var root = host.shadowRoot || host.attachShadow({ mode: "open" });
     var S = { view: o.view || "today", q: "", pickerOpen: false, overdueOpen: false, over: null, qa: { text: "", kind: null, msg: "" }, hist: null, sample: !!o.sample, areas: o.areas || [], smode: null, board: { pos: {}, links: [], collapsed: {}, cam: { x: 20, y: 20, k: 1 }, linkFrom: null, undo: null, fitted: false, loaded: false } };
     var theme = o.theme || "light", fixedNow = o.now || null, busy = false;
+    try { if (localStorage.getItem("pp_cc_actual") === "0") S.showActual = false; } catch (x) {}
     var call = function (name) { var a = [].slice.call(arguments, 1); return Promise.resolve(o[name] ? o[name].apply(null, a) : null); };
     function setData(d) {
-      ["items", "goals", "projects", "feed", "feedNote", "mainId", "work", "push"].forEach(function (k) { if (d[k] !== undefined) S[k] = d[k]; });
+      ["items", "goals", "projects", "feed", "feedNote", "mainId", "work", "push", "actual"].forEach(function (k) { if (d[k] !== undefined) S[k] = d[k]; });
       if (d.board && !S.board.loaded) { S.board.pos = d.board.pos || {}; S.board.links = d.board.links || []; S.board.collapsed = d.board.collapsed || {}; S.board.loaded = true; }
       S.items = S.items || []; S.byId = {}; S.items.forEach(function (i) { S.byId[i.id] = i; });
       var n = fixedNow || new Date(); S.today = d.today || C.localIso(n); S.nowMin = n.getHours() * 60 + n.getMinutes();
@@ -28,14 +29,20 @@
       cc.innerHTML = (S.sample ? '<div class="ribbon" role="note"><b>SAMPLE DATA</b> · invented items and names · nothing below is yours</div>' : "") +
         '<div class="wrap"><header class="top"><div class="seg" role="group" aria-label="View">' + VIEWS.map(function (v, i) { return '<button data-view="' + v[0] + '" aria-pressed="false" title="Press ' + (i + 1) + '">' + v[1] + "</button>"; }).join("") + '</div>' +
         '<div class="tools"><input class="in search" id="ccSearch" type="search" placeholder="Search  ( / )" aria-label="Search everything" value=""><button class="btn" data-act="push" title="Reminders on your phone" aria-label="Reminders">🔔<span class="wide" style="display:inline"> Reminders</span></button><button class="btn pri wide addbtn" data-act="add">+ Add <kbd>N</kbd></button></div></header>' +
-        '<main id="ccView"></main></div><button class="fab" data-act="add" aria-label="Add something">+</button><div id="ccOver"></div>';
+        '<div class="legend" id="ccLegend" role="group" aria-label="Areas: click to show one area"></div><main id="ccView"></main></div><button class="fab" data-act="add" aria-label="Add something">+</button><div id="ccOver"></div>';
       draw();
     }
+    function legend() {
+      var el = $("#ccLegend"); if (!el) return;
+      el.innerHTML = ["task", "work", "health", "growth", "people", "sol", "none"].map(function (k) { return '<button data-areaf="' + k + '" aria-pressed="' + (S.areaFilter === k) + '" style="--c:var(--area-' + k + ');--cs:var(--area-' + k + '-soft);--ct:var(--area-' + k + '-text)' + (k === "sol" ? ";--co:var(--area-sol-line)" : "") + '"><i></i>' + C.AREA_NAME[k] + "</button>"; }).join("") +
+        '<button class="act-t" data-act="actual" aria-pressed="' + (S.showActual !== false) + '" title="Workouts and sleep that were synced">Show actual</button>';
+    }
     function draw() {
-      var v = S.q ? "search" : S.view;
+      var v = S.q ? "search" : S.view; legend();
+      var all = S.items; if (S.areaFilter) S.items = all.filter(function (i) { return C.areaKey(i.area) === S.areaFilter; });
       [].forEach.call(root.querySelectorAll(".seg button"), function (b) { b.setAttribute("aria-pressed", String(!S.q && b.dataset.view === S.view)); });
       if (v === "strategy" && S.smode == null) S.smode = host.getBoundingClientRect().width >= 900 ? "board" : "outline";
-      $("#ccView").innerHTML = '<div class="view" data-v="' + v + '">' + V[v](S) + "</div>";
+      $("#ccView").innerHTML = '<div class="view" data-v="' + v + '">' + V[v](S) + "</div>"; S.items = all;
       if (v === "strategy" && S.smode === "board") { if (!S.board.fitted) { S.board.fitted = true; fitBoard(); } }
       drawOver(true);
     }
@@ -179,6 +186,9 @@
         else if (q === "full") { close(); call("onOpenFull", it.id); }
       }
       else if (d.act === "close") close();
+      else if (d.act === "actual") { S.showActual = S.showActual === false; try { localStorage.setItem("pp_cc_actual", S.showActual ? "1" : "0"); } catch (x) {} draw(); }
+      else if (d.areaf) { S.areaFilter = S.areaFilter === d.areaf ? null : d.areaf; draw(); var b0 = root.querySelector('[data-areaf="' + d.areaf + '"]'); if (b0) b0.focus(); }
+      else if (d.workout) call("onOpenWorkout", d.workout);
       else if (d.act === "push") { open({ type: "push" }); call("onPush", "refresh"); }
       else if (d.act === "pushon") call("onPush", "enable");
       else if (d.act === "pushoff") call("onPush", "disable");

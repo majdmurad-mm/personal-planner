@@ -118,6 +118,11 @@
   var MONN = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, sept: 9, oct: 10, nov: 11, dec: 12 };
   var nextDow = function (today, d) { return C.add(today, (d - C.dow(today) + 7) % 7); };
   var nextDom = function (today, dom) { var d = today; for (var i = 0; i < 62; i++) { if (+d.slice(8, 10) === dom) return d; d = C.add(d, 1); } return today; };
+  /* The one map from a planner area to its colour key (tokens --area-<key> in command.css). Sol waits for the owner's choice. */
+  C.AREA_KEY = { Finance: "task", Maintenance: "task", Career: "work", Health: "health", Growth: "growth", Relationships: "people", Sol: "sol" };
+  C.areaKey = function (area) { var k = area ? C.AREA_KEY[area] : null; return k || "none"; };
+  C.areaVars = function (area) { var k = C.areaKey(area); return "--c:var(--area-" + k + ");--cs:var(--area-" + k + "-soft);--ct:var(--area-" + k + "-text);" + (k === "sol" ? "--co:var(--area-sol-line);" : ""); };
+  C.AREA_NAME = { task: "Tasks & money", work: "Work", health: "Health", growth: "Growth & knowledge", people: "People", sol: "Sol", none: "No area" };
   C.parseQuick = function (text, today, areas) {
     var out = { title: "", kind: "task", date: null, time: null, dur: null, recurrence: null, priority: null, area: null, allDay: false }, used = [];
     var s = " " + String(text || "").replace(/\s+/g, " ").trim() + " ";

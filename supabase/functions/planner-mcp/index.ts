@@ -51,6 +51,8 @@ const CATEGORIES = ["Health", "Finance", "Career", "Maintenance", "Growth", "Rel
 // The pages carry friendlier names than the stored areas; both are accepted everywhere and stored as the area.
 const AREA_ALIASES: Record<string, string> = { Money: "Finance", Work: "Career", People: "Relationships", Home: "Maintenance", Admin: "Maintenance", Learning: "Growth", Self: "Growth", Life: "Sol" };
 const AREA_INPUT = [...CATEGORIES, ...Object.keys(AREA_ALIASES)] as unknown as readonly [string, ...string[]];
+// Which area to set (the Command Center colours follow it): yellow tasks & money, orange work, green health, purple growth, blue people, white Sol.
+const AREA_GUIDE = "area (sets the colour): Finance = money, bills, banking (yellow); Maintenance = admin, home, paperwork, errands, appointments that are chores (yellow); Career = job, client work, career (orange); Health = sleep, workouts, gym, energy, body, medical (green only for health); Growth = learning, reading, papers, concerts, club nights, culture, hobbies, events you go to for yourself (purple); Relationships = family, friends, calls, messages, meetings and meals with people, birthdays (blue); Sol = the owner's own Sol category (white). Page names also work: Money, Work, People, Home, Admin, Learning, Self, Life.";
 const normArea = (a: unknown) => typeof a === "string" && AREA_ALIASES[a] ? AREA_ALIASES[a] : a;
 // Stamped by .github/workflows/deploy-connector.yml at deploy time; left as placeholders for a dashboard deploy.
 const BUILD_COMMIT = "__BUILD_COMMIT__", BUILD_TIME = "__BUILD_TIME__";
@@ -390,7 +392,7 @@ tool("list_actions", {
     done: z.boolean().optional().describe("filter by completion state; omit for both"),
     from: z.string().optional().describe("YYYY-MM-DD inclusive lower bound on the action's date"),
     to: z.string().optional().describe("YYYY-MM-DD inclusive upper bound on the action's date"),
-    area: z.enum(AREA_INPUT).optional(),
+    area: z.enum(AREA_INPUT).optional().describe(AREA_GUIDE),
     limit: z.number().optional().describe("max rows (default 100)"),
     includeArchived: z.boolean().optional().describe("also return archived actions (default false)"),
   }),
@@ -506,7 +508,7 @@ tool("list_events", {
   inputSchema: z.object({
     from: z.string().optional().describe("YYYY-MM-DD inclusive lower bound on the event's date"),
     to: z.string().optional().describe("YYYY-MM-DD inclusive upper bound on the event's date"),
-    area: z.enum(AREA_INPUT).optional(),
+    area: z.enum(AREA_INPUT).optional().describe(AREA_GUIDE),
     limit: z.number().optional().describe("max rows (default 100)"),
   }),
   handler: async (args: { from?: string; to?: string; area?: string; limit?: number }) => {
@@ -953,7 +955,7 @@ tool("plan_week", {
 
 tool("get_backlog", {
   description: "Open tasks with no date, grouped by area, plus the items parked under 'someday'. Nothing here is late. Pass area to see one area only.",
-  inputSchema: z.object({ area: z.enum(AREA_INPUT).optional() }),
+  inputSchema: z.object({ area: z.enum(AREA_INPUT).optional().describe(AREA_GUIDE) }),
   handler: async (args: { area?: string }) => {
     const L = await ccLoad();
     if (L.error) return fail(L.error);
@@ -1300,7 +1302,7 @@ tool("create_goal", {
   inputSchema: z.object({
     title: z.string(),
     priority: z.enum(PRIORITIES),
-    area: z.enum(AREA_INPUT).describe("the goal's primary area (category)"),
+    area: z.enum(AREA_INPUT).describe("the goal's primary area. " + AREA_GUIDE),
     due: z.string().optional().describe("YYYY-MM-DD; omit if ongoing or no due date"),
     ongoing: z.boolean().optional(),
   }),
@@ -1321,7 +1323,7 @@ tool("edit_goal", {
     id: z.string(),
     title: z.string().optional(),
     priority: z.enum(PRIORITIES).optional(),
-    area: z.enum(AREA_INPUT).optional(),
+    area: z.enum(AREA_INPUT).optional().describe(AREA_GUIDE),
     due: z.string().optional(),
     ongoing: z.boolean().optional(),
   }),
@@ -1397,7 +1399,7 @@ tool("create_action", {
     date: z.string().optional().describe("YYYY-MM-DD the action is scheduled for; omit for backlog"),
     timeOfDay: z.string().optional().describe("HH:MM 24h, optional"),
     durationMinutes: z.number().optional(),
-    area: z.enum(AREA_INPUT).optional().describe("the action's own area; otherwise inferred from its parent"),
+    area: z.enum(AREA_INPUT).optional().describe("the action's own area; otherwise inferred from its parent. " + AREA_GUIDE),
     secondaryAreas: z.array(z.enum(AREA_INPUT)).optional().describe("other areas this action also touches"),
     isMilestone: z.boolean().optional().describe("mark it a milestone — a dated checkpoint rather than ordinary work"),
     isDecision: z.boolean().optional().describe("mark it a decision — a fork with a scenario canvas rather than a task. Add scenarios with create_scenario."),
@@ -1462,7 +1464,7 @@ tool("edit_action", {
     date: z.string().optional().describe("YYYY-MM-DD; pass an empty string to clear the date"),
     timeOfDay: z.string().optional(),
     durationMinutes: z.number().optional(),
-    area: z.enum(AREA_INPUT).optional(),
+    area: z.enum(AREA_INPUT).optional().describe(AREA_GUIDE),
     secondaryAreas: z.array(z.enum(AREA_INPUT)).optional().describe("replaces the existing set"),
     isMilestone: z.boolean().optional(),
     notes: z.string().optional().describe("free-form notes for the action's own page (Markdown); replaces what's there"),
@@ -1570,7 +1572,7 @@ tool("create_event", {
     date: z.string().optional().describe("YYYY-MM-DD when it happens"),
     timeOfDay: z.string().optional().describe("HH:MM 24h, optional"),
     durationMinutes: z.number().optional(),
-    area: z.enum(AREA_INPUT).optional().describe("the event's primary area"),
+    area: z.enum(AREA_INPUT).optional().describe("the event's primary area. " + AREA_GUIDE),
     secondaryAreas: z.array(z.enum(AREA_INPUT)).optional(),
     location: z.string().optional().describe("where it happens — an address or place name, geocoded for you and pinned on the Location map"),
     linkedPeopleIds: z.array(z.string()).optional().describe("ids from list_people — who it's with"),
@@ -1616,7 +1618,7 @@ tool("edit_event", {
     date: z.string().optional().describe("YYYY-MM-DD; pass an empty string to clear it"),
     timeOfDay: z.string().optional().describe("HH:MM 24h; pass an empty string to clear it"),
     durationMinutes: z.number().optional(),
-    area: z.enum(AREA_INPUT).optional(),
+    area: z.enum(AREA_INPUT).optional().describe(AREA_GUIDE),
     secondaryAreas: z.array(z.enum(AREA_INPUT)).optional().describe("replaces the existing set"),
     location: z.string().optional().describe("new address or place name, geocoded for you; pass an empty string to remove the location"),
     linkedPeopleIds: z.array(z.string()).optional().describe("replaces the existing set"),
@@ -2997,7 +2999,7 @@ tool("propose_action", {
     date: z.string().optional().describe("YYYY-MM-DD; empty string clears it on edit"),
     timeOfDay: z.string().optional().describe("HH:MM 24h"),
     durationMinutes: z.number().optional(),
-    area: z.enum(AREA_INPUT).optional(),
+    area: z.enum(AREA_INPUT).optional().describe(AREA_GUIDE),
     notes: z.string().optional(),
     location: z.string().optional().describe("address or place name — geocoded now, so the Inbox shows where it resolved"),
   }),
@@ -3063,7 +3065,7 @@ tool("propose_event", {
     date: z.string().optional().describe("YYYY-MM-DD"),
     timeOfDay: z.string().optional().describe("HH:MM 24h"),
     durationMinutes: z.number().optional(),
-    area: z.enum(AREA_INPUT).optional(),
+    area: z.enum(AREA_INPUT).optional().describe(AREA_GUIDE),
     location: z.string().optional().describe("address or place name — geocoded now"),
     linkedPeopleIds: z.array(z.string()).optional().describe("ids from list_people"),
     notes: z.string().optional(),
@@ -3609,7 +3611,7 @@ async function itemOutFull(table: string, id: string): Promise<any> {
 const ITEM_FIELDS = {
   title: z.string().min(1).max(300).optional(),
   notes: z.string().max(20000).optional().describe("Markdown notes"),
-  area: z.enum(AREA_INPUT).optional().describe("area: " + CATEGORIES.join(", ") + " (also accepted: " + Object.keys(AREA_ALIASES).join(", ") + ")"),
+  area: z.enum(AREA_INPUT).optional().describe(AREA_GUIDE),
   secondary_areas: z.array(z.enum(AREA_INPUT)).max(7).optional(),
   goal_id: z.string().nullable().optional().describe("attach to a goal (tasks, deadlines and blocks only)"),
   project_id: z.string().nullable().optional().describe("attach to a project (wins over goal_id)"),
@@ -3761,7 +3763,7 @@ tool("list_items", {
   description: "List items with filters. Without from/to it lists items as stored (a repeating item once). With from and to it lists every occurrence in that range, repeating items expanded, sorted by date and time — use that for 'what is on next week'. Default status is open. Use plan_day / plan_week for planning views with free time; search_items for a word search.",
   inputSchema: z.object({
     kind: z.array(z.enum(ITEM_KINDS)).optional(), status: z.enum([...ITEM_STATUS, "any"]).optional().describe("default open"),
-    area: z.enum(AREA_INPUT).optional(), from: z.string().regex(CC_DAY).optional(), to: z.string().regex(CC_DAY).optional(),
+    area: z.enum(AREA_INPUT).optional().describe(AREA_GUIDE), from: z.string().regex(CC_DAY).optional(), to: z.string().regex(CC_DAY).optional(),
     goal_id: z.string().optional(), project_id: z.string().optional(), source: z.string().optional(),
     recurring: z.boolean().optional().describe("true: only repeating items; false: only one-off items"), blocked: z.boolean().optional().describe("true: only tasks waiting on another task"),
     undated: z.boolean().optional().describe("true: only items with no date (the backlog)"), limit: z.number().int().min(1).max(500).optional(), offset: z.number().int().min(0).optional(),
@@ -3907,7 +3909,7 @@ tool("skip_occurrence", {
     return itemResult(await itemEdit(a.id, { exceptions: Array.from(new Set([...(f.row.recurrence_exceptions || []), a.date])) }));
   },
 });
-const OCC_CHANGES = z.object({ title: z.string().min(1).max(300).optional(), date: z.string().regex(CC_DAY).optional().describe("move to this day"), start: z.string().nullable().optional(), duration_min: z.number().int().min(1).max(1440).nullable().optional(), notes: z.string().optional(), area: z.enum(AREA_INPUT).optional(), location: z.string().nullable().optional(), reminders: z.array(z.number().int().min(0).max(40320)).max(5).optional() });
+const OCC_CHANGES = z.object({ title: z.string().min(1).max(300).optional(), date: z.string().regex(CC_DAY).optional().describe("move to this day"), start: z.string().nullable().optional(), duration_min: z.number().int().min(1).max(1440).nullable().optional(), notes: z.string().optional(), area: z.enum(AREA_INPUT).optional().describe(AREA_GUIDE), location: z.string().nullable().optional(), reminders: z.array(z.number().int().min(0).max(40320)).max(5).optional() });
 tool("edit_occurrence", {
   description: "Change a repeating item from one date on. scope: this (only that date: it is skipped in the series and a changed one-off copy is made), this_and_following (the series ends the day before and a changed new series starts on that date), all (the whole series changes). changes can include a new date (moves it), start, duration_min, title, notes, area, location, reminders.",
   inputSchema: z.object({ id: ITEM_ID, date: z.string().regex(CC_DAY).describe("the occurrence being changed"), scope: z.enum(["this", "this_and_following", "all"]), changes: OCC_CHANGES }),
@@ -4133,7 +4135,7 @@ function qaParse(text: string, today: string, areas: readonly string[]): any {
 }
 tool("quick_add", {
   description: "Add an item from one line of text, the way the Command Center's quick add reads it: 'call the landlord Wed 10:00', 'gym every Mon Wed Fri 19:00', 'pay rent 1st monthly', 'dinner with Noor tomorrow 19:30-21:30', 'insurance form due 13 Nov p1 #finance'. Pass dry_run: true to see how it was understood without saving. You can override what was parsed with kind/area/priority.",
-  inputSchema: z.object({ text: z.string().min(2).max(300), dry_run: z.boolean().optional(), kind: z.enum(ITEM_KINDS).optional(), area: z.enum(AREA_INPUT).optional(), priority: z.enum(PRIORITIES).optional() }),
+  inputSchema: z.object({ text: z.string().min(2).max(300), dry_run: z.boolean().optional(), kind: z.enum(ITEM_KINDS).optional(), area: z.enum(AREA_INPUT).optional().describe(AREA_GUIDE), priority: z.enum(PRIORITIES).optional() }),
   handler: async (a: { text: string; dry_run?: boolean; kind?: string; area?: string; priority?: string }) => {
     const p = qaParse(a.text, berlinToday(), CATEGORIES);
     if (!p.title) return fail("nothing left for a title after reading the date and time; add a few words");

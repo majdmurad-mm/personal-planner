@@ -8,7 +8,12 @@
   var dt = function (s) { return new Date(s + "T12:00:00"); };
   var fmt = function (s, o) { return dt(s).toLocaleDateString("en-GB", o || { weekday: "short", day: "numeric", month: "short" }); };
   V.fmt = fmt;
-  var cvar = function (a) { return AREAS.indexOf(a) >= 0 ? ' style="--c:var(--' + a + ')"' : ""; };
+  var cvar = function (a) { return ' style="' + C.areaVars(a) + '"'; };
+  var ICON = { task: '<path d="M3 4h8v8H3z"/><path d="M5 8l1.5 1.5L10 6"/>', work: '<path d="M2.5 5h9v6.5h-9z"/><path d="M5 5V3.5h4V5"/>', health: '<path d="M7 11.5S2.5 8.6 2.5 5.6A2.2 2.2 0 0 1 7 4.4a2.2 2.2 0 0 1 4.5 1.2C11.5 8.6 7 11.5 7 11.5z"/>', growth: '<path d="M2.5 3.5h4a1 1 0 0 1 1 1v7a1 1 0 0 0-1-1h-4zM11.5 3.5h-4"/><path d="M11.5 3.5v7h-3"/>', people: '<circle cx="7" cy="5" r="2.2"/><path d="M3 11.5c.5-2 2-3 4-3s3.5 1 4 3"/>', sol: '<circle cx="7" cy="7" r="2.6"/><path d="M7 1.5v1.6M7 10.9v1.6M1.5 7h1.6M10.9 7h1.6M3.1 3.1l1.1 1.1M9.8 9.8l1.1 1.1M3.1 10.9l1.1-1.1M9.8 4.2l1.1-1.1"/>', none: '<circle cx="7" cy="7" r="4.5"/>' };
+  var icon = function (k) { return '<svg class="ico" viewBox="0 0 14 14" aria-hidden="true">' + ICON[k] + "</svg>"; };
+  V.icon = icon;
+  /* the area label every row carries: icon + name, so colour is never the only signal */
+  var areaTag = function (it) { var k = C.areaKey(it.area); return '<span class="ar' + (k === "none" ? " na" : "") + '">' + icon(k) + esc(it.area ? (k === "none" ? it.area + " · no colour yet" : it.area) : "no area") + "</span>" + ((it.secondary || []).length ? '<span class="sec" title="Also: ' + esc(it.secondary.join(", ")) + '">' + it.secondary.map(function (a) { var k2 = C.areaKey(a); return '<i style="--c2:var(--area-' + k2 + ')' + (k2 === "sol" ? ";--co:var(--area-sol-line)" : "") + '" title="' + esc(a) + '"></i>'; }).join("") + "</span>" : ""); };
   var dot = function (a) { return '<i class="dot"' + cvar(a) + "></i>"; };
   var dur = function (m) { return m >= 60 ? (m % 60 ? Math.floor(m / 60) + " h " + (m % 60) + " min" : m / 60 + " h") : m + " min"; };
   var hrs = function (m) { var h = Math.round(m / 6) / 10; return String(h).replace(".", ",") + " h"; };
@@ -22,11 +27,11 @@
   /* one line for an item on a day */
   function row(S, o, extra) {
     var it = o.item, has = C.hasDone(it), w = when(o);
-    return '<div class="it' + (o.done ? " done" : "") + '">' +
+    return '<div class="it' + (o.done ? " done" : "") + '"' + cvar(it.area) + ">" +
       (has ? '<button class="box" role="checkbox" aria-checked="' + !!o.done + '" data-done="' + esc(o.key) + '" aria-label="' + (o.done ? "Mark not done: " : "Mark done: ") + esc(it.title) + '"><i>' + (o.done ? "✓" : "") + "</i></button>"
         : '<span class="mark"' + cvar(it.area) + ' title="' + KIND[it.kind] + '"><i></i></span>') +
       '<span class="ti"><button data-open="' + esc(it.id) + '" data-date="' + o.date + '">' + esc(it.title || "Untitled") + "</button>" +
-      (it.area ? ' <span class="m">· ' + dot(it.area) + esc(it.area) + "</span>" : "") +
+      areaTag(it) +
       (it.kind === "deadline" ? '<span class="tag">◆ deadline</span>' : "") + (it.priority && it.priority <= "P1" ? '<span class="tag">' + esc(it.priority) + "</span>" : "") +
       (o.repeats ? '<span class="tag" title="' + esc(C.ruleText(it.recurrence)) + '">↻ repeats</span>' : "") + (blocked(S, it) ? '<span class="tag">waiting on another task</span>' : "") + (it.source === "google" ? '<span class="tag">Google</span>' : "") +
       '</span><span class="when">' + esc(extra != null ? extra : w) + "</span></div>";
@@ -44,15 +49,29 @@
     var out = "", left = withHours ? 52 : 6, w = isWork(S, date) ? [C.mins(S.work.start), C.mins(S.work.end)] : null, top = function (m) { return "calc(" + ((m - H0 * 60) / 60).toFixed(3) + "*var(--hh))"; };
     for (var h = 0; h < HRS; h++) out += '<div class="hr" style="top:calc(' + h + '*var(--hh))">' + (withHours && h % 2 === 0 ? C.pad(H0 + h) + ":00" : "") + "</div>";
     if (w) out += '<div class="blk work" style="top:' + top(w[0]) + ";height:calc(" + ((w[1] - w[0]) / 60) + "*var(--hh) - 2px);left:" + left + "px;width:calc(100% - " + (left + 6) + 'px)">Work<small>' + S.work.start + " to " + S.work.end + "</small></div>";
+    var wos = actualOn(S, date), planned = false;
     occs.filter(function (o) { return o.date === date && o.item.time && !o.item.allDay; }).forEach(function (o) {
       var it = o.item, s = Math.max(H0 * 60, C.mins(it.time)), len = it.dur || it.est || (it.kind === "task" || it.kind === "deadline" ? 30 : 60), e = Math.min((H0 + HRS) * 60, s + len);
       if (e <= s) return;
-      var inW = w && s >= w[0] && e <= w[1];
-      out += '<button class="blk' + (inW ? " inw" : "") + (o.done ? " dn" : "") + '" data-open="' + esc(it.id) + '" data-date="' + date + '" style="top:calc(' + ((s - H0 * 60) / 60).toFixed(3) + "*var(--hh) + 1px);height:calc(" + ((e - s) / 60).toFixed(3) + "*var(--hh) - 2px);" + (AREAS.indexOf(it.area) >= 0 ? "--c:var(--" + it.area + ");" : "") + (withHours ? (inW ? "left:45%;width:calc(55% - 6px)" : "left:52px;width:calc(100% - 58px)") : "") + '" title="' + esc(it.title + " · " + when(o)) + '">' + esc(it.title) + (e - s >= 60 ? "<small>" + esc(when(o)) + "</small>" : "") + "</button>";
+      var inW = w && s >= w[0] && e <= w[1], gym = isGym(it), st2 = "";
+      if (gym && S.showActual !== false && S.actual) { planned = true; st2 = wos.length ? " met planned-side" : (date < S.today || (date === S.today && e < S.nowMin)) ? " missed" : ""; }
+      out += '<button class="blk' + (inW ? " inw" : "") + (o.done ? " dn" : "") + st2 + '"' + (st2 === " missed" ? ' aria-label="' + esc(it.title + ", planned, no workout logged") + '"' : "") + ' data-open="' + esc(it.id) + '" data-date="' + date + '" style="top:calc(' + ((s - H0 * 60) / 60).toFixed(3) + "*var(--hh) + 1px);height:calc(" + ((e - s) / 60).toFixed(3) + "*var(--hh) - 2px);" + C.areaVars(it.people && it.people.length && it.kind === "event" ? "Relationships" : it.area) + (st2.indexOf("planned-side") >= 0 ? (withHours ? "left:52px;width:calc(48% - 30px)" : "left:4px;width:calc(48% - 6px)") : withHours ? (inW ? "left:45%;width:calc(55% - 6px)" : "left:52px;width:calc(100% - 58px)") : "") + '" title="' + esc(it.title + " · " + when(o)) + '">' + esc(it.title) + (e - s >= 60 ? "<small>" + esc(when(o)) + "</small>" : "") + "</button>";
+    });
+    /* what actually happened: synced workouts, read-only, at their real time */
+    wos.forEach(function (x) {
+      var s = Math.max(H0 * 60, x.start == null ? 18 * 60 : x.start), e = Math.min((H0 + HRS) * 60, s + (x.mins || 60)); if (e <= s) return;
+      out += '<button class="blk actual' + (planned ? " beside" : "") + '" data-workout="' + date + '" style="top:calc(' + ((s - H0 * 60) / 60).toFixed(3) + "*var(--hh) + 1px);height:calc(" + ((e - s) / 60).toFixed(3) + "*var(--hh) - 2px);" + (withHours && !planned ? "left:52px;width:calc(100% - 58px)" : "") + '" title="' + esc(x.title + (x.mins ? " · " + x.mins + " min" : "") + (x.volume ? " · " + Math.round(x.volume) + " kg" : "") + (x.exercises ? " · " + x.exercises + " exercises" : "")) + '" aria-label="' + esc("Workout done: " + x.title + (x.mins ? ", " + x.mins + " minutes" : "") + ". Open it on the Health page") + '">✓ ' + esc(x.title) + (x.mins ? " — " + x.mins + " min" : "") + (e - s >= 60 ? "<small>" + (x.volume ? Math.round(x.volume) + " kg" : "") + (x.exercises ? " · " + x.exercises + " exercises" : "") + "</small>" : "") + "</button>";
     });
     if (date === S.today && S.nowMin >= H0 * 60 && S.nowMin <= (H0 + HRS) * 60) out += '<div class="nowline" style="top:' + top(S.nowMin) + '"></div>';
     return out;
   }
+  var GYM = /gym|workout|training|lift|strength|full body/i;
+  var isGym = function (it) { return it.kind === "block" && (GYM.test(it.title || "") || it.area === "Health"); };
+  var actualOn = function (S, d) { return S.showActual !== false && S.actual && S.actual.workoutsBy ? (S.actual.workoutsBy[d] || []) : []; };
+  /* last night's sleep, from the watch or the owner's correction */
+  var sleepOf = function (S, d) { return S.showActual !== false && S.actual && S.actual.sleepBy ? S.actual.sleepBy[d] || null : null; };
+  var sleepText = function (x) { return (x.mins ? hrs(x.mins) : "") + (x.bed ? " · " + x.bed + "–" + x.wake : "") + (x.score != null ? " · score " + x.score : "") + (x.corrected ? " · corrected" : ""); };
+  V.sleepBand = function (S, d) { if (S.showActual === false || !S.actual) return ""; var x = sleepOf(S, d); return x && (x.mins || x.bed) ? '<p class="sleepband" role="note"><svg class="ico" viewBox="0 0 14 14" aria-hidden="true"><path d="M9.5 2.5a4.5 4.5 0 1 0 2 6.5A3.6 3.6 0 0 1 9.5 2.5z"/></svg>Last night ' + esc(sleepText(x)) + "</p>" : '<p class="sleepband none" role="note">No sleep data for last night</p>'; };
   function capBar(S, occs, date) {
     var c = C.capacity(occs, date, S.work), full = c.free < 180;
     return '<div class="cap" role="img" aria-label="' + hrs(c.booked) + " booked, " + hrs(c.free) + ' free"><i style="width:' + (c.work / c.total * 100).toFixed(1) + '%"></i><i class="x" style="width:' + (c.other / c.total * 100).toFixed(1) + '%"></i></div><div class="capt' + (full ? " full" : "") + '">' + (full ? "Full · " : "") + hrs(c.free) + " free</div>";
@@ -66,7 +85,7 @@
     var open = occ.filter(function (o) { return !o.done; }).length, cap = C.capacity(occ, t, S.work);
     var sub = (open ? open + (open === 1 ? " thing" : " things") + " today." : "Nothing on the list today.") + (isWork(S, t) && S.nowMin < C.mins(S.work.end) ? " Work until " + S.work.end + "." : "");
     var html = '<div class="grid today"><div class="grid"><div><p class="eyebrow">' + fmt(t, { weekday: "long", day: "numeric", month: "long" }) + "</p><h1>" + hi + '</h1><p class="sub" style="margin-top:6px">' + sub + "</p></div>";
-    html += '<section class="card main" aria-label="The main thing"><p class="lab acc">★ The main thing</p>';
+    html += '<section class="card main" aria-label="The main thing"' + (main ? cvar(main.area) : "") + '><p class="lab acc">★ The main thing' + (main ? " · " + esc(main.area || "no area") : "") + "</p>";
     if (main) html += '<p class="t">' + esc(main.title) + '</p><p class="sub">' + (main.area ? dot(main.area) + esc(main.area) + " · " : "") + (main.date === t ? "today" : main.date ? fmt(main.date) : "no date") + (main.time ? " at " + main.time : "") + (main.est ? " · about " + dur(main.est) : "") + '</p><div class="acts"><button class="btn pri" data-done="' + esc(main.id + "@" + (main.date || t)) + '">Done</button><button class="btn" data-main-tomorrow="' + esc(main.id) + '">Tomorrow</button><button class="btn" data-act="picker">Change</button><button class="btn ghost" data-open="' + esc(main.id) + '">Details</button></div>';
     else html += '<p class="t">Nothing pressing today.</p><div class="acts"><button class="btn" data-act="picker">Pick a main thing</button></div>';
     if (S.pickerOpen) {
@@ -74,7 +93,7 @@
       html += '<div class="picker">' + (opts.length ? opts.map(function (i) { return '<button data-main="' + esc(i.id) + '"><span>' + esc(i.title) + '</span><span class="sub">' + (i.date ? fmt(i.date, { day: "numeric", month: "short" }) : esc(i.priority || "")) + "</span></button>"; }).join("") : '<p class="none">Nothing else is open.</p>') + "</div>";
     }
     html += '</section><section class="card"><h2>Today</h2><div style="margin-top:6px">' + (occ.length ? occ.map(function (o) { return row(S, o); }).join("") : '<p class="none">Nothing planned. Add something with the + button, or enjoy the room.</p>') + "</div></section>";
-    if (over.length) html += '<section class="card"><div class="over"><div><h2>' + over.length + (over.length === 1 ? " thing from earlier is" : " things from earlier are") + ' still open</h2><p class="sub">No rush. Look when you have a minute.</p></div><button class="btn" data-act="overdue" aria-expanded="' + !!S.overdueOpen + '">' + (S.overdueOpen ? "Close" : "Go through them") + "</button></div>" +
+    if (over.length) html += '<section class="card"><div class="over"><div><h2><span class="attn">' + over.length + "</span> " + (over.length === 1 ? "thing from earlier is" : "things from earlier are") + ' still open</h2><p class="sub">No rush. Look when you have a minute.</p></div><button class="btn" data-act="overdue" aria-expanded="' + !!S.overdueOpen + '">' + (S.overdueOpen ? "Close" : "Go through them") + "</button></div>" +
       (S.overdueOpen ? '<div style="margin-top:10px">' + over.map(function (o) { return row(S, o, fmt(o.date, { day: "numeric", month: "short" })) + triage(o); }).join("") + "</div>" : "") + "</section>";
     var nx = C.expand(S.items, C.add(t, 1), C.add(t, 3));
     html += '<div class="grid two"><section class="card"><h2>Next three days</h2><div class="days3">' + [1, 2, 3].map(function (n) {
@@ -82,7 +101,7 @@
       return '<button data-day="' + d + '"><b>' + fmt(d, { weekday: "short", day: "numeric" }) + "</b>" + fixed.slice(0, 2).map(function (o) { return "<p>" + (o.item.kind === "deadline" ? "◆ " : "") + esc(o.item.title) + (o.item.time ? " " + o.item.time : "") + "</p>"; }).join("") + '<p class="sub">' + (day.length ? (fixed.length > 2 ? "+" + (fixed.length - 2) + " more · " : "") + (tasks ? tasks + (tasks === 1 ? " task" : " tasks") : "no tasks") : "free") + "</p></button>";
     }).join("") + "</div></section>" +
       '<section class="card feed"><h2>What Claude changed</h2><div style="margin-top:4px">' + (feed.length ? feed.slice(0, 6).map(function (f) { return "<p><span>" + esc(f.text) + ' <i>· ' + esc(f.when) + "</i></span>" + (f.canUndo === false ? "" : '<button class="link" data-undo="' + esc(f.id) + '">undo</button>') + "</p>"; }).join("") : '<p class="none">' + esc(S.feedNote || "No changes in the last 24 hours.") + "</p>") + "</div></section></div>";
-    html += '</div><aside class="card wide" style="--hh:30px;--hrs:' + HRS + '" aria-label="Today by the hour"><h2>Today’s time</h2><p class="sub" style="margin-bottom:12px">' + hrs(cap.free) + ' free between 07:00 and 23:00</p><div class="col" style="border-left:0">' + timecol(S, t, occ, true) + "</div></aside></div>";
+    html += '</div><aside class="card wide" style="--hh:30px;--hrs:' + HRS + '" aria-label="Today by the hour"><h2>Today’s time</h2><p class="sub" style="margin-bottom:12px">' + hrs(cap.free) + ' free between 07:00 and 23:00</p>' + V.sleepBand(S, t) + '<div class="col" style="border-left:0">' + timecol(S, t, occ, true) + "</div></aside></div>";
     return html;
   };
 
@@ -96,7 +115,7 @@
     var html = '<div class="head"><div><p class="eyebrow">Week ' + weekNo(start) + "</p><h1>" + title + '</h1><p class="sub" style="margin-top:6px">' + (lo === hi ? "Every day has about the same room." : fmt(days[lo], { weekday: "long" }) + " has the least room. " + fmt(days[hi], { weekday: "long" }) + " has the most.") + '</p></div><div class="nav"><button class="btn sm" data-move="-7" aria-label="Previous week">←</button><button class="btn sm" data-act="now">This week</button><button class="btn sm" data-move="7" aria-label="Next week">→</button><button class="btn sm' + (C.dow(t) === 0 ? " pri" : "") + '" data-act="review">Weekly review</button></div></div>';
     html += '<div class="wide"><div class="wk"><div></div>' + days.map(function (d) {
       var l = loose(d);
-      return '<div class="hd' + (d === t ? " today" : "") + '" data-dropday="' + d + '"><button data-day="' + d + '" style="display:block;width:100%">' + fmt(d, { weekday: "short" }) + (d === t ? " · today" : "") + "<b>" + +d.slice(8) + "</b></button>" + capBar(S, occ, d) + '<div class="allday">' + l.slice(0, 3).map(function (o) { return '<button data-open="' + esc(o.item.id) + '" data-date="' + d + '" class="' + (o.item.kind === "deadline" ? "due" : "") + '"' + (o.done ? ' style="text-decoration:line-through;opacity:.6"' : "") + ">" + (o.item.kind === "deadline" ? "◆ " : C.hasDone(o.item) ? (o.done ? "☑ " : "☐ ") : "") + esc(o.item.title) + "</button>"; }).join("") + (l.length > 3 ? '<button data-day="' + d + '" class="sub">+' + (l.length - 3) + " more</button>" : "") + "</div></div>";
+      return '<div class="hd' + (d === t ? " today" : "") + '" data-dropday="' + d + '"><button data-day="' + d + '" style="display:block;width:100%">' + fmt(d, { weekday: "short" }) + (d === t ? " · today" : "") + "<b>" + +d.slice(8) + "</b></button>" + capBar(S, occ, d) + (S.showActual !== false && S.actual ? (function () { var x = S.actual.sleepBy && S.actual.sleepBy[d]; return x && (x.mins || x.bed) ? '<span class="sl" title="' + esc("Sleep " + (x.bed ? x.bed + "–" + x.wake : "") + (x.score != null ? ", score " + x.score : "") + (x.corrected ? ", corrected" : "")) + '">☾ ' + hrs(x.mins || 0) + (x.score != null ? " · " + x.score : "") + "</span>" : '<span class="sl none">☾ no data</span>'; })() : "") + '<div class="allday">' + l.slice(0, 3).map(function (o) { return '<button data-open="' + esc(o.item.id) + '" data-date="' + d + '" class="' + (o.item.kind === "deadline" ? "due" : "") + '"' + (o.done ? ' style="text-decoration:line-through;opacity:.6"' : "") + ">" + (o.item.kind === "deadline" ? "◆ " : C.hasDone(o.item) ? (o.done ? "☑ " : "☐ ") : "") + esc(o.item.title) + "</button>"; }).join("") + (l.length > 3 ? '<button data-day="' + d + '" class="sub">+' + (l.length - 3) + " more</button>" : "") + "</div></div>";
     }).join("") + '<div class="axis">' + [0, 2, 4, 6, 8, 10, 12, 14].map(function (h) { return '<span style="top:calc(' + h + '*var(--hh))">' + C.pad(H0 + h) + ":00</span>"; }).join("") + "</div>" + days.map(function (d) { return '<div class="col" data-dropcol="' + d + '">' + timecol(S, d, occ, false) + "</div>"; }).join("") + "</div></div>";
     html += '<div class="narrow agenda">' + days.map(function (d) {
       var day = occ.filter(function (o) { return o.date === d; });
@@ -117,7 +136,7 @@
       var day = occ.filter(function (o) { return o.date === d; }), fixed = day.filter(function (o) { return o.item.kind === "event" || o.item.kind === "block"; }), dls = day.filter(function (o) { return o.item.kind === "deadline"; }), tasks = day.filter(function (o) { return o.item.kind === "task" && !o.done; }).length;
       var label = fmt(d, { weekday: "long", day: "numeric", month: "long" }) + ": " + fixed.length + " events, " + dls.length + " deadlines, " + tasks + " open tasks";
       return '<button class="dy' + (d.slice(0, 7) !== mon ? " out" : "") + (d === t ? " today" : "") + '" data-day="' + d + '" aria-label="' + esc(label) + '"><b>' + +d.slice(8) + "</b>" + dls.slice(0, 1).map(function (o) { return '<p class="acc">◆ ' + esc(o.item.title) + "</p>"; }).join("") + fixed.slice(0, 2).map(function (o) { return "<p>" + esc(o.item.title) + "</p>"; }).join("") +
-        '<span class="dots">' + dls.map(function () { return '<i class="d"></i>'; }).join("") + fixed.slice(0, 4).map(function (o) { return '<i class="e"' + cvar(o.item.area) + "></i>"; }).join("") + (tasks ? "<span>" + tasks + (tasks === 1 ? " task" : " tasks") + "</span>" : "") + "</span></button>";
+        (S.showActual !== false && S.actual && S.actual.sleepBy && S.actual.sleepBy[d] && S.actual.sleepBy[d].mins ? '<span class="slp" title="Sleep">' + hrs(S.actual.sleepBy[d].mins) + " sleep</span>" : "") + '<span class="dots">' + dls.map(function () { return '<i class="d"></i>'; }).join("") + (function () { var seen = []; day.forEach(function (o) { var k = C.areaKey(o.item.area); if (seen.indexOf(k) < 0) seen.push(k); }); return seen.map(function (k) { return '<i class="e" style="--c:var(--area-' + k + ')' + (k === "sol" ? ";--co:var(--area-sol-line)" : "") + '" title="' + C.AREA_NAME[k] + '"></i>'; }).join(""); })() + (tasks ? "<span>" + tasks + (tasks === 1 ? " task" : " tasks") + "</span>" : "") + "</span></button>";
     }).join("") + '</div><p class="sub" style="margin-top:10px">◆ deadline · ● event or time block · the number counts open tasks. Tap a day to open it.</p>';
     return html;
   };

@@ -1,13 +1,27 @@
-/* Command Center: warm graphite with an amber accent. All colours are tokens on .cc. */
+/* Command Center: warm graphite. The five area colours are the only colour; everything else is neutral.
+   AREA TOKENS (one source of truth): --area-<key> strong (edges, dots), -soft (block fill, hover), -text (text on the soft tint).
+   Keys: task (Finance, Maintenance), work (Career), health (Health), growth (Growth, knowledge), people (Relationships), none.
+   Checked: AA for -text on -soft; strong >= 3:1 on cards; deutan/protan separation >= 7.8 (every item also has a label). */
 *{box-sizing:border-box;margin:0}
 button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;text-align:left}
 input,select,textarea{font:inherit;color:inherit}
-.cc{--Health:#2FA39A;--Relationships:#4C8FE0;--Finance:#C9A227;--Career:#8E7BD6;--Maintenance:#8C8C8C;--Growth:#5FA85A;--Sol:#D9824A;--none:var(--muted);
+.cc{--area-task:#A18C0B;--area-task-soft:#EDE8CF;--area-task-text:#716208;
+ --area-work:#BB4100;--area-work-soft:#F1DCCD;--area-work-text:#A83A00;
+ --area-health:#00793D;--area-health-soft:#D3E5D7;--area-health-text:#00733A;
+ --area-growth:#6331A0;--area-growth-soft:#E3D9E7;--area-growth-text:#6331A0;
+ --area-people:#007AC5;--area-people-soft:#D3E5EC;--area-people-text:#0068A7;
+ --area-sol:#FFFFFF;--area-sol-soft:#FFFFFF;--area-sol-text:#3F3A33;--area-sol-line:#9A9286;
+ --area-none:#8A8378;--area-none-soft:#EBE8E3;--area-none-text:#5A544B;--attn:#B26B00;
+ --Health:var(--area-health);--Relationships:var(--area-people);--Finance:var(--area-task);--Career:var(--area-work);--Maintenance:var(--area-task);--Growth:var(--area-growth);--Sol:var(--area-sol);--none:var(--area-none);
  --sans:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;--disp:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;--r:14px;
- --bg:#F2EEE7;--card:#FBF9F4;--inset:#EAE4DA;--text:#28241F;--muted:#6A6257;--line:#DDD5C8;--acc:#C98A1E;--accText:#85560A;--onAcc:#fff;--work:#EDE8DF;--shade:rgba(40,36,31,.35);color-scheme:light;
+ --bg:#F2EEE7;--card:#FBF9F4;--inset:#EAE4DA;--text:#28241F;--muted:#6A6257;--line:#DDD5C8;--acc:#28241F;--accText:#28241F;--onAcc:#FBF9F4;--work:#EDE8DF;--shade:rgba(40,36,31,.35);color-scheme:light;
  position:relative;min-height:100vh;background:var(--bg);color:var(--text);font:16px/1.5 var(--sans);font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;text-align:left;letter-spacing:0;
  container:cc/inline-size;padding-top:var(--ppc-top,0px)}
-.cc[data-theme=dark]{--bg:#1A1816;--card:#23201D;--inset:#2C2824;--text:#EEE7DB;--muted:#A69D8F;--line:#37322D;--acc:#E3AB52;--accText:#E3AB52;--onAcc:#1A1816;--work:#26231F;--shade:rgba(0,0,0,.55);color-scheme:dark}
+.cc[data-theme=dark]{--area-task:#F9D460;--area-task-soft:#4E442A;--area-task-text:#F9D460;--area-work:#E4744B;--area-work-soft:#4A3126;--area-work-text:#E88966;
+ --area-health:#5CCB89;--area-health-soft:#2E4233;--area-health-text:#5CCB89;--area-growth:#9E6CC6;--area-growth-soft:#3C2F3F;--area-growth-text:#B691D4;
+ --area-people:#63B9FE;--area-people-soft:#303F4A;--area-people-text:#63B9FE;--area-sol:#F4F1EA;--area-sol-soft:#3A3732;--area-sol-text:#F4F1EA;--area-sol-line:transparent;
+ --area-none:#9A9286;--area-none-soft:#383530;--area-none-text:#D8D1C5;--attn:#E3AB52;
+ --bg:#1A1816;--card:#23201D;--inset:#2C2824;--text:#EEE7DB;--muted:#A69D8F;--line:#37322D;--acc:#EEE7DB;--accText:#EEE7DB;--onAcc:#1A1816;--work:#26231F;--shade:rgba(0,0,0,.55);color-scheme:dark}
 :focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:6px}
 .ribbon{padding:6px 16px;font-size:11px;letter-spacing:.08em;text-align:center;color:var(--muted);border-bottom:1px dashed var(--line)}
 .wrap{max-width:1320px;margin:0 auto;padding:18px 16px 96px}
@@ -161,3 +175,36 @@ textarea.in{min-height:76px;resize:vertical}
 .steps{margin:6px 0 0;padding-left:20px;font-size:14px;display:grid;gap:4px;color:var(--text)}
 .tools{flex-wrap:wrap;justify-content:flex-end;min-width:0}.tools .search{min-width:0;flex:1 1 140px}
 @container cc (min-width:900px){.tools .addbtn{display:inline-flex}}
+
+/* ---------- area colour, applied (rows, blocks, main thing, legend), and what actually happened ---------- */
+.it{border-left:4px solid var(--c,var(--area-none));padding-left:10px;border-radius:2px}
+.it .ar{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;color:var(--ct,var(--muted));white-space:nowrap;margin-left:6px}
+.it .ar .dot{margin-right:0}.it .ar.na{color:var(--muted);border:1px dashed var(--line);border-radius:999px;padding:0 7px}
+.it .sec{display:inline-flex;gap:3px;margin-left:5px;vertical-align:1px}.it .sec i{width:6px;height:6px;border-radius:50%;background:var(--c2)}
+.ico{width:12px;height:12px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8}
+.box i{border-color:var(--muted)}.box[aria-checked=true] i{background:var(--c,var(--text));border-color:var(--c,var(--text));color:var(--card)}.box:hover i{border-color:var(--c,var(--text))}
+.blk{background:var(--cs,var(--inset));color:var(--ct,var(--text));border-left:3px solid var(--c,var(--area-none))}
+.blk small{color:inherit;opacity:.8}
+.main{border-color:var(--line);background:var(--card);border-left:5px solid var(--c,var(--line))}
+.main .lab.acc{color:var(--ct,var(--muted))}
+.nowline{border-top-color:var(--text)}.nowline::before{background:var(--text)}
+.mo .dots i.e{background:var(--c,var(--area-none))}
+.over h2 .attn,.attn-badge{display:inline-flex;align-items:center;gap:4px;border:1.5px solid var(--attn);color:var(--attn);border-radius:999px;padding:0 8px;font-size:12.5px;font-weight:600}
+.legend{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.legend button{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;padding:3px 10px;border-radius:999px;border:1px solid var(--line);color:var(--text)}
+.legend button i{width:9px;height:9px;border-radius:50%;background:var(--c)}
+.legend button[aria-pressed=true]{border-color:var(--c);background:var(--cs);color:var(--ct)}
+.legend .act-t{color:var(--muted)}.legend .act-t[aria-pressed=true]{border-color:var(--text);background:var(--inset);color:var(--text)}
+.blk.met{opacity:.7}.blk.met::after{content:" ✓ done";font-weight:600}
+.blk.missed{background:transparent;border:1.5px dashed var(--area-health);border-left-width:3px;color:var(--muted)}
+.blk.actual{border-left-width:3px;background:var(--area-health-soft);color:var(--area-health-text);box-shadow:inset 0 0 0 1px var(--area-health);font-weight:500}
+.blk.actual.beside{left:52%!important;width:calc(48% - 6px)!important}
+.sleepband{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:5px 10px;border-radius:8px;background:var(--area-health-soft);color:var(--area-health-text);border-left:3px solid var(--area-health);margin:0 0 8px}
+.sleepband .ico{stroke:var(--area-health-text)}
+.sleepband.none{background:transparent;border:1px dashed var(--line);color:var(--muted)}
+.wk .sl{display:block;height:16px;margin-top:4px;border-radius:4px;background:var(--area-health-soft);color:var(--area-health-text);font-size:10.5px;line-height:16px;padding:0 5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-left:2px solid var(--area-health)}
+.wk .sl.none{background:transparent;border-left-color:var(--line);color:var(--muted)}
+.mo .slp{display:block;font-size:10.5px;color:var(--area-health-text)}
+/* Sol is white: in light mode a thin outline keeps the white edge and dot visible on the cream card */
+.it{box-shadow:-1px 0 0 0 var(--co,transparent)}.blk{box-shadow:inset 0 0 0 1px var(--co,transparent)}
+.dot,.legend button i,.mo .dots i.e,.it .sec i{box-shadow:0 0 0 1px var(--co,transparent)}

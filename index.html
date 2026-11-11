@@ -20332,7 +20332,7 @@
   /* Command Center (command/): one page for tasks, events, deadlines and time blocks. The module only
      draws; every save goes through the functions below, so the activity log and undo keep working.
      Bump COMMAND_VER with each release of command/*. */
-  var COMMAND_VER = "4", commandLoading = null, commandHandle = null, commandBoard = null, commandBoardLoad = null;
+  var COMMAND_VER = "5", commandLoading = null, commandHandle = null, commandBoard = null, commandBoardLoad = null;
   // Hours that count as booked in the free-time bars. Change here if the work pattern changes.
   var COMMAND_WORK = { days:[1, 2, 3, 4, 5], start:"09:00", end:"18:00" };
   function commandLoadScripts(){
@@ -20352,6 +20352,31 @@
     return commandLoading;
   }
   // Strategy board layout (moved cards, folded branches, hand-drawn connections): one row per owner.
+  /* What actually happened, for the timeline: synced workouts (Hevy) and sleep (Garmin, or the owner's correction).
+     Read-only: nothing here is ever written back as an action or event. Times are shown in Europe/Berlin. */
+  var commandActual = null, commandActualAt = 0;
+  async function commandActualFetch(force){
+    if(!currentUser || (!force && commandActual && Date.now() - commandActualAt < 5 * 60 * 1000)) return commandActual;
+    var since = new Date(Date.now() - 120 * 864e5).toISOString().slice(0, 10), berlin = function(iso){ var p = new Intl.DateTimeFormat("en-GB", { timeZone:"Europe/Berlin", hour:"2-digit", minute:"2-digit", hourCycle:"h23" }).format(new Date(iso)).split(":"); return +p[0] * 60 + +p[1]; };
+    try{
+      var r = await Promise.all([
+        sb.from("workouts").select("id,date,started_at,duration_minutes,routine,title,volume_kg").is("archived_at", null).gte("date", since),
+        sb.from("health_daily").select("date,bed_time,wake_time,sleep_minutes,sleep_score,bed_time_corrected,wake_time_corrected,sleep_minutes_corrected,corrected_at").is("archived_at", null).gte("date", since)
+      ]);
+      var wk = r[0].data || [], counts = {};
+      if(wk.length){ var s = await sb.from("workout_sets").select("workout_id,exercise_index").in("workout_id", wk.map(function(w){ return w.id; }).slice(0, 300)).is("superseded_at", null); (s.data || []).forEach(function(x){ (counts[x.workout_id] = counts[x.workout_id] || {})[x.exercise_index] = 1; }); }
+      var out = { workoutsBy:{}, sleepBy:{} };
+      wk.forEach(function(w){ var d = String(w.date).slice(0, 10); (out.workoutsBy[d] = out.workoutsBy[d] || []).push({ title:w.routine || w.title || "Workout", start:w.started_at ? berlin(w.started_at) : null, mins:w.duration_minutes || null, volume:w.volume_kg != null ? +w.volume_kg : null, exercises:counts[w.id] ? Object.keys(counts[w.id]).length : null }); });
+      (r[1].data || []).forEach(function(n){ var c = !!(n.corrected_at || n.bed_time_corrected), bed = n.bed_time_corrected || n.bed_time, wake = n.wake_time_corrected || n.wake_time, mins = n.sleep_minutes_corrected != null ? n.sleep_minutes_corrected : n.sleep_minutes;
+        if(bed || mins != null) out.sleepBy[String(n.date).slice(0, 10)] = { mins:mins, bed:bed ? String(bed).slice(0, 5) : null, wake:wake ? String(wake).slice(0, 5) : null, score:n.sleep_score, corrected:c }; });
+      commandActual = out; commandActualAt = Date.now();
+    }catch(err){ console.warn("actual", err); }
+    return commandActual;
+  }
+  function commandOpenWorkout(date){
+    showSection("health"); renderAll();
+    var tries = 0; (function go(){ if(window.PPHealth && window.PPHealth.state && window.PPHealth.state.M){ window.PPHealth.go("workouts", { day:date, histAll:true }); return; } if(++tries < 40) setTimeout(go, 150); })();
+  }
   function commandBoardFetch(){
     if(!commandBoardLoad) commandBoardLoad = sb.from("strategy_board").select("layout").maybeSingle().then(function(r){ commandBoard = (r && r.data && r.data.layout) || {}; }, function(){ commandBoard = {}; });
     return commandBoardLoad;
@@ -20430,7 +20455,7 @@
       var proj = a.parentType === "project" ? projectById(a.parentId) : null, goalId = resolveGoalIdForAction(a), goal = goalId ? goalById(goalId) : null;
       return { id:a.id, table:"actions", kind:a.kind || "task", title:a.title, date:a.date || null, time:a.timeOfDay || null, dur:a.durationMinutes || null, allDay:!!a.allDay, est:a.estimateMin || null,
         area:actionCategory(a) || "", priority:a.priority || null, done:!!a.done, someday:!!a.someday, recurrence:a.recurrence || null, exceptions:a.recurrenceExceptions || [], doneDates:a.recurrenceDone || [],
-        reminders:a.reminders || [], muted:!!a.muted, notes:a.notesMd || "", location:a.locationAddress || "", people:commandPeople(a.linkedPeopleIds),
+        reminders:a.reminders || [], muted:!!a.muted, notes:a.notesMd || "", location:a.locationAddress || "", people:commandPeople(a.linkedPeopleIds), secondary:a.secondaryCategories || [],
         dependsOn:(a.dependencies || []).map(function(d){ return d.id; }), goalId:goalId || null, projectId:proj ? proj.id : null, parentLabel:proj ? proj.title : goal ? goal.title : "", source:a.source || "me" };
     }).concat(state.events.map(function(e){
       return { id:e.id, table:"events", kind:"event", title:e.title, date:e.date || null, time:e.timeOfDay || null, dur:e.durationMinutes || null, allDay:!!e.allDay, est:null, area:eventCategory(e) || "", priority:null,
@@ -20439,7 +20464,7 @@
     }));
     var today = todayStr(), main = fxMainAction(today);
     return {
-      items: items, today: today, mainId: main ? main.id : null, work: COMMAND_WORK, theme: currentTheme(), board: commandBoard || undefined, push: Object.assign({}, commandPush),
+      items: items, today: today, mainId: main ? main.id : null, work: COMMAND_WORK, actual: commandActual || undefined, theme: currentTheme(), board: commandBoard || undefined, push: Object.assign({}, commandPush),
       goals: state.goals.map(function(g){ return { id:g.id, title:g.title, area:g.category || "", due:g.ongoing ? null : (g.due || null), ongoing:!!g.ongoing, progress:Math.round(goalProgress(g)) || 0,
         open: state.actions.filter(function(a){ return !a.done && resolveGoalIdForAction(a) === g.id; }).length }; }),
       projects: state.projects.map(function(p){
@@ -20535,7 +20560,7 @@
   function renderCommand(){
     if(activeSection !== "command") return;
     var host = document.getElementById("commandSection");
-    Promise.all([commandLoadScripts(), commandBoardFetch()]).then(function(){
+    Promise.all([commandLoadScripts(), commandBoardFetch(), commandActualFetch()]).then(function(){
       if(activeSection !== "command") return;
       var d = commandData();
       if(commandHandle){ commandHandle.update(d); return; }
@@ -20545,6 +20570,7 @@
         onSetMain: function(id){ return fxSetMain(id, todayStr()); },
         onUndo: function(logId){ return fxUndo(logId); },
         onOpenFull: function(id){ var hit = commandFind(id); if(hit && hit.table === "events") editEvent(id); else editAction(id); },
+        onOpenWorkout: commandOpenWorkout,
         onOpenGoal: function(id){ openGoalDetailPage(id); },
         onOpenProject: function(id){ editProject(id); },
         onNewGoal: function(){ openGoalModal(null); },
