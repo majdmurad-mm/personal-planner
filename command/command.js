@@ -179,6 +179,9 @@
       if (bnode) { if (bd.moved) return; var nid = bnode.getAttribute("data-n"); if (S.board.linkFrom) { addLink(S.board.linkFrom, nid); S.board.linkFrom = null; draw(); } else openNode(nid); return; }
       var t = e.target.closest("button,[data-day],.chip,[data-ropen],[data-workout]"); if (!t || t.disabled) return; var d = t.dataset, ov = S.over, it = ov && ov.id ? S.byId[ov.id] : null;
       if (d.view) { S.view = d.view; S.q = ""; $("#ccSearch").value = ""; S.cursor = S.today; call("onView", S.view); draw(); }
+      else if (d.wotime) { S.woEdit = d.wotime; draw(); var wf = root.getElementById("ccWoT"); if (wf) wf.focus(); }
+      else if (d.wocancel) { S.woEdit = null; draw(); }
+      else if (d.wosave) { var wv = (root.getElementById("ccWoT") || {}).value || ""; if (!/^\d\d:\d\d$/.test(wv)) return; guard(call("onSetWorkoutTime", d.wosave, d.date, wv).then(function () { S.woEdit = null; draw(); })); }
       else if (d.done) guard(toggleDone(d.done));
       else if (d.tri) guard(tri(d.tri, d.key));
       else if (d.open) open({ type: "item", id: d.open, date: d.date || null });

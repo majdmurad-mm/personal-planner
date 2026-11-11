@@ -2528,6 +2528,7 @@ tool("upsert_workout", {
       result: head.result === "created" ? "created" : (head.result === "updated" || setsChanged ? "updated" : "unchanged"),
       sets: setCount, setsWritten: toWrite.length, setsSuperseded: gone.length, volumeKg: Math.round(volume * 10) / 10, prs,
       ...(unknownMuscles.length ? { unmappedMuscles: unknownMuscles } : {}),
+      ...(a.startedAt ? {} : { missingStartedAt: "No startedAt was sent, so this workout cannot be placed on the calendar. Read Hevy's start_time and end_time and send this workout again with startedAt and durationMinutes." }),
     });
   },
 });

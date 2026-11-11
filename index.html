@@ -20347,7 +20347,7 @@
   /* Command Center (command/): one page for tasks, events, deadlines and time blocks. The module only
      draws; every save goes through the functions below, so the activity log and undo keep working.
      Bump COMMAND_VER with each release of command/*. */
-  var COMMAND_VER = "9", commandLoading = null, commandHandle = null, commandBoard = null, commandBoardLoad = null;
+  var COMMAND_VER = "10", commandLoading = null, commandHandle = null, commandBoard = null, commandBoardLoad = null;
   // Hours that count as booked in the free-time bars. Change here if the work pattern changes.
   var COMMAND_WORK = { days:[1, 2, 3, 4, 5], start:"09:00", end:"18:00" };
   function commandLoadScripts(){
@@ -20382,7 +20382,7 @@
       if(wk.length){ var s = await sb.from("workout_sets").select("workout_id,exercise_index").in("workout_id", wk.map(function(w){ return w.id; }).slice(0, 300)).is("superseded_at", null); (s.data || []).forEach(function(x){ (counts[x.workout_id] = counts[x.workout_id] || {})[x.exercise_index] = 1; }); }
       var out = { workoutsBy:{}, sleepBy:{}, energyBy:{} };
       (r[1].data || []).forEach(function(n){ if(Array.isArray(n.body_battery_curve) && n.body_battery_curve.length > 1) out.energyBy[String(n.date).slice(0, 10)] = n.body_battery_curve; });
-      wk.forEach(function(w){ var d = String(w.date).slice(0, 10); (out.workoutsBy[d] = out.workoutsBy[d] || []).push({ title:w.routine || w.title || "Workout", start:w.started_at ? berlin(w.started_at) : null, mins:w.duration_minutes || null, volume:w.volume_kg != null ? +w.volume_kg : null, exercises:counts[w.id] ? Object.keys(counts[w.id]).length : null }); });
+      wk.forEach(function(w){ var d = String(w.date).slice(0, 10); (out.workoutsBy[d] = out.workoutsBy[d] || []).push({ id:w.id, title:w.routine || w.title || "Workout", start:w.started_at ? berlin(w.started_at) : null, mins:w.duration_minutes || null, volume:w.volume_kg != null ? +w.volume_kg : null, exercises:counts[w.id] ? Object.keys(counts[w.id]).length : null }); });
       (r[1].data || []).forEach(function(n){ var c = !!(n.corrected_at || n.bed_time_corrected), bed = n.bed_time_corrected || n.bed_time, wake = n.wake_time_corrected || n.wake_time, mins = n.sleep_minutes_corrected != null ? n.sleep_minutes_corrected : n.sleep_minutes;
         if(bed || mins != null) out.sleepBy[String(n.date).slice(0, 10)] = { mins:mins, bed:bed ? String(bed).slice(0, 5) : null, wake:wake ? String(wake).slice(0, 5) : null, score:n.sleep_score, corrected:c }; });
       commandActual = out; commandActualAt = Date.now();
@@ -20402,6 +20402,16 @@
     var wk = new Date(t0.getTime() - ((t0.getDay() + 6) % 7) * 864e5).toISOString().slice(0, 10), notes = (state.journal || []).filter(function(n){ return n.date >= wk && !n.archivedAt; }).length;
     out.growth = { big:String(notes), sub:notes === 1 ? "note this week" : "notes this week" };
     return out;
+  }
+  /* The owner sets when they were at the gym, for a workout the sync sent without a start time.
+     Stored on the workout itself (behind RLS); a later sync without a time leaves it alone. */
+  async function commandSetWorkoutTime(id, date, hhmm){
+    var guess = new Date(date + "T" + hhmm + ":00Z"), wall = new Date(guess.toLocaleString("sv-SE", { timeZone:"Europe/Berlin" }).replace(" ", "T") + "Z");
+    var iso = new Date(guess.getTime() - (wall.getTime() - guess.getTime())).toISOString();
+    var r = await sb.from("workouts").update({ started_at:iso, updated_at:new Date().toISOString() }).eq("id", id);
+    if(r.error){ alert("Couldn’t save the gym time: " + r.error.message); return; }
+    await commandActualFetch(true);
+    if(commandHandle) commandHandle.update(commandData());
   }
   function commandOpenWorkout(date){
     showSection("health"); renderAll();
@@ -20600,7 +20610,7 @@
         onSetMain: function(id){ return fxSetMain(id, todayStr()); },
         onUndo: function(logId){ return fxUndo(logId); },
         onOpenFull: function(id){ var hit = commandFind(id); if(hit && hit.table === "events") editEvent(id); else editAction(id); },
-        onOpenWorkout: commandOpenWorkout,
+        onOpenWorkout: commandOpenWorkout, onSetWorkoutTime: commandSetWorkoutTime,
         onGo: function(where){ var map = { health:"health", people:"people", finance:"finance", knowledge:"knowledge", work:null }; if(map[where]){ showSection(map[where]); renderAll(); } else if(commandHandle) commandHandle.setView("week"); },
         onOpenGoal: function(id){ openGoalDetailPage(id); },
         onOpenProject: function(id){ editProject(id); },
