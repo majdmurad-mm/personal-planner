@@ -5332,8 +5332,8 @@
 
   async function loadAll(){
     var results = await Promise.all([
-      sb.from("goals").select("*").order("created_at"),
-      sb.from("projects").select("*").order("created_at"),
+      sb.from("goals").select("*").is("archived_at", null).order("created_at"),
+      sb.from("projects").select("*").is("archived_at", null).order("created_at"),
       sb.from("actions").select("*").order("created_at"),
       sb.from("journal").select("*").order("date", { ascending:false }),
       sb.from("people").select("*").order("created_at"),
@@ -5344,7 +5344,7 @@
       sb.from("sleep_scores").select("*").order("date", { ascending:false }),
       sb.from("social_group_colors").select("*"),
       sb.from("gps_pings").select("*").order("recorded_at"),
-      sb.from("points_of_interest").select("*").order("created_at"),
+      sb.from("points_of_interest").select("*").is("archived_at", null).order("created_at"),
       sb.from("recordings").select("*").order("created_at"),
       sb.from("finance_accounts").select("*").order("position", { ascending:true }),
       sb.from("finance_transactions").select("*").order("date", { ascending:false }),

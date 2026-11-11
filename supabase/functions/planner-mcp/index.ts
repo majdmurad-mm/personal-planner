@@ -48,6 +48,14 @@ const db = createClient(SUPABASE_URL, SERVICE_KEY, {
 // ---- Vocabulary (kept in lockstep with index.html's own constants) ---------
 const PRIORITIES = ["P0", "P1", "P2", "P3"] as const;
 const CATEGORIES = ["Health", "Finance", "Career", "Maintenance", "Growth", "Relationships", "Sol"] as const;
+// The pages carry friendlier names than the stored areas; both are accepted everywhere and stored as the area.
+const AREA_ALIASES: Record<string, string> = { Money: "Finance", Work: "Career", People: "Relationships", Home: "Maintenance", Admin: "Maintenance", Learning: "Growth", Self: "Growth", Life: "Sol" };
+const AREA_INPUT = [...CATEGORIES, ...Object.keys(AREA_ALIASES)] as unknown as readonly [string, ...string[]];
+const normArea = (a: unknown) => typeof a === "string" && AREA_ALIASES[a] ? AREA_ALIASES[a] : a;
+// Stamped by .github/workflows/deploy-connector.yml at deploy time; left as placeholders for a dashboard deploy.
+const BUILD_COMMIT = "__BUILD_COMMIT__", BUILD_TIME = "__BUILD_TIME__";
+const BOOTED_AT = new Date().toISOString();
+const OWNER_TOOLS: string[] = [];
 const ACTION_TYPES = ["Call", "Email", "Meeting", "Research", "Write", "Review", "Task", "Follow-up"] as const;
 const RELATIONSHIPS = ["Family", "Friend", "Colleague", "Mentor", "Partner", "Other"] as const;
 const NOTE_TYPES = ["reflection", "reference", "idea", "decision"] as const;
@@ -72,8 +80,9 @@ function fail(message: string) {
 function berlinToday(): string {
   return new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Berlin" });
 }
+// Kept under its old name: every "today" default is the user's Berlin day.
 function todayUTC(): string {
-  return new Date().toISOString().slice(0, 10);
+  return berlinToday();
 }
 
 // A scoped SELECT: every read is pinned to the owner's rows.
@@ -255,6 +264,16 @@ type Audience = "owner" | "agent" | "both";
 // deno-lint-ignore no-explicit-any
 function tool(name: string, def: any, audience?: Audience) {
   const who = audience || (AGENT_READABLE.has(name) ? "both" : "owner");
+  const inner = def.handler;
+  // deno-lint-ignore no-explicit-any
+  if (inner) def = { ...def, handler: (args: any, ctx: any) => {
+    if (args && typeof args === "object") {
+      for (const k of ["area"]) if (k in args) args[k] = normArea(args[k]);
+      for (const k of ["areas", "secondaryAreas", "secondary_areas"]) if (Array.isArray(args[k])) args[k] = Array.from(new Set(args[k].map(normArea)));
+    }
+    return inner(args, ctx);
+  } };
+  if (who !== "agent" && !OWNER_TOOLS.includes(name)) OWNER_TOOLS.push(name);
   if (who !== "agent") mcp.tool(name, def);
   if (who !== "owner") mcpAgent.tool(name, def);
 }
@@ -263,9 +282,9 @@ function tool(name: string, def: any, audience?: Audience) {
 
 tool("get_agenda", {
   description:
-    "The user's plan for one day (defaults to today, server UTC). Returns actions due that day, overdue open actions, undated open actions (backlog), the events happening that day, and any notes written that day. Start here to understand what's on the user's plate.",
+    "The user's plan for one day (defaults to today, Berlin). Returns actions due that day, overdue open actions, undated open actions (backlog), the events happening that day, and any notes written that day. Start here to understand what's on the user's plate.",
   inputSchema: z.object({
-    date: z.string().optional().describe("YYYY-MM-DD; defaults to today (server UTC). Pass the user's local date if it might differ."),
+    date: z.string().optional().describe("YYYY-MM-DD; defaults to today (Berlin). Pass the user's local date if it might differ."),
   }),
   handler: async (args: { date?: string }) => {
     const date = args.date || todayUTC();
@@ -322,7 +341,7 @@ tool("get_agenda", {
 tool("list_goals", {
   description: "List the user's goals. Optionally filter by area (category).",
   inputSchema: z.object({
-    area: z.enum(CATEGORIES).optional().describe("only goals in this area"),
+    area: z.enum(AREA_INPUT).optional().describe("only goals in this area"),
   }),
   handler: async (args: { area?: string }) => {
     let q = owned("goals").order("position");
@@ -362,7 +381,7 @@ tool("list_actions", {
     done: z.boolean().optional().describe("filter by completion state; omit for both"),
     from: z.string().optional().describe("YYYY-MM-DD inclusive lower bound on the action's date"),
     to: z.string().optional().describe("YYYY-MM-DD inclusive upper bound on the action's date"),
-    area: z.enum(CATEGORIES).optional(),
+    area: z.enum(AREA_INPUT).optional(),
     limit: z.number().optional().describe("max rows (default 100)"),
     includeArchived: z.boolean().optional().describe("also return archived actions (default false)"),
   }),
@@ -478,7 +497,7 @@ tool("list_events", {
   inputSchema: z.object({
     from: z.string().optional().describe("YYYY-MM-DD inclusive lower bound on the event's date"),
     to: z.string().optional().describe("YYYY-MM-DD inclusive upper bound on the event's date"),
-    area: z.enum(CATEGORIES).optional(),
+    area: z.enum(AREA_INPUT).optional(),
     limit: z.number().optional().describe("max rows (default 100)"),
   }),
   handler: async (args: { from?: string; to?: string; area?: string; limit?: number }) => {
@@ -775,7 +794,15 @@ tool("get_finance_snapshot", {
 const CC_DAY = /^\d{4}-\d{2}-\d{2}$/;
 const CC_TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 const CC_DOW = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
-const CC_WORK = { days: [1, 2, 3, 4, 5], start: 9 * 60, end: 18 * 60 };   // counted as booked
+const CC_WORK = { days: [1, 2, 3, 4, 5], start: 9 * 60, end: 18 * 60 };   // replaced by planner_settings in ccLoad
+// deno-lint-ignore no-explicit-any
+async function plannerSettings(): Promise<any> {
+  const r = await db.from("planner_settings").select("*").eq("user_id", OWNER).maybeSingle();
+  const d = r.data || {}, hh = (x: string | null, def: string) => x ? String(x).slice(0, 5) : def;
+  const out = { workDays: d.work_days || [1, 2, 3, 4, 5], workStart: hh(d.work_start, "09:00"), workEnd: hh(d.work_end, "18:00"), gymDays: d.gym_days || [1, 3, 5], timezone: d.timezone || "Europe/Berlin", stored: !!r.data, note: r.error ? "planner_settings table missing (run _Memory/migration_connector_v2.sql); showing defaults" : undefined };
+  CC_WORK.days = out.workDays.map((n: number) => n % 7); CC_WORK.start = ccMins(out.workStart) as number; CC_WORK.end = ccMins(out.workEnd) as number;
+  return out;
+}   // counted as booked
 const CC_DAY_START = 7 * 60, CC_DAY_END = 23 * 60;
 const ccMs = (d: string) => Date.UTC(+d.slice(0, 4), +d.slice(5, 7) - 1, +d.slice(8, 10));
 const ccIso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
@@ -844,7 +871,7 @@ function ccSlim(row: any, table: string, date?: string) {
   };
 }
 async function ccLoad() {
-  const [a, e] = await Promise.all([owned("actions"), owned("events")]);
+  const [a, e] = await Promise.all([owned("actions"), owned("events"), plannerSettings()]);
   if (a.error) return { error: a.error.message, actions: [], events: [] };
   return { error: "", actions: (a.data || []).filter((x) => !x.archived_at), events: e.error ? [] : (e.data || []).filter((x) => !x.archived_at) };
 }
@@ -916,15 +943,15 @@ tool("plan_week", {
 });
 
 tool("get_backlog", {
-  description: "Open tasks with no date, grouped by area, plus the items parked under 'someday'. Nothing here is late.",
-  inputSchema: z.object({}),
-  handler: async () => {
+  description: "Open tasks with no date, grouped by area, plus the items parked under 'someday'. Nothing here is late. Pass area to see one area only.",
+  inputSchema: z.object({ area: z.enum(AREA_INPUT).optional() }),
+  handler: async (args: { area?: string }) => {
     const L = await ccLoad();
     if (L.error) return fail(L.error);
     // deno-lint-ignore no-explicit-any
     const byArea: Record<string, any[]> = {};
-    for (const a of ccBacklog(L.actions)) (byArea[a.area || "No area"] = byArea[a.area || "No area"] || []).push(a);
-    return ok({ byArea, someday: L.actions.filter((a) => a.someday && !a.done).map((a) => ccSlim(a, "actions")) });
+    for (const a of ccBacklog(L.actions)) if (!args.area || a.area === args.area) (byArea[a.area || "No area"] = byArea[a.area || "No area"] || []).push(a);
+    return ok({ byArea, someday: L.actions.filter((a) => a.someday && !a.done && (!args.area || a.category === args.area)).map((a) => ccSlim(a, "actions")) });
   },
 });
 
@@ -1261,7 +1288,7 @@ tool("create_goal", {
   inputSchema: z.object({
     title: z.string(),
     priority: z.enum(PRIORITIES),
-    area: z.enum(CATEGORIES).describe("the goal's primary area (category)"),
+    area: z.enum(AREA_INPUT).describe("the goal's primary area (category)"),
     due: z.string().optional().describe("YYYY-MM-DD; omit if ongoing or no due date"),
     ongoing: z.boolean().optional(),
   }),
@@ -1282,7 +1309,7 @@ tool("edit_goal", {
     id: z.string(),
     title: z.string().optional(),
     priority: z.enum(PRIORITIES).optional(),
-    area: z.enum(CATEGORIES).optional(),
+    area: z.enum(AREA_INPUT).optional(),
     due: z.string().optional(),
     ongoing: z.boolean().optional(),
   }),
@@ -1308,7 +1335,7 @@ tool("create_project", {
     goalId: z.string().optional().describe("id of the parent goal; omit for no parent"),
     due: z.string().optional(),
     hours: z.number().optional(),
-    areas: z.array(z.enum(CATEGORIES)).optional().describe("the project's own area(s); omit to inherit the parent goal's area"),
+    areas: z.array(z.enum(AREA_INPUT)).optional().describe("the project's own area(s); omit to inherit the parent goal's area"),
   }),
   handler: async (args: any) => {
     const { data, error } = await safeWrite((p) => db.from("projects").insert(p).select().single(), {
@@ -1330,7 +1357,7 @@ tool("edit_project", {
     due: z.string().optional(),
     hours: z.number().optional(),
     done: z.boolean().optional(),
-    areas: z.array(z.enum(CATEGORIES)).optional(),
+    areas: z.array(z.enum(AREA_INPUT)).optional(),
   }),
   handler: async (args: any) => {
     const patch: Record<string, unknown> = {};
@@ -1358,8 +1385,8 @@ tool("create_action", {
     date: z.string().optional().describe("YYYY-MM-DD the action is scheduled for; omit for backlog"),
     timeOfDay: z.string().optional().describe("HH:MM 24h, optional"),
     durationMinutes: z.number().optional(),
-    area: z.enum(CATEGORIES).optional().describe("the action's own area; otherwise inferred from its parent"),
-    secondaryAreas: z.array(z.enum(CATEGORIES)).optional().describe("other areas this action also touches"),
+    area: z.enum(AREA_INPUT).optional().describe("the action's own area; otherwise inferred from its parent"),
+    secondaryAreas: z.array(z.enum(AREA_INPUT)).optional().describe("other areas this action also touches"),
     isMilestone: z.boolean().optional().describe("mark it a milestone — a dated checkpoint rather than ordinary work"),
     isDecision: z.boolean().optional().describe("mark it a decision — a fork with a scenario canvas rather than a task. Add scenarios with create_scenario."),
     notes: z.string().optional().describe("longer free-form notes for the action's own page (Markdown)"),
@@ -1423,8 +1450,8 @@ tool("edit_action", {
     date: z.string().optional().describe("YYYY-MM-DD; pass an empty string to clear the date"),
     timeOfDay: z.string().optional(),
     durationMinutes: z.number().optional(),
-    area: z.enum(CATEGORIES).optional(),
-    secondaryAreas: z.array(z.enum(CATEGORIES)).optional().describe("replaces the existing set"),
+    area: z.enum(AREA_INPUT).optional(),
+    secondaryAreas: z.array(z.enum(AREA_INPUT)).optional().describe("replaces the existing set"),
     isMilestone: z.boolean().optional(),
     notes: z.string().optional().describe("free-form notes for the action's own page (Markdown); replaces what's there"),
     done: z.boolean().optional(),
@@ -1531,8 +1558,8 @@ tool("create_event", {
     date: z.string().optional().describe("YYYY-MM-DD when it happens"),
     timeOfDay: z.string().optional().describe("HH:MM 24h, optional"),
     durationMinutes: z.number().optional(),
-    area: z.enum(CATEGORIES).optional().describe("the event's primary area"),
-    secondaryAreas: z.array(z.enum(CATEGORIES)).optional(),
+    area: z.enum(AREA_INPUT).optional().describe("the event's primary area"),
+    secondaryAreas: z.array(z.enum(AREA_INPUT)).optional(),
     location: z.string().optional().describe("where it happens — an address or place name, geocoded for you and pinned on the Location map"),
     linkedPeopleIds: z.array(z.string()).optional().describe("ids from list_people — who it's with"),
     notes: z.string().optional(),
@@ -1577,8 +1604,8 @@ tool("edit_event", {
     date: z.string().optional().describe("YYYY-MM-DD; pass an empty string to clear it"),
     timeOfDay: z.string().optional().describe("HH:MM 24h; pass an empty string to clear it"),
     durationMinutes: z.number().optional(),
-    area: z.enum(CATEGORIES).optional(),
-    secondaryAreas: z.array(z.enum(CATEGORIES)).optional().describe("replaces the existing set"),
+    area: z.enum(AREA_INPUT).optional(),
+    secondaryAreas: z.array(z.enum(AREA_INPUT)).optional().describe("replaces the existing set"),
     location: z.string().optional().describe("new address or place name, geocoded for you; pass an empty string to remove the location"),
     linkedPeopleIds: z.array(z.string()).optional().describe("replaces the existing set"),
     notes: z.string().optional(),
@@ -1750,10 +1777,10 @@ tool("add_note", {
   description: "Add a new note (journal entry). Defaults the date to today.",
   inputSchema: z.object({
     text: z.string(),
-    date: z.string().optional().describe("YYYY-MM-DD; defaults to today (server UTC)"),
+    date: z.string().optional().describe("YYYY-MM-DD; defaults to today (Berlin)"),
     title: z.string().optional().describe("optional short heading"),
     priority: z.enum(PRIORITIES).optional(),
-    areas: z.array(z.enum(CATEGORIES)).optional().describe("optional area(s); a note can span more than one"),
+    areas: z.array(z.enum(AREA_INPUT)).optional().describe("optional area(s); a note can span more than one"),
     noteType: z.enum(NOTE_TYPES).optional()
       .describe("what kind of note this is (default reflection). Only 'reflection' gets sentiment analysis in the app — a reference or a decision record isn't a mood."),
     timeOfDay: z.string().optional().describe("HH:MM 24h, optional"),
@@ -1777,7 +1804,7 @@ tool("edit_note", {
     text: z.string().optional(),
     title: z.string().optional().describe("short heading; pass an empty string to clear it"),
     priority: z.enum(PRIORITIES).optional(),
-    areas: z.array(z.enum(CATEGORIES)).optional().describe("the note's area(s); replaces the existing set"),
+    areas: z.array(z.enum(AREA_INPUT)).optional().describe("the note's area(s); replaces the existing set"),
     noteType: z.enum(NOTE_TYPES).optional(),
     date: z.string().optional().describe("YYYY-MM-DD"),
     timeOfDay: z.string().optional().describe("HH:MM 24h; pass an empty string to clear it"),
@@ -2020,7 +2047,7 @@ tool("log_metric", {
   inputSchema: z.object({
     variableId: z.string().describe("id of an existing tracker variable (from get_tracker)"),
     value: z.string().describe('the value as text — e.g. "4", "true", "72.5", or a category label'),
-    date: z.string().optional().describe("YYYY-MM-DD; defaults to today (server UTC)"),
+    date: z.string().optional().describe("YYYY-MM-DD; defaults to today (Berlin)"),
   }),
   handler: async (args: { variableId: string; value: string; date?: string }) => {
     const date = args.date || todayUTC();
@@ -2133,8 +2160,8 @@ tool("log_transaction", {
     accountId: z.string().describe("id of an existing account (from get_finance)"),
     amount: z.number().describe("positive = money in, negative = money out"),
     description: z.string(),
-    date: z.string().optional().describe("YYYY-MM-DD; defaults to today (server UTC)"),
-    area: z.enum(CATEGORIES).optional().describe("which life area this spend belongs to"),
+    date: z.string().optional().describe("YYYY-MM-DD; defaults to today (Berlin)"),
+    area: z.enum(AREA_INPUT).optional().describe("which life area this spend belongs to"),
     subcategory: z.string().optional(),
   }),
   handler: async (args: any) => {
@@ -2670,7 +2697,7 @@ tool("propose_action", {
     date: z.string().optional().describe("YYYY-MM-DD; empty string clears it on edit"),
     timeOfDay: z.string().optional().describe("HH:MM 24h"),
     durationMinutes: z.number().optional(),
-    area: z.enum(CATEGORIES).optional(),
+    area: z.enum(AREA_INPUT).optional(),
     notes: z.string().optional(),
     location: z.string().optional().describe("address or place name — geocoded now, so the Inbox shows where it resolved"),
   }),
@@ -2736,7 +2763,7 @@ tool("propose_event", {
     date: z.string().optional().describe("YYYY-MM-DD"),
     timeOfDay: z.string().optional().describe("HH:MM 24h"),
     durationMinutes: z.number().optional(),
-    area: z.enum(CATEGORIES).optional(),
+    area: z.enum(AREA_INPUT).optional(),
     location: z.string().optional().describe("address or place name — geocoded now"),
     linkedPeopleIds: z.array(z.string()).optional().describe("ids from list_people"),
     notes: z.string().optional(),
@@ -2808,7 +2835,7 @@ tool("propose_note", {
     text: z.string().optional(),
     title: z.string().optional(),
     date: z.string().optional().describe("YYYY-MM-DD; defaults to today on create"),
-    areas: z.array(z.enum(CATEGORIES)).optional(),
+    areas: z.array(z.enum(AREA_INPUT)).optional(),
     noteType: z.enum(NOTE_TYPES).optional().describe("defaults to 'reference' for agent notes"),
     priority: z.enum(PRIORITIES).optional(),
     timeOfDay: z.string().optional(),
@@ -3225,6 +3252,741 @@ tool("memory_archive", {
 }, "both");
 
 // ---- HTTP wiring -----------------------------------------------------------
+// ==== V2-BEGIN ====
+// ============================ COMMAND CENTER: UNIFIED ITEMS ============================
+// One way to read and change anything with a time or a done state. An item is either a row in
+// `actions` (kind task | deadline | block) or a row in `events` (kind event); the tools find the
+// right table from the id. Every write returns the full item afterwards. Nothing is ever deleted:
+// archive_item / restore_item hide and bring back. Writes run as the service role, so the activity
+// log records them with author "claude" and Today's "What Claude changed" feed shows them.
+const ITEM_KINDS = ["task", "event", "deadline", "block"] as const;
+const ITEM_STATUS = ["open", "done", "archived", "someday"] as const;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const hhmm = (t: string | null | undefined) => t ? String(t).slice(0, 5) : null;
+const minsToHHMM = (m: number) => String(Math.floor(m / 60) % 24).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
+// deno-lint-ignore no-explicit-any
+async function itemFind(id: string): Promise<{ table: "actions" | "events"; row: any } | null> {
+  if (!UUID_RE.test(String(id || ""))) return null;
+  const a = await db.from("actions").select("*").eq("id", id).eq("user_id", OWNER).maybeSingle();
+  if (a.data) return { table: "actions", row: a.data };
+  const e = await db.from("events").select("*").eq("id", id).eq("user_id", OWNER).maybeSingle();
+  return e.data ? { table: "events", row: e.data } : null;
+}
+// ids → still open (not done, not archived), to tell whether an item is blocked
+async function itemOpenSet(ids: string[]): Promise<Set<string>> {
+  const out = new Set<string>(); if (!ids.length) return out;
+  const r = await db.from("actions").select("id,done,archived_at,recurrence").eq("user_id", OWNER).in("id", ids.slice(0, 500));
+  for (const x of r.data || []) if (!x.archived_at && (x.recurrence || !x.done)) out.add(x.id);
+  return out;
+}
+// deno-lint-ignore no-explicit-any
+function itemOut(row: any, table: string, openDeps?: Set<string>) {
+  const kind = ccKind(row, table), hasDone = kind === "task" || kind === "deadline";
+  const start = hhmm(row.time_of_day), dur = row.duration_minutes || null, deps = table === "actions" ? (row.dependencies || []).map((d: { id: string }) => d.id) : [];
+  return {
+    id: row.id, kind, title: row.title, notes: row.notes_md || "",
+    area: row.category || null, secondaryAreas: row.secondary_categories || [],
+    goalId: table === "actions" && row.parent_type === "goal" ? row.parent_id : null,
+    projectId: table === "actions" && row.parent_type === "project" ? row.parent_id : null,
+    priority: table === "actions" ? row.priority : null,
+    status: row.archived_at ? "archived" : row.someday ? "someday" : hasDone && !row.recurrence && row.done ? "done" : "open",
+    date: row.date || null, start, end: start && dur ? minsToHHMM((ccMins(start) as number) + dur) : null, durationMin: dur,
+    allDay: !!row.all_day, estimateMin: row.estimate_min || null,
+    recurrence: row.recurrence || null, exceptions: row.recurrence_exceptions || [], doneDates: row.recurrence_done || [],
+    reminders: row.reminders || [], muted: !!row.muted,
+    location: row.location_address || null, people: row.linked_people_ids || [],
+    dependsOn: deps, blocked: openDeps ? deps.some((d: string) => openDeps.has(d)) : undefined,
+    isFocus: !!row.focus_date, source: row.source || null, dedupeKey: row.dedupe_key || null, createdAt: row.created_at,
+  };
+}
+// deno-lint-ignore no-explicit-any
+async function itemOutFull(table: string, id: string): Promise<any> {
+  const r = await db.from(table).select("*").eq("id", id).eq("user_id", OWNER).maybeSingle();
+  if (!r.data) return null;
+  const deps = table === "actions" ? (r.data.dependencies || []).map((d: { id: string }) => d.id) : [];
+  return itemOut(r.data, table, await itemOpenSet(deps));
+}
+const ITEM_FIELDS = {
+  title: z.string().min(1).max(300).optional(),
+  notes: z.string().max(20000).optional().describe("Markdown notes"),
+  area: z.enum(AREA_INPUT).optional().describe("area: " + CATEGORIES.join(", ") + " (also accepted: " + Object.keys(AREA_ALIASES).join(", ") + ")"),
+  secondary_areas: z.array(z.enum(AREA_INPUT)).max(7).optional(),
+  goal_id: z.string().nullable().optional().describe("attach to a goal (tasks, deadlines and blocks only)"),
+  project_id: z.string().nullable().optional().describe("attach to a project (wins over goal_id)"),
+  priority: z.enum(PRIORITIES).optional().describe("P0 most urgent … P3; tasks, deadlines and blocks only (default P2)"),
+  date: z.string().nullable().optional().describe("YYYY-MM-DD; null or omit for the backlog. For a repeating item: the first occurrence"),
+  start: z.string().nullable().optional().describe("HH:MM 24h start time"),
+  end: z.string().nullable().optional().describe("HH:MM 24h end time (sets duration_min)"),
+  duration_min: z.number().int().min(1).max(1440).nullable().optional(),
+  all_day: z.boolean().optional(),
+  estimate_min: z.number().int().min(1).max(1440).nullable().optional().describe("how long a task should take"),
+  recurrence: z.string().max(200).nullable().optional().describe(CC_RULE_HELP),
+  exceptions: z.array(z.string().regex(CC_DAY)).max(400).optional().describe("dates left out of a repeating item"),
+  reminders: z.array(z.number().int().min(0).max(40320)).max(5).optional().describe("minutes before the start: 0, 10, 30, 60, 1440 …"),
+  muted: z.boolean().optional(),
+  location: z.string().max(300).nullable().optional().describe("address or place name; geocoded for the Location map"),
+  people: z.array(z.string()).max(30).optional().describe("person ids from list_people"),
+  depends_on: z.array(z.string()).max(30).optional().describe("ids of tasks that must be done first"),
+  source: z.string().max(40).optional().describe("who made it: claude (default), me, agent, google"),
+};
+// Build the table row from the tool input. Returns { row } or { error }.
+// deno-lint-ignore no-explicit-any
+async function itemRow(a: any, table: "actions" | "events", existing?: any): Promise<{ row?: Record<string, unknown>; error?: string }> {
+  const row: Record<string, unknown> = {};
+  if (a.date && !CC_DAY.test(a.date)) return { error: "date must be YYYY-MM-DD" };
+  for (const k of ["start", "end"]) if (a[k] && !CC_TIME.test(a[k])) return { error: k + " must be HH:MM (24h)" };
+  if (a.recurrence && !ccRule(a.recurrence)) return { error: CC_RULE_HELP };
+  const date = a.date !== undefined ? a.date : existing ? existing.date : null;
+  if (a.recurrence && !date) return { error: "a repeating item needs a first date" };
+  if (a.title !== undefined) row.title = a.title.trim();
+  if (a.notes !== undefined) row.notes_md = a.notes;
+  if (a.area !== undefined) row.category = a.area || null;
+  if (a.secondary_areas !== undefined) row.secondary_categories = a.secondary_areas;
+  if (a.date !== undefined) row.date = a.date || null;
+  if (a.start !== undefined) row.time_of_day = a.start || null;
+  const start = a.start !== undefined ? a.start : existing ? hhmm(existing.time_of_day) : null;
+  if (a.end) { if (!start) return { error: "end needs a start time" }; const d = (ccMins(a.end) as number) - (ccMins(start) as number); if (d <= 0) return { error: "end must be after start" }; row.duration_minutes = d; }
+  else if (a.duration_min !== undefined) row.duration_minutes = a.duration_min || null;
+  if (a.all_day !== undefined) row.all_day = a.all_day;
+  if (a.recurrence !== undefined) row.recurrence = a.recurrence || null;
+  if (a.exceptions !== undefined) row.recurrence_exceptions = a.exceptions;
+  if (a.reminders !== undefined) row.reminders = Array.from(new Set(a.reminders as number[])).sort((x, y) => x - y);
+  if (a.muted !== undefined) row.muted = a.muted;
+  if (a.people !== undefined) row.linked_people_ids = a.people;
+  if (a.source !== undefined) row.source = a.source;
+  if (a.dedupe_key !== undefined) row.dedupe_key = a.dedupe_key || null;
+  if (a.location !== undefined) {
+    if (!a.location) { row.location_address = null; row.location_lat = null; row.location_lng = null; }
+    else { const p = await resolvePlace({ address: a.location }); if (p.error) return { error: p.error }; row.location_address = p.address; row.location_lat = p.lat; row.location_lng = p.lng; }
+  }
+  if (table === "actions") {
+    if (a.kind !== undefined) { row.kind = a.kind; row.is_milestone = a.kind === "deadline"; }
+    if (a.priority !== undefined) row.priority = a.priority;
+    if (a.estimate_min !== undefined) row.estimate_min = a.estimate_min || null;
+    if (a.project_id) { const p = await owned("projects").eq("id", a.project_id).maybeSingle(); if (!p.data) return { error: "no project with that id" }; row.parent_type = "project"; row.parent_id = a.project_id; }
+    else if (a.goal_id) { const g = await owned("goals").eq("id", a.goal_id).maybeSingle(); if (!g.data) return { error: "no goal with that id" }; row.parent_type = "goal"; row.parent_id = a.goal_id; }
+    else if (a.project_id === null || a.goal_id === null) { row.parent_type = "none"; row.parent_id = null; }
+    if (a.depends_on !== undefined) {
+      const ids = (a.depends_on as string[]).filter((x) => !existing || x !== existing.id);
+      const found = await itemOpenSet(ids), all = await db.from("actions").select("id").eq("user_id", OWNER).in("id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]);
+      const known = new Set((all.data || []).map((x) => x.id)), bad = ids.filter((x) => !known.has(x));
+      if (bad.length) return { error: "depends_on: not a task id: " + bad.join(", ") };
+      void found; row.dependencies = ids.map((id) => ({ id, requiresDone: true }));
+    }
+  } else {
+    for (const k of ["priority", "estimate_min", "goal_id", "project_id", "depends_on"]) if (a[k] !== undefined && a[k] !== null) return { error: k + " does not apply to an event" };
+  }
+  return { row };
+}
+// deno-lint-ignore no-explicit-any
+function statusPatch(status: string, row: any, table: string): Record<string, unknown> | string {
+  const p: Record<string, unknown> = {};
+  if (status === "archived") { p.archived_at = row.archived_at || new Date().toISOString(); return p; }
+  p.archived_at = null;
+  if (table === "events") { if (status === "done" || status === "someday") return "an event has no " + status + " state"; return p; }
+  if (status === "someday") { p.someday = true; p.date = null; p.time_of_day = null; }
+  else if (status === "done") { if (row.recurrence) return "a repeating task is ticked off per date: use complete_item with the date"; p.done = true; p.someday = false; }
+  else { p.done = false; p.someday = false; }
+  return p;
+}
+// deno-lint-ignore no-explicit-any
+async function itemCreate(a: any): Promise<{ item?: any; created?: boolean; error?: string }> {
+  const kind = a.kind || "task", table = kind === "event" ? "events" : "actions";
+  if (!a.title) return { error: "title is required" };
+  // re-sent? update the one that is already there instead of adding a second
+  // deno-lint-ignore no-explicit-any
+  let dup: any = null;
+  if (a.dedupe_key) { const d = await db.from(table).select("*").eq("user_id", OWNER).eq("dedupe_key", a.dedupe_key).is("archived_at", null).limit(1); dup = d.data && d.data[0]; }
+  if (!dup) dup = await ccExisting(table, a.title, a.date || null, kind);
+  const built = await itemRow({ ...a, kind }, table, dup || undefined);
+  if (built.error) return { error: built.error };
+  if (dup) {
+    const up = await safeWrite((p) => db.from(table).update(p).eq("id", dup.id).eq("user_id", OWNER), built.row!);
+    if (up.error) return { error: up.error.message };
+    return { item: await itemOutFull(table, dup.id), created: false };
+  }
+  const row: Record<string, unknown> = { user_id: OWNER, source: "claude", ...built.row };
+  if (table === "actions") Object.assign(row, { kind, priority: a.priority || "P2", type: "Task", done: false, parent_type: row.parent_type || "none", parent_id: row.parent_id || null, someday: a.status === "someday" });
+  if (a.status === "someday" && table === "actions") { row.date = null; row.time_of_day = null; }
+  const ins = await safeWrite((p) => db.from(table).insert(p).select("id").single(), row);
+  if (ins.error) return { error: ins.error.message };
+  return { item: await itemOutFull(table, ins.data.id), created: true };
+}
+// deno-lint-ignore no-explicit-any
+async function itemEdit(id: string, a: any): Promise<{ item?: any; error?: string }> {
+  const f = await itemFind(id); if (!f) return { error: "no item with that id (use list_items or search_items)" };
+  if (a.kind && (a.kind === "event") !== (f.table === "events")) return { error: "an event and a task are stored differently and cannot be converted; create a new item with create_item and archive this one" };
+  const built = await itemRow(a, f.table, f.row); if (built.error) return { error: built.error };
+  const patch = built.row!;
+  if (a.status) { const sp = statusPatch(a.status, f.row, f.table); if (typeof sp === "string") return { error: sp }; Object.assign(patch, sp); }
+  if (a.date && f.table === "actions" && patch.someday === undefined && f.row.someday) patch.someday = false;
+  if (!Object.keys(patch).length) return { error: "nothing to change: pass at least one field" };
+  const up = await safeWrite((p) => db.from(f.table).update(p).eq("id", id).eq("user_id", OWNER), patch);
+  if (up.error) return { error: up.error.message };
+  return { item: await itemOutFull(f.table, id) };
+}
+const ITEM_ID = z.string().describe("item id (from list_items, search_items, plan_day …)");
+const itemResult = (r: { item?: unknown; error?: string; created?: boolean }) => r.error ? fail(r.error) : ok(r.created === undefined ? { ok: true, item: r.item } : { ok: true, created: r.created, alreadyExisted: !r.created, item: r.item });
+
+tool("create_item", {
+  description: "Create anything with a time or a done state, in one tool. kind: task (something to tick off, default), event (happens at a time, no done state), deadline (a date something is due), block (time reserved: gym, deep work). Use this instead of create_action / create_event, which stay for compatibility. Re-sending the same item (same title + date + kind, or the same dedupe_key) updates it instead of adding a second. Returns the full item.",
+  inputSchema: z.object({ kind: z.enum(ITEM_KINDS).optional(), status: z.enum(["open", "someday"]).optional().describe("someday parks a task with no date"), dedupe_key: z.string().max(120).optional().describe("your own stable key for this item, to avoid duplicates on retries"), ...ITEM_FIELDS, title: z.string().min(1).max(300) }),
+  handler: async (a: Record<string, unknown>) => itemResult(await itemCreate(a)),
+});
+tool("edit_item", {
+  description: "Change any field of an item (task, event, deadline or block). Only the fields you pass change. status: open | done | archived | someday (done for a repeating task needs complete_item with a date). To move one date of a repeating item use edit_occurrence or skip_occurrence. Returns the full item.",
+  inputSchema: z.object({ id: ITEM_ID, kind: z.enum(ITEM_KINDS).optional().describe("task, deadline and block can switch between each other; event cannot"), status: z.enum(ITEM_STATUS).optional(), ...ITEM_FIELDS }),
+  handler: async (a: Record<string, unknown>) => { const { id, ...rest } = a; return itemResult(await itemEdit(String(id), rest)); },
+});
+tool("get_item", {
+  description: "One item in full, with whether it is blocked, what waits for it, and (for a repeating item) its next five dates.",
+  inputSchema: z.object({ id: ITEM_ID }),
+  handler: async (a: { id: string }) => {
+    const f = await itemFind(a.id); if (!f) return fail("no item with that id");
+    const item = await itemOutFull(f.table, a.id), today = berlinToday();
+    const waiting = f.table === "actions" ? ((await owned("actions").is("archived_at", null).contains("dependencies", [{ id: a.id }])).data || []).map((x) => ({ id: x.id, title: x.title })) : [];
+    return ok({ item, waitingOnThis: waiting, nextDates: f.row.recurrence ? ccDates(f.row, today, ccAdd(today, 400)).slice(0, 5) : undefined });
+  },
+});
+
+// deno-lint-ignore no-explicit-any
+async function itemsLoad(includeArchived: boolean): Promise<{ rows: { row: any; table: string }[]; error?: string }> {
+  let qa = owned("actions"), qe = owned("events");
+  if (!includeArchived) { qa = qa.is("archived_at", null); qe = qe.is("archived_at", null); }
+  const [a, e] = await Promise.all([qa.limit(5000), qe.limit(5000)]);
+  if (a.error) return { rows: [], error: a.error.message };
+  return { rows: [...(a.data || []).map((row) => ({ row, table: "actions" })), ...(e.error ? [] : (e.data || []).map((row) => ({ row, table: "events" })))] };
+}
+tool("list_items", {
+  description: "List items with filters. Without from/to it lists items as stored (a repeating item once). With from and to it lists every occurrence in that range, repeating items expanded, sorted by date and time — use that for 'what is on next week'. Default status is open. Use plan_day / plan_week for planning views with free time; search_items for a word search.",
+  inputSchema: z.object({
+    kind: z.array(z.enum(ITEM_KINDS)).optional(), status: z.enum([...ITEM_STATUS, "any"]).optional().describe("default open"),
+    area: z.enum(AREA_INPUT).optional(), from: z.string().regex(CC_DAY).optional(), to: z.string().regex(CC_DAY).optional(),
+    goal_id: z.string().optional(), project_id: z.string().optional(), source: z.string().optional(),
+    recurring: z.boolean().optional().describe("true: only repeating items; false: only one-off items"), blocked: z.boolean().optional().describe("true: only tasks waiting on another task"),
+    undated: z.boolean().optional().describe("true: only items with no date (the backlog)"), limit: z.number().int().min(1).max(500).optional(), offset: z.number().int().min(0).optional(),
+  }),
+  // deno-lint-ignore no-explicit-any
+  handler: async (a: any) => {
+    const status = a.status || "open", L = await itemsLoad(status === "archived" || status === "any");
+    if (L.error) return fail(L.error);
+    const allDeps = L.rows.flatMap((x) => x.table === "actions" ? (x.row.dependencies || []).map((d: { id: string }) => d.id) : []);
+    const openDeps = await itemOpenSet(Array.from(new Set(allDeps)));
+    let items = L.rows.map((x) => ({ x, o: itemOut(x.row, x.table, openDeps) }));
+    items = items.filter(({ o }) => (status === "any" || o.status === status) && (!a.kind || a.kind.includes(o.kind)) && (!a.area || o.area === a.area || o.secondaryAreas.includes(a.area)) &&
+      (!a.goal_id || o.goalId === a.goal_id) && (!a.project_id || o.projectId === a.project_id) && (!a.source || o.source === a.source) &&
+      (a.recurring === undefined || !!o.recurrence === a.recurring) && (a.blocked === undefined || !!o.blocked === a.blocked) && (a.undated === undefined || !o.date === a.undated));
+    const limit = a.limit || 100, offset = a.offset || 0;
+    if (a.from && a.to) {
+      if (a.to < a.from) return fail("to must not be before from");
+      // deno-lint-ignore no-explicit-any
+      const occ: any[] = [];
+      for (const { x, o } of items) for (const d of ccDates(x.row, a.from, a.to)) occ.push({ ...o, date: d, occurrenceDone: o.recurrence ? (x.row.recurrence_done || []).includes(d) : undefined });
+      occ.sort((p, q) => (p.date + (p.start || "")).localeCompare(q.date + (q.start || "")));
+      return ok({ from: a.from, to: a.to, total: occ.length, occurrences: occ.slice(offset, offset + limit) });
+    }
+    const list = items.map(({ o }) => o).sort((p, q) => String(p.date || "9999").localeCompare(String(q.date || "9999")) || String(p.priority || "P9").localeCompare(String(q.priority || "P9")));
+    return ok({ total: list.length, items: list.slice(offset, offset + limit) });
+  },
+});
+tool("search_items", {
+  description: "Find items (tasks, events, deadlines, blocks) whose title or notes contain the words. Archived items are included only when asked. For one search across everything (notes, people, knowledge, memory too) use search_everything.",
+  inputSchema: z.object({ query: z.string().min(2).max(200), include_archived: z.boolean().optional(), limit: z.number().int().min(1).max(100).optional() }),
+  handler: async (a: { query: string; include_archived?: boolean; limit?: number }) => {
+    const like = "%" + a.query.replace(/[%_\\,()]/g, " ").trim() + "%", lim = a.limit || 30;
+    let qa = owned("actions").or("title.ilike." + like + ",notes_md.ilike." + like), qe = owned("events").or("title.ilike." + like + ",notes_md.ilike." + like);
+    if (!a.include_archived) { qa = qa.is("archived_at", null); qe = qe.is("archived_at", null); }
+    const [ra, re] = await Promise.all([qa.limit(lim), qe.limit(lim)]);
+    if (ra.error) return fail(ra.error.message);
+    const items = [...(ra.data || []).map((r) => itemOut(r, "actions")), ...(re.data || []).map((r) => itemOut(r, "events"))].slice(0, lim);
+    return ok({ total: items.length, items });
+  },
+});
+
+// ---- status ----
+async function itemComplete(id: string, done: boolean, date?: string) {
+  const f = await itemFind(id); if (!f) return fail("no item with that id");
+  if (f.table === "events" || ccKind(f.row, f.table) === "block") return fail("events and time blocks have no done state");
+  if (f.row.recurrence) {
+    const d = date || berlinToday();
+    if (!ccDates(f.row, d, d).length) return fail("this repeating item does not fall on " + d + "; its next dates: " + ccDates(f.row, d, ccAdd(d, 120)).slice(0, 3).join(", "));
+    const list: string[] = (f.row.recurrence_done || []).filter((x: string) => x !== d); if (done) list.push(d);
+    const up = await db.from("actions").update({ recurrence_done: list }).eq("id", id).eq("user_id", OWNER); if (up.error) return fail(up.error.message);
+    return ok({ ok: true, date: d, item: await itemOutFull("actions", id) });
+  }
+  const up = await db.from("actions").update({ done }).eq("id", id).eq("user_id", OWNER); if (up.error) return fail(up.error.message);
+  return ok({ ok: true, item: await itemOutFull("actions", id) });
+}
+tool("complete_item", {
+  description: "Tick a task or deadline off. For a repeating one, pass the date of the occurrence (default today, Berlin); the series stays.",
+  inputSchema: z.object({ id: ITEM_ID, date: z.string().regex(CC_DAY).optional() }),
+  handler: (a: { id: string; date?: string }) => itemComplete(a.id, true, a.date),
+});
+tool("uncomplete_item", {
+  description: "Undo complete_item: mark a task or deadline (or one date of a repeating one) as not done.",
+  inputSchema: z.object({ id: ITEM_ID, date: z.string().regex(CC_DAY).optional() }),
+  handler: (a: { id: string; date?: string }) => itemComplete(a.id, false, a.date),
+});
+tool("archive_item", {
+  description: "Hide an item from every list. Nothing is deleted; restore_item brings it back.",
+  inputSchema: z.object({ id: ITEM_ID }),
+  handler: async (a: { id: string }) => itemResult(await itemEdit(a.id, { status: "archived" })),
+});
+tool("restore_item", {
+  description: "Bring back an archived item (it returns as open).",
+  inputSchema: z.object({ id: ITEM_ID }),
+  handler: async (a: { id: string }) => itemResult(await itemEdit(a.id, { status: "open" })),
+});
+
+// ---- scheduling ----
+// Move an item, or one date of a repeating item (skip that date, add a one-off copy on the new day).
+// deno-lint-ignore no-explicit-any
+async function itemMove(id: string, date: string, time?: string | null, occurrence?: string): Promise<any> {
+  const f = await itemFind(id); if (!f) return fail("no item with that id");
+  if (!CC_DAY.test(date)) return fail("date must be YYYY-MM-DD");
+  if (time && !CC_TIME.test(time)) return fail("time must be HH:MM (24h)");
+  const row = f.row, t = time === undefined ? row.time_of_day : (time || null);
+  if (row.recurrence && occurrence) {
+    if (!ccDates(row, occurrence, occurrence).length) return fail("the item does not fall on " + occurrence);
+    const skip = Array.from(new Set([...(row.recurrence_exceptions || []), occurrence]));
+    const up = await db.from(f.table).update({ recurrence_exceptions: skip }).eq("id", id).eq("user_id", OWNER); if (up.error) return fail(up.error.message);
+    const copy: Record<string, unknown> = { user_id: OWNER, title: row.title, date, time_of_day: t, duration_minutes: row.duration_minutes, category: row.category, secondary_categories: row.secondary_categories || [], notes_md: row.notes_md || "", reminders: row.reminders || [], linked_people_ids: row.linked_people_ids || [], location_address: row.location_address, location_lat: row.location_lat, location_lng: row.location_lng, source: "claude" };
+    if (f.table === "actions") Object.assign(copy, { kind: row.kind || "task", priority: row.priority, type: row.type || "Task", parent_type: row.parent_type || "none", parent_id: row.parent_id || null, done: false, estimate_min: row.estimate_min, is_milestone: !!row.is_milestone });
+    const ins = await safeWrite((p) => db.from(f.table).insert(p).select("id").single(), copy); if (ins.error) return fail(ins.error.message);
+    return ok({ ok: true, movedOneOccurrence: true, from: occurrence, series: await itemOutFull(f.table, id), item: await itemOutFull(f.table, ins.data.id) });
+  }
+  const patch: Record<string, unknown> = { date, time_of_day: t }; if (f.table === "actions") patch.someday = false;
+  const up = await safeWrite((p) => db.from(f.table).update(p).eq("id", id).eq("user_id", OWNER), patch); if (up.error) return fail(up.error.message);
+  return ok({ ok: true, item: await itemOutFull(f.table, id) });
+}
+tool("snooze", {
+  description: "Push an item to a later day (default tomorrow, Berlin), keeping its time. For a repeating item pass occurrence_date to snooze just that date. Use reschedule to pick an exact new date and time.",
+  inputSchema: z.object({ id: ITEM_ID, until: z.string().regex(CC_DAY).optional(), occurrence_date: z.string().regex(CC_DAY).optional() }),
+  handler: (a: { id: string; until?: string; occurrence_date?: string }) => itemMove(a.id, a.until || ccAdd(berlinToday(), 1), undefined, a.occurrence_date),
+});
+tool("make_someday", {
+  description: "Park a task with no date: it leaves the calendar and is never shown as late. schedule_from_backlog brings it back.",
+  inputSchema: z.object({ id: ITEM_ID }),
+  handler: async (a: { id: string }) => itemResult(await itemEdit(a.id, { status: "someday" })),
+});
+tool("schedule_from_backlog", {
+  description: "Give an undated (backlog or someday) task a date, and optionally a time.",
+  inputSchema: z.object({ id: ITEM_ID, date: z.string().regex(CC_DAY), time: z.string().optional() }),
+  handler: (a: { id: string; date: string; time?: string }) => itemMove(a.id, a.date, a.time === undefined ? null : a.time),
+});
+
+// ---- repeating items ----
+const ruleWithout = (rule: string, keys: string[]) => String(rule).replace(/^RRULE:/i, "").split(";").filter((p) => p && !keys.includes(p.split("=")[0].toUpperCase())).join(";");
+const untilOf = (d: string) => d.replace(/-/g, "");
+tool("set_recurrence", {
+  description: "Make an item repeat, or change how it repeats. rule is an RRULE: FREQ=DAILY|WEEKLY|MONTHLY|YEARLY with optional INTERVAL, BYDAY (MO,TU,…), BYMONTHDAY, UNTIL, COUNT. Examples: gym Mon/Wed/Fri = FREQ=WEEKLY;BYDAY=MO,WE,FR; rent on the 1st = FREQ=MONTHLY;BYMONTHDAY=1. start_date sets the first occurrence (defaults to the item's date, or today).",
+  inputSchema: z.object({ id: ITEM_ID, rule: z.string().min(8).max(200), start_date: z.string().regex(CC_DAY).optional() }),
+  handler: async (a: { id: string; rule: string; start_date?: string }) => {
+    const f = await itemFind(a.id); if (!f) return fail("no item with that id");
+    return itemResult(await itemEdit(a.id, { recurrence: a.rule, date: a.start_date || f.row.date || berlinToday() }));
+  },
+});
+tool("end_recurrence", {
+  description: "Stop a repeating item after a date (default today): earlier dates and what was ticked off stay. Pass stop_repeating: true instead to turn it into a single item on its first date.",
+  inputSchema: z.object({ id: ITEM_ID, last_date: z.string().regex(CC_DAY).optional(), stop_repeating: z.boolean().optional() }),
+  handler: async (a: { id: string; last_date?: string; stop_repeating?: boolean }) => {
+    const f = await itemFind(a.id); if (!f) return fail("no item with that id");
+    if (!f.row.recurrence) return fail("this item does not repeat");
+    if (a.stop_repeating) return itemResult(await itemEdit(a.id, { recurrence: null }));
+    const last = a.last_date || berlinToday();
+    return itemResult(await itemEdit(a.id, { recurrence: ruleWithout(f.row.recurrence, ["UNTIL", "COUNT"]) + ";UNTIL=" + untilOf(last) }));
+  },
+});
+tool("skip_occurrence", {
+  description: "Leave one date out of a repeating item (it simply does not happen that day). Use edit_occurrence to move or change it instead.",
+  inputSchema: z.object({ id: ITEM_ID, date: z.string().regex(CC_DAY) }),
+  handler: async (a: { id: string; date: string }) => {
+    const f = await itemFind(a.id); if (!f) return fail("no item with that id");
+    if (!f.row.recurrence) return fail("this item does not repeat; use snooze, reschedule or archive_item");
+    if (!ccDates(f.row, a.date, a.date).length) return fail("the item does not fall on " + a.date);
+    return itemResult(await itemEdit(a.id, { exceptions: Array.from(new Set([...(f.row.recurrence_exceptions || []), a.date])) }));
+  },
+});
+const OCC_CHANGES = z.object({ title: z.string().min(1).max(300).optional(), date: z.string().regex(CC_DAY).optional().describe("move to this day"), start: z.string().nullable().optional(), duration_min: z.number().int().min(1).max(1440).nullable().optional(), notes: z.string().optional(), area: z.enum(AREA_INPUT).optional(), location: z.string().nullable().optional(), reminders: z.array(z.number().int().min(0).max(40320)).max(5).optional() });
+tool("edit_occurrence", {
+  description: "Change a repeating item from one date on. scope: this (only that date: it is skipped in the series and a changed one-off copy is made), this_and_following (the series ends the day before and a changed new series starts on that date), all (the whole series changes). changes can include a new date (moves it), start, duration_min, title, notes, area, location, reminders.",
+  inputSchema: z.object({ id: ITEM_ID, date: z.string().regex(CC_DAY).describe("the occurrence being changed"), scope: z.enum(["this", "this_and_following", "all"]), changes: OCC_CHANGES }),
+  // deno-lint-ignore no-explicit-any
+  handler: async (a: { id: string; date: string; scope: string; changes: any }) => {
+    const f = await itemFind(a.id); if (!f) return fail("no item with that id");
+    const row = f.row; if (!row.recurrence) return fail("this item does not repeat; use edit_item");
+    if (!ccDates(row, a.date, a.date).length) return fail("the item does not fall on " + a.date);
+    if (a.scope === "all") return itemResult(await itemEdit(a.id, a.changes));
+    const base = itemOut(row, f.table), fields = { kind: base.kind, title: base.title, notes: base.notes, area: base.area || undefined, secondary_areas: base.secondaryAreas, start: base.start, duration_min: base.durationMin, all_day: base.allDay, reminders: base.reminders, muted: base.muted, people: base.people, ...(f.table === "actions" ? { priority: base.priority, estimate_min: base.estimateMin, goal_id: base.goalId, project_id: base.projectId } : {}) };
+    // deno-lint-ignore no-explicit-any
+    const clean = (o: any) => { for (const k of Object.keys(o)) if (o[k] === null || o[k] === undefined) delete o[k]; return o; };
+    if (a.scope === "this") {
+      const skip = await itemEdit(a.id, { exceptions: Array.from(new Set([...(row.recurrence_exceptions || []), a.date])) }); if (skip.error) return fail(skip.error);
+      const made = await itemCreate(clean({ ...fields, ...a.changes, date: a.changes.date || a.date, recurrence: null, location: a.changes.location !== undefined ? a.changes.location : (row.location_address || undefined) }));
+      if (made.error) return fail(made.error);
+      return ok({ ok: true, scope: "this", series: skip.item, item: made.item });
+    }
+    const prevDay = ccAdd(a.date, -1), rest = ruleWithout(row.recurrence, ["COUNT"]);
+    const end = await itemEdit(a.id, { recurrence: ruleWithout(rest, ["UNTIL"]) + ";UNTIL=" + untilOf(prevDay) }); if (end.error) return fail(end.error);
+    const later = (d: string) => d >= a.date;
+    const made = await itemCreate(clean({ ...fields, ...a.changes, date: a.changes.date || a.date, recurrence: rest, exceptions: (row.recurrence_exceptions || []).filter(later), location: a.changes.location !== undefined ? a.changes.location : (row.location_address || undefined) }));
+    if (made.error) return fail(made.error);
+    if (f.table === "actions" && (row.recurrence_done || []).some(later)) await db.from("actions").update({ recurrence_done: (row.recurrence_done || []).filter(later) }).eq("id", made.item.id).eq("user_id", OWNER);
+    return ok({ ok: true, scope: "this_and_following", endedSeries: end.item, newSeries: await itemOutFull(f.table, made.item.id) });
+  },
+});
+
+// ---- reminders ----
+tool("set_reminders", {
+  description: "Set when the phone reminds about an item: minutes before its start (0 = at the time, 10, 30, 60, 1440 = a day before). An item without a time counts from 09:00. Replaces the existing list; pass [] to remove all.",
+  inputSchema: z.object({ id: ITEM_ID, offsets: z.array(z.number().int().min(0).max(40320)).max(5) }),
+  handler: async (a: { id: string; offsets: number[] }) => itemResult(await itemEdit(a.id, { reminders: a.offsets })),
+});
+tool("mute_item", {
+  description: "Silence (or, with muted: false, un-silence) all reminders for one item without losing its reminder settings.",
+  inputSchema: z.object({ id: ITEM_ID, muted: z.boolean().optional().describe("default true") }),
+  handler: async (a: { id: string; muted?: boolean }) => itemResult(await itemEdit(a.id, { muted: a.muted !== false })),
+});
+tool("list_upcoming_reminders", {
+  description: "The reminders due in the next hours (default 48), in Berlin time, with whether they fall in quiet hours (those are skipped, not sent late). Also lists the morning digest and deadline heads-ups that are switched on.",
+  inputSchema: z.object({ hours: z.number().int().min(1).max(336).optional() }),
+  handler: async (a: { hours?: number }) => {
+    const L = await ccLoad(); if (L.error) return fail(L.error);
+    const set = await db.from("push_settings").select("*").eq("user_id", OWNER).maybeSingle(), S = { ...PUSH_DEFAULTS, ...(set.data || {}) };
+    const t = berlinNow(new Date()), H = (a.hours || 48) * 60, hm = (x: string | null, d: number) => x ? +String(x).slice(0, 2) * 60 + +String(x).slice(3, 5) : d;
+    const qf = hm(S.quiet_from, 1380), qt = hm(S.quiet_to, 480), quiet = (m: number) => { const x = ((m % 1440) + 1440) % 1440; return qf === qt ? false : qf < qt ? x >= qf && x < qt : x >= qf || x < qt; };
+    const days = Math.ceil((t.nowMin + H) / 1440) + 2, last = ccAdd(t.today, days);
+    // deno-lint-ignore no-explicit-any
+    const out: any[] = [];
+    // deno-lint-ignore no-explicit-any
+    const each = (rows: any[], table: string) => { for (const r of rows) { if (r.someday || !(r.reminders || []).length) continue; const kind = ccKind(r, table); for (const d of ccDates(r, t.today, last)) { if (table === "actions" && (kind === "task" || kind === "deadline") && (r.recurrence ? (r.recurrence_done || []).includes(d) : r.done)) continue; const timed = !!r.time_of_day && !r.all_day, start = ccDiff(t.today, d) * 1440 + (timed ? hm(r.time_of_day, 540) : 540); for (const off of r.reminders) { const at = start - Number(off); if (at > t.nowMin && at <= t.nowMin + H) out.push({ at: ccAdd(t.today, Math.floor(at / 1440)) + " " + minsToHHMM(((at % 1440) + 1440) % 1440), id: r.id, title: r.title, kind, offsetMin: Number(off), muted: !!r.muted, inQuietHours: quiet(at), willSend: S.enabled !== false && !r.muted && !quiet(at) }); } } } };
+    each(L.actions, "actions"); each(L.events, "events");
+    out.sort((p, q) => p.at.localeCompare(q.at));
+    return ok({ now: t.today + " " + minsToHHMM(t.nowMin), settings: { enabled: S.enabled !== false, quietFrom: hhmm(S.quiet_from), quietTo: hhmm(S.quiet_to), digestOn: S.digest_on !== false, digestTime: hhmm(S.digest_time), deadlineHeadsUp: S.deadline_on !== false }, reminders: out.slice(0, 200) });
+  },
+});
+tool("get_reminder_settings", {
+  description: "Quiet hours, the morning digest time and the deadline heads-up, plus how many devices have reminders switched on.",
+  inputSchema: z.object({}),
+  handler: async () => {
+    const [s, d] = await Promise.all([db.from("push_settings").select("*").eq("user_id", OWNER).maybeSingle(), db.from("push_subscriptions").select("id", { count: "exact", head: true }).eq("user_id", OWNER).is("failed_at", null)]);
+    if (s.error) return fail(s.error.message + " (run _Memory/migration_push.sql)");
+    const S = { ...PUSH_DEFAULTS, ...(s.data || {}) };
+    return ok({ enabled: S.enabled !== false, quietFrom: hhmm(S.quiet_from), quietTo: hhmm(S.quiet_to), digestOn: S.digest_on !== false, digestTime: hhmm(S.digest_time), deadlineHeadsUp: S.deadline_on !== false, devices: d.count || 0 });
+  },
+});
+tool("set_reminder_settings", {
+  description: "Change quiet hours (nothing is sent between quiet_from and quiet_to), the morning digest (on/off and time) and the deadline heads-up (the evening before, 18:00). Only the fields you pass change.",
+  inputSchema: z.object({ enabled: z.boolean().optional().describe("false pauses every reminder"), quiet_from: z.string().optional(), quiet_to: z.string().optional(), digest_on: z.boolean().optional(), digest_time: z.string().optional(), deadline_heads_up: z.boolean().optional() }),
+  // deno-lint-ignore no-explicit-any
+  handler: async (a: any) => {
+    const p: Record<string, unknown> = { user_id: OWNER, updated_at: new Date().toISOString() };
+    for (const k of ["quiet_from", "quiet_to", "digest_time"]) if (a[k] !== undefined) { if (!CC_TIME.test(a[k])) return fail(k + " must be HH:MM"); p[k] = a[k]; }
+    if (a.enabled !== undefined) p.enabled = a.enabled; if (a.digest_on !== undefined) p.digest_on = a.digest_on; if (a.deadline_heads_up !== undefined) p.deadline_on = a.deadline_heads_up;
+    const r = await db.from("push_settings").upsert(p, { onConflict: "user_id" }).select().single();
+    if (r.error) return fail(r.error.message + " (run _Memory/migration_push.sql)");
+    return ok({ ok: true, enabled: r.data.enabled, quietFrom: hhmm(r.data.quiet_from), quietTo: hhmm(r.data.quiet_to), digestOn: r.data.digest_on, digestTime: hhmm(r.data.digest_time), deadlineHeadsUp: r.data.deadline_on });
+  },
+});
+
+// ---- dependencies ----
+tool("add_dependency", {
+  description: "Say that a task has to wait for another task: id waits for depends_on. The waiting task then shows as blocked until the other is done.",
+  inputSchema: z.object({ id: ITEM_ID, depends_on: z.string() }),
+  handler: async (a: { id: string; depends_on: string }) => {
+    if (a.id === a.depends_on) return fail("a task cannot wait for itself");
+    const f = await itemFind(a.id), g = await itemFind(a.depends_on);
+    if (!f || !g) return fail("both ids must be existing items");
+    if (f.table !== "actions" || g.table !== "actions") return fail("dependencies are between tasks, deadlines or blocks, not events");
+    // no loops: walk what depends_on itself waits for
+    const seen = new Set<string>(); let frontier = [a.depends_on];
+    for (let i = 0; i < 20 && frontier.length; i++) { const r = await db.from("actions").select("id,dependencies").eq("user_id", OWNER).in("id", frontier); frontier = []; for (const x of r.data || []) for (const d of (x.dependencies || [])) { if (d.id === a.id) return fail("that would make a loop: " + g.row.title + " already waits for " + f.row.title); if (!seen.has(d.id)) { seen.add(d.id); frontier.push(d.id); } } }
+    const deps = (f.row.dependencies || []).filter((d: { id: string }) => d.id !== a.depends_on).concat([{ id: a.depends_on, requiresDone: true }]);
+    const up = await db.from("actions").update({ dependencies: deps }).eq("id", a.id).eq("user_id", OWNER); if (up.error) return fail(up.error.message);
+    return ok({ ok: true, item: await itemOutFull("actions", a.id) });
+  },
+});
+tool("remove_dependency", {
+  description: "Undo add_dependency: the task no longer waits for the other.",
+  inputSchema: z.object({ id: ITEM_ID, depends_on: z.string() }),
+  handler: async (a: { id: string; depends_on: string }) => {
+    const f = await itemFind(a.id); if (!f || f.table !== "actions") return fail("no task with that id");
+    const up = await db.from("actions").update({ dependencies: (f.row.dependencies || []).filter((d: { id: string }) => d.id !== a.depends_on) }).eq("id", a.id).eq("user_id", OWNER); if (up.error) return fail(up.error.message);
+    return ok({ ok: true, item: await itemOutFull("actions", a.id) });
+  },
+});
+
+// ---- read views ----
+tool("get_month", {
+  description: "A month at a glance: for each day, the events, deadlines, blocks and open tasks on it (repeating items expanded). month is YYYY-MM (default this month, Berlin).",
+  inputSchema: z.object({ month: z.string().regex(/^\d{4}-\d{2}$/).optional() }),
+  handler: async (a: { month?: string }) => {
+    const m = a.month || berlinToday().slice(0, 7), first = m + "-01", last = ccAdd(ccIso(Date.UTC(+m.slice(0, 4), +m.slice(5, 7), 1)), -1), L = await ccLoad();
+    if (L.error) return fail(L.error);
+    const occ = ccOccurrences(L.actions, L.events, first, last), days: Record<string, unknown>[] = [];
+    for (let d = first; d <= last; d = ccAdd(d, 1)) { const on = occ.filter((o) => o.date === d); days.push({ date: d, weekday: WEEKDAY_ABBR[ccDow(d)], events: on.filter((o) => o.kind === "event" || o.kind === "block").map((o) => ({ id: o.id, title: o.title, kind: o.kind, start: o.timeOfDay })), deadlines: on.filter((o) => o.kind === "deadline").map((o) => ({ id: o.id, title: o.title, done: o.done })), openTasks: on.filter((o) => o.kind === "task" && !o.done).length, doneTasks: on.filter((o) => o.kind === "task" && o.done).length }); }
+    return ok({ month: m, days });
+  },
+});
+tool("get_horizon", {
+  description: "Goals and projects over a stretch of months (default the next six): each goal with its progress, due date and open count; each project with its date span (first planned task to due date), progress and deadlines; plus every deadline in the range. Use it for roadmap questions.",
+  inputSchema: z.object({ from: z.string().regex(CC_DAY).optional(), to: z.string().regex(CC_DAY).optional() }),
+  handler: async (a: { from?: string; to?: string }) => {
+    const today = berlinToday(), from = a.from || today.slice(0, 8) + "01", to = a.to || ccAdd(ccIso(Date.UTC(+from.slice(0, 4), +from.slice(5, 7) - 1 + 6, 1)), -1);
+    const [g, p, ac] = await Promise.all([owned("goals").order("position"), owned("projects").order("position"), owned("actions").is("archived_at", null)]);
+    if (g.error) return fail(g.error.message);
+    const acts = ac.data || [], goals = (g.data || []).filter((x) => !x.archived_at), projects = (p.data || []).filter((x) => !x.archived_at);
+    const under = (pid: string) => acts.filter((x) => x.parent_type === "project" && x.parent_id === pid), pct = (list: { done: boolean }[]) => list.length ? Math.round(list.filter((x) => x.done).length / list.length * 100) : 0;
+    return ok({
+      from, to,
+      goals: goals.map((gl) => { const ps = projects.filter((x) => x.goal_id === gl.id), all = acts.filter((x) => (x.parent_type === "goal" && x.parent_id === gl.id) || ps.some((q) => x.parent_type === "project" && x.parent_id === q.id)); return { id: gl.id, title: gl.title, area: gl.category, due: gl.ongoing ? null : gl.due, ongoing: !!gl.ongoing, progress: pct(all), open: all.filter((x) => !x.done).length, projects: ps.map((q) => q.id) }; }),
+      projects: projects.map((q) => { const list = under(q.id), dates = list.map((x) => x.date).filter(Boolean).sort(); return { id: q.id, goalId: q.goal_id, title: q.title, done: !!q.done, start: dates[0] || null, due: q.due || null, progress: q.done ? 100 : pct(list), open: list.filter((x) => !x.done).length, inRange: (!q.due || q.due >= from) && (!dates[0] || dates[0] <= to) }; }),
+      deadlines: ccOccurrences(acts, [], from, to).filter((o) => o.kind === "deadline").map((o) => ({ id: o.id, title: o.title, date: o.date, done: o.done, parentType: o.parentType, parentId: o.parentId })),
+    });
+  },
+});
+
+// ---- planning writes ----
+const PLAN_STEP = z.discriminatedUnion("op", [
+  z.object({ op: z.literal("create"), item: z.object({ kind: z.enum(ITEM_KINDS).optional(), dedupe_key: z.string().max(120).optional(), ...ITEM_FIELDS, title: z.string().min(1).max(300) }) }),
+  z.object({ op: z.literal("reschedule"), id: z.string(), date: z.string().regex(CC_DAY), time: z.string().nullable().optional(), occurrence_date: z.string().regex(CC_DAY).optional() }),
+  z.object({ op: z.literal("edit"), id: z.string(), changes: z.object({ status: z.enum(ITEM_STATUS).optional(), ...ITEM_FIELDS }) }),
+]);
+tool("apply_plan", {
+  description: "Apply a whole plan in one call: a list of steps, each create (a new item), reschedule (move an item or one occurrence) or edit (change fields). Every step is checked first; if any step is invalid nothing is changed. If a step fails while applying, the steps already done are undone (created items archived, edited items put back). Pass dry_run: true to only check. Use it after plan_day / plan_week when the user accepts a proposal.",
+  inputSchema: z.object({ steps: z.array(PLAN_STEP).min(1).max(60), dry_run: z.boolean().optional() }),
+  // deno-lint-ignore no-explicit-any
+  handler: async (a: { steps: any[]; dry_run?: boolean }) => {
+    const problems: string[] = [], found: Record<string, { table: string; row: unknown }> = {};
+    for (let i = 0; i < a.steps.length; i++) {
+      const s = a.steps[i];
+      if (s.op === "create") { const kind = s.item.kind || "task", chk = await itemRow({ ...s.item, location: undefined, kind }, kind === "event" ? "events" : "actions"); if (chk.error) problems.push("step " + (i + 1) + ": " + chk.error); continue; }
+      const f = await itemFind(s.id); if (!f) { problems.push("step " + (i + 1) + ": no item " + s.id); continue; } found[s.id] = f;
+      if (s.op === "reschedule") { if (s.time && !CC_TIME.test(s.time)) problems.push("step " + (i + 1) + ": time must be HH:MM"); if (s.occurrence_date && !ccDates(f.row, s.occurrence_date, s.occurrence_date).length) problems.push("step " + (i + 1) + ": the item does not fall on " + s.occurrence_date); }
+      else { const chk = await itemRow({ ...s.changes, location: undefined }, f.table, f.row); if (chk.error) problems.push("step " + (i + 1) + ": " + chk.error); if (s.changes.status) { const sp = statusPatch(s.changes.status, f.row, f.table); if (typeof sp === "string") problems.push("step " + (i + 1) + ": " + sp); } }
+    }
+    if (problems.length) return fail("nothing was changed: " + problems.join("; "));
+    if (a.dry_run) return ok({ ok: true, dryRun: true, steps: a.steps.length, note: "all steps are valid" });
+    // deno-lint-ignore no-explicit-any
+    const results: any[] = [], undo: (() => Promise<unknown>)[] = [];
+    for (let i = 0; i < a.steps.length; i++) {
+      const s = a.steps[i];
+      // deno-lint-ignore no-explicit-any
+      let r: any;
+      if (s.op === "create") { r = await itemCreate(s.item); if (!r.error && r.created) { const t = r.item.kind === "event" ? "events" : "actions", id = r.item.id; undo.push(() => db.from(t).update({ archived_at: new Date().toISOString() }).eq("id", id).eq("user_id", OWNER)); } }
+      else {
+        // deno-lint-ignore no-explicit-any
+        const f = found[s.id] as any, prev = { ...f.row };
+        const res = s.op === "reschedule" ? await itemMove(s.id, s.date, s.time, s.occurrence_date) : itemResult(await itemEdit(s.id, s.changes));
+        const body = JSON.parse(res.content[0].text); r = body.error ? { error: body.error } : body;
+        if (!body.error) { undo.push(() => { const back: Record<string, unknown> = {}; for (const k of ["title", "notes_md", "category", "secondary_categories", "date", "time_of_day", "duration_minutes", "all_day", "recurrence", "recurrence_exceptions", "recurrence_done", "reminders", "muted", "linked_people_ids", "location_address", "location_lat", "location_lng", "archived_at", ...(f.table === "actions" ? ["kind", "priority", "estimate_min", "parent_type", "parent_id", "done", "someday", "dependencies", "is_milestone"] : [])]) back[k] = prev[k]; return db.from(f.table).update(back).eq("id", s.id).eq("user_id", OWNER); }); if (body.movedOneOccurrence) { const nid = body.item.id, t = f.table; undo.push(() => db.from(t).update({ archived_at: new Date().toISOString() }).eq("id", nid).eq("user_id", OWNER)); } }
+      }
+      if (r.error) { for (const u of undo.reverse()) await u(); return fail("step " + (i + 1) + " failed (" + r.error + "); the " + i + " step(s) before it were undone"); }
+      results.push({ step: i + 1, op: s.op, item: r.item || r.series || null });
+    }
+    return ok({ ok: true, applied: results.length, results });
+  },
+});
+
+// The Command Center's natural-language parser (command/core.js parseQuick), ported as-is.
+// deno-lint-ignore no-explicit-any
+function qaParse(text: string, today: string, areas: readonly string[]): any {
+  const pad = (n: number) => (n < 10 ? "0" : "") + n;
+  const DAYN: Record<string, number> = { sun: 0, sunday: 0, mon: 1, monday: 1, tue: 2, tues: 2, tuesday: 2, wed: 3, weds: 3, wednesday: 3, thu: 4, thur: 4, thurs: 4, thursday: 4, fri: 5, friday: 5, sat: 6, saturday: 6 };
+  const MONN: Record<string, number> = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, sept: 9, oct: 10, nov: 11, dec: 12 };
+  const nextDow = (d: number) => ccAdd(today, (d - ccDow(today) + 7) % 7);
+  const nextDom = (dom: number) => { let d = today; for (let i = 0; i < 62; i++) { if (+d.slice(8, 10) === dom) return d; d = ccAdd(d, 1); } return today; };
+  // deno-lint-ignore no-explicit-any
+  const out: any = { title: "", kind: "task", date: null, time: null, dur: null, recurrence: null, priority: null, area: null, allDay: false }, used: string[] = [];
+  let s = " " + String(text || "").replace(/\s+/g, " ").trim() + " ";
+  const take = (re: RegExp, fn: (m: RegExpExecArray) => unknown) => { const m = re.exec(s); if (!m) return false; if (fn(m) === false) return false; s = s.slice(0, m.index) + " " + s.slice(m.index + m[0].length); used.push(m[0].trim()); return true; };
+  take(/\s[pP]([0-3])(?=\s)/, (m) => { out.priority = "P" + m[1]; });
+  take(/\s#([A-Za-z]+)(?=\s)/, (m) => { const a = areas.filter((x) => x.toLowerCase().indexOf(m[1].toLowerCase()) === 0)[0] || AREA_ALIASES[m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase()]; if (!a) return false; out.area = a; });
+  const tm = (h0: string | number, mi0: string | number | undefined, ap?: string) => { let h = +h0; const mi = +(mi0 || 0); if (ap) { const x = ap.toLowerCase(); if (x === "pm" && h < 12) h += 12; if (x === "am" && h === 12) h = 0; } return h > 23 || mi > 59 ? null : pad(h) + ":" + pad(mi); };
+  take(/\s(\d{1,2})[:.](\d{2})\s?(?:-|–|to)\s?(\d{1,2})[:.](\d{2})(?=\s)/i, (m) => { const a = tm(m[1], m[2]), b = tm(m[3], m[4]); if (!a || !b || b <= a) return false; out.time = a; out.dur = (ccMins(b) as number) - (ccMins(a) as number); });
+  if (!out.time) take(/\s(?:at\s)?(\d{1,2})[:.](\d{2})\s?(am|pm)?(?=\s)/i, (m) => { const t = tm(m[1], m[2], m[3]); if (!t) return false; out.time = t; });
+  if (!out.time) take(/\s(?:at\s)?(\d{1,2})\s?(am|pm)(?=\s)/i, (m) => { const t = tm(m[1], 0, m[2]); if (!t) return false; out.time = t; });
+  take(/\sfor\s(\d+(?:[.,]\d+)?)\s?(h|hr|hrs|hours?|m|min|mins|minutes?)(?=\s)/i, (m) => { const n = parseFloat(m[1].replace(",", ".")); out.dur = Math.round(/^h/i.test(m[2]) ? n * 60 : n); });
+  const days: number[] = [];
+  take(/\severy\s((?:(?:sun|mon|tue|tues|wed|weds|thu|thur|thurs|fri|sat)[a-z]*(?:\s?,\s?|\s(?:and\s)?)?)+)(?=\s|$)/i, (m) => {
+    m[1].toLowerCase().split(/[\s,]+/).forEach((w) => { if (DAYN[w] != null && days.indexOf(DAYN[w]) < 0) days.push(DAYN[w]); });
+    if (!days.length) return false;
+    out.recurrence = "FREQ=WEEKLY;BYDAY=" + days.slice().sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map((d) => CC_DOW[d]).join(",");
+  });
+  if (!out.recurrence) take(/\severy\s(\d+)\s(day|week|month|year)s?(?=\s)/i, (m) => { out.recurrence = "FREQ=" + ({ day: "DAILY", week: "WEEKLY", month: "MONTHLY", year: "YEARLY" } as Record<string, string>)[m[2].toLowerCase()] + ";INTERVAL=" + m[1]; });
+  if (!out.recurrence) take(/\s(every\sday|daily|every\sweekday|weekdays|every\sweek|weekly|every\smonth|monthly|every\syear|yearly|annually)(?=\s)/i, (m) => { const w = m[1].toLowerCase(); out.recurrence = /weekday/.test(w) ? "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR" : /da/.test(w) ? "FREQ=DAILY" : /week/.test(w) ? "FREQ=WEEKLY" : /month/.test(w) ? "FREQ=MONTHLY" : "FREQ=YEARLY"; });
+  take(/\s(\d{4})-(\d{2})-(\d{2})(?=\s)/, (m) => { out.date = m[1] + "-" + m[2] + "-" + m[3]; });
+  if (!out.date) take(/\s(\d{1,2})\.(\d{1,2})\.(\d{4})?(?=\s)/, (m) => { const y = m[3] ? +m[3] : +today.slice(0, 4); let d = y + "-" + pad(+m[2]) + "-" + pad(+m[1]); if (+m[2] > 12 || +m[1] > 31) return false; if (!m[3] && d < today) d = (y + 1) + d.slice(4); out.date = d; });
+  if (!out.date) take(/\s(?:on\s)?(\d{1,2})(?:st|nd|rd|th)?\s(jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)[a-z]*(?=\s)/i, (m) => { const y = +today.slice(0, 4); let d = y + "-" + pad(MONN[m[2].toLowerCase()]) + "-" + pad(+m[1]); if (d < today) d = (y + 1) + d.slice(4); out.date = d; });
+  if (!out.date) take(/\s(today|tonight|tomorrow|next week)(?=\s)/i, (m) => { const w = m[1].toLowerCase(); out.date = w === "tomorrow" ? ccAdd(today, 1) : w === "next week" ? ccAdd(ccMonday(today), 7) : today; });
+  if (!out.date) take(/\s(?:on\s|next\s)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tues?|weds?|thu(?:rs?)?|fri|sat)(?=\s)/i, (m) => { out.date = nextDow(DAYN[m[1].toLowerCase()]); });
+  if (!out.date) take(/\s(?:on\sthe\s|on\s)?(\d{1,2})(st|nd|rd|th)(?=\s)/i, (m) => { if (+m[1] < 1 || +m[1] > 31) return false; out.date = nextDom(+m[1]); if (/FREQ=MONTHLY/.test(out.recurrence || "")) out.recurrence += ";BYMONTHDAY=" + +m[1]; });
+  if (out.recurrence && !out.date) { if (days.length) { for (let i = 0; i < 7; i++) { const d = ccAdd(today, i); if (days.indexOf(ccDow(d)) >= 0) { out.date = d; break; } } } else out.date = today; }
+  const low = s.toLowerCase();
+  if (take(/\s(deadline|due)(?=\s)/i, () => {})) out.kind = "deadline";
+  else if (/\b(gym|workout|deep work|focus time|block)\b/.test(low)) out.kind = "block";
+  else if (/\b(meeting|meet|dinner|lunch|breakfast|brunch|coffee|appointment|dentist|doctor|flight|train|birthday|party|concert|wedding|visit)\b/.test(low) && (out.time || out.date)) out.kind = "event";
+  out.title = s.replace(/\s+/g, " ").replace(/\s(at|on|by)\s*$/i, "").trim();
+  if (out.title) out.title = out.title.charAt(0).toUpperCase() + out.title.slice(1);
+  out.understood = used;
+  return out;
+}
+tool("quick_add", {
+  description: "Add an item from one line of text, the way the Command Center's quick add reads it: 'call the landlord Wed 10:00', 'gym every Mon Wed Fri 19:00', 'pay rent 1st monthly', 'dinner with Noor tomorrow 19:30-21:30', 'insurance form due 13 Nov p1 #finance'. Pass dry_run: true to see how it was understood without saving. You can override what was parsed with kind/area/priority.",
+  inputSchema: z.object({ text: z.string().min(2).max(300), dry_run: z.boolean().optional(), kind: z.enum(ITEM_KINDS).optional(), area: z.enum(AREA_INPUT).optional(), priority: z.enum(PRIORITIES).optional() }),
+  handler: async (a: { text: string; dry_run?: boolean; kind?: string; area?: string; priority?: string }) => {
+    const p = qaParse(a.text, berlinToday(), CATEGORIES);
+    if (!p.title) return fail("nothing left for a title after reading the date and time; add a few words");
+    const draft = { kind: a.kind || p.kind, title: p.title, date: p.date, start: p.time, duration_min: p.dur, recurrence: p.recurrence, priority: a.priority || p.priority || undefined, area: a.area || p.area || undefined, source: "claude" };
+    if (a.dry_run) return ok({ dryRun: true, understood: p.understood, item: draft });
+    // deno-lint-ignore no-explicit-any
+    const clean: any = {}; for (const [k, v] of Object.entries(draft)) if (v !== null && v !== undefined) clean[k] = v;
+    if (clean.kind === "event") delete clean.priority;
+    return itemResult(await itemCreate(clean));
+  },
+});
+
+// ---- goals and projects ----
+async function archiveRow(table: string, id: string, archived: boolean, label: string) {
+  const r = await db.from(table).update({ archived_at: archived ? new Date().toISOString() : null }).eq("id", id).eq("user_id", OWNER).select().maybeSingle();
+  if (r.error) return fail(r.error.message + (/archived_at/.test(r.error.message) ? " (run _Memory/migration_connector_v2.sql)" : ""));
+  if (!r.data) return fail("no " + label + " with that id");
+  return ok({ ok: true, archived, [label]: r.data });
+}
+tool("archive_goal", {
+  description: "Hide a goal (and leave its projects and tasks as they are). Nothing is deleted; pass archived: false to bring it back.",
+  inputSchema: z.object({ id: z.string(), archived: z.boolean().optional() }),
+  handler: (a: { id: string; archived?: boolean }) => archiveRow("goals", a.id, a.archived !== false, "goal"),
+});
+tool("archive_project", {
+  description: "Hide a project (its tasks stay). Nothing is deleted; pass archived: false to bring it back.",
+  inputSchema: z.object({ id: z.string(), archived: z.boolean().optional() }),
+  handler: (a: { id: string; archived?: boolean }) => archiveRow("projects", a.id, a.archived !== false, "project"),
+});
+tool("link_item", {
+  description: "Attach a task, deadline or block to a goal or a project (pass one), or detach it with both null. Shows in the Strategy view's goal trees.",
+  inputSchema: z.object({ id: ITEM_ID, goal_id: z.string().nullable().optional(), project_id: z.string().nullable().optional() }),
+  handler: async (a: { id: string; goal_id?: string | null; project_id?: string | null }) => {
+    if (a.goal_id === undefined && a.project_id === undefined) return fail("pass goal_id or project_id (or both null to detach)");
+    return itemResult(await itemEdit(a.id, { goal_id: a.goal_id === undefined ? (a.project_id === null ? null : undefined) : a.goal_id, project_id: a.project_id === undefined ? (a.goal_id === null ? null : undefined) : a.project_id }));
+  },
+});
+
+// ---- planner settings: work hours, gym days, time zone ----
+tool("get_planner_settings", {
+  description: "The work block (days and hours, counted as booked in free-time views), the base gym days and the time zone.",
+  inputSchema: z.object({}),
+  handler: async () => { const s = await plannerSettings(); return ok(s); },
+});
+tool("set_planner_settings", {
+  description: "Change the work block, the base gym days or the time zone. Days are numbers: 1 Monday … 7 Sunday. Only the fields you pass change.",
+  inputSchema: z.object({ work_days: z.array(z.number().int().min(1).max(7)).max(7).optional(), work_start: z.string().optional(), work_end: z.string().optional(), gym_days: z.array(z.number().int().min(1).max(7)).max(7).optional(), timezone: z.string().max(60).optional() }),
+  // deno-lint-ignore no-explicit-any
+  handler: async (a: any) => {
+    const p: Record<string, unknown> = { user_id: OWNER, updated_at: new Date().toISOString() };
+    for (const k of ["work_start", "work_end"]) if (a[k] !== undefined) { if (!CC_TIME.test(a[k])) return fail(k + " must be HH:MM"); p[k] = a[k]; }
+    if (a.work_start && a.work_end && a.work_end <= a.work_start) return fail("work_end must be after work_start");
+    if (a.work_days) p.work_days = Array.from(new Set(a.work_days)).sort(); if (a.gym_days) p.gym_days = Array.from(new Set(a.gym_days)).sort();
+    if (a.timezone) { try { new Intl.DateTimeFormat("en", { timeZone: a.timezone }); } catch { return fail("unknown time zone; use a name like Europe/Berlin"); } p.timezone = a.timezone; }
+    const r = await db.from("planner_settings").upsert(p, { onConflict: "user_id" });
+    if (r.error) return fail(r.error.message + " (run _Memory/migration_connector_v2.sql)");
+    return ok({ ok: true, ...(await plannerSettings()) });
+  },
+});
+
+// ============================ KNOWLEDGE: TOPICS ============================
+tool("list_topics", {
+  description: "Every Knowledge topic with its zone and how many items it holds (only zones Claude may read are counted).",
+  inputSchema: z.object({}),
+  handler: async () => {
+    const allowed = await knAllowed();
+    const [t, it] = await Promise.all([db.from("knowledge_topics").select("id,zone,name").eq("user_id", OWNER), db.from("knowledge_items").select("topic_id,zone").eq("user_id", OWNER).is("archived_at", null)]);
+    if (t.error) return fail(t.error.message + KN_HINT);
+    const n: Record<string, number> = {}; for (const x of it.data || []) if (x.topic_id && allowed.includes(x.zone)) n[x.topic_id] = (n[x.topic_id] || 0) + 1;
+    return ok({ topics: (t.data || []).filter((x) => allowed.includes(x.zone)).map((x) => ({ id: x.id, zone: x.zone, name: x.name, items: n[x.id] || 0 })).sort((a, b) => b.items - a.items) });
+  },
+});
+async function topicMove(fromNames: string[], into: string) {
+  const allowed = await knAllowed();
+  const t = await db.from("knowledge_topics").select("id,zone,name").eq("user_id", OWNER).in("name", fromNames);
+  if (t.error) return fail(t.error.message + KN_HINT);
+  const rows = (t.data || []).filter((x) => allowed.includes(x.zone)); if (!rows.length) return fail("no topic called " + fromNames.join(" / ") + " in zones Claude may read");
+  let moved = 0;
+  for (const tp of rows) {
+    if (tp.name === into) continue;
+    const target = await knTopicId(tp.zone, into);
+    const up = await db.from("knowledge_items").update({ topic_id: target, updated_at: new Date().toISOString() }).eq("user_id", OWNER).eq("topic_id", tp.id).select("id");
+    if (up.error) return fail(up.error.message); moved += (up.data || []).length;
+    for (const it of up.data || []) await knTrace("cluster", it.id, null, into);
+  }
+  return ok({ ok: true, into, itemsMoved: moved, note: "The old topic names stay as empty labels and do not show on the page." });
+}
+tool("rename_topic", {
+  description: "Rename a Knowledge topic everywhere it is used. If a topic with the new name already exists the two merge.",
+  inputSchema: z.object({ name: z.string().min(1).max(60), new_name: z.string().min(2).max(60) }),
+  handler: (a: { name: string; new_name: string }) => topicMove([a.name], a.new_name.trim()),
+});
+tool("merge_topics", {
+  description: "Merge several Knowledge topics into one: every item in the listed topics moves to `into` (created if needed).",
+  inputSchema: z.object({ topics: z.array(z.string().min(1).max(60)).min(1).max(20), into: z.string().min(2).max(60) }),
+  handler: (a: { topics: string[]; into: string }) => topicMove(a.topics, a.into.trim()),
+});
+
+// ============================ ACROSS THE CONNECTOR ============================
+const RECORD_TYPES = { action: "actions", event: "events", note: "journal", goal: "goals", project: "projects", person: "people", place: "points_of_interest", knowledge_item: "knowledge_items", memory: "agent_memory", person_link: "person_links" } as const;
+async function setArchived(type: keyof typeof RECORD_TYPES, id: string, archived: boolean) {
+  const table = RECORD_TYPES[type];
+  const r = await db.from(table).update({ archived_at: archived ? new Date().toISOString() : null }).eq("id", id).eq("user_id", OWNER).select().maybeSingle();
+  if (r.error) return fail(r.error.message + (/archived_at/.test(r.error.message) ? " (run _Memory/migration_connector_v2.sql)" : ""));
+  if (!r.data) return fail("no " + type + " with that id");
+  return ok({ ok: true, type, archived, record: r.data });
+}
+tool("archive_record", {
+  description: "Hide any record by type and id: action, event, note, goal, project, person, place, knowledge_item, memory, person_link. Nothing is ever deleted; restore_record brings it back. (archive_item, archive_goal and set_relationship do the same for their own kinds.)",
+  inputSchema: z.object({ type: z.enum(Object.keys(RECORD_TYPES) as [keyof typeof RECORD_TYPES]), id: z.string() }),
+  handler: (a: { type: keyof typeof RECORD_TYPES; id: string }) => setArchived(a.type, a.id, true),
+});
+tool("restore_record", {
+  description: "Bring back a record hidden with archive_record (or any archive tool), by type and id.",
+  inputSchema: z.object({ type: z.enum(Object.keys(RECORD_TYPES) as [keyof typeof RECORD_TYPES]), id: z.string() }),
+  handler: (a: { type: keyof typeof RECORD_TYPES; id: string }) => setArchived(a.type, a.id, false),
+});
+tool("search_everything", {
+  description: "One search across tasks and events, notes, people, goals and projects, Knowledge items (zones Claude may read) and agent memory. Returns type, id, title and a snippet for each hit; then use the type's own get/list tool for detail.",
+  inputSchema: z.object({ query: z.string().min(2).max(200), limit: z.number().int().min(1).max(100).optional() }),
+  handler: async (a: { query: string; limit?: number }) => {
+    const q = a.query.replace(/[%_\\,()]/g, " ").trim(), like = "%" + q + "%", lim = a.limit || 40, allowed = await knAllowed();
+    const snip = (t: string) => { const s = String(t || "").replace(/\s+/g, " "), i = s.toLowerCase().indexOf(q.toLowerCase()); const from = Math.max(0, i - 60); return i < 0 ? s.slice(0, 160) : (from ? "…" : "") + s.slice(from, from + 200); };
+    const [ac, ev, no, pe, go, pr, kn, me] = await Promise.all([
+      owned("actions").is("archived_at", null).or("title.ilike." + like + ",notes_md.ilike." + like).limit(lim),
+      owned("events").is("archived_at", null).or("title.ilike." + like + ",notes_md.ilike." + like).limit(lim),
+      owned("journal").is("archived_at", null).or("title.ilike." + like + ",text.ilike." + like).limit(lim),
+      owned("people").is("archived_at", null).or("name.ilike." + like + ",notes.ilike." + like + ",social_group.ilike." + like).limit(lim),
+      owned("goals").or("title.ilike." + like + ",notes_md.ilike." + like).limit(lim),
+      owned("projects").or("title.ilike." + like + ",notes_md.ilike." + like).limit(lim),
+      owned("knowledge_items").is("archived_at", null).or("title.ilike." + like + ",summary.ilike." + like + ",why.ilike." + like).limit(lim),
+      owned("agent_memory").is("archived_at", null).or("title.ilike." + like + ",body_md.ilike." + like).limit(lim),
+    ]);
+    // deno-lint-ignore no-explicit-any
+    const hits: any[] = [];
+    for (const r of ac.data || []) hits.push({ type: ccKind(r, "actions"), id: r.id, title: r.title, date: r.date, snippet: snip(r.notes_md || r.title) });
+    for (const r of ev.data || []) hits.push({ type: "event", id: r.id, title: r.title, date: r.date, snippet: snip(r.notes_md || r.title) });
+    for (const r of no.data || []) hits.push({ type: "note", id: r.id, title: r.title || String(r.text || "").slice(0, 60), date: r.date, snippet: snip(r.text) });
+    for (const r of pe.data || []) hits.push({ type: "person", id: r.id, title: r.name, snippet: snip(r.notes || r.social_group || r.name) });
+    for (const r of go.data || []) if (!r.archived_at) hits.push({ type: "goal", id: r.id, title: r.title, snippet: snip(r.notes_md || r.title) });
+    for (const r of pr.data || []) if (!r.archived_at) hits.push({ type: "project", id: r.id, title: r.title, snippet: snip(r.notes_md || r.title) });
+    for (const r of kn.data || []) if (allowed.includes(r.zone)) hits.push({ type: "knowledge_item", id: r.id, title: r.title, snippet: snip(r.summary || r.why || r.title), zone: r.zone });
+    for (const r of me.data || []) hits.push({ type: "memory", id: r.id, title: r.title, snippet: snip(r.body_md) });
+    return ok({ query: a.query, total: hits.length, hits: hits.slice(0, lim * 2) });
+  },
+});
+tool("connector_info", {
+  description: "Which version of this connector is live: the deployed commit, when it was deployed, when this instance started, and every tool it serves. Use it to check that a new tool is available.",
+  inputSchema: z.object({}),
+  handler: () => ok({ commit: BUILD_COMMIT.startsWith("__") ? "not stamped (deployed by hand from the dashboard)" : BUILD_COMMIT, deployedAt: BUILD_TIME.startsWith("__") ? null : BUILD_TIME, instanceStartedAt: BOOTED_AT, toolCount: OWNER_TOOLS.length, tools: OWNER_TOOLS.slice().sort(), timezone: "Europe/Berlin" }),
+}, "both");
+// ==== V2-END ====
+
 const httpHandler = new StreamableHttpTransport().bind(mcp);
 const agentHttpHandler = new StreamableHttpTransport().bind(mcpAgent);
 
