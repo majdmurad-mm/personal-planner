@@ -46,12 +46,19 @@ deployed from the Supabase dashboard (then `connector_info` says "not stamped").
 | Health | Daily numbers, workouts, activities, body metrics | `upsert_health_day`, `upsert_workout`, `upsert_activity`, `log_body_metric` |
 | Health | Status, flags, brief | `set_health_status`, `set_health_flag`, `write_health_brief`, `get_health_summary` |
 | Health | Trackers | `get_tracker`, `log_metric` |
+| Health | Routines and rotation, next session | `upsert_routine`, `get_next_session` |
+| Health | Workout history, per-exercise progress | `get_workout_history`, `get_exercise_progress` |
+| Health | Check-in (energy, note, pains) | `log_checkin` |
+| Health | Sleep corrections | `set_sleep_correction` |
+| Health | Blood pressure | `log_body_metric` (metric blood_pressure) |
+| Health | Monitored conditions and check-ups | `set_health_condition` |
+| Health | Milestones | `set_milestone` |
 | People | Add / edit a person | `create_person`, `edit_person` |
 | People | Circle, quality, rhythm, birthday, in memory, archive | `set_relationship` |
 | People | Log contact, open threads | `log_contact`, `set_person_situation` |
 | People | Link two people | `link_people` |
 | People | Person detail | `get_person_context`, `list_people` |
-| People | Family roles, typed links, family tree | pending approval (People tree brief) |
+| People | Typed family links and the family tree | `link_people` (kind, parent), `set_link_kind`, `get_family_tree` |
 | Self | Notes: add, edit, archive | `add_note`, `edit_note`, `archive_record` (type note), `list_notes` |
 | Money | Accounts and transactions | `get_finance`, `log_transaction` |
 | Money | Monthly snapshot (money river) | `import_finance_snapshot`, `get_finance_snapshot` |
@@ -90,7 +97,7 @@ the steps before it are undone.
 
 ## Tool list
 
-`connector_info` returns the live list. In the code at the time of writing (133; the seven OneDrive tools are listed in the parity table):
+`connector_info` returns the live list. In the code at the time of writing (143; newer tools are listed in the parity table):
 
 add_dependency, add_note, apply_plan, archive_action, archive_goal, archive_item, archive_project, archive_record,
 cluster_knowledge, complete_action, complete_item, connector_info, create_action, create_event, create_goal,

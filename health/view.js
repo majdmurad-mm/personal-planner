@@ -181,8 +181,20 @@
     return '<div class="notes"><div><p class="lab">Status log</p><ul class="nl">' + log + '</ul></div><div><p class="lab">Flags</p><ul class="nl">' + flags + '</ul></div><div><p class="lab">Data gaps</p><ul class="nl">' + gl + '</ul><p class="hint">Gaps are left empty and never filled with zeros.</p></div></div>';
   }
 
-  H.pageHTML = function (M) {
+  /* pieces the overview and detail views (today.js) reuse */
+  H.pillarsHTML = pillars; H.contribHTML = contrib; H.planHTML = plan; H.trainingHTML = training; H.nutritionHTML = nutrition; H.extrasHTML = extras;
+  H.layerControls = function () {
+    return '<div class="controls"><div class="seg" role="group" aria-label="Body layer">' + [["recovery", "Recovery"], ["week", "Week"], ["vitals", "Vitals"], ["flags", "Pains"]].map(function (l) { return '<button class="chip-l" data-l="' + l[0] + '" aria-pressed="false">' + l[1] + "</button>"; }).join("") +
+      '</div><div class="seg" role="group" aria-label="View"><button class="chip-v" data-v="front" aria-pressed="true">Front</button><button class="chip-v" data-v="back" aria-pressed="false">Back</button></div></div><div id="legend" class="legend"></div><details class="listview"><summary>Read the body as a list</summary><ul id="a11y"></ul></details><div id="pop" class="pop" role="status" hidden></div>';
+  };
+  H.figureHTML = function (M) { return '<div class="figure">' + halo(M) + '<div class="breath"><div id="flipper"><div id="faceF" class="face"></div><div id="faceB" class="face"></div></div></div></div>'; };
+  /* Concept A: Today beside the body and a row of tiles; everything else one click deeper. */
+  H.pageHTML = function (M, ui) {
+    ui = ui || {};
     var ribbon = M.sample ? '<div class="sample" role="note"><b>SAMPLE DATA</b> · ' + (M.missing.length ? "the health tables are not set up yet (run migration_health_v2.sql)" : "no health data has been synced yet") + " · nothing below is yours</div>" : "";
+    var foot = '<footer class="foot"><p>These are wellness signals from your watch and training log, not medical advice.</p>' + (M.unmapped.length ? "<p>Not yet mapped to a muscle, so missing from the body figure: " + esc(M.unmapped.join(", ")) + ".</p>" : "") +
+      '<p>Body figure adapted from <a href="https://github.com/vulovix/body-muscles" target="_blank" rel="noopener">body-muscles</a> by Ivan Vulović, Apache-2.0. Exercise pictures from <a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener">free-exercise-db</a>, public domain.</p></footer>';
+    if (!ui.legacy) return ribbon + '<div class="wrap">' + header(M) + (ui.detail ? H.detailHTML(M, ui.detail, ui) : H.overviewHTML(M, ui, H.figureHTML(M))) + foot + '</div><div id="tip" class="tip" hidden></div>';
     return ribbon + '<div class="wrap">' + header(M) + hero(M) + '<div class="rest">' +
       sec("plan", "Today's plan", plan(M)) +
       '<nav class="pnav" aria-label="Pillars">' + [["sleep", "Sleep"], ["workout", "Workout"], ["nutrition", "Nutrition"], ["vitals", "Vitals"], ["extras", "Extras"]].map(function (p, i) { return '<button data-go="' + p[0] + '"><b>' + (i + 1) + "</b>" + p[1] + "</button>"; }).join("") + "</nav>" +
