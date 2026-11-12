@@ -11,7 +11,7 @@ A field that belongs to another kind is refused with a message naming the allowe
 | | Tools | tools/list size |
 |---|---|---|
 | Owner connector before | 146 | 130,939 bytes (≈ 36.4k tokens) |
-| Owner connector now | **87** | 104,850 bytes (≈ 29.1k tokens) |
+| Owner connector now | **91** | 108,790 bytes (≈ 30.2k tokens) |
 | Voice edition (`/mcp-voice`) | **12** | 3,709 bytes (≈ 1k tokens) |
 | Agent connector (agent token, unchanged) | 28 | 25,195 bytes |
 
@@ -125,9 +125,9 @@ The agent connector still serves its tools under their old names, so the Agent P
 - `get_finance`: summary, snapshot
 - `comm_status`: sources, whatsapp
 
-## Tools that stayed as they were (68)
+## Tools that stayed as they were (72)
 
-`apply_plan`, `browse_onedrive_folders`, `cluster_knowledge`, `connector_info`, `create_action`, `create_event`, `create_goal`, `create_item`, `create_person`, `create_project`, `edit_action`, `edit_event`, `edit_goal`, `edit_item`, `edit_note`, `edit_person`, `edit_project`, `finish_spider_web`, `geocode_address`, `get_agenda`, `get_backlog`, `get_decision`, `get_exercise_progress`, `get_family_tree`, `get_health_summary`, `get_horizon`, `get_item`, `get_knowledge_item`, `get_location_history`, `get_month`, `get_next_session`, `get_person_context`, `get_spider_web`, `get_sync_status`, `get_today_overview`, `get_workout_history`, `import_finance_snapshot`, `list_knowledge_sources`, `log_checkin`, `log_contact`, `log_transaction`, `map_knowledge`, `memory_archive`, `memory_save`, `mute_item`, `plan_day`, `plan_week`, `quick_add`, `save_whatsapp_chat`, `schedule_from_backlog`, `search_everything`, `search_items`, `search_knowledge`, `set_action_decision`, `set_item_location`, `set_item_type`, `set_main_thing`, `set_milestone`, `set_person_situation`, `set_relationship`, `set_sleep_correction`, `spider_note`, `spin_thread`, `start_spider_web`, `unweave`, `weave_theme`, `weekly_review`, `write_health_brief`
+`apply_plan`, `browse_onedrive_folders`, `cluster_knowledge`, `connector_info`, `create_action`, `create_event`, `create_goal`, `create_item`, `create_person`, `create_project`, `edit_action`, `edit_event`, `edit_goal`, `edit_item`, `edit_note`, `edit_person`, `edit_project`, `finish_spider_web`, `geocode_address`, `get_agenda`, `get_backlog`, `get_decision`, `get_exercise_progress`, `get_family_tree`, `get_health_summary`, `get_horizon`, `get_item`, `get_knowledge_item`, `get_location_history`, `get_month`, `get_next_session`, `get_person_context`, `get_spider_web`, `get_sync_status`, `get_today_overview`, `get_workout_history`, `import_finance_snapshot`, `list_knowledge_sources`, `log_checkin`, `log_contact`, `log_transaction`, `mail_attachment`, `mail_folders`, `mail_get`, `mail_search`, `map_knowledge`, `memory_archive`, `memory_save`, `mute_item`, `plan_day`, `plan_week`, `quick_add`, `save_whatsapp_chat`, `schedule_from_backlog`, `search_everything`, `search_items`, `search_knowledge`, `set_action_decision`, `set_item_location`, `set_item_type`, `set_main_thing`, `set_milestone`, `set_person_situation`, `set_relationship`, `set_sleep_correction`, `spider_note`, `spin_thread`, `start_spider_web`, `unweave`, `weave_theme`, `weekly_review`, `write_health_brief`
 
 ## Voice edition: `/mcp-voice`
 
@@ -159,3 +159,24 @@ Write tools take a name, not an id, and match it loosely. If nothing fits, they 
 3. URL: `https://eqguvoaysqspogtdmpun.supabase.co/functions/v1/planner-mcp/<token>/mcp-voice`, with the token pasted in place of `<token>`.
 4. Leave the OAuth fields empty and save. In a voice call, turn on **Planner Voice** (you can leave the big connector off there).
 5. Check it: ask "what's my day?" It should call `today` and answer in a few sentences.
+
+## One task table
+
+Every task, deadline and time block lives in one table, `actions` (`kind`: task, deadline or block). Where a task hangs is
+`parent_type` (none, goal or project) plus `parent_id`. Calendar events are a separate table, `events`. The `*_item` tools
+(`list_items`, `create_item`, `edit_item` …) read and write both through one view, so Claude never has to pick the table.
+
+## Goal scores
+
+Each goal has `score` (0–100) and `score_mode`: `manual` (your own rating, shown as x/10), `sleep` (7-day sleep score),
+`workout` (workouts done of planned, 28 days), `net_zero` (share of the starting debt cleared) or `tasks` (tasks done, the
+default). Auto scores refresh every morning and after a health sync or a finance snapshot; `score_history` keeps one point a
+day for the 4-week sparkline. `create_goal` / `edit_goal` take `score`, `score_mode` and `secondary_areas`.
+
+## iCloud Mail (read-only)
+
+`mail_folders`, `mail_search` (from, subject, words, dates, folder, has attachment), `mail_get` (one message: text body and
+attachment list) and `mail_attachment` (the text of a PDF, Word, Excel or text attachment). Folders are opened read-only
+(IMAP EXAMINE): nothing is moved, flagged, marked read or deleted. The tools work once iCloud Mail is connected on the
+Communication page with "Claude can read" on. Each search is written to the activity log as "Searched mail: <query>".
+Scanned PDFs without a text layer come back without text (no OCR on the server).
