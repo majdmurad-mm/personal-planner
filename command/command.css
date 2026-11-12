@@ -287,3 +287,33 @@ svg.ring{width:100%;height:auto;display:block}svg.ring.drop .rfree{fill:color-mi
 .agenda .r.act{color:var(--area-health-text)}.agenda .r.act span:first-child{color:var(--area-health)}
 /* Waiting for you: proposals, reports and the change history */
 .btn.wait{position:relative}.wbadge{display:inline-block;min-width:18px;margin-left:6px;padding:0 6px;border-radius:999px;background:var(--attn);color:var(--card);font-size:11px;font-weight:700;line-height:18px;text-align:center}
+/* Strategy as trees: one section per area, each goal a top-to-bottom tree */
+.tt-wrap{overflow:auto;padding:2px 2px 24px;cursor:grab}.tt-wrap:active{cursor:grabbing}
+.tt-canvas{transform-origin:0 0;display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:16px;align-items:start}
+@container cc (max-width:1000px){.tt-canvas{grid-template-columns:minmax(0,1fr)}}
+.tt-a{background:var(--card);border:1px solid var(--line);border-top:4px solid var(--c);border-radius:var(--r);padding:12px 14px 14px;display:grid;gap:12px;cursor:default}
+.tt-a>header{display:flex;align-items:center;gap:8px}.tt-a>header i{width:10px;height:10px;border-radius:50%;background:var(--c)}.tt-a>header h2{font-size:15px;font-weight:700}.tt-a>header small{color:var(--muted);margin-left:auto}
+.tt-g{border:1px solid var(--line);border-radius:12px;padding:10px 10px 8px;background:color-mix(in srgb,var(--cs) 35%,var(--card))}
+.tt-g.un{background:transparent;border-style:dashed}
+.tt-gn{display:flex;align-items:center;gap:8px}.tt-gn .tt-n{flex:1;min-width:0}.tt-gn .tl{font-weight:650;font-size:14.5px}
+.tt-n{display:grid;gap:1px;text-align:left;min-width:0;padding:2px 4px;border-radius:6px}.tt-n:hover{background:var(--inset)}.tt-n small{color:var(--muted);font-size:11.5px}
+.tt-n .tl{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tt-n .kind{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.tt-tog{flex:none;width:22px;height:22px;border-radius:6px;color:var(--muted);font-size:12px}.tt-tog:hover{background:var(--inset);color:var(--text)}
+.tt-ring{width:40px;height:40px;flex:none}.tt-ring .rt{fill:none;stroke:var(--line);stroke-width:4}.tt-ring .rv{fill:none;stroke-width:4;stroke-linecap:round}.tt-ring text{font:700 10.5px var(--sans);fill:var(--text);text-anchor:middle}.tt-ring .o{font-size:7px;font-weight:500;fill:var(--muted)}
+.tt-spk{width:64px;height:18px;flex:none}.tt-spk polyline{fill:none;stroke:var(--c);stroke-width:1.5;stroke-linejoin:round}.tt-spk circle{fill:var(--c)}
+.a2{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--c2);margin-left:6px;vertical-align:1px;box-shadow:0 0 0 1.5px var(--card)}
+/* the connectors: a line down from each parent, an elbow into each child */
+.tt-ch,.tt-ts{list-style:none;margin:6px 0 0 18px;padding:0 0 0 12px;border-left:1.5px solid var(--line);display:grid;gap:4px}
+.tt-p,.tt-t,.tt-more{position:relative}.tt-p::before,.tt-t::before,.tt-more::before{content:"";position:absolute;left:-12px;top:14px;width:10px;border-top:1.5px solid var(--line)}
+.tt-pn{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.tt-pn .tt-n{flex:1 1 140px}.tt-pn .tl{font-weight:600}
+.pg{width:54px;height:5px;border-radius:3px;background:var(--inset);overflow:hidden}.pg i{display:block;height:100%;background:var(--c)}.pc{color:var(--muted);font-size:11.5px;font-variant-numeric:tabular-nums}
+.tt-t .tt-n{grid-template-columns:16px minmax(0,1fr) auto;align-items:center;gap:6px;padding:3px 6px;border:1px solid var(--line);background:var(--card);border-left:3px solid var(--c)}
+.tt-t .ck{font-size:11px;color:var(--muted)}.tt-t small{white-space:nowrap}
+.tt-t.dn{opacity:.5}.tt-t.dn .tl{text-decoration:line-through}
+.tt-t.late .tt-n{border-color:#C8372D;border-left-color:#C8372D;box-shadow:inset 0 0 0 1px rgba(200,55,45,.35)}.tt-t.late small{color:#C8372D;font-weight:600}
+.cc[data-theme=dark] .tt-t.late .tt-n{border-color:#F07A6E;border-left-color:#F07A6E}.cc[data-theme=dark] .tt-t.late small{color:#F07A6E}
+.tt-more{color:var(--muted);font-size:12px;padding:2px 4px}
+.tt-t[draggable=true]{cursor:grab}.tt-t.dragging{opacity:.4}.tdrop-on{outline:2px dashed var(--c,var(--acc));outline-offset:2px}
+.head .seg.sm button{padding:5px 10px;font-size:13px}.head .zoom{display:inline-flex;gap:4px}
+.tt-pn>.kind{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:2px 4px}
+.tt-gn>.tl{display:grid;gap:1px}.tt-gn>.tl small{color:var(--muted);font-size:11.5px;font-weight:400}

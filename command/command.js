@@ -41,7 +41,7 @@
       var v = S.q ? "search" : S.view; legend();
       var all = S.items; if (S.areaFilter) S.items = all.filter(function (i) { return C.areaKey(i.area) === S.areaFilter; });
       [].forEach.call(root.querySelectorAll(".seg button"), function (b) { b.setAttribute("aria-pressed", String(!S.q && b.dataset.view === S.view)); });
-      if (v === "strategy" && S.smode == null) S.smode = host.getBoundingClientRect().width >= 900 ? "board" : "outline";
+      if (v === "strategy" && S.smode == null) S.smode = "trees";
       if (v === "horizon" && S.hz3d == null) { var pref = null; try { pref = localStorage.getItem("pp_cc_terrain"); } catch (x) {} S.hz3d = pref === "1" || (pref !== "0" && host.getBoundingClientRect().width >= 900 && !(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches)); }
       if (terrain) { terrain.destroy(); terrain = null; }
       $("#ccView").innerHTML = '<div class="view" data-v="' + v + '">' + V[v](S) + "</div>"; S.items = all;
@@ -56,6 +56,7 @@
         }, function () { fall("The 3D view could not be loaded, so this is the roadmap."); });
       }
       if (v === "strategy" && S.smode === "board") { if (!S.board.fitted) { S.board.fitted = true; fitBoard(); } }
+      if (v === "strategy" && S.smode === "trees" && !S.treeFitted && V.treesFit) { S.treeFitted = true; V.treesFit(root, S); }
       drawOver(true);
     }
     function drawOver(fromData) {
@@ -236,6 +237,10 @@
       else if (d.act === "now") { S.cursor = S.today; draw(); }
       else if (d.act === "review") open({ type: "review" });
       else if (d.act === "smode") { S.smode = S.smode === "board" ? "outline" : "board"; S.board.fitted = false; draw(); }
+      else if (d.smode) { S.smode = d.smode; S.board.fitted = false; S.treeFitted = false; draw(); }
+      else if (d.tfold) { S.treeFold = S.treeFold || {}; S.treeFold[d.tfold] = !S.treeFold[d.tfold]; draw(); var tb = root.querySelector('[data-tfold="' + d.tfold + '"]'); if (tb) tb.focus(); }
+      else if (d.act === "tdone") { S.treeShowDone = !S.treeShowDone; draw(); }
+      else if (d.tzoom != null) { if (d.tzoom === "0") { S.treeFitted = false; draw(); } else { S.treeZoom = Math.max(0.4, Math.min(1.6, (S.treeZoom || 1) * (d.tzoom === "1" ? 1.2 : 1 / 1.2))); var cv = root.getElementById("ttCanvas"); if (cv) cv.style.transform = "scale(" + S.treeZoom + ")"; } }
       else if (d.act === "btidy") { S.board.undo = { links: S.board.links.slice(), pos: Object.assign({}, S.board.pos), collapsed: Object.assign({}, S.board.collapsed) }; S.board.pos = {}; S.board.collapsed = {}; S.board.fitted = false; saveBoard(); draw(); }
       else if (d.act === "bundo" && S.board.undo) { var u = S.board.undo; S.board.pos = u.pos; S.board.links = u.links; S.board.collapsed = u.collapsed; S.board.undo = null; saveBoard(); draw(); }
       else if (d.act === "treeall") { S.treeAll = !S.treeAll; S.treeOpen = {}; [].forEach.call(root.querySelectorAll("details.tn"), function (x) { S.treeOpen[x.dataset.tree] = S.treeAll; }); draw(); }
@@ -325,6 +330,20 @@
     }
     document.addEventListener("keydown", onKey);
     var tick = setInterval(function () { if (fixedNow || !host.isConnected) return; var n = new Date(), m = n.getHours() * 60 + n.getMinutes(); if (m === S.nowMin) return; S.nowMin = m; S.today = C.localIso(n); if (S.view === "today" && !S.q && !S.over && !dragId && host.offsetParent !== null) draw(); }, 20000);
+    root.addEventListener("dragstart", function (e) { var t = e.target.closest && e.target.closest("[data-tdrag]"); if (!t) return; S.tdrag = t.getAttribute("data-tdrag"); try { e.dataTransfer.setData("text/plain", S.tdrag); e.dataTransfer.effectAllowed = "move"; } catch (x) {} t.classList.add("dragging"); });
+    root.addEventListener("dragend", function () { S.tdrag = null; [].forEach.call(root.querySelectorAll(".dragging,.tdrop-on"), function (x) { x.classList.remove("dragging"); x.classList.remove("tdrop-on"); }); });
+    root.addEventListener("dragover", function (e) { if (!S.tdrag) return; var z = e.target.closest && e.target.closest("[data-tdrop]"); [].forEach.call(root.querySelectorAll(".tdrop-on"), function (x) { if (x !== z) x.classList.remove("tdrop-on"); }); if (!z) return; e.preventDefault(); z.classList.add("tdrop-on"); });
+    root.addEventListener("drop", function (e) {
+      if (!S.tdrag) return; var z = e.target.closest && e.target.closest("[data-tdrop]"); if (!z) return; e.preventDefault();
+      var to = z.getAttribute("data-tdrop").split(":"), id = S.tdrag, it = S.byId[id]; S.tdrag = null; if (!it) return;
+      var patch = to[0] === "project" ? { parentType: "project", parentId: to[1] } : to[0] === "goal" ? { parentType: "goal", parentId: to[1] } : { parentType: "none", parentId: null };
+      if ((to[0] === "project" && it.projectId === to[1]) || (to[0] === "goal" && it.goalId === to[1] && !it.projectId) || (to[0] === "none" && !it.goalId && !it.projectId)) return;
+      call("onPatch", id, patch, "move");
+    });
+    root.addEventListener("wheel", function (e) { var w = e.target.closest && e.target.closest("#ttWrap"); if (!w || !(e.ctrlKey || e.metaKey)) return; e.preventDefault(); S.treeZoom = Math.max(0.4, Math.min(1.6, (S.treeZoom || 1) * (e.deltaY < 0 ? 1.1 : 1 / 1.1))); var cv = root.getElementById("ttCanvas"); if (cv) cv.style.transform = "scale(" + S.treeZoom + ")"; }, { passive: false });
+    root.addEventListener("pointerdown", function (e) { var w = e.target.closest && e.target.closest("#ttWrap"); if (!w || e.button !== 0 || (e.target.closest && e.target.closest("button,a,[draggable=true],input"))) return; var x0 = e.clientX, y0 = e.clientY, sl = w.scrollLeft, st = w.scrollTop, sc = document.scrollingElement || document.documentElement, ss = sc.scrollTop;
+      var mv = function (m) { w.scrollLeft = sl - (m.clientX - x0); if (w.scrollHeight > w.clientHeight) w.scrollTop = st - (m.clientY - y0); else sc.scrollTop = ss - (m.clientY - y0); }, up = function () { window.removeEventListener("pointermove", mv); window.removeEventListener("pointerup", up); };
+      window.addEventListener("pointermove", mv); window.addEventListener("pointerup", up); });
     shell();
     function setWaiting(n) { S.waiting = n; var b = root.getElementById("ccWaitN"); if (!b) return; b.hidden = !n; b.textContent = n > 99 ? "99+" : String(n || ""); var w = b.parentNode; if (w) w.setAttribute("aria-label", "Waiting for you" + (n ? ", " + n + " waiting" : "")); }
     return {

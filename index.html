@@ -20433,12 +20433,12 @@
   /* Command Center (command/): one page for tasks, events, deadlines and time blocks. The module only
      draws; every save goes through the functions below, so the activity log and undo keep working.
      Bump COMMAND_VER with each release of command/*. */
-  var COMMAND_VER = "13", commandLoading = null, commandHandle = null, commandBoard = null, commandBoardLoad = null;
+  var COMMAND_VER = "14", commandLoading = null, commandHandle = null, commandBoard = null, commandBoardLoad = null;
   // Hours that count as booked in the free-time bars. Change here if the work pattern changes.
   var COMMAND_WORK = { days:[1, 2, 3, 4, 5], start:"09:00", end:"18:00" };
   function commandLoadScripts(){
     if(commandLoading) return commandLoading;
-    commandLoading = ["../supabase/functions/_shared/freetime", "core", "view", "ring", "terrain", "board", "command"].reduce(function(chain, f){
+    commandLoading = ["../supabase/functions/_shared/freetime", "core", "view", "ring", "terrain", "board", "trees", "command"].reduce(function(chain, f){
       return chain.then(function(){
         return new Promise(function(resolve, reject){
           var el = document.createElement("script");
@@ -20634,10 +20634,10 @@
   }
   // The module's field names → table columns, and → the fields on the loaded object.
   var COMMAND_COLS = { title:"title", kind:"kind", date:"date", time:"time_of_day", dur:"duration_minutes", allDay:"all_day", est:"estimate_min", area:"category", priority:"priority", done:"done", someday:"someday",
-    recurrence:"recurrence", exceptions:"recurrence_exceptions", doneDates:"recurrence_done", reminders:"reminders", muted:"muted", notes:"notes_md", location:"location_address" };
+    recurrence:"recurrence", exceptions:"recurrence_exceptions", doneDates:"recurrence_done", reminders:"reminders", muted:"muted", notes:"notes_md", location:"location_address", parentType:"parent_type", parentId:"parent_id" };
   var COMMAND_LOCAL = { title:"title", kind:"kind", date:"date", time:"timeOfDay", dur:"durationMinutes", allDay:"allDay", est:"estimateMin", area:"category", priority:"priority", done:"done", someday:"someday",
-    recurrence:"recurrence", exceptions:"recurrenceExceptions", doneDates:"recurrenceDone", reminders:"reminders", muted:"muted", notes:"notesMd", location:"locationAddress" };
-  var COMMAND_EVENT_ONLY_SKIP = { kind:1, est:1, priority:1, done:1, someday:1, doneDates:1 };
+    recurrence:"recurrence", exceptions:"recurrenceExceptions", doneDates:"recurrenceDone", reminders:"reminders", muted:"muted", notes:"notesMd", location:"locationAddress", parentType:"parentType", parentId:"parentId" };
+  var COMMAND_EVENT_ONLY_SKIP = { kind:1, est:1, priority:1, done:1, someday:1, doneDates:1, parentType:1, parentId:1 };
   function commandFind(id){
     var a = state.actions.find(function(x){ return x.id === id; });
     if(a) return { table:"actions", obj:a };
