@@ -241,6 +241,24 @@ Revoke agents without touching your own connector: `supabase secrets unset AGENT
 and redeploy. An `AGENT_TOKEN` equal to `MCP_TOKEN` is ignored. Needs
 `_Memory/migration_agent_hub.sql`.
 
+## Voice edition: "Planner Voice" (a third, small token)
+
+Claude voice calls do not load the big connector, so the same function also serves `/mcp-voice`: 12 tools
+(today, agenda, add, done, move, main_thing, next_workout, health, checkin, note, find, contact) with
+one-sentence descriptions, answers written to be spoken, and names matched loosely instead of ids. It has
+its own secret, `VOICE_MCP_TOKEN` (30+ random letters and digits). The owner token does not open it, and
+it does not open `/mcp`. Its writes go to the same activity log, marked **voice** once
+`_Memory/migration_voice_actor.sql` is applied.
+
+- **The token** is kept in the GitHub repository secret `VOICE_MCP_TOKEN`; the deploy workflow copies it
+  into the function secrets. A copy for pasting into claude.ai is in `_Memory/voice_token.txt` (never committed).
+- **Add it in claude.ai:** Settings → Connectors → Add custom connector, name it **Planner Voice**, URL
+  `https://<your-project-ref>.supabase.co/functions/v1/planner-mcp/<VOICE_MCP_TOKEN>/mcp-voice`, no OAuth.
+- **Rotate:** set a new `VOICE_MCP_TOKEN` secret in GitHub, push or re-run the deploy, then update the URL in claude.ai.
+
+In v2.0.0 the main connector was merged from 146 to 87 tools. The full list of old tools, with each one's new
+tool and `kind`/`action`, is in [docs/CONNECTOR.md](../../../docs/CONNECTOR.md).
+
 ## Rotating or revoking access
 
 - **Rotate the token:** `supabase secrets set MCP_TOKEN="<new-token>"`, redeploy,

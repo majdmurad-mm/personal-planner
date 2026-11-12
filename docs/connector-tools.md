@@ -1,5 +1,7 @@
 # Personal Planner connector: tool reference
 
+> **v2.0.0:** many tools below were merged into one tool with a `kind` or `action` (for example `archive_item` is now `archive` with `kind: "item"`). The full old → new list is in [CONNECTOR.md](CONNECTOR.md). The agent token still uses the old names.
+
 The connector is the Supabase Edge Function `planner-mcp` (`supabase/functions/planner-mcp/index.ts`).
 Claude reaches it as an MCP server. All writes run as the service role, so the activity log records them
 with author `claude`. Nothing is ever hard-deleted: every entity has an archive and a restore.
