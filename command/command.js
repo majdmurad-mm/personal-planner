@@ -2,7 +2,7 @@
    It never talks to the database itself; the host (index.html) saves and then calls update(). */
 (function () {
   var C = window.PPCommandCore, V = window.PPCommandView, B = window.PPCommandBoard, P = window.PPCommand = {};
-  var VIEWS = [["today", "Today"], ["week", "Week"], ["month", "Month"], ["horizon", "Horizon"], ["strategy", "Strategy"], ["backlog", "Backlog"]];
+  var VIEWS = [["today", "Today"], ["areas", "Big picture"], ["week", "Week"], ["month", "Month"], ["horizon", "Horizon"], ["strategy", "Strategy"], ["backlog", "Backlog"]];
 
   P.mount = function (host, o) {
     o = o || {};
@@ -238,6 +238,7 @@
       else if (d.act === "review") open({ type: "review" });
       else if (d.act === "smode") { S.smode = S.smode === "board" ? "outline" : "board"; S.board.fitted = false; draw(); }
       else if (d.smode) { S.smode = d.smode; S.board.fitted = false; S.treeFitted = false; draw(); }
+      else if (d.bpx) { S.bpOpen = S.bpOpen || {}; S.bpOpen[d.bpx] = d.bpopen ? true : !S.bpOpen[d.bpx]; if (S.view !== "areas") S.view = "areas"; draw(); var gb = root.querySelector('.bp-gh[data-bpx="' + d.bpx + '"]'); if (gb) { gb.focus(); if (d.bpopen && gb.scrollIntoView) gb.scrollIntoView({ block: "center", behavior: (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches) ? "auto" : "smooth" }); } }
       else if (d.tfold) { S.treeFold = S.treeFold || {}; S.treeFold[d.tfold] = !S.treeFold[d.tfold]; draw(); var tb = root.querySelector('[data-tfold="' + d.tfold + '"]'); if (tb) tb.focus(); }
       else if (d.act === "tdone") { S.treeShowDone = !S.treeShowDone; draw(); }
       else if (d.tzoom != null) { if (d.tzoom === "0") { S.treeFitted = false; draw(); } else { S.treeZoom = Math.max(0.4, Math.min(1.6, (S.treeZoom || 1) * (d.tzoom === "1" ? 1.2 : 1 / 1.2))); var cv = root.getElementById("ttCanvas"); if (cv) cv.style.transform = "scale(" + S.treeZoom + ")"; } }
@@ -430,7 +431,7 @@
       if (k === "n") { e.preventDefault(); S.qa.date = null; open({ type: "quick" }); }
       else if (k === "/") { e.preventDefault(); $("#ccSearch").focus(); }
       else if (S.over) { if (k === "d" && S.over.type === "item") { var it = S.byId[S.over.id]; if (it && C.hasDone(it)) guard(toggleDone(it.id + "@" + (S.over.date || it.date || S.today))); } }
-      else if (/^[1-6]$/.test(k)) { S.view = VIEWS[+k - 1][0]; S.q = ""; S.cursor = S.today; call("onView", S.view); draw(); }
+      else if (/^[1-7]$/.test(k)) { S.view = VIEWS[+k - 1][0]; S.q = ""; S.cursor = S.today; call("onView", S.view); draw(); }
       else if (k === "t") { S.view = "today"; S.cursor = S.today; draw(); }
       else if (k === "w" || k === "m" || k === "h") { S.view = { w: "week", m: "month", h: "horizon" }[k]; S.q = ""; S.cursor = S.today; call("onView", S.view); draw(); }
       else if ((k === "arrowleft" || k === "arrowright") && (S.view === "week" || S.view === "month")) { var b = $(S.view === "week" ? '[data-move="' + (k === "arrowleft" ? -7 : 7) + '"]' : '[data-movem="' + (k === "arrowleft" ? -1 : 1) + '"]'); if (b) b.click(); }
