@@ -291,6 +291,60 @@ function tool(name: string, def: any, audience?: Audience) {
 
 // ============================ READ TOOLS ====================================
 
+// One small call for a spoken or quick check-in ("what's my day?"): times and titles only, no ids
+// beyond the main thing, so a voice answer can be read straight from it.
+tool("get_today_overview", {
+  description:
+    "The day at a glance in ONE small call: the main thing, the timed schedule (events, blocks and timed tasks in order), untimed tasks due, how many things are overdue, last night's sleep and the next gym session. Use this first for 'what's my day', morning check-ins and voice conversations; use get_agenda only when you need every detail or ids.",
+  inputSchema: z.object({
+    date: z.string().optional().describe("YYYY-MM-DD; defaults to today (Berlin)"),
+  }),
+  handler: async (args: { date?: string }) => {
+    const date = args.date || berlinToday();
+    const [actionsR, eventsR, sleepR, next] = await Promise.all([
+      owned("actions"), owned("events"), owned("health_daily").eq("date", date).maybeSingle(),
+      date === berlinToday() ? hvNextSession().catch(() => null) : Promise.resolve(null),
+    ]);
+    if (actionsR.error) return fail(actionsR.error.message);
+    const acts = (actionsR.data || []).filter((a: any) => !a.archived_at && !a.someday);
+    const due = acts.filter((a: any) => a.recurrence ? ccDates(a, date, date).length > 0 && !(a.recurrence_done || []).includes(date) : a.date === date && !a.done);
+    const evs = eventsR.error ? [] : (eventsR.data || []).filter((e: any) => !e.archived_at && ccDates(e, date, date).length);
+    const hhmm = (t: any) => t ? String(t).slice(0, 5) : null;
+    const schedule = [
+      ...evs.filter((e: any) => e.time_of_day && !e.all_day).map((e: any) => ({ time: hhmm(e.time_of_day), minutes: e.duration_minutes || null, title: e.title, kind: "event" })),
+      ...due.filter((a: any) => a.time_of_day && !a.all_day).map((a: any) => ({ time: hhmm(a.time_of_day), minutes: a.duration_minutes || null, title: a.title, kind: ccKind(a, "actions") })),
+    ].sort((p, q) => String(p.time).localeCompare(String(q.time)));
+    const allDay = evs.filter((e: any) => !e.time_of_day || e.all_day).map((e: any) => e.title);
+    const untimed = due.filter((a: any) => !a.time_of_day || a.all_day);
+    const overdue = acts.filter((a: any) => a.date && a.date < date && !a.done && !a.recurrence);
+    const open = acts.filter((a: any) => !a.done);
+    const focused = open.find((a: any) => a.focus_date === date);
+    const main = focused || due.filter((a: any) => !a.done).sort((a: any, b: any) => String(a.priority).localeCompare(String(b.priority)))[0] || null;
+    const n: any = sleepR && !sleepR.error ? sleepR.data : null;
+    const mins = n ? (n.sleep_minutes_corrected != null ? n.sleep_minutes_corrected : n.sleep_minutes) : null;
+    const sleep = n && (mins != null || n.bed_time) ? {
+      asleep: mins != null ? Math.floor(mins / 60) + "h " + String(mins % 60).padStart(2, "0") + "m" : null,
+      bed: hhmm(n.bed_time_corrected || n.bed_time), wake: hhmm(n.wake_time_corrected || n.wake_time), score: n.sleep_score ?? null,
+    } : null;
+    const nx: any = next;
+    const say = [
+      schedule.length ? schedule.length + (schedule.length === 1 ? " timed thing" : " timed things") + ", first at " + schedule[0].time : "nothing at a fixed time",
+      untimed.length ? untimed.length + (untimed.length === 1 ? " task" : " tasks") + " without a time" : "",
+      overdue.length ? overdue.length + " overdue" : "",
+    ].filter(Boolean).join(", ") + ".";
+    return ok({
+      date, weekday: new Date(date + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "long", timeZone: "UTC" }),
+      summary: say.charAt(0).toUpperCase() + say.slice(1),
+      mainThing: main ? { id: main.id, title: main.title, time: hhmm(main.time_of_day), chosen: !!focused } : null,
+      schedule: schedule.slice(0, 15), allDay: allDay.slice(0, 6),
+      tasks: untimed.slice(0, 8).map((a: any) => a.title), moreTasks: Math.max(0, untimed.length - 8),
+      overdue: { count: overdue.length, oldest: overdue.sort((a: any, b: any) => String(a.date).localeCompare(String(b.date))).slice(0, 3).map((a: any) => a.title) },
+      sleep,
+      nextGym: nx && nx.date ? { date: nx.date, time: nx.time, routine: nx.routine, trainedToday: nx.trainedToday } : null,
+    });
+  },
+});
+
 tool("get_agenda", {
   description:
     "The user's plan for one day (defaults to today, Berlin). Returns actions due that day, overdue open actions, undated open actions (backlog), the events happening that day, and any notes written that day. Start here to understand what's on the user's plate.",
@@ -4559,6 +4613,27 @@ function tokenRole(req: Request): "owner" | "agent" | null {
   return null;
 }
 
+// Shown to Claude when it connects, in text chats and in voice mode alike.
+const SERVER_INSTRUCTIONS = [
+  "The user's personal planner (one person, Europe/Berlin time).",
+  "For 'what's my day', a morning check-in or any voice conversation, call get_today_overview first: one small call with times and titles. Use get_agenda, list_* or search tools only when more detail is needed.",
+  "In voice mode the answer is spoken: keep it short, lead with times and titles, never read out ids, JSON or long lists, and prefer one tool call over several.",
+  "To add something said aloud, quick_add takes plain language (\"call the landlord Wed 10:00\").",
+  "Archive, never delete. Health notes and notes about other people are private: summarise them, and only read details aloud when asked.",
+].join(" ");
+async function withInstructions(res: Response): Promise<Response> {
+  try {
+    const text = await res.clone().text(), sse = /^\s*(event:|data:)/.test(text);
+    const json = sse ? text.split("\n").filter((l) => l.startsWith("data:")).map((l) => l.slice(5).trim()).join("") : text;
+    const msg = JSON.parse(json);
+    if (!msg || !msg.result || typeof msg.result !== "object") return res;
+    msg.result.instructions = SERVER_INSTRUCTIONS;
+    const body = sse ? "event: message\ndata: " + JSON.stringify(msg) + "\n\n" : JSON.stringify(msg);
+    const h = new Headers(res.headers); h.delete("content-length");
+    return new Response(body, { status: res.status, headers: h });
+  } catch { return res; }
+}
+
 // Path-agnostic routing. Depending on the Supabase runtime version, the Hono app
 // may see the request path WITH the function-name prefix (/planner-mcp/mcp) or
 // WITHOUT it (/mcp) — so instead of mounting under a fixed prefix, we match on the
@@ -4571,7 +4646,10 @@ app.all("*", async (c) => {
     const role = tokenRole(c.req.raw);
     if (!role) return c.json({ error: "unauthorized" }, 401);
     if (!OWNER) return c.json({ error: "server not configured: OWNER_USER_ID is unset" }, 500);
-    return await (role === "agent" ? agentHttpHandler : httpHandler)(c.req.raw);
+    let isInit = false;
+    if (role !== "agent" && c.req.method === "POST") { try { const b = await c.req.raw.clone().json(); isInit = !!b && !Array.isArray(b) && b.method === "initialize"; } catch { /* not JSON */ } }
+    const res = await (role === "agent" ? agentHttpHandler : httpHandler)(c.req.raw);
+    return isInit ? await withInstructions(res) : res;
   }
   // Health check ONLY at the function root. Everything else — crucially the OAuth
   // discovery probes an MCP client fires on connect (/.well-known/oauth-protected-
