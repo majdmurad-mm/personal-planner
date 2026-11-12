@@ -438,6 +438,72 @@ tool("get_agenda", {
   },
 });
 
+// ---- Goal scores (0-100). score_mode: manual | sleep | workout | net_zero | tasks (default).
+//   sleep    7-day average Garmin sleep score (a corrected night wins)
+//   workout  workout days ÷ planned gym days over the last 28 days, capped at 100
+//   net_zero (debt at the first finance snapshot − debt now) ÷ debt at the first snapshot; baseline stored
+//   tasks    done ÷ all tasks under the goal (directly or through its projects)
+//   manual   whatever the owner or Claude set
+// Refreshed by pg_cron each morning, after a health day or workout is saved, and after a finance snapshot.
+const SCORE_MODES = ["manual", "sleep", "workout", "net_zero", "tasks"] as const;
+// deno-lint-ignore no-explicit-any
+const scoreHist = (h: any, day: string, v: number | null) => { const a = (Array.isArray(h) ? h : []).filter((x: any) => x && x.d !== day); if (v != null) a.push({ d: day, s: Math.round(v * 10) / 10 }); return a.slice(-35); };
+async function refreshGoalScores(): Promise<{ updated: number; error?: string }> {
+  const g = await db.from("goals").select("*").eq("user_id", OWNER).is("archived_at", null);
+  if (g.error) return { updated: 0, error: g.error.message };
+  // deno-lint-ignore no-explicit-any
+  const goals = (g.data || []).filter((x: any) => x.score_mode !== undefined);
+  if (!goals.length) return { updated: 0 };
+  const today = berlinToday(), d28 = ccAdd(today, -27), d7 = ccAdd(today, -6);
+  // deno-lint-ignore no-explicit-any
+  const need = (m: string) => goals.some((x: any) => x.score_mode === m);
+  const [days, wks, set, snaps, acts, projs] = await Promise.all([
+    need("sleep") ? db.from("health_daily").select("date,sleep_score").eq("user_id", OWNER).is("archived_at", null).gte("date", d7) : Promise.resolve({ data: [] }),
+    need("workout") ? db.from("workouts").select("date").eq("user_id", OWNER).is("archived_at", null).gte("date", d28).lte("date", today) : Promise.resolve({ data: [] }),
+    need("workout") ? db.from("planner_settings").select("gym_days").eq("user_id", OWNER).maybeSingle() : Promise.resolve({ data: null }),
+    need("net_zero") ? db.from("finance_snapshots").select("as_of,snapshot").eq("user_id", OWNER).order("as_of") : Promise.resolve({ data: [] }),
+    need("tasks") ? db.from("actions").select("id,done,parent_type,parent_id,recurrence,archived_at").eq("user_id", OWNER).is("archived_at", null) : Promise.resolve({ data: [] }),
+    need("tasks") ? db.from("projects").select("id,goal_id").eq("user_id", OWNER).is("archived_at", null) : Promise.resolve({ data: [] }),
+  ]);
+  // deno-lint-ignore no-explicit-any
+  const sl = ((days as any).data || []).map((r: any) => r.sleep_score).filter((v: any) => typeof v === "number");
+  const sleep = sl.length ? sl.reduce((a: number, b: number) => a + b, 0) / sl.length : null;
+  // deno-lint-ignore no-explicit-any
+  const doneDays = new Set(((wks as any).data || []).map((w: any) => String(w.date).slice(0, 10)));
+  // deno-lint-ignore no-explicit-any
+  const gym: number[] = ((set as any).data && (set as any).data.gym_days && (set as any).data.gym_days.length) ? (set as any).data.gym_days : [1, 3, 5];
+  let planned = 0; for (let i = 0; i < 28; i++) { const d = ccAdd(d28, i), w = new Date(d + "T12:00:00Z").getUTCDay() || 7; if (gym.includes(w)) planned++; }
+  const workout = planned ? Math.min(100, doneDays.size / planned * 100) : null;
+  // deno-lint-ignore no-explicit-any
+  const debtOf = (sn: any) => { const L = sn && Array.isArray(sn.loans) ? sn.loans : []; const v = L.map((l: any) => typeof l.balance === "number" ? l.balance : null).filter((x: any) => x != null); return v.length ? v.reduce((a: number, b: number) => a + b, 0) : null; };
+  // deno-lint-ignore no-explicit-any
+  const S = ((snaps as any).data || []) as any[], first = S.find((x) => debtOf(x.snapshot) != null), last = S.slice().reverse().find((x) => debtOf(x.snapshot) != null);
+  // deno-lint-ignore no-explicit-any
+  const A = ((acts as any).data || []) as any[], P = ((projs as any).data || []) as any[];
+  let updated = 0;
+  for (const goal of goals) {
+    let v: number | null = null, base = goal.score_baseline || null;
+    if (goal.score_mode === "sleep") v = sleep;
+    else if (goal.score_mode === "workout") v = workout;
+    else if (goal.score_mode === "net_zero") {
+      const d0 = base && typeof base.debt0 === "number" ? base.debt0 : first ? debtOf(first.snapshot) : null, cur = last ? debtOf(last.snapshot) : null;
+      if (d0 && cur != null) { v = Math.max(0, Math.min(100, (d0 - cur) / d0 * 100)); base = { debt0: d0, as_of0: base && base.as_of0 || (first && first.as_of), debt: cur, as_of: last && last.as_of, cleared: Math.max(0, d0 - cur), currency: (last && last.snapshot && last.snapshot.currency) || "EUR" }; }
+    } else if (goal.score_mode === "tasks") {
+      // deno-lint-ignore no-explicit-any
+      const pids = new Set(P.filter((p: any) => p.goal_id === goal.id).map((p: any) => p.id));
+      // deno-lint-ignore no-explicit-any
+      const mine = A.filter((a: any) => !a.recurrence && ((a.parent_type === "goal" && a.parent_id === goal.id) || (a.parent_type === "project" && pids.has(a.parent_id))));
+      v = mine.length ? mine.filter((a: any) => a.done).length / mine.length * 100 : null;
+    } else continue;   // manual: left as it is
+    const patch: Record<string, unknown> = { score: v == null ? null : Math.round(v * 10) / 10, score_history: scoreHist(goal.score_history, today, v), score_updated_at: new Date().toISOString() };
+    if (goal.score_mode === "net_zero") patch.score_baseline = base;
+    const u = await db.from("goals").update(patch).eq("id", goal.id).eq("user_id", OWNER);
+    if (!u.error) updated++;
+  }
+  return { updated };
+}
+const scoreOut = (g: any) => ({ score: g.score ?? null, scoreMode: g.score_mode || "tasks", scoreHistory: (g.score_history || []).slice(-28), netZero: g.score_mode === "net_zero" && g.score_baseline ? { cleared: g.score_baseline.cleared, of: g.score_baseline.debt0, currency: g.score_baseline.currency || "EUR" } : undefined });
+
 tool("list_goals", {
   description: "List the user's goals. Optionally filter by area (category).",
   inputSchema: z.object({
@@ -451,7 +517,7 @@ tool("list_goals", {
     return ok((data || []).map((g) => ({
       id: g.id, title: g.title, priority: g.priority, area: g.category,
       due: g.due, ongoing: g.ongoing, secondaryAreas: g.secondary_categories || [],
-      milestones: g.milestones || [],
+      milestones: g.milestones || [], ...scoreOut(g),
     })));
   },
 });
@@ -868,6 +934,7 @@ tool("import_finance_snapshot", {
       : await db.from("finance_snapshots").insert({ user_id: OWNER, as_of, ...row });
     if (w.error) return fail(w.error.message + FIN_HINT);
     const count = await db.from("finance_snapshots").select("id", { count: "exact", head: true }).eq("user_id", OWNER);
+    await refreshGoalScores().catch(() => null);
     return ok({ ok: true, as_of, result: existing ? "replaced" : "created", snapshotsStored: count.count ?? null });
   },
 });
@@ -1618,20 +1685,26 @@ tool("create_goal", {
     area: z.enum(AREA_INPUT).describe("the goal's primary area. " + AREA_GUIDE),
     due: z.string().optional().describe("YYYY-MM-DD; omit if ongoing or no due date"),
     ongoing: z.boolean().optional(),
+    score_mode: z.enum(SCORE_MODES).optional().describe("how the 0-100 score is worked out; default tasks"),
+    score: z.number().min(0).max(100).nullable().optional().describe("for score_mode manual (8.5/10 = 85)"),
+    secondary_areas: z.array(z.enum(AREA_INPUT)).max(3).optional(),
   }),
-  handler: async (args: { title: string; priority: string; area: string; due?: string; ongoing?: boolean }) => {
-    const ongoing = !!args.ongoing;
+  handler: async (args: { title: string; priority: string; area: string; due?: string; ongoing?: boolean; score_mode?: string; score?: number | null; secondary_areas?: string[] }) => {
+    const ongoing = !!args.ongoing, mode = args.score_mode || (args.score != null ? "manual" : undefined);
     const { data, error } = await safeWrite((p) => db.from("goals").insert(p).select().single(), {
       user_id: OWNER, title: args.title, priority: args.priority, category: args.area,
       due: ongoing ? null : (args.due || null), ongoing,
+      ...(mode ? { score_mode: mode } : {}), ...(args.score !== undefined ? { score: args.score, score_history: scoreHist([], berlinToday(), args.score), score_updated_at: new Date().toISOString() } : {}),
+      ...(args.secondary_areas ? { secondary_categories: args.secondary_areas.map(normArea) } : {}),
     });
     if (error) return fail(error.message);
+    if (mode && mode !== "manual") await refreshGoalScores();
     return ok({ ok: true, id: data.id });
   },
 });
 
 tool("edit_goal", {
-  description: "Edit an existing goal by id. Only the fields you pass are changed.",
+  description: "Edit an existing goal by id: title, priority, area, secondary areas, due date, or its score (score_mode manual | sleep | workout | net_zero | tasks; score for manual). Only the fields you pass are changed.",
   inputSchema: z.object({
     id: z.string(),
     title: z.string().optional(),
@@ -1639,6 +1712,9 @@ tool("edit_goal", {
     area: z.enum(AREA_INPUT).optional().describe(AREA_GUIDE),
     due: z.string().optional(),
     ongoing: z.boolean().optional(),
+    score_mode: z.enum(SCORE_MODES).optional().describe("manual | sleep | workout | net_zero | tasks"),
+    score: z.number().min(0).max(100).nullable().optional().describe("sets a manual score (8.5/10 = 85); switches the goal to manual"),
+    secondary_areas: z.array(z.enum(AREA_INPUT)).max(3).optional(),
   }),
   handler: async (args: any) => {
     const patch: Record<string, unknown> = {};
@@ -1648,8 +1724,16 @@ tool("edit_goal", {
     if (args.due !== undefined) patch.due = args.due || null;
     if (args.ongoing !== undefined) patch.ongoing = args.ongoing;
     if (args.ongoing === true) patch.due = null;
+    if (args.secondary_areas !== undefined) patch.secondary_categories = args.secondary_areas.map(normArea);
+    if (args.score_mode !== undefined) patch.score_mode = args.score_mode;
+    if (args.score !== undefined) {
+      if (!args.score_mode) patch.score_mode = "manual";
+      const cur = await db.from("goals").select("score_history").eq("id", args.id).eq("user_id", OWNER).maybeSingle();
+      patch.score = args.score; patch.score_history = scoreHist(cur.data && cur.data.score_history, berlinToday(), args.score); patch.score_updated_at = new Date().toISOString();
+    }
     const { error } = await safeWrite((p) => db.from("goals").update(p).eq("id", args.id).eq("user_id", OWNER), patch);
     if (error) return fail(error.message);
+    if (args.score_mode && args.score_mode !== "manual") await refreshGoalScores();
     return ok({ ok: true });
   },
 });
@@ -2714,6 +2798,7 @@ tool("upsert_health_day", {
     const row = await owned("health_daily").eq("date", date).maybeSingle();
     const want: Record<string, string> = { hrv_avg: "hrvAvg", hrv_status: "hrvStatus", body_battery_high: "bodyBatteryHigh", body_battery_low: "bodyBatteryLow", training_readiness: "trainingReadiness" };
     const stillEmpty = row.data ? Object.keys(want).filter((k) => row.data[k] == null).map((k) => want[k]) : [];
+    await refreshGoalScores().catch(() => null);
     return ok({ ok: true, date, result: r.result, changed: r.changed, stillEmpty: stillEmpty.length ? stillEmpty : undefined });
   },
 });
@@ -2807,6 +2892,7 @@ tool("upsert_workout", {
       if (m.error) return fail(m.error);
     }
     const setsChanged = toWrite.length + gone.length;
+    await refreshGoalScores().catch(() => null);
     return ok({
       ok: true, id: workoutId,
       result: head.result === "created" ? "created" : (head.result === "updated" || setsChanged ? "updated" : "unchanged"),
@@ -5345,6 +5431,11 @@ async function withInstructions(res: Response, instructions = SERVER_INSTRUCTION
 app.all("*", async (c) => {
   const pathname = new URL(c.req.url).pathname;
   if (/\/push\/(key|run|test)$/.test(pathname)) return await pushRoute(c.req.raw, pathname);
+  if (pathname.endsWith("/goal-scores/refresh")) {
+    const k = c.req.header("x-cron-key") || "", row = await db.from("knowledge_cron_key").select("key").eq("id", 1).maybeSingle();
+    if (!row.data || !k || k !== row.data.key) return c.json({ error: "unauthorized" }, 401);
+    return c.json(await refreshGoalScores());
+  }
   // The voice edition: its own token, 12 tools, spoken answers.
   if (pathname.endsWith("/mcp-voice") && !pathname.includes("/.well-known/")) {
     if (tokenRole(c.req.raw) !== "voice") return c.json({ error: "unauthorized" }, 401);
