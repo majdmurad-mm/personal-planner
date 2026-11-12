@@ -27,7 +27,7 @@
     /* free time from now (today) or from waking / 07:00, until 23:00: the same function as the voice connector */
     var iv = [];
     if (work) iv.push(work); timed.forEach(function (x) { if (x.it.kind !== "deadline") iv.push([x.s, x.e]); }); wos.forEach(function (w) { if (w.start != null) iv.push([w.start, w.start + (w.mins || 60)]); });
-    var F = window.PPFree.compute({ nowMin: now, isToday: true, wake: wake, busy: iv, dayStart: 420, dayEnd: 1380, minGap: 15 });
+    var F = (window.PPFree || { compute: function (o) { var st = Math.max(o.wake != null && o.wake < 720 ? o.wake : o.dayStart, Math.ceil(o.nowMin / 5) * 5), cur = st, g = []; o.busy.slice().sort(function (a, b) { return a[0] - b[0]; }).forEach(function (x) { if (x[0] - cur >= o.minGap) g.push([cur, Math.min(x[0], o.dayEnd)]); cur = Math.max(cur, x[1]); }); if (o.dayEnd - cur >= o.minGap) g.push([cur, o.dayEnd]); return { from: st, to: o.dayEnd, gaps: g, minutes: g.reduce(function (a, x) { return a + Math.max(0, x[1] - x[0]); }, 0), fromNow: true }; } }).compute({ nowMin: now, isToday: true, wake: wake, busy: iv, dayStart: 420, dayEnd: 1380, minGap: 15 });
     var d0 = F.from, d1 = F.to, free = F.gaps, freeMin = F.minutes, fromNow = F.fromNow;
     var current = timed.filter(function (x) { return x.s <= now && x.e > now && x.state !== "missed"; })[0], next = timed.filter(function (x) { return x.s > now && !(C.hasDone(x.it) && x.o.done); }).sort(function (a, b) { return a.s - b.s; })[0];
     var untimed = occ.filter(function (o) { return !o.done && C.hasDone(o.item) && (!o.item.time || o.item.allDay); });
