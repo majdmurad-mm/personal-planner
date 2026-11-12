@@ -45,6 +45,17 @@ jobs:
             sed -i "s/__BUILD_COMMIT__/${GITHUB_SHA::7}/; s/__BUILD_TIME__/$(date -u +%Y-%m-%dT%H:%M:%SZ)/" "$f"
           done
 
+      - name: Set the voice connector token
+        if: steps.token.outputs.present == 'true'
+        env:
+          VOICE_MCP_TOKEN: ${{ secrets.VOICE_MCP_TOKEN }}
+        run: |
+          if [ -n "$VOICE_MCP_TOKEN" ]; then
+            supabase secrets set VOICE_MCP_TOKEN="$VOICE_MCP_TOKEN" --project-ref "$PROJECT_REF" > /dev/null && echo "VOICE_MCP_TOKEN set"
+          else
+            echo "::notice::VOICE_MCP_TOKEN is not set; the voice connector (/mcp-voice) stays closed."
+          fi
+
       - name: Deploy every function
         if: steps.token.outputs.present == 'true'
         run: |
