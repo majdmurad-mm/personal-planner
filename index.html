@@ -306,6 +306,8 @@
   #commandSection{ margin:-32px -40px -70px; }
   /* Knowledge (knowledge/), same full-bleed host. */
   #knowledgeSection{ margin:-32px -40px -70px; }
+  /* Communication (communication/), same full-bleed host. */
+  #commSection{ margin:-32px -40px -70px; }
   /* Finance snapshot page (finance/), same full-bleed host. */
   #financeSection{ margin:-32px -40px -70px; }
   /* People, constellation and list views: one full-bleed host; the older header, filters and panels step aside. */
@@ -1670,6 +1672,7 @@
     #selfSection{ margin:-56px -18px -60px; --ppn-top:46px; }
     #commandSection{ margin:-56px -18px -60px; --ppc-top:46px; }
     #knowledgeSection{ margin:-56px -18px -60px; --ppk-top:46px; }
+    #commSection{ margin:-56px -18px -60px; --ppm-top:46px; }
     #financeSection{ margin:-56px -18px -60px; --ppf-top:46px; }
     #peopleSection.ppl-sky{ margin:-56px -18px -60px; --pph-top:46px; }
     #peopleSection.ppl-fullscreen-graph{ margin:-56px -18px -60px; padding:12px 18px 12px; }
@@ -1695,6 +1698,7 @@
     #selfSection{ margin:-44px -24px -20px; --ppn-top:36px; }
     #commandSection{ margin:-44px -24px -20px; --ppc-top:36px; }
     #knowledgeSection{ margin:-44px -24px -20px; --ppk-top:36px; }
+    #commSection{ margin:-44px -24px -20px; --ppm-top:36px; }
     #financeSection{ margin:-44px -24px -20px; --ppf-top:36px; }
     #peopleSection.ppl-sky{ margin:-44px -24px -20px; --pph-top:36px; }
     #peopleSection.ppl-fullscreen-graph{ margin:-44px -24px -20px; padding:10px 24px 10px; }
@@ -2328,6 +2332,7 @@
         <button class="side-link" data-section="health" type="button"><span class="sl-glyph">♡</span>Health</button>
         <button class="side-link" data-section="finance" type="button"><span class="sl-glyph">€</span>Finance</button>
         <button class="side-link" data-section="knowledge" type="button"><span class="sl-glyph">❖</span>Knowledge</button>
+        <button class="side-link" data-section="comm" type="button"><span class="sl-glyph">✉</span>Communication</button>
         <button class="side-link" data-section="people" type="button"><span class="sl-glyph">☺</span>People</button>
         <button class="side-link" data-section="location" type="button"><span class="sl-glyph">⚲</span>Location</button>
       </nav>
@@ -3147,6 +3152,7 @@
     <section id="commandSection" style="display:none;"></section>
     <!-- Knowledge: files and saved items as a graph (knowledge/, shadow root; see renderKnowledge). -->
     <section id="knowledgeSection" style="display:none;"></section>
+    <section id="commSection" style="display:none;"></section>
     <!-- Finance: the snapshot dashboard (finance/finance.js, shadow root; see renderFinancePage). The older
          accounts and transactions view stays inside the Finance area page. -->
     <section id="financeSection" style="display:none;"></section>
@@ -4495,6 +4501,7 @@
     if(activeSection === "finance") renderFinancePage();
     if(activeSection === "command") renderCommand();
     if(activeSection === "knowledge") renderKnowledge();
+    if(activeSection === "comm") renderComm();
   });
 
   // Sidebar hide/show. The data-sidebar-collapsed attribute (if saved) is already applied pre-paint
@@ -5443,7 +5450,7 @@
     });
   }
 
-  var ALL_SECTION_IDS = ["focusSection","homeSection","todaySection","plannerSection","trackerSection","timelineSection","journalSection","peopleSection","locationSection","futureSection","goalDetailSection","areaDetailSection","entityPageSection","inboxSection","memorySection","healthSection","selfSection","financeSection","commandSection","knowledgeSection"];
+  var ALL_SECTION_IDS = ["focusSection","homeSection","todaySection","plannerSection","trackerSection","timelineSection","journalSection","peopleSection","locationSection","futureSection","goalDetailSection","areaDetailSection","entityPageSection","inboxSection","memorySection","healthSection","selfSection","financeSection","commandSection","knowledgeSection","commSection"];
   // Sidebar dropdown groups — a parent nav item with no page of its own, bundling a set of section
   // names under one submenu. See showSection() (active/auto-open) and the sideNav click handler
   // (data-toggle-submenu, open/close).
@@ -20071,6 +20078,7 @@
     finance: [renderFinancePage],
     command: [renderCommand],
     knowledge: [renderKnowledge],
+    comm: [renderComm],
     timeline: [renderTimeline],
     journal: [renderJournal],
     people: [renderPeople],
@@ -21068,6 +21076,85 @@
       knowledgeFetching = null;
       var missing = err && /knowledge_|schema cache|does not exist/i.test(err.message || "");
       if(!host.shadowRoot) host.innerHTML = '<div class="empty-note" style="padding:60px 24px;">' + (missing ? "The Knowledge page needs its database tables first (migration_knowledge.sql)." : "The Knowledge page couldn’t load. Check your connection and open it again.") + '</div>';
+      console.warn(err);
+    });
+  }
+  /* Communication page (communication/): iCloud Mail and WhatsApp. Mail is read by the comm-mail function
+     (IMAP with an app-specific password kept in Vault; this page never gets it back); WhatsApp is saved by
+     Claude on the desktop through the connector. Rows: comm_accounts / comm_messages, read-only here (RLS).
+     Bump COMM_VER with each release of communication/*. */
+  var COMM_VER = "1", commLoading = null, commHandle = null, commFetching = null, commTimer = 0;
+  var COMM = { accounts:[], messages:[], ready:true };
+  var COMM_WA_PROMPT = "Please save my recent WhatsApp chats to my planner, using the planner connector and computer use.\n1. Call get_whatsapp_sync_state to see what is already saved and when.\n2. Open the WhatsApp app on this computer (the desktop app, not a browser). Go down the chat list from the top and open each chat that has messages newer than what is saved. On the first run, take the chats from the last 7 days.\n3. In each chat, read the new messages and save them with save_whatsapp_chat: the chat name, and for every message who sent it, the text, the time as WhatsApp shows it (YYYY-MM-DD HH:MM) and whether I sent it. For photos, voice notes or files write what it is, like [photo] or [voice message, 0:42].\n4. Only read. Never type, send, reply, react, delete, or open media or links in WhatsApp.\n5. When done, tell me which chats you saved and how many messages.";
+  function commLoadScripts(){
+    if(commLoading) return commLoading;
+    commLoading = new Promise(function(resolve, reject){
+      var el = document.createElement("script");
+      el.src = "communication/comm.js?v=" + COMM_VER; el.onload = resolve;
+      el.onerror = function(){ reject(new Error("Could not load communication/comm.js")); };
+      document.head.appendChild(el);
+    });
+    commLoading.catch(function(){ commLoading = null; });
+    return commLoading;
+  }
+  async function commFetch(){
+    var r = await Promise.all([
+      sb.from("comm_accounts").select("id,provider,address,label,status,last_error,last_sync_at,claude_access").is("archived_at", null),
+      sb.from("comm_messages").select("id,account_id,provider,thread_key,thread_title,folder,direction,from_name,from_addr,to_list,subject,preview,body,sent_at,unread,has_attachments").is("archived_at", null).order("sent_at", { ascending:false }).limit(2500)
+    ]);
+    if(r[0].error){ if(/comm_|schema cache|does not exist/i.test(r[0].error.message || "")){ COMM.ready = false; return; } throw r[0].error; }
+    COMM.ready = true;
+    var live = {}; (r[0].data || []).forEach(function(a){ live[a.id] = 1; });
+    COMM.accounts = (r[0].data || []).map(function(a){ return { id:a.id, provider:a.provider, address:a.address, label:a.label, status:a.status, lastError:a.last_error, lastSyncAt:a.last_sync_at, claudeAccess:a.claude_access }; });
+    COMM.messages = (r[1].data || []).filter(function(m){ return live[m.account_id]; }).map(function(m){ return { id:m.id, accountId:m.account_id, provider:m.provider, threadKey:m.thread_key, threadTitle:m.thread_title, folder:m.folder, direction:m.direction, fromName:m.from_name, fromAddr:m.from_addr, to:m.to_list || [], subject:m.subject, preview:m.preview, body:m.body, sentAt:m.sent_at, unread:m.unread, hasAttachments:m.has_attachments }; });
+  }
+  function commData(){ return { accounts:COMM.accounts, messages:COMM.messages, ready:COMM.ready, theme:currentTheme(), waPrompt:COMM_WA_PROMPT }; }
+  function commRefresh(){ if(commHandle && activeSection === "comm") commHandle.update(commData()); }
+  async function commApi(route, body){
+    var sess = await sb.auth.getSession(), token = sess && sess.data && sess.data.session ? sess.data.session.access_token : "";
+    var r = await fetch(SUPABASE_URL + "/functions/v1/comm-mail" + route, { method:"POST", headers:{ "Content-Type":"application/json", "Authorization":"Bearer " + token, "apikey":SUPABASE_ANON_KEY }, body:JSON.stringify(body || {}) });
+    var j = await r.json().catch(function(){ return { error:r.status === 404 ? "The mail service is not deployed yet." : "No answer from the mail service." }; });
+    if(!r.ok && !j.error) j.error = "The mail service answered " + r.status;
+    return j;
+  }
+  // keep asking for the next batch until the first sync is in; the page fills as it goes
+  async function commSyncLoop(accountId){
+    for(var i = 0; i < 14; i++){
+      var j = await commApi("/sync", accountId ? { accountId:accountId } : {});
+      await commFetch(); commRefresh();
+      if(j.error){ toast(j.error); break; }
+      if(!j.more) break;
+    }
+  }
+  async function commConnect(address, password){
+    var j = await commApi("/connect", { address:address, password:password });
+    if(!j.ok) return { error:j.error || "That did not work." };
+    await commFetch(); commRefresh();
+    commSyncLoop(j.id);
+    return { ok:true };
+  }
+  async function commDisconnect(id){ var j = await commApi("/disconnect", { accountId:id }); if(j.error) toast(j.error); await commFetch(); commRefresh(); }
+  async function commAccess(id, on){ var j = await commApi("/access", { accountId:id, on:on }); if(j.error){ toast(j.error); await commFetch(); commRefresh(); } }
+  async function commBody(id){ return commApi("/body", { id:id }); }
+  function commPoll(){
+    clearTimeout(commTimer);
+    if(activeSection !== "comm" || !currentUser) return;
+    commTimer = setTimeout(function(){ if(document.hidden || activeSection !== "comm") return commPoll(); commFetch().then(function(){ commRefresh(); commPoll(); }, commPoll); }, 120000);
+  }
+  function renderComm(){
+    if(activeSection !== "comm") return;
+    var host = document.getElementById("commSection");
+    commFetching = commFetch();
+    Promise.all([commLoadScripts(), commFetching]).then(function(){
+      if(activeSection !== "comm") return;
+      if(commHandle){ commHandle.update(commData()); commPoll(); return; }
+      commHandle = window.PPComm.mount(host, Object.assign(commData(), {
+        css:"communication/comm.css?v=" + COMM_VER,
+        onConnect:commConnect, onSync:commSyncLoop, onDisconnect:commDisconnect, onAccess:commAccess, onBody:commBody
+      }));
+      commPoll();
+    }).catch(function(err){
+      if(!host.shadowRoot) host.innerHTML = '<div class="empty-note" style="padding:60px 24px;">The Communication page couldn’t load. Check your connection and open it again.</div>';
       console.warn(err);
     });
   }

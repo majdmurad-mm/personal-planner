@@ -10,3 +10,6 @@ verify_jwt = false
 
 [functions.knowledge-onedrive]
 verify_jwt = false
+
+[functions.comm-mail]
+verify_jwt = false

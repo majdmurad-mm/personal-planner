@@ -4520,6 +4520,93 @@ tool("merge_topics", {
   handler: (a: { topics: string[]; into: string }) => topicMove(a.topics, a.into.trim()),
 });
 
+// ============================ COMMUNICATION ==================================
+// WhatsApp has no way in for a personal account, so Claude on the owner's desktop reads the WhatsApp app
+// (computer use) and saves chats here. iCloud Mail is synced by the comm-mail function. Rows live in
+// comm_accounts / comm_messages (see _Memory/migration_communication.sql).
+const COMM_HINT = " (run _Memory/migration_communication.sql in the Supabase SQL editor first)";
+async function commWaAccount(): Promise<{ id?: string; access?: boolean; error?: string }> {
+  const f = await db.from("comm_accounts").select("id,claude_access").eq("user_id", OWNER).eq("provider", "whatsapp").is("archived_at", null).maybeSingle();
+  if (f.error) return { error: f.error.message + COMM_HINT };
+  if (f.data) return { id: f.data.id, access: f.data.claude_access };
+  const i = await db.from("comm_accounts").insert({ user_id: OWNER, provider: "whatsapp", address: "WhatsApp", label: "WhatsApp, saved by Claude on your desktop" }).select("id,claude_access").single();
+  if (i.error) return { error: i.error.message + COMM_HINT };
+  return { id: i.data.id, access: i.data.claude_access };
+}
+// 'YYYY-MM-DD HH:MM' in Berlin, or an ISO time with an offset
+function commWhen(at: string): string | null {
+  const t = String(at || "").trim();
+  if (/([zZ]|[+-]\d\d:?\d\d)$/.test(t)) { const d = new Date(t); return isNaN(+d) ? null : d.toISOString(); }
+  const m = t.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{1,2}):(\d{2})/); if (!m) return null;
+  const guess = new Date(m[1] + "T" + m[2].padStart(2, "0") + ":" + m[3] + ":00Z");
+  const wall = new Date(guess.toLocaleString("sv-SE", { timeZone: "Europe/Berlin" }).replace(" ", "T") + "Z");
+  return new Date(guess.getTime() - (wall.getTime() - guess.getTime())).toISOString();
+}
+async function commHash(x: string) { const h = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(x)); return Array.from(new Uint8Array(h)).map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 40); }
+
+tool("get_whatsapp_sync_state", {
+  description: "Before saving WhatsApp chats: what is already saved, per chat (name, newest saved message time, count), and when WhatsApp was last saved. Read only the messages newer than these times.",
+  inputSchema: z.object({}),
+  handler: async () => {
+    const a = await commWaAccount(); if (a.error) return fail(a.error);
+    const r = await db.from("comm_messages").select("thread_title,sent_at").eq("account_id", a.id!).is("archived_at", null).order("sent_at", { ascending: false }).limit(5000);
+    if (r.error) return fail(r.error.message);
+    const by: Record<string, { chat: string; newest: string; messages: number }> = {};
+    for (const m of r.data || []) { const k = m.thread_title; if (!by[k]) by[k] = { chat: k, newest: m.sent_at, messages: 0 }; by[k].messages++; if (m.sent_at > by[k].newest) by[k].newest = m.sent_at; }
+    const acc = await db.from("comm_accounts").select("last_sync_at").eq("id", a.id!).maybeSingle();
+    return ok({ lastSaved: acc.data?.last_sync_at || null, chats: Object.values(by).sort((p, q) => q.newest.localeCompare(p.newest)), timezone: "Europe/Berlin" });
+  },
+});
+
+tool("save_whatsapp_chat", {
+  description: "Save messages from one WhatsApp chat that you read in the WhatsApp app on the owner's computer. Send the chat's name and its messages in order, each with who sent it, the text, when (as shown in WhatsApp, 'YYYY-MM-DD HH:MM' Berlin time) and whether the owner sent it. Saving the same message again changes nothing. Never send, reply, delete or open media in WhatsApp while doing this.",
+  inputSchema: z.object({
+    chat: z.string().min(1).max(120).describe("the chat's name as WhatsApp shows it"),
+    isGroup: z.boolean().optional(),
+    messages: z.array(z.object({
+      from: z.string().max(120).describe("sender's name as shown; for the owner's own messages anything, with outgoing true"),
+      text: z.string().max(4000).describe("the message text; for media write e.g. '[photo]' or '[voice message, 0:42]'"),
+      at: z.string().describe("'YYYY-MM-DD HH:MM' in Berlin time, or ISO with offset"),
+      outgoing: z.boolean().optional(),
+    })).min(1).max(300),
+  }),
+  handler: async (a: { chat: string; isGroup?: boolean; messages: { from: string; text: string; at: string; outgoing?: boolean }[] }) => {
+    const acc = await commWaAccount(); if (acc.error) return fail(acc.error);
+    const chat = a.chat.trim(), key = "wa:" + chat.toLowerCase(), bad: number[] = [];
+    const rows = [];
+    for (let i = 0; i < a.messages.length; i++) {
+      const m = a.messages[i], when = commWhen(m.at); if (!when) { bad.push(i); continue; }
+      const text = String(m.text || "").trim(), from = m.outgoing ? "You" : String(m.from || "").trim() || chat;
+      rows.push({ user_id: OWNER, account_id: acc.id, provider: "whatsapp", external_id: await commHash([key, when.slice(0, 16), m.outgoing ? "me" : from.toLowerCase(), text].join("|")),
+        thread_key: key, thread_title: chat, folder: a.isGroup ? "group" : "chat", direction: m.outgoing ? "out" : "in", from_name: from, from_addr: "",
+        subject: "", preview: text.replace(/\s+/g, " ").slice(0, 280), body: text, sent_at: when, unread: false });
+    }
+    if (!rows.length) return fail("none of the times could be read; use 'YYYY-MM-DD HH:MM'");
+    const up = await db.from("comm_messages").upsert(rows, { onConflict: "user_id,provider,external_id", ignoreDuplicates: true }).select("id");
+    if (up.error) return fail(up.error.message + COMM_HINT);
+    await db.from("comm_accounts").update({ last_sync_at: new Date().toISOString(), status: "ok" }).eq("id", acc.id!);
+    return ok({ ok: true, chat, saved: (up.data || []).length, alreadySaved: rows.length - (up.data || []).length, unreadableTimes: bad.length ? bad : undefined });
+  },
+});
+
+tool("get_communication_status", {
+  description: "Which message sources are connected on the Communication page (iCloud Mail, WhatsApp): status, last sync, any error, how many messages and how many unread, and whether Claude may read them.",
+  inputSchema: z.object({}),
+  handler: async () => {
+    const a = await db.from("comm_accounts").select("id,provider,address,label,status,last_error,last_sync_at,claude_access").eq("user_id", OWNER).is("archived_at", null);
+    if (a.error) return fail(a.error.message + COMM_HINT);
+    const out = [];
+    for (const x of a.data || []) {
+      const [n, u] = await Promise.all([
+        db.from("comm_messages").select("id", { count: "exact", head: true }).eq("account_id", x.id).is("archived_at", null),
+        db.from("comm_messages").select("id", { count: "exact", head: true }).eq("account_id", x.id).is("archived_at", null).eq("unread", true),
+      ]);
+      out.push({ source: x.provider === "icloud" ? "iCloud Mail" : "WhatsApp", address: x.provider === "icloud" ? x.address : undefined, status: x.status, lastSync: x.last_sync_at, error: x.last_error || undefined, messages: n.count || 0, unread: u.count || 0, claudeMayRead: x.claude_access });
+    }
+    return ok({ sources: out, note: out.length ? undefined : "Nothing connected yet. iCloud Mail is connected on the Communication page; WhatsApp is saved by Claude on the desktop with save_whatsapp_chat." });
+  },
+});
+
 // ============================ ACROSS THE CONNECTOR ============================
 const RECORD_TYPES = { action: "actions", event: "events", note: "journal", goal: "goals", project: "projects", person: "people", place: "points_of_interest", knowledge_item: "knowledge_items", memory: "agent_memory", person_link: "person_links" } as const;
 async function setArchived(type: keyof typeof RECORD_TYPES, id: string, archived: boolean) {
