@@ -246,3 +246,15 @@ svg .nd,svg .ln{transition:opacity .25s}
 /* the tree: when the fitted view is small, names and roles grow a little so the family block stays readable */
 #sky .nd.tr .nm{font-size:calc(11px*var(--tz,1))}
 #sky .nd.tr .cap{font-size:calc(9.5px*var(--tz,1))}
+
+/* relation score: node fade, panel block, legend */
+.nd .rs{transition:opacity .2s}.nd:hover .rs,.nd:focus-visible .rs,.nd.on .rs{opacity:1 !important}
+.rsx{margin-top:14px;padding:12px 14px;border:1px solid var(--line);border-radius:12px}
+.rsx .lab{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.rsh{display:flex;align-items:baseline;gap:6px;margin:4px 0 6px}.rsh b{font-size:26px;font-weight:600;line-height:1}.rsh span{color:var(--muted);font-size:13px}
+.rsb,.rsm{position:relative;height:6px;border-radius:3px;background:var(--line);overflow:hidden}.rsb i,.rsm i{position:absolute;inset:0 auto 0 0;border-radius:3px;background:var(--text)}
+.rsx ul{list-style:none;padding:0;margin:10px 0 0;display:grid;gap:6px}
+.rsx li{display:grid;grid-template-columns:72px minmax(40px,1fr) 44px;gap:4px 8px;align-items:center;font-size:12.5px}.rsx li small{grid-column:1/-1;color:var(--muted);font-size:11.5px;margin-top:-3px}
+.rsv{text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}
+.rst{margin-top:10px;font-size:13px}.rsn{margin-top:8px;font-size:11.5px;color:var(--muted)}
+.rsleg b{display:inline-flex;gap:2px;margin-right:6px;vertical-align:middle}.rsleg em{width:8px;height:8px;border-radius:50%;background:currentColor;display:inline-block}

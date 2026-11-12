@@ -22,7 +22,7 @@
       var lab = p.first.length > 12 ? p.first.slice(0, 11) + "…" : p.first;
       var dn = dispName(p.name);
       nodes += '<g class="nd tr' + (p.color ? ' gc" style="--gc:' + esc(p.color) : "") + (p.off && !p.inMemory ? " quiet" : "") + (p.inMemory ? " mem" : "") + (st.q && dn.toLowerCase().indexOf(st.q) >= 0 ? " hit" : "") + '" data-id="' + p.id + '" tabindex="0" role="button" aria-label="' + esc(dn + (cap ? ", " + cap : "") + (p.inMemory ? ", in memory" : "") + (p.group ? ", " + p.group : "")) + '" transform="translate(' + f(x) + "," + f(y) + ')"><title>' + esc(dn + (p.inMemory ? " · in memory" : "")) + "</title>" + (p.inMemory ? '<circle class="memring" r="' + (r + 4) + '"/>' : "") +
-        '<circle r="' + (r + 7) + '" fill="transparent"/><circle class="disc" r="' + r + '"/><text class="ini" style="font-size:' + f(r * .8) + 'px">' + esc(p.ini) + "</text>" +
+        '<circle r="' + (r + 7) + '" fill="transparent"/><g class="rs" style="opacity:' + (p.rs && !p.inMemory ? p.rs.alpha : 1) + '"><circle class="disc" r="' + r + '"/><text class="ini" style="font-size:' + f(r * .8) + 'px">' + esc(p.ini) + "</text></g>" +
         (p.threads.length ? '<circle class="dot" cx="' + f(r * .74) + '" cy="' + f(-r * .74) + '" r="' + f(Math.max(3.2, r * .3)) + '"/>' : "") +
         '<text class="nm" style="font-size:calc(' + (r > 14 ? 12 : 10.5) + 'px*var(--iz,1)*var(--tz,1))" y="' + (r + 14) + '">' + esc(lab) + "</text>" + (cap ? '<text class="cap" y="' + (r + 27) + '">' + esc(cap) + "</text>" : "") + "</g>";
     }

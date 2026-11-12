@@ -47,10 +47,11 @@
     h += '<g id="links"></g>';
     vis.forEach(function (p) {
       var r = p.r, lbl = p.circle <= (narrow ? 0 : 2), first = p.first, below = p.y > -20 || p.circle === 1;
-      h += '<g class="nd c' + p.circle + (p.color ? ' gc" style="--gc:' + esc(p.color) : "") + '" data-id="' + p.id + '" tabindex="0" role="button" aria-label="' + esc(p.name + ", " + RINGS[p.circle] + " circle, " + QL[p.quality] + (p.threads.length ? ", open thread" : "") + (p.drift ? ", drifting" : "") + (p.bday != null && p.bday <= 14 ? ", birthday " + C.inDays(p.bday) : "")) + '" transform="translate(' + p.x.toFixed(1) + "," + p.y.toFixed(1) + ')">';
+      h += '<g class="nd c' + p.circle + (p.color ? ' gc" style="--gc:' + esc(p.color) : "") + '" data-id="' + p.id + '" tabindex="0" role="button" aria-label="' + esc(p.name + ", " + RINGS[p.circle] + " circle, " + QL[p.quality] + (p.rs ? ", relation " + p.rs.score + " of 100" : "") + (p.threads.length ? ", open thread" : "") + (p.drift ? ", drifting" : "") + (p.bday != null && p.bday <= 14 ? ", birthday " + C.inDays(p.bday) : "")) + '" transform="translate(' + p.x.toFixed(1) + "," + p.y.toFixed(1) + ')">';
       if (p.fresh != null) h += '<circle class="halo" r="' + (r + 7 + 7 * p.fresh).toFixed(1) + '" opacity="' + (.08 + .5 * p.fresh).toFixed(2) + '"/>';
-      h += '<circle class="star" r="' + (r * 1.55).toFixed(1) + '"/><circle r="' + Math.max(r + 6, 11 * K).toFixed(1) + '" fill="transparent"/><circle class="disc" r="' + r.toFixed(1) + '"/>';
+      h += '<circle r="' + Math.max(r + 6, 11 * K).toFixed(1) + '" fill="transparent"/><g class="rs" style="opacity:' + (p.rs ? p.rs.alpha : 1) + '"><circle class="star" r="' + (r * 1.55).toFixed(1) + '"/><circle class="disc" r="' + r.toFixed(1) + '"/>';
       if (p.circle <= 2) h += '<text class="ini" style="font-size:' + (r * .82).toFixed(1) + 'px">' + esc(p.ini) + "</text>";
+      h += "</g>";
       if (p.threads.length) h += '<circle class="dot" cx="' + (r * .74).toFixed(1) + '" cy="' + (-r * .74).toFixed(1) + '" r="' + Math.max(3.2 * K, r * .3).toFixed(1) + '"/>';
       if (p.bday != null && p.bday <= 14) h += '<g transform="translate(' + (-r * .8).toFixed(1) + "," + (-r * .8).toFixed(1) + ')"><circle class="cake" r="' + (6.5 * K).toFixed(1) + '"/><text class="cake-t" style="font-size:' + fs(8) + 'px">🎂</text></g>';
       var lx = 0, ly = below ? r + 12.5 * K : -(r + 5 * K), anc = "middle";

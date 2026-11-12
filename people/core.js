@@ -30,6 +30,32 @@
   var KIN_SIDED = { grandfather: 1, grandmother: 1, uncle: 1, aunt: 1, cousin: 1 }, SIDE = { paternal: "Father's side", maternal: "Mother's side" };
   function isoAdd(today, n) { var d = new Date(dayNum(today) * 864e5 + n * 864e5); return d.toISOString().slice(0, 10); }
 
+  /* The relation score, 0-100, from what is already known about a person:
+       closeness circle 35, quality 30, contact 25 (in touch within your rhythm = full; overdue fades to 0 at
+       three times the rhythm; with no rhythm it fades over 8 months; never logged = 8), energy 10.
+       Works on a raw person row (circle, quality, energy, lastContactAt, rhythmDays), so the Clusters view can
+       use it too. Views draw a person's node more transparent the lower the score. */
+  var SC_CIRCLE = { 1: 35, 2: 28, 3: 20, 4: 12, 5: 5 }, SC_QUAL = { strong: 30, ok: 20, weak: 10, strained: 6, conflict: 2, cut_off: 0 }, SC_EN = { nourishing: 10, neutral: 6, draining: 2 };
+  function relScore(r, today) {
+    var circle = r.circle >= 1 && r.circle <= 5 ? r.circle : 4, q = QL[r.quality] ? r.quality : "ok", en = EN[r.energy] ? r.energy : "neutral";
+    var last = r.lastContactAt && today ? Math.max(0, dayNum(today) - dayNum(r.lastContactAt)) : null, rh = r.rhythmDays || null, c, ct;
+    if (last == null) { c = 8; ct = "No contact logged yet"; }
+    else if (rh) { c = 25 * Math.max(0, 1 - Math.max(0, last - rh) / (rh * 2)); ct = last <= rh ? "In touch within your rhythm" : "Last in touch " + ago(last) + ", rhythm " + rhythmText(rh); }
+    else { c = 25 * Math.max(0, 1 - last / 240); ct = "Last in touch " + ago(last) + " (no rhythm set)"; }
+    var parts = [
+      { k: "Closeness", v: SC_CIRCLE[circle], max: 35, t: RINGS[circle] + " circle" },
+      { k: "Quality", v: SC_QUAL[q], max: 30, t: QL[q] },
+      { k: "Contact", v: Math.round(c), max: 25, t: ct },
+      { k: "Energy", v: SC_EN[en], max: 10, t: EN[en] }
+    ];
+    var score = Math.round(parts.reduce(function (s, x) { return s + x.v; }, 0));
+    var label = score >= 75 ? "Very strong" : score >= 55 ? "Strong" : score >= 35 ? "Moderate" : score >= 20 ? "Weak" : "Faint";
+    var low = parts.filter(function (x) { return x.k === "Contact" || x.k === "Quality"; }).sort(function (a, b) { return a.v / a.max - b.v / b.max; })[0], tip = "";
+    if (low.k === "Contact" && low.v / low.max < 0.6) tip = last == null ? "Log your next call or meeting, and set a rhythm, so the score can follow how often you are in touch." : "Getting in touch would lift this the most.";
+    else if (low.k === "Quality" && (q === "strained" || q === "conflict")) tip = "Things are tense; a calm, short conversation might help more than frequency.";
+    return { score: score, label: label, parts: parts, tip: tip, alpha: +(0.3 + 0.7 * score / 100).toFixed(2) };
+  }
+
   /* raw: { people, actions, events, notes, sits, links, today }  ->  model */
   function build(raw) {
     var today = raw.today, t0 = dayNum(today), P = [], byId = {};
@@ -50,6 +76,7 @@
         first: shortName(r.name), kinRole: KIN[r.kinRole] ? r.kinRole : "", kinSide: SIDE[r.kinSide] ? r.kinSide : ""
       };
       p.off = p.archived || p.inMemory || p.quality === "cut_off";       // not on the map
+      p.rs = relScore(r, today);
       P.push(p); byId[p.id] = p;
     });
     (raw.sits || []).forEach(function (s) { var p = byId[s.person_id]; if (p && !s.archived_at) p.sits.push({ id: s.id, t: s.text, date: s.noted_on, by: s.author === "claude" ? "claude" : "me", at: s.created_at || "" }); });
@@ -177,5 +204,5 @@
   }
 
   window.PPPeopleCore = { RINGS: RINGS, QL: QL, EN: EN, KIND: KIND, RHYTHMS: RHYTHMS, MON: MON, RLINE: RLINE, build: build, pulse: pulse, layout: layout, linePath: linePath, arc: arc,
-    sample: sample, KIN: KIN, KIN_SIDED: KIN_SIDED, SIDE: SIDE, groupColors: groupColors, fmtDay: fmtDay, ago: ago, inDays: inDays, rhythmText: rhythmText, dayNum: dayNum };
+    sample: sample, KIN: KIN, KIN_SIDED: KIN_SIDED, SIDE: SIDE, groupColors: groupColors, relScore: relScore, fmtDay: fmtDay, ago: ago, inDays: inDays, rhythmText: rhythmText, dayNum: dayNum };
 })();

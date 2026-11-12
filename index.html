@@ -1401,6 +1401,8 @@
   .ppl-node.Mentor{ background:var(--cat-growth); }
   .ppl-node.Partner{ background:var(--violet); }
   .ppl-node.Other{ background:var(--cat-sol); }
+  .ppl-node::after{ content:""; position:absolute; inset:0; border-radius:50%; background:var(--bg-inset); opacity:calc(1 - var(--ro, 1)); pointer-events:none; }
+  .ppl-node:hover::after{ opacity:0; }
   .ppl-node-label{ position:absolute; left:21px; top:50%; transform:translateY(-50%); font-family:var(--mono); font-size:11px; font-weight:600; color:var(--text); white-space:nowrap; pointer-events:none; }
   /* The central "you" node (see #pplSunNode) — deliberately not a .ppl-node: bigger than every
      person node, fixed at the world center, not draggable/editable/connectable. Every person's pull
@@ -11143,7 +11145,8 @@
   function pplNodeHtml(p){
     var sim = pplFindSimNode(p.id);
     var x = sim ? sim.x : PPL_CENTER_X, y = sim ? sim.y : PPL_CENTER_Y;
-    return '<div class="ppl-node ' + p.relationship + '" data-id="' + p.id + '" style="left:' + x + 'px; top:' + y + 'px;" title="' + escapeHtml(p.name) + '">' +
+    var rs = window.PPPeopleCore && window.PPPeopleCore.relScore ? window.PPPeopleCore.relScore(p, todayStr()) : null;
+    return '<div class="ppl-node ' + p.relationship + '" data-id="' + p.id + '" style="left:' + x + 'px; top:' + y + 'px;' + (rs ? " --ro:" + rs.alpha + ";" : "") + '" title="' + escapeHtml(p.name + (rs ? " · relation " + rs.score + "/100 (" + rs.label.toLowerCase() + ")" : "")) + '">' +
       '<span class="ppl-node-label">' + escapeHtml(p.name) + '</span>' +
     '</div>';
   }
@@ -20217,7 +20220,7 @@
   }
   /* People page (constellation and list). Same pattern as Health: loaded on first open, in order, and
      versioned against the service worker's cache-first rule: bump PEOPLE_VER with each release of people/*. */
-  var PEOPLE_VER = "7", peopleLoading = null, peopleNotesMemo = null;
+  var PEOPLE_VER = "8", peopleLoading = null, peopleNotesMemo = null;
   // The 3D graph is parked: it only shows after localStorage.setItem("pp_people_3d", "1").
   function people3dEnabled(){ try{ return localStorage.getItem("pp_people_3d") === "1"; } catch(e){ return false; } }
   function peopleLoadScripts(){
