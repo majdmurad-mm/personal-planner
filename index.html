@@ -3756,9 +3756,32 @@
 
 
     <section id="locationSection" style="display:none;">
-      <div class="main-header wb-compact-header">
+      <style>
+        /* Location, in the same design system as Health, Finance and the Command Center: Archivo for text, a serif
+           heading, quiet cards, pill buttons, no monospace and no orange. Colours of markers come from shared/areas. */
+        #locationSection{ --l-card:var(--bg-raised); --l-line:var(--border); --l-ink:var(--text); --l-dim:var(--text-dim); font-family:"Archivo", system-ui, -apple-system, "Segoe UI", sans-serif; }
+        #locationSection .loc-head{ display:flex; align-items:flex-end; gap:16px; flex-wrap:wrap; margin-bottom:14px; }
+        #locationSection .loc-head .eyebrow{ font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--l-dim); font-weight:600; margin:0 0 2px; }
+        #locationSection .loc-head h1{ font:500 clamp(26px, 3vw, 36px)/1.1 "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif; text-transform:none; letter-spacing:-.01em; margin:0; }
+        #locationSection .loc-head p.sub{ margin:4px 0 0; color:var(--l-dim); font-size:14px; }
+        #locationSection .loc-legend-panel, #locationSection .loc-toolbar{ border:1px solid var(--l-line); border-radius:14px; background:var(--l-card); box-shadow:0 8px 24px rgba(0,0,0,.08); }
+        #locationSection .loc-legend-head, #locationSection .loc-tb-label{ font-family:inherit; font-size:11px; letter-spacing:.1em; text-transform:uppercase; font-weight:600; color:var(--l-dim); }
+        #locationSection .loc-toolbar{ padding:10px 12px; gap:12px 18px; }
+        #locationSection .btn{ font-family:inherit; font-size:13px; text-transform:none; letter-spacing:0; border-radius:999px; padding:6px 12px; border:1px solid var(--l-line); background:transparent; color:var(--l-ink); box-shadow:none; }
+        #locationSection .btn:hover{ border-color:var(--l-dim); box-shadow:none; }
+        #locationSection .btn.on, #locationSection .btn.active{ background:var(--l-ink); border-color:var(--l-ink); color:var(--bg); }
+        #locationSection .wb-save-status{ font-family:inherit; font-size:13px; color:var(--l-dim); }
+        #locationSection .panel-hint{ font-family:inherit; font-size:12.5px; }
+        #locationSection .loc-legend-list{ font-family:inherit; font-size:13.5px; }
+        #locationSection .loc-unplaced{ margin:8px 0 0; padding:8px 12px; border:1px dashed var(--l-line); border-radius:10px; font-size:13px; color:var(--l-dim); }
+        #locationSection .loc-unplaced b{ color:var(--l-ink); font-weight:600; }
+        #locationSection .loc-unplaced button{ margin-left:8px; }
+      </style>
+      <div class="loc-head">
         <div>
-          <h1>location</h1>
+          <p class="eyebrow">Location</p>
+          <h1>Where things are</h1>
+          <p class="sub">Tasks with a place, the people you know, your saved places and where you have been.</p>
         </div>
       </div>
       <div class="loc-page-body">
@@ -3797,8 +3820,9 @@
               <button class="btn" id="locExportGpxBtn" type="button" title="Download your recorded location history as a .gpx file">⇪ export</button>
             </div>
             <input type="file" id="locImportFile" accept=".json,.gpx,application/json" hidden>
-            <span class="wb-save-status" id="locStatus"></span>
+            <span class="wb-save-status" id="locStatus" role="status" aria-live="polite"></span>
           </div>
+          <div class="loc-unplaced" id="locUnplaced" hidden></div>
           <p class="panel-hint wb-hint-float wb-pan-hint">Drag to pan · scroll or pinch to zoom · click any marker to open it.</p>
           <div class="loc-map" id="locMap"></div>
         </div>
@@ -6970,7 +6994,7 @@
     // check above), so it doesn't fight a user's own manual pan/zoom on every unrelated re-render.
     var bounds = L.latLngBounds([[HOME_MAP_BASE_LAT, HOME_MAP_BASE_LON]]);
     located.forEach(function(a){
-      var aColor = actionMapColor(a, "#2DD4BF");
+      var aColor = actionMapColor(a, (window.PPAreas ? PPAreas.color("none", currentTheme()) : "#8A8378"));
       var marker = L.circleMarker([a.locationLat, a.locationLng], { radius:6, color:aColor, weight:1.5, opacity:0.9, fillColor:aColor, fillOpacity:0.55 });
       marker.bindPopup('<div class="loc-city-popup"><b>' + escapeHtml(a.title || "Untitled") + '</b>' + (a.timeOfDay ? '<br>' + escapeHtml(fmtTimeOfDay(a.timeOfDay)) : '') + '</div>');
       marker.on("click", function(){ editAction(a.id); });
@@ -12207,7 +12231,7 @@
       state.actions.forEach(function(a){
         if(a.locationLat == null || a.locationLng == null) return;
         // Dot color mirrors the map marker's — area-derived — so the sidebar and the map agree.
-        items.push({ kind:"action", id:a.id, label:a.title || "Untitled", sub:a.date || "", lat:a.locationLat, lng:a.locationLng, color:actionMapColor(a, "#2DD4BF") });
+        items.push({ kind:"action", id:a.id, label:a.title || "Untitled", sub:a.date || "", lat:a.locationLat, lng:a.locationLng, color:actionMapColor(a, (window.PPAreas ? PPAreas.color("none", currentTheme()) : "#8A8378")) });
       });
     }
     if(document.getElementById("locLayerPeopleBtn").classList.contains("on")){
@@ -12218,7 +12242,7 @@
     }
     if(document.getElementById("locLayerPoiBtn").classList.contains("on")){
       state.pois.forEach(function(poi){
-        items.push({ kind:"poi", id:poi.id, label:poi.name || "Unnamed", sub:poi.notes || "point of interest", lat:poi.lat, lng:poi.lng, color:"#FFD54A" });
+        items.push({ kind:"poi", id:poi.id, label:poi.name || "Unnamed", sub:poi.notes || "point of interest", lat:poi.lat, lng:poi.lng, color:(window.PPAreas ? PPAreas.color("none", currentTheme()) : "#8A8378") });
       });
     }
     return items;
@@ -12248,7 +12272,9 @@
   // "By relationship" mode colors, per the app's relationship vocabulary (see RELATIONSHIPS) — Mentor
   // and Other aren't specified by name but still need a color, picked to stay visually distinct from
   // the four named ones.
-  var LOC_RELATIONSHIP_COLORS = { Family:"#22C55E", Friend:"#22D3EE", Colleague:"#FB923C", Partner:"#F472B6", Mentor:"#A78BFA", Other:"#9CA3AF" };
+  // Shades of the people blue (shared/areas.js), one per relationship; read at draw time so the theme is right.
+  var LOC_REL_ORDER = ["Family", "Friend", "Partner", "Colleague", "Mentor", "Other"];
+  var LOC_RELATIONSHIP_COLORS = new Proxy({}, { get: function(_t, rel){ var i = LOC_REL_ORDER.indexOf(String(rel)); return window.PPAreas ? PPAreas.peopleShade(i < 0 ? 5 : i, currentTheme()) : "#007AC5"; } });
   // When "by relationship" splits one city into several same-location markers (one per relationship
   // present there), stacking them exactly on top of each other would hide all but the last drawn —
   // this spreads them evenly in a small ring around the true point instead.
@@ -12297,9 +12323,12 @@
       delete locGeocodeQueued[id];
       var p = state.people.find(function(x){ return x.id === id; });
       if(p && p.location && p.homeLat == null){
-        if(statusEl) statusEl.textContent = "locating " + p.name + "… (" + locGeocodeQueue.length + " left)";
+        if(statusEl) statusEl.textContent = "Placing " + p.name + " on the map… (" + locGeocodeQueue.length + " left)";
         try{
-          var res = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + encodeURIComponent(p.location), { headers: { "Accept": "application/json" } });
+          var ctl = window.AbortController ? new AbortController() : null, tmo = setTimeout(function(){ if(ctl) ctl.abort(); }, 8000);
+          var res = await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + encodeURIComponent(p.location), { headers: { "Accept": "application/json" }, signal: ctl ? ctl.signal : undefined });
+          clearTimeout(tmo);
+          if(!res.ok) throw new Error("geocoder answered " + res.status);
           var rows = await res.json();
           if(rows && rows.length){
             p.homeLat = parseFloat(rows[0].lat);
@@ -12317,6 +12346,16 @@
     }
     locGeocodeRunning = false;
     if(statusEl) statusEl.textContent = "";
+    locRenderUnplaced();
+  }
+  // People whose address the map couldn't place: a short list with a way to try again, instead of a stuck spinner.
+  function locRenderUnplaced(){
+    var el = document.getElementById("locUnplaced"); if(!el) return;
+    var miss = (state.people || []).filter(function(p){ return locGeocodeFailedIds[p.id] && p.location && p.homeLat == null; });
+    el.hidden = !miss.length;
+    el.innerHTML = miss.length ? "Couldn’t place " + miss.length + (miss.length === 1 ? " person" : " people") + ": " + miss.slice(0, 6).map(function(p){ return "<b>" + escapeHtml(p.name || "Unnamed") + "</b> (" + escapeHtml(p.location) + ")"; }).join(", ") + (miss.length > 6 ? " and " + (miss.length - 6) + " more" : "") + '. Check the address on their page. <button class="btn" type="button" id="locRetryPlace">Try again</button>' : "";
+    var b = document.getElementById("locRetryPlace");
+    if(b) b.onclick = function(){ miss.forEach(function(p){ delete locGeocodeFailedIds[p.id]; locQueuePersonGeocode(p); }); el.hidden = true; };
   }
 
   function locRenderPeopleLayer(){
@@ -12379,7 +12418,7 @@
     locActionsLayer.clearLayers();
     state.actions.forEach(function(a){
       if(a.locationLat == null || a.locationLng == null) return;
-      var color = actionMapColor(a, "#2DD4BF");
+      var color = actionMapColor(a, (window.PPAreas ? PPAreas.color("none", currentTheme()) : "#8A8378"));
       var marker = L.circleMarker([a.locationLat, a.locationLng], { radius:6, color:color, weight:1.5, opacity:0.85, fillColor:color, fillOpacity:0.5 });
       marker.bindPopup('<div class="loc-city-popup"><b>' + escapeHtml(a.title || "Untitled") + '</b>' + (a.date ? "<br>" + escapeHtml(a.date) : "") + '</div>');
       marker.on("click", function(){ editAction(a.id); });
