@@ -8384,7 +8384,7 @@
       homeLat:nn(r.home_lat), homeLng:nn(r.home_lng),
       circle:nn(r.circle), quality:r.quality||null, energy:r.energy||null, lastContactAt:r.last_contact_at||null, lastContactKind:r.last_contact_kind||null,
       rhythmDays:nn(r.rhythm_days), birthdayMonth:nn(r.birthday_month), birthdayDay:nn(r.birthday_day), birthdayYear:nn(r.birthday_year),
-      archivedAt:r.archived_at||null, inMemory:!!r.in_memory, kinRole:r.kin_role||"", kinSide:r.kin_side||"" };
+      archivedAt:r.archived_at||null, inMemory:!!r.in_memory, kinRole:r.kin_role||"", kinSide:r.kin_side||"", job:r.job||"", about:r.about||"" };
   }
   function personPayload(snapshot){
     return { id:snapshot.id, name:snapshot.name, relationship:snapshot.relationship, contact:snapshot.contact, notes:snapshot.notes, position:snapshot.position,
@@ -19943,6 +19943,11 @@
   function fxPeopleText(e, a, b){
     var who = function(id){ var p = state.people.concat(state.peopleArchived || []).find(function(x){ return x.id === id; }); return p ? p.name : "someone"; };
     var r = e.op === "delete" ? b : a, gone = a.archived_at && !b.archived_at, back = b.archived_at && !a.archived_at;
+    if(e.table_name === "person_profile_notes"){
+      // Neither your view nor the research text is shown in the feed, only what kind of note it was.
+      var pk = r.kind === "research" ? "research" : "your view";
+      return (gone || e.op === "delete" ? "Hid " + pk + " about " : back ? "Brought back " + pk + " about " : e.op === "insert" ? (r.kind === "research" ? "Added research about " : "Wrote your view of ") : "Updated " + pk + " about ") + who(r.person_id);
+    }
     if(e.table_name === "person_situations"){
       // What the note says stays on the People page.
       return (gone || e.op === "delete" ? "Hid a note about " : back ? "Brought back a note about " : e.op === "insert" ? "Noted how things are with " : "Updated a note about ") + who(r.person_id);
@@ -20220,7 +20225,7 @@
   }
   /* People page (constellation and list). Same pattern as Health: loaded on first open, in order, and
      versioned against the service worker's cache-first rule: bump PEOPLE_VER with each release of people/*. */
-  var PEOPLE_VER = "8", peopleLoading = null, peopleNotesMemo = null;
+  var PEOPLE_VER = "9", peopleLoading = null, peopleNotesMemo = null;
   // The 3D graph is parked: it only shows after localStorage.setItem("pp_people_3d", "1").
   function people3dEnabled(){ try{ return localStorage.getItem("pp_people_3d") === "1"; } catch(e){ return false; } }
   function peopleLoadScripts(){
@@ -20258,7 +20263,7 @@
   async function peopleSavePerson(id, patch){
     var p = state.people.concat(state.peopleArchived || []).find(function(x){ return x.id === id; });
     if(!p) throw new Error("person not found");
-    var cols = { quality:"quality", energy:"energy", circle:"circle", rhythmDays:"rhythm_days", lastContactAt:"last_contact_at", lastContactKind:"last_contact_kind", birthdayMonth:"birthday_month", birthdayDay:"birthday_day", kinRole:"kin_role", kinSide:"kin_side" };
+    var cols = { quality:"quality", energy:"energy", circle:"circle", rhythmDays:"rhythm_days", lastContactAt:"last_contact_at", lastContactKind:"last_contact_kind", birthdayMonth:"birthday_month", birthdayDay:"birthday_day", kinRole:"kin_role", kinSide:"kin_side", job:"job", about:"about" };
     var payload = {}, prev = {};
     Object.keys(patch).forEach(function(k){ if(cols[k]){ payload[cols[k]] = patch[k]; prev[k] = p[k]; } });
     var r = await sb.from("people").update(payload).eq("id", id);

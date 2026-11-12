@@ -2383,7 +2383,7 @@ tool("create_person", {
 });
 
 tool("edit_person", {
-  description: "Edit an existing person by id: name, relationship, contact, notes, group, or birthday (shows in People's Coming up). Only the fields you pass are changed.",
+  description: "Edit an existing person by id: name, relationship, contact, notes, group, job, about (what they do), or birthday (shows in People's Coming up). Only the fields you pass are changed. For things found online use save_person_research instead of notes.",
   inputSchema: z.object({
     id: z.string(),
     name: z.string().optional(),
@@ -2394,9 +2394,13 @@ tool("edit_person", {
     birthdayMonth: z.number().int().min(1).max(12).nullable().optional().describe("1-12; null clears the birthday"),
     birthdayDay: z.number().int().min(1).max(31).nullable().optional(),
     birthdayYear: z.number().int().min(1900).max(2100).nullable().optional(),
+    job: z.string().max(160).nullable().optional().describe("what they work as; null clears it"),
+    about: z.string().max(4000).nullable().optional().describe("what they do: work, projects, what they spend their time on; null clears it"),
   }),
   handler: async (args: any) => {
     const patch: Record<string, unknown> = {};
+    if (args.job !== undefined) patch.job = args.job || null;
+    if (args.about !== undefined) patch.about = args.about || null;
     if (args.birthdayMonth !== undefined) patch.birthday_month = args.birthdayMonth;
     if (args.birthdayDay !== undefined) patch.birthday_day = args.birthdayDay;
     if (args.birthdayYear !== undefined) patch.birthday_year = args.birthdayYear;
@@ -2610,6 +2614,26 @@ tool("get_family_tree", {
   },
 });
 
+// ---- People: research found online, kept apart from the owner's own view ----
+// The owner's opinions (kind 'opinion') are never read or written here.
+tool("save_person_research", {
+  description: "Save what you found online about one person (their work, role, projects, public talks or writing) as a Research note on their People page, with the links you used. Kept separate from the owner's own view, which you cannot see. Only save public, relevant facts; no addresses, health, finances or private life. Also see edit_person for job and about.",
+  inputSchema: z.object({
+    person: PERSON_REF,
+    text: z.string().min(10).max(6000).describe("a short summary in plain words, facts only, no speculation"),
+    sources: z.array(z.object({ url: z.string().url().max(800), title: z.string().max(200).optional() })).min(1).max(10).describe("the pages the facts come from"),
+  }),
+  handler: async (args: { person: string; text: string; sources: { url: string; title?: string }[] }) => {
+    const f = await findPerson(args.person);
+    if (!f.person) return fail(f.error!);
+    const src = args.sources.filter((s) => /^https?:\/\//i.test(s.url)).map((s) => ({ url: s.url, title: s.title || undefined }));
+    if (!src.length) return fail("each source needs an http(s) link");
+    const { data, error } = await db.from("person_profile_notes").insert({ user_id: OWNER, person_id: f.person.id, kind: "research", text: args.text.trim(), sources: src, author: "claude", noted_on: berlinToday() }).select("id").single();
+    if (error) return fail(error.message + (/person_profile_notes/.test(error.message) ? " (the owner needs to run _Memory/migration_person_profile.sql first)" : ""));
+    return ok({ ok: true, id: data.id, person: f.person.name, note: "Saved under Research on their People page. The owner can hide it there." });
+  },
+});
+
 tool("get_person_context", {
   description:
     "Everything the planner knows about one person, in one call: profile, where they stand (circle, quality, energy, rhythm), last contact, the current situation note and recent history, who they are linked to, open actions and upcoming events linked to them, and recent notes that mention them. Call this before advising the user about someone or before writing a new situation note.",
@@ -2621,12 +2645,13 @@ tool("get_person_context", {
     const f = await findPerson(args.person);
     if (!f.person) return fail(f.error!);
     const p = f.person, today = berlinToday();
-    const [sitR, linkR, actR, evR, noteR] = await Promise.all([
+    const [sitR, linkR, actR, evR, noteR, resR] = await Promise.all([
       owned("person_situations").eq("person_id", p.id).is("archived_at", null).order("noted_on", { ascending: false }).order("created_at", { ascending: false }).limit(1 + (args.history ?? 5)),
       owned("person_links").is("archived_at", null).or("person_a.eq." + p.id + ",person_b.eq." + p.id),
       owned("actions").contains("linked_people_ids", [p.id]).eq("done", false).is("archived_at", null),
       owned("events").contains("linked_people_ids", [p.id]).gte("date", today).order("date").limit(20),
       owned("journal").is("archived_at", null).ilike("text", "%" + String(p.name).replace(/[%_]/g, " ") + "%").order("date", { ascending: false }).limit(8),
+      owned("person_profile_notes").eq("person_id", p.id).eq("kind", "research").is("archived_at", null).order("noted_on", { ascending: false }).limit(10),   // never kind 'opinion'
     ]);
     const err = sitR.error || linkR.error;
     if (err) return fail(err.message);
@@ -2639,7 +2664,8 @@ tool("get_person_context", {
     const sits = (sitR.data || []).map((x) => ({ id: x.id, text: x.text, notedOn: x.noted_on, author: x.author }));
     const days = p.last_contact_at ? Math.round((Date.parse(today) - Date.parse(p.last_contact_at)) / 86400000) : null;
     return ok({
-      id: p.id, name: p.name, relationship: p.relationship, socialGroup: p.social_group, location: p.location, yearMet: p.year_met, notes: p.notes,
+      id: p.id, name: p.name, relationship: p.relationship, socialGroup: p.social_group, location: p.location, yearMet: p.year_met, notes: p.notes, job: p.job || null, about: p.about || null,
+      research: resR.error ? [] : (resR.data || []).map((x) => ({ id: x.id, text: x.text, sources: x.sources, notedOn: x.noted_on, author: x.author })),
       circle: p.circle, circleName: CIRCLE_NAMES[p.circle] || null, quality: p.quality, energy: p.energy,
       rhythmDays: p.rhythm_days, lastContactAt: p.last_contact_at, lastContactKind: p.last_contact_kind, daysSinceContact: days,
       birthday: p.birthday_month && p.birthday_day ? { month: p.birthday_month, day: p.birthday_day, year: p.birthday_year || null } : null,

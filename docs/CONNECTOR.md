@@ -11,7 +11,7 @@ A field that belongs to another kind is refused with a message naming the allowe
 | | Tools | tools/list size |
 |---|---|---|
 | Owner connector before | 146 | 130,939 bytes (≈ 36.4k tokens) |
-| Owner connector now | **92** | 110,447 bytes (≈ 30.7k tokens) |
+| Owner connector now | **93** | 111,915 bytes (≈ 31.1k tokens) |
 | Voice edition (`/mcp-voice`) | **12** | 3,709 bytes (≈ 1k tokens) |
 | Agent connector (agent token, unchanged) | 28 | 25,195 bytes |
 
@@ -125,9 +125,9 @@ The agent connector still serves its tools under their old names, so the Agent P
 - `get_finance`: summary, snapshot
 - `comm_status`: sources, whatsapp
 
-## Tools that stayed as they were (73)
+## Tools that stayed as they were (74)
 
-`apply_plan`, `browse_onedrive_folders`, `cluster_knowledge`, `connector_info`, `create_action`, `create_event`, `create_goal`, `create_item`, `create_person`, `create_project`, `edit_action`, `edit_event`, `edit_goal`, `edit_item`, `edit_note`, `edit_person`, `edit_project`, `finish_spider_web`, `geocode_address`, `get_agenda`, `get_backlog`, `get_decision`, `get_exercise_progress`, `get_family_tree`, `get_health_summary`, `get_horizon`, `get_item`, `get_knowledge_item`, `get_location_history`, `get_month`, `get_next_session`, `get_person_context`, `get_spider_web`, `get_sync_status`, `get_today_overview`, `get_workout_history`, `import_finance_snapshot`, `list_knowledge_sources`, `log_checkin`, `log_contact`, `log_transaction`, `mail_attachment`, `mail_folders`, `mail_get`, `mail_search`, `map_knowledge`, `memory_archive`, `memory_save`, `mute_item`, `plan_day`, `plan_week`, `quick_add`, `read_scans`, `save_whatsapp_chat`, `schedule_from_backlog`, `search_everything`, `search_items`, `search_knowledge`, `set_action_decision`, `set_item_location`, `set_item_type`, `set_main_thing`, `set_milestone`, `set_person_situation`, `set_relationship`, `set_sleep_correction`, `spider_note`, `spin_thread`, `start_spider_web`, `unweave`, `weave_theme`, `weekly_review`, `write_health_brief`
+`apply_plan`, `browse_onedrive_folders`, `cluster_knowledge`, `connector_info`, `create_action`, `create_event`, `create_goal`, `create_item`, `create_person`, `create_project`, `edit_action`, `edit_event`, `edit_goal`, `edit_item`, `edit_note`, `edit_person`, `edit_project`, `finish_spider_web`, `geocode_address`, `get_agenda`, `get_backlog`, `get_decision`, `get_exercise_progress`, `get_family_tree`, `get_health_summary`, `get_horizon`, `get_item`, `get_knowledge_item`, `get_location_history`, `get_month`, `get_next_session`, `get_person_context`, `get_spider_web`, `get_sync_status`, `get_today_overview`, `get_workout_history`, `import_finance_snapshot`, `list_knowledge_sources`, `log_checkin`, `log_contact`, `log_transaction`, `mail_attachment`, `mail_folders`, `mail_get`, `mail_search`, `map_knowledge`, `memory_archive`, `memory_save`, `mute_item`, `plan_day`, `plan_week`, `quick_add`, `read_scans`, `save_person_research`, `save_whatsapp_chat`, `schedule_from_backlog`, `search_everything`, `search_items`, `search_knowledge`, `set_action_decision`, `set_item_location`, `set_item_type`, `set_main_thing`, `set_milestone`, `set_person_situation`, `set_relationship`, `set_sleep_correction`, `spider_note`, `spin_thread`, `start_spider_web`, `unweave`, `weave_theme`, `weekly_review`, `write_health_brief`
 
 ## Voice edition: `/mcp-voice`
 
@@ -190,3 +190,10 @@ With `save` it stores what Claude read as that page's text (Supabase only), so s
 Files come from the planner's own storage or from OneDrive folders set to **Index**; links-only and private files and
 zones kept from Claude are never opened. Fax-style (CCITT), JBIG2 and JPEG 2000 pages cannot be shown and are listed
 with the reason. Each read and save appears in the spider's steps on the Knowledge page.
+
+## People: job, about, research (save_person_research)
+
+`edit_person` takes `job` and `about` (what they do). `save_person_research` saves what Claude found online about a person,
+with at least one source link, as a Research note on their People page. The owner's own view of a person (kind `opinion`)
+is a separate list written only in the app; no connector tool reads or writes it, and `get_person_context` returns
+research but never the owner's view. Both kinds live in `person_profile_notes` behind RLS and are hidden, never deleted.

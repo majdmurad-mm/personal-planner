@@ -73,7 +73,8 @@
         last: last, lastDate: r.lastContactAt || null, kind: KIND[r.lastContactKind] ? r.lastContactKind : "other", rhythm: r.rhythmDays || null,
         bday: bday, bdayText: r.birthdayMonth && r.birthdayDay ? r.birthdayDay + " " + MON[r.birthdayMonth - 1] : "", bm: r.birthdayMonth || null, bd: r.birthdayDay || null,
         archived: !!r.archivedAt, inMemory: !!r.inMemory, sits: [], threads: [], up: [], mentions: [], links: [],
-        first: shortName(r.name), kinRole: KIN[r.kinRole] ? r.kinRole : "", kinSide: SIDE[r.kinSide] ? r.kinSide : ""
+        first: shortName(r.name), kinRole: KIN[r.kinRole] ? r.kinRole : "", kinSide: SIDE[r.kinSide] ? r.kinSide : "",
+        job: r.job || "", about: r.about || "", opinions: [], research: []
       };
       p.off = p.archived || p.inMemory || p.quality === "cut_off";       // not on the map
       p.rs = relScore(r, today);
@@ -81,6 +82,9 @@
     });
     (raw.sits || []).forEach(function (s) { var p = byId[s.person_id]; if (p && !s.archived_at) p.sits.push({ id: s.id, t: s.text, date: s.noted_on, by: s.author === "claude" ? "claude" : "me", at: s.created_at || "" }); });
     P.forEach(function (p) { p.sits.sort(function (a, b) { return a.date === b.date ? (a.at < b.at ? 1 : -1) : (a.date < b.date ? 1 : -1); }); });
+    /* profile notes: your view and research are kept in separate lists */
+    (raw.profile || []).forEach(function (n) { var p = byId[n.person_id]; if (!p || n.archived_at) return; (n.kind === "research" ? p.research : p.opinions).push({ id: n.id, t: n.text, date: n.noted_on, by: n.author === "claude" ? "claude" : "me", at: n.created_at || "", src: Array.isArray(n.sources) ? n.sources.filter(function (s) { return s && /^https?:\/\//i.test(String(s.url || "")); }) : [] }); });
+    P.forEach(function (p) { var o = function (a, b) { return a.date === b.date ? (a.at < b.at ? 1 : -1) : (a.date < b.date ? 1 : -1); }; p.opinions.sort(o); p.research.sort(o); });
     (raw.links || []).forEach(function (l) {
       var a = byId[l.person_a], b = byId[l.person_b]; if (!a || !b || l.archived_at) return;
       a.links.push({ id: b.id, linkId: l.id, quality: l.quality, kind: l.kind || null, parent: l.from_person || null }); b.links.push({ id: a.id, linkId: l.id, quality: l.quality, kind: l.kind || null, parent: l.from_person || null });
@@ -165,13 +169,16 @@
   /* ---------- SAMPLE: invented people, shown only when signed out or when nobody has been added ---------- */
   function sample(today) {
     var seed = 90217, rnd = function () { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }, pick = function (a) { return a[Math.floor(rnd() * a.length)]; };
-    var people = [], sits = [], links = [], actions = [], events = [], notes = [], d = function (n) { return isoAdd(today, -n); };
+    var people = [], sits = [], links = [], actions = [], events = [], notes = [], profile = [], d = function (n) { return isoAdd(today, -n); };
     function add(o) { o.id = "s" + people.length; people.push(o); return o; }
     function sit(p, n, by, t) { sits.push({ id: "t" + sits.length, person_id: p.id, text: t, noted_on: d(n), author: by, created_at: d(n) }); }
     function link(a, b, q) { if (a === b) return; var x = a.id < b.id ? a : b, y = x === a ? b : a; if (links.some(function (l) { return l.person_a === x.id && l.person_b === y.id; })) return; links.push({ id: "l" + links.length, person_a: x.id, person_b: y.id, quality: q || "ok" }); }
     var lena = add({ name: "Lena Hartwig", group: "Partner", relationship: "Partner", kinRole: "partner", circle: 1, quality: "strong", energy: "nourishing", location: "Leipzig", yearMet: 2023, lastContactAt: d(0), lastContactKind: "met" });
     sit(lena, 1, "claude", "A heavy month for both of us. She has her thesis defence on the 20th and I've been cooking so she can write."); sit(lena, 16, "me", "Talked about spending Christmas with her parents this year.");
     var jonas = add({ name: "Jonas Albrecht", group: "Hometown", relationship: "Friend", circle: 1, quality: "strong", energy: "nourishing", location: "Hamburg", yearMet: 2003, lastContactAt: d(37), lastContactKind: "call", rhythmDays: 14 });
+    jonas.job = "Product designer"; jonas.about = "Designs booking software for a Hamburg travel start-up; started there in October.";
+    profile.push({ id: "pr1", person_id: jonas.id, kind: "research", text: "Sample research: speaks at a small design meetup twice a year; the company's site lists him as design lead.", sources: [{ url: "https://example.com/team", title: "Company team page (sample)" }], author: "claude", noted_on: d(4) });
+    profile.push({ id: "po1", person_id: jonas.id, kind: "opinion", text: "Sample view: the friend I can call about anything; we only need a little time to be back where we were.", sources: [], author: "me", noted_on: d(20) });
     sit(jonas, 6, "claude", "Nothing wrong, just a busy stretch on both sides. He started the new job in October and we keep missing each other's calls.");
     var mira = add({ name: "Mira Solberg", group: "Family", relationship: "Family", kinRole: "sister", circle: 1, quality: "strong", energy: "nourishing", location: "Oslo", lastContactAt: d(3), lastContactKind: "call", rhythmDays: 14, birthdayMonth: +isoAdd(today, 6).slice(5, 7), birthdayDay: +isoAdd(today, 6).slice(8, 10) });
     sit(mira, 3, "me", "She's settling into the new flat. Wants us all there in spring.");
@@ -200,7 +207,7 @@
       for (i = first; i < people.length; i++) if (rnd() < .7) link(people[i], people[first + Math.floor(rnd() * (people.length - first))]);
     });
     [lena, mira, omar, ada].forEach(function (x) { link(jonas, x, "strong"); }); link(lena, mira); link(nadia, tomas); link(nadia, mira, "strained");
-    return { people: people, sits: sits, links: links, actions: actions, events: events, notes: notes, today: today };
+    return { people: people, sits: sits, links: links, actions: actions, events: events, notes: notes, profile: profile, today: today };
   }
 
   window.PPPeopleCore = { RINGS: RINGS, QL: QL, EN: EN, KIND: KIND, RHYTHMS: RHYTHMS, MON: MON, RLINE: RLINE, build: build, pulse: pulse, layout: layout, linePath: linePath, arc: arc,

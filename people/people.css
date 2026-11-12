@@ -258,3 +258,16 @@ svg .nd,svg .ln{transition:opacity .25s}
 .rsv{text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}
 .rst{margin-top:10px;font-size:13px}.rsn{margin-top:8px;font-size:11.5px;color:var(--muted)}
 .rsleg b{display:inline-flex;gap:2px;margin-right:6px;vertical-align:middle}.rsleg em{width:8px;height:8px;border-radius:50%;background:currentColor;display:inline-block}
+
+/* about, your view, research */
+.who .job{color:var(--text);font-size:13.5px;margin-top:1px}
+.prof{margin:16px 0 0;padding:14px 0 0;border-top:1px solid var(--line)}
+.prof .lab{display:flex;justify-content:space-between;align-items:center}
+.prof .pjob{font-weight:600;margin-top:4px}.prof .pabout{margin-top:4px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5}
+.pf{display:grid;gap:4px;margin-top:8px;font-size:12.5px;color:var(--muted)}.pf .field,.pf textarea,.pnotes textarea,.pnotes .field{width:100%;box-sizing:border-box}
+.pnotes{margin-top:14px;padding:10px 12px;border-radius:12px;border:1px solid var(--line)}
+.pnotes.op{border-style:dashed}
+.pnotes .pnote{font-size:11.5px;color:var(--muted);margin:2px 0 6px}
+.pnotes ul{list-style:none;padding:0;margin:6px 0 0;display:grid;gap:10px}.pnotes li p{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5}
+.pnotes .src{font-size:12px;margin-top:3px}.pnotes .src a{color:inherit;text-decoration:underline;text-underline-offset:2px}
+.pnotes textarea{min-height:76px;margin-top:6px}.pnotes .field{margin-top:6px}

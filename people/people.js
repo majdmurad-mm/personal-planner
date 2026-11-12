@@ -6,7 +6,7 @@
   "use strict";
   var SRC = document.currentScript && document.currentScript.src || "", BASE = SRC.replace(/[^\/]*$/, ""), VER = (SRC.match(/[?&]v=([^&]+)/) || [])[1] || "1";
   var C = window.PPPeopleCore, K = window.PPPeopleSky, T = window.PPPeopleTree, esc = K.esc, av = K.av, RINGS = C.RINGS, QL = C.QL, EN = C.EN;
-  var S = { opts: null, root: null, pp: null, M: null, raw: null, sits: [], links: [], loadedFor: null, sample: false, view: "sky",
+  var S = { opts: null, root: null, pp: null, M: null, raw: null, sits: [], links: [], profile: [], profReady: null, loadedFor: null, sample: false, view: "sky",
     st: { sel: null, showConn: false, flt: {}, group: "", ring: "", quality: "", q: "", narrow: false }, open: null };
   var Z = { box: { sky: null, tree: null }, ptrs: {}, n: 0, moved: false };   // zoom: the current viewBox per view (null = home)
   function $(sel) { return S.root.querySelector(sel); }
@@ -73,7 +73,7 @@
     var o = S.opts, ctx = o.ctx ? o.ctx() : {}, today = ctx.today || new Date().toISOString().slice(0, 10);
     S.sample = !o.userId || !(o.people || []).length;
     if (S.sample) { if (!S.raw || !S.raw.isSample) { S.raw = C.sample(today); S.raw.isSample = true; } return S.raw; }
-    S.raw = { people: o.people, actions: ctx.actions, events: ctx.events, notes: ctx.notes, sits: S.sits, links: S.links, today: today, colors: o.groupColors || null };
+    S.raw = { people: o.people, actions: ctx.actions, events: ctx.events, notes: ctx.notes, sits: S.sits, links: S.links, profile: S.profile, today: today, colors: o.groupColors || null };
     return S.raw;
   }
   function load() {
@@ -84,6 +84,11 @@
         if (r[0].error || r[1].error) { console.warn(r[0].error || r[1].error); say("Some People details could not be loaded."); }
         S.sits = r[0].data || []; S.links = r[1].data || []; refresh();
       }).catch(function (e) { console.warn(e); S.loadedFor = null; });
+    // profile notes (your view, research); the table arrives with migration_person_profile.sql
+    o.sb.from("person_profile_notes").select("*").is("archived_at", null).order("noted_on", { ascending: false }).limit(5000).then(function (r) {
+      if (r.error) { S.profReady = false; if (S.st && S.st.sel) panel(); return; }
+      S.profReady = true; S.profile = r.data || []; refresh();
+    }, function () { S.profReady = false; });
   }
   function person(id) { return S.M && S.M.byId[id]; }
   function rawPerson(id) { return (S.raw.people || []).filter(function (p) { return p.id === id; })[0]; }
@@ -190,7 +195,7 @@
   function panel() {
     var p = person(S.st.sel), rail = $("#rail"); rail.classList.toggle("person", !!p); if (!p) { $("#panel").innerHTML = ""; return; }
     var first = p.name.split(" ")[0], s = p.sits[0], by = function (x) { return (x.by === "claude" ? "via Claude" : "written by you") + " · " + C.fmtDay(x.date); },
-      h = '<button class="back" id="back">← ' + (S.st.narrow ? "Close" : "Pulse") + '</button><div class="who">' + av(p) + "<div><h3>" + esc(p.name) + "</h3><p>" + esc([p.rel, p.group, RINGS[p.circle] + " circle", p.loc].filter(Boolean).join(" · ")) + "</p></div></div>";
+      h = '<button class="back" id="back">← ' + (S.st.narrow ? "Close" : "Pulse") + '</button><div class="who">' + av(p) + "<div><h3>" + esc(p.name) + "</h3>" + (p.job ? '<p class="job">' + esc(p.job) + "</p>" : "") + "<p>" + esc([p.rel, p.group, RINGS[p.circle] + " circle", p.loc].filter(Boolean).join(" · ")) + "</p></div></div>";
     if (p.yearMet) h += '<p class="how">In your life since ' + esc(p.yearMet) + "</p>";
     if (p.archived) h += '<p class="state">Archived. Hidden from the map and the rest of the planner; nothing was deleted.</p>';
     else if (p.inMemory) h += '<p class="state">In memory. Kept here quietly, off the map.</p>';
@@ -199,6 +204,7 @@
     if (S.open === "sit") h += '<textarea id="sitText" aria-label="How things are with ' + esc(first) + '" placeholder="How are things with ' + esc(first) + ' right now?"></textarea><div class="acts"><button class="btn primary" id="sitSave">Save note</button><button class="btn" data-open="">Cancel</button></div>';
     else h += (s ? "<p>" + esc(s.t) + '</p><span class="by">' + by(s) + '<button class="lk" data-hide="' + s.id + '">Hide</button></span>' : '<p class="empty">Nothing written yet. Write a line here, or tell Claude how things are with ' + esc(first) + " and it lands here.</p>") + '<div class="acts"><button class="btn" data-open="sit">' + (s ? "Write an update" : "Write a note") + "</button></div>";
     if (p.sits.length > 1) h += '<details class="hist"><summary>Earlier notes (' + (p.sits.length - 1) + ")</summary><ul>" + p.sits.slice(1).map(function (x) { return "<li>" + esc(x.t) + '<span class="by">' + by(x) + '<button class="lk" data-hide="' + x.id + '">Hide</button></span></li>'; }).join("") + "</ul></details>";
+    h += profileHtml(p, first);
     if (p.rs && !p.archived && !p.inMemory) h += '</div><div class="rsx" aria-label="Relation score ' + p.rs.score + ' of 100, ' + esc(p.rs.label) + '"><div class="lab">Relation</div><div class="rsh"><b>' + p.rs.score + "</b><span>/100 · " + esc(p.rs.label) + '</span></div><div class="rsb"><i style="width:' + p.rs.score + '%"></i></div><ul>' + p.rs.parts.map(function (x) { return '<li><span>' + esc(x.k) + '</span><span class="rsm"><i style="width:' + Math.round(x.v / x.max * 100) + '%"></i></span><span class="rsv">' + x.v + "/" + x.max + '</span><small>' + esc(x.t) + "</small></li>"; }).join("") + "</ul>" + (p.rs.tip ? '<p class="rst">' + esc(p.rs.tip) + "</p>" : "") + '<p class="rsn">Worked out from closeness, quality, how recently you were in touch against your rhythm, and energy. Change those below and the score follows.</p>';
     h += '</div><div class="chips">' + chip("quality", QL[p.quality], K.glyph(p.quality)) + chip("energy", p.energy === "neutral" ? "Energy" : (p.energy === "nourishing" ? "← " : "→ ") + EN[p.energy]) + chip("circle", RINGS[p.circle] + " circle") + chip("rhythm", p.rhythm ? "Rhythm · " + C.rhythmText(p.rhythm) : "No rhythm") + (p.rel === "Family" || p.rel === "Partner" || p.kinRole ? chip("kin", p.kinRole ? C.KIN[p.kinRole] + (p.kinSide ? " · " + C.SIDE[p.kinSide].toLowerCase() : "") : "Family role") : "") + "</div>" +
       opts("quality", "How it is between you", Object.keys(QL).map(function (q) { return [q, QL[q], K.glyph(q)]; }), p.quality) +
@@ -218,7 +224,7 @@
     if (p.notes) h += '<div class="row"><div class="lab">Notes</div><p class="notes">' + esc(p.notes) + "</p></div>";
     h += '<div class="foot"><button class="btn" id="edit">Edit details</button>' + (p.archived ? '<button class="btn" id="restore">Restore</button>' : '<button class="btn" id="archive">Archive</button>') + "</div>";
     $("#panel").innerHTML = h;
-    var f = S.open === "sit" ? $("#sitText") : S.open === "link" ? $("#linkName") : null; if (f) f.focus();
+    var f = S.open === "sit" ? $("#sitText") : S.open === "link" ? $("#linkName") : S.open === "about" ? $("#pJob") : S.open === "op" ? $("#opText") : S.open === "res" ? $("#resText") : null; if (f) f.focus();
   }
   function select(id) { S.st.sel = id || null; S.open = null; panel(); if (id) $("#rail").scrollTop = 0; body(); }
 
@@ -256,6 +262,30 @@
     if (S.sample) { S.raw.links.push({ id: "l" + Date.now(), person_a: a, person_b: b, quality: "ok" }); refresh(); famDraw(); return; }
     S.opts.sb.from("person_links").upsert({ user_id: S.opts.userId, person_a: a, person_b: b, quality: "ok", archived_at: null }, { onConflict: "person_a,person_b" }).select().single()
       .then(function (r) { if (r.error) return fail(r.error); S.links.push(r.data); refresh(); famDraw(); }, fail);
+  }
+  /* About, your view and research. Your view is private: it is never sent to Claude through the connector.
+     Research keeps its sources. Both are dated notes that can be hidden, never deleted. */
+  function profileHtml(p, first) {
+    var ready = S.sample || S.profReady !== false, by = function (x) { return (x.by === "claude" ? "via Claude" : "by you") + " · " + C.fmtDay(x.date); };
+    var h = '</div><div class="prof"><div class="lab">About ' + esc(first) + '<button class="lk" data-open="about">' + (p.job || p.about ? "Edit" : "Add") + "</button></div>";
+    if (S.open === "about") h += '<label class="pf"><span>Job</span><input class="field" id="pJob" maxlength="160" value="' + esc(p.job) + '" placeholder="What they work as"' + (ready ? "" : " disabled") + '></label><label class="pf"><span>What they do</span><textarea id="pAbout" maxlength="4000" placeholder="Their work, projects, what they spend their time on"' + (ready ? "" : " disabled") + ">" + esc(p.about) + '</textarea></label><div class="acts"><button class="btn primary" id="aboutSave"' + (ready ? "" : " disabled") + '>Save</button><button class="btn" data-open="">Cancel</button></div>';
+    else h += p.job || p.about ? (p.job ? '<p class="pjob">' + esc(p.job) + "</p>" : "") + (p.about ? '<p class="pabout">' + esc(p.about) + "</p>" : "") : '<p class="empty">No job or details yet.</p>';
+    var notes = function (kind, list, title, empty, note) {
+      var k = kind === "research" ? "res" : "op", o = '<div class="pnotes ' + k + '"><div class="lab">' + title + (ready ? '<button class="lk" data-open="' + k + '">Add</button>' : "") + "</div>" + (note ? '<p class="pnote">' + note + "</p>" : "");
+      if (S.open === k) o += '<textarea id="' + k + 'Text" maxlength="20000" aria-label="' + esc(title) + '" placeholder="' + (kind === "research" ? "What you found, in your own words" : "What you think of " + esc(first) + ", for you only") + '"></textarea>' + (kind === "research" ? '<input class="field" id="resUrl" type="url" placeholder="Source link (https://…)" aria-label="Source link">' : "") + '<div class="acts"><button class="btn primary" id="' + k + 'Save">Save</button><button class="btn" data-open="">Cancel</button></div>';
+      o += list.length ? "<ul>" + list.map(function (x) { return "<li><p>" + esc(x.t) + "</p>" + (x.src.length ? '<p class="src">' + x.src.map(function (s) { var u = String(s.url); return '<a href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">' + esc(s.title || u.replace(/^https?:\/\/(www\.)?/, "").split("/")[0]) + "</a>"; }).join(" · ") + "</p>" : "") + '<span class="by">' + by(x) + '<button class="lk" data-phide="' + x.id + '">Hide</button></span></li>'; }).join("") + "</ul>" : '<p class="empty">' + empty + "</p>";
+      return o + "</div>";
+    };
+    if (!ready) return h + '<p class="pnote">Your view and research need a one-time database update before they can be saved.</p>';
+    h += notes("opinion", p.opinions, "Your view", "Nothing written yet.", "Private: only you see this. Claude does not read it.");
+    h += notes("research", p.research, "Research", "Nothing found yet. Add what you looked up, or ask Claude to research " + esc(first) + " online and save it here.", "From the web, kept apart from your view, with sources.");
+    return h;
+  }
+  function addProfile(id, kind, text, url) {
+    var row = { person_id: id, kind: kind, text: text, sources: url ? [{ url: url }] : [], author: "me", noted_on: S.raw.today };
+    if (S.sample) { row.id = "n" + Date.now(); row.created_at = new Date().toISOString(); S.raw.profile.push(row); return refresh(); }
+    S.opts.sb.from("person_profile_notes").insert(Object.assign({ user_id: S.opts.userId }, row)).select().single()
+      .then(function (r) { if (r.error) return fail(r.error); S.profile.push(r.data); refresh(); }, fail);
   }
   function addSit(id, text) {
     if (S.sample) { S.raw.sits.push({ id: "t" + Date.now(), person_id: id, text: text, noted_on: S.raw.today, author: "me", created_at: new Date().toISOString() }); return refresh(); }
@@ -314,6 +344,10 @@
     if (d("data-act")) return S.sample ? null : S.opts.onOpenAction && S.opts.onOpenAction(d("data-act"));
     if (d("data-hide")) return hideRow("person_situations", S.sample ? S.raw.sits : S.sits, d("data-hide"), "hide a note about " + p.name);
     if (d("data-unlink")) return hideRow("person_links", S.sample ? S.raw.links : S.links, d("data-unlink"), "remove a link from " + p.name);
+    if (d("data-phide")) return hideRow("person_profile_notes", S.sample ? S.raw.profile : S.profile, d("data-phide"), "hide a note about " + p.name);
+    if (b.id === "aboutSave") { S.open = null; return patch(id, { job: $("#pJob").value.trim() || null, about: $("#pAbout").value.trim() || null }); }
+    if (b.id === "opSave") { var ot = $("#opText").value.trim(); if (!ot) return; S.open = null; return addProfile(id, "opinion", ot); }
+    if (b.id === "resSave") { var rt = $("#resText").value.trim(), ru = $("#resUrl").value.trim(); if (!rt) return; if (ru && !/^https?:\/\/\S+$/i.test(ru)) return say("The source link should start with https://"); S.open = null; return addProfile(id, "research", rt, ru); }
     if (b.id === "sitSave") { var tx = $("#sitText").value.trim(); if (!tx) return; S.open = null; return addSit(id, tx); }
     if (b.id === "linkAdd") return addLink();
     if (b.id === "bSave") { var m = +$("#bM").value, day = +$("#bD").value; if (!(day >= 1 && day <= 31)) return say("Pick a day between 1 and 31."); S.open = null; return patch(id, { birthdayMonth: m, birthdayDay: day }); }
