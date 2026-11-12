@@ -28,7 +28,7 @@
       cc.dataset.theme = theme;
       cc.innerHTML = (S.sample ? '<div class="ribbon" role="note"><b>SAMPLE DATA</b> · invented items and names · nothing below is yours</div>' : "") +
         '<div class="wrap"><header class="top"><div class="seg" role="group" aria-label="View">' + VIEWS.map(function (v, i) { return '<button data-view="' + v[0] + '" aria-pressed="false" title="Press ' + (i + 1) + '">' + v[1] + "</button>"; }).join("") + '</div>' +
-        '<div class="tools"><input class="in search" id="ccSearch" type="search" placeholder="Search ( / ) · Ctrl K" aria-label="Search everything" value=""><button class="btn" data-act="push" title="Reminders on your phone" aria-label="Reminders">🔔<span class="wide" style="display:inline"> Reminders</span></button><button class="btn pri wide addbtn" data-act="add">+ Add <kbd>N</kbd></button></div></header>' +
+        '<div class="tools"><input class="in search" id="ccSearch" type="search" placeholder="Search ( / ) · Ctrl K" aria-label="Search everything" value=""><button class="btn wait" data-act="waiting" title="Proposals to approve, agent reports and what Claude changed">Waiting for you<span class="wbadge" id="ccWaitN" hidden></span></button><button class="btn" data-act="push" title="Reminders on your phone" aria-label="Reminders">🔔<span class="wide" style="display:inline"> Reminders</span></button><button class="btn pri wide addbtn" data-act="add">+ Add <kbd>N</kbd></button></div></header>' +
         '<div class="legend" id="ccLegend" role="group" aria-label="Areas: click to show one area"></div><main id="ccView"></main></div><button class="fab" data-act="add" aria-label="Add something">+</button><div id="ccOver"></div>';
       draw();
     }
@@ -223,6 +223,7 @@
       else if (d.act === "actual") { S.showActual = S.showActual === false; try { localStorage.setItem("pp_cc_actual", S.showActual ? "1" : "0"); } catch (x) {} draw(); }
       else if (d.areaf) { S.areaFilter = S.areaFilter === d.areaf ? null : d.areaf; draw(); var b0 = root.querySelector('[data-areaf="' + d.areaf + '"]'); if (b0) b0.focus(); }
       else if (d.workout) call("onOpenWorkout", d.workout);
+      else if (d.act === "waiting") call("onOpenWaiting");
       else if (d.act === "push") { open({ type: "push" }); call("onPush", "refresh"); }
       else if (d.act === "pushon") call("onPush", "enable");
       else if (d.act === "pushoff") call("onPush", "disable");
@@ -325,7 +326,9 @@
     document.addEventListener("keydown", onKey);
     var tick = setInterval(function () { if (fixedNow || !host.isConnected) return; var n = new Date(), m = n.getHours() * 60 + n.getMinutes(); if (m === S.nowMin) return; S.nowMin = m; S.today = C.localIso(n); if (S.view === "today" && !S.q && !S.over && !dragId && host.offsetParent !== null) draw(); }, 20000);
     shell();
+    function setWaiting(n) { S.waiting = n; var b = root.getElementById("ccWaitN"); if (!b) return; b.hidden = !n; b.textContent = n > 99 ? "99+" : String(n || ""); var w = b.parentNode; if (w) w.setAttribute("aria-label", "Waiting for you" + (n ? ", " + n + " waiting" : "")); }
     return {
+      setWaiting: setWaiting,
       update: function (d) { if (d.theme) theme = d.theme; setData(d); cc.dataset.theme = theme; draw(); },
       setView: function (v) { S.view = v; draw(); },
       terrain: function () { return terrain; },

@@ -2309,37 +2309,16 @@
 
       <nav class="side-nav" id="sideNav">
         <button class="side-link" data-section="command" id="navCommand" type="button"><span class="sl-glyph">◈</span>Command Center</button>
-        <button class="side-link" data-section="focus" id="navToday" type="button"><span class="sl-glyph">◉</span>Today</button>
-        <button class="side-link active" data-section="home" id="navClassicHome" type="button"><span class="sl-glyph">⌂</span>Home</button>
-        <button class="side-link" data-section="inbox" type="button"><span class="sl-glyph">⇣</span>Inbox<span class="side-link-badge" id="inboxNavBadge" hidden></span></button>
-        <button class="side-link" data-section="memory" type="button"><span class="sl-glyph">◎</span>Agent memory</button>
-        <button class="side-link side-link-parent" id="sideLinkTimeToggle" data-toggle-submenu="sideSubmenuTime" type="button" aria-expanded="false">
-          <span class="sl-glyph">◔</span>Time<span class="side-link-caret">▾</span>
-        </button>
-        <div class="side-submenu" id="sideSubmenuTime">
-          <button class="side-link side-sublink" data-section="today" type="button"><span class="sl-glyph">◷</span>Present</button>
-          <button class="side-link side-sublink" data-section="timeline" type="button"><span class="sl-glyph">↔</span>History</button>
-          <button class="side-link side-sublink" data-section="future" type="button"><span class="sl-glyph">»</span>Future</button>
-          <button class="side-link side-sublink" data-section="home" id="navOverview" type="button"><span class="sl-glyph">✳</span>Overview</button>
-        </div>
-        <button class="side-link side-link-parent" id="sideLinkPersonalToggle" data-toggle-submenu="sideSubmenuPersonal" type="button" aria-expanded="false">
-          <span class="sl-glyph">◆</span>Personal<span class="side-link-caret">▾</span>
-        </button>
-        <div class="side-submenu" id="sideSubmenuPersonal">
-          <button class="side-link side-sublink" data-section="planner" type="button"><span class="sl-glyph">▤</span>Planner</button>
-          <button class="side-link side-sublink" data-section="tracker" type="button"><span class="sl-glyph">▥</span>Tracker</button>
-          <button class="side-link side-sublink" data-section="journal" type="button"><span class="sl-glyph">✎</span>Notes</button>
-          <button class="side-link side-sublink" data-section="self" type="button"><span class="sl-glyph">◎</span>Self</button>
-        </div>
         <button class="side-link" data-section="health" type="button"><span class="sl-glyph">♡</span>Health</button>
         <button class="side-link" data-section="finance" type="button"><span class="sl-glyph">€</span>Finance</button>
         <button class="side-link" data-section="knowledge" type="button"><span class="sl-glyph">❖</span>Knowledge</button>
         <button class="side-link" data-section="comm" type="button"><span class="sl-glyph">✉</span>Communication</button>
         <button class="side-link" data-section="people" type="button"><span class="sl-glyph">☺</span>People</button>
         <button class="side-link" data-section="location" type="button"><span class="sl-glyph">⚲</span>Location</button>
+        <button class="side-link" data-section="memory" type="button"><span class="sl-glyph">◎</span>Agent memory</button>
       </nav>
 
-      <div class="term-stats">
+      <div class="term-stats" id="termStats" role="button" tabindex="0" title="Open the Strategy view" style="cursor:pointer">
         <div class="stat-line"><span class="k">active_goals</span><span class="v" id="statActive">0</span></div>
         <div class="stat-line ok"><span class="k">completed</span><span class="v" id="statDone">0</span></div>
         <div class="stat-line warn"><span class="k">behind_pace</span><span class="v" id="statBehind">0</span></div>
@@ -2352,7 +2331,6 @@
           <button class="btn" id="openTrashBtn" type="button">trash</button>
           <button class="btn" id="exportDataBtn" type="button">export data</button>
         </div>
-        <button class="btn" id="agentKeyBtn" type="button" style="width:100%; margin-bottom:8px;" title="Gemini powers note sentiment, auto-fill and transcription">gemini key</button>
         <button class="btn" id="signOutBtn" type="button" style="width:100%;">sign out</button>
       </div>
     </div>
@@ -3105,7 +3083,8 @@
          Two kinds of thing arrive here from Agent PgM's bots through the planner connector:
          proposals (a change an agent wants to make — nothing happens until you approve it) and
          reports (briefs, digests, run summaries — just to read). See migration_agent_hub.sql. -->
-    <section id="inboxSection" style="display:none;">
+    <div class="wait-shade" id="waitShade" hidden></div>
+    <aside id="inboxSection" class="wait-drawer" hidden role="dialog" aria-modal="true" aria-labelledby="waitTitle">
       <style>
         .side-link-badge{ margin-left:auto; min-width:18px; padding:0 6px; border-radius:999px; background:var(--accent); color:#fff; font-size:10px; font-weight:700; line-height:18px; text-align:center; font-variant-numeric:tabular-nums; }
         .ib-list{ display:flex; flex-direction:column; gap:8px; max-width:820px; }
@@ -3130,19 +3109,31 @@
         /* "via Middler" — where a row came from, on actions/notes/events made by an agent or Cowork. */
         .src-tag{ display:inline-block; font-family:var(--mono); font-size:9.5px; letter-spacing:.04em; color:var(--violet); border:1px solid var(--violet); border-radius:999px; padding:0 6px; opacity:.8; white-space:nowrap; }
       </style>
-      <div class="main-header">
-        <div>
-          <h1>inbox</h1>
-          <p class="subhead">What your agents want to change, and what they've reported. Nothing an agent proposes touches your planner until you approve it.</p>
-        </div>
-      </div>
-      <div class="view-toggle" id="inboxTabs">
-        <button class="view-tab active" data-itab="proposals" type="button">to approve</button>
-        <button class="view-tab" data-itab="reports" type="button">reports</button>
-        <button class="view-tab" data-itab="history" type="button">history</button>
+      <style>
+        .wait-shade{ position:fixed; inset:0; background:rgba(10,12,18,.42); z-index:900; }
+        .wait-drawer{ position:fixed; top:0; right:0; bottom:0; width:min(560px, 100%); z-index:901; overflow-y:auto; background:var(--bg); border-left:1px solid var(--border); box-shadow:-18px 0 50px rgba(0,0,0,.25); padding:22px 22px 40px; font-family:"Archivo", system-ui, sans-serif; }
+        .wait-drawer[hidden], .wait-shade[hidden]{ display:none; }
+        .wait-head{ display:flex; align-items:flex-start; gap:12px; margin-bottom:14px; }
+        .wait-head h2{ font:500 24px/1.15 "Iowan Old Style", "Palatino Linotype", Georgia, serif; margin:0; }
+        .wait-head p{ margin:4px 0 0; font-size:.84rem; color:var(--text-dim); }
+        .wait-x{ margin-left:auto; border:1px solid var(--border); background:transparent; color:var(--text); border-radius:999px; width:34px; height:34px; cursor:pointer; }
+        .wait-tabs{ display:flex; gap:2px; padding:3px; border-radius:999px; background:var(--bg-raised); margin-bottom:14px; }
+        .wait-tabs button{ flex:1; padding:7px 10px; border-radius:999px; border:0; background:transparent; color:var(--text-dim); font:inherit; font-size:.86rem; cursor:pointer; }
+        .wait-tabs button.active{ background:var(--bg); color:var(--text); font-weight:600; box-shadow:0 1px 3px rgba(0,0,0,.12); }
+        .wait-feed{ display:flex; flex-direction:column; gap:6px; }
+        .wait-feed .row{ display:flex; gap:10px; align-items:baseline; padding:8px 0; border-bottom:1px solid var(--border); font-size:.88rem; }
+        .wait-feed .row span{ flex:1; min-width:0; }
+        .wait-feed .row i{ color:var(--text-faint); font-style:normal; font-size:.78rem; }
+        .wait-feed h3{ font-size:.72rem; letter-spacing:.1em; text-transform:uppercase; color:var(--text-dim); margin:16px 0 4px; }
+      </style>
+      <div class="wait-head"><div><h2 id="waitTitle">Waiting for you</h2><p>What your agents want to change, what they reported, and everything Claude changed. Nothing an agent proposes touches your planner until you approve it.</p></div><button class="wait-x" id="waitClose" type="button" aria-label="Close">✕</button></div>
+      <div class="wait-tabs" id="inboxTabs" role="tablist">
+        <button class="view-tab active" data-itab="proposals" type="button" role="tab">To approve</button>
+        <button class="view-tab" data-itab="reports" type="button" role="tab">Reports</button>
+        <button class="view-tab" data-itab="history" type="button" role="tab">History</button>
       </div>
       <div id="inboxBody"></div>
-    </section>
+    </aside>
 
     <!-- Health: readiness, sleep, energy, movement, training and body, drawn from the health_* tables
          that Claude fills through the planner connector. The page itself lives in health/ and mounts
@@ -5202,8 +5193,7 @@
       homeEl.classList.add("overview-only");
       homeEl.style.display = "none";
       document.getElementById("focusSection").style.display = "";
-      document.getElementById("navClassicHome").classList.remove("active");
-      document.getElementById("navToday").classList.add("active");
+      ["navClassicHome", "navToday"].forEach(function(id){ var el = document.getElementById(id); if(el) el.classList.toggle("active", id === "navToday"); });
     }
     hide(UI_FLAGS.hideHistory, '[data-section="timeline"]');
     hide(!UI_FLAGS.commandCenter, "#navCommand");
@@ -5214,7 +5204,7 @@
     if(UI_FLAGS.commandCenter && !UI_FLAGS.classicHome){
       document.getElementById("focusSection").style.display = "none";
       document.getElementById("commandSection").style.display = "";
-      document.getElementById("navToday").classList.remove("active");
+      var nt = document.getElementById("navToday"); if(nt) nt.classList.remove("active");
       document.getElementById("navCommand").classList.add("active");
     }
     hide(UI_FLAGS.hideTracker, '[data-section="tracker"]');
@@ -5329,7 +5319,7 @@
     if(session && session.user){
       currentUser = session.user;
       showApp();
-      loadAll().then(function(){ renderAll(); trackerLoadSummaryIntoInput(); loadWbConnections(); loadActivityLog(); odReturnCheck(); });
+      loadAll().then(function(){ if(bootHash && (document.getElementById(bootHash + "Section") || LEGACY_ROUTES[bootHash])){ showSection(bootHash); bootHash = ""; } renderAll(); trackerLoadSummaryIntoInput(); loadWbConnections(); loadActivityLog(); odReturnCheck(); });
     } else {
       currentUser = null;
       showAuthScreen();
@@ -5427,6 +5417,8 @@
   }
   /* ---------------- Top-level + planner tabs ---------------- */
   var activeSection = UI_FLAGS.classicHome ? "home" : UI_FLAGS.commandCenter ? "command" : "focus";
+  // #section addresses (old bookmarks included): open that page, or the one that replaced it, once signed in
+  var bootHash = (location.hash || "").replace(/^#\/?/, "").split(/[?&]/)[0];
   var activePlannerTab = "areas";
   // "open" is the default everywhere; the last choice per list is remembered in this browser.
   var FILTERS_KEY = "pp_filters_v1";
@@ -5452,17 +5444,22 @@
     });
   }
 
-  var ALL_SECTION_IDS = ["focusSection","homeSection","todaySection","plannerSection","trackerSection","timelineSection","journalSection","peopleSection","locationSection","futureSection","goalDetailSection","areaDetailSection","entityPageSection","inboxSection","memorySection","healthSection","selfSection","financeSection","commandSection","knowledgeSection","commSection"];
+  var ALL_SECTION_IDS = ["focusSection","homeSection","todaySection","plannerSection","trackerSection","timelineSection","journalSection","peopleSection","locationSection","futureSection","goalDetailSection","areaDetailSection","entityPageSection","inboxSection","memorySection","healthSection","selfSection","financeSection","commandSection","knowledgeSection","commSection"].filter(function(id){ return id !== "inboxSection"; });
   // Sidebar dropdown groups — a parent nav item with no page of its own, bundling a set of section
   // names under one submenu. See showSection() (active/auto-open) and the sideNav click handler
   // (data-toggle-submenu, open/close).
-  var NAV_GROUPS = [
-    { toggleId:"sideLinkTimeToggle", submenuId:"sideSubmenuTime", children:UI_FLAGS.classicHome ? ["today","timeline","future"] : ["today","timeline","future","home"] },
-    { toggleId:"sideLinkPersonalToggle", submenuId:"sideSubmenuPersonal", children:["planner","tracker","journal","self"] }
-  ];
+  // The Time and Personal groups were retired with their pages (Nov 2026); kept as an empty list so the code that reads it still works.
+  var NAV_GROUPS = [];
+  // Retired pages (Nov 2026) and where their content lives now. Old links and #hashes land here too.
+  var LEGACY_ROUTES = { home:"command", focus:"command", today:"command", timeline:"command", future:"command", planner:"command", tracker:"health", inbox:"command", journal:"self" };
   function showSection(name){
+    if(LEGACY_ROUTES[name]){
+      var was = name; name = LEGACY_ROUTES[name];
+      if(was === "inbox") setTimeout(function(){ openWaitDrawer("proposals"); }, 0);
+      if(was === "tracker") setTimeout(function(){ var n = 0; (function go(){ if(window.PPHealth && window.PPHealth.state && window.PPHealth.state.M){ window.PPHealth.go("dailylog"); return; } if(++n < 40) setTimeout(go, 150); })(); }, 0);
+    }
     activeSection = name;
-    document.querySelectorAll(".side-link").forEach(function(l){ l.classList.toggle("active", l.dataset.section === name); });
+    document.querySelectorAll(".side-link").forEach(function(l){ l.classList.toggle("active", l.dataset.section === name || (name === "self" && l.dataset.section === "knowledge")); });
     ALL_SECTION_IDS.forEach(function(id){
       document.getElementById(id).style.display = (id === name + "Section") ? "" : "none";
     });
@@ -17403,7 +17400,7 @@
     });
   }
 
-  document.getElementById("agentKeyBtn").addEventListener("click", function(){
+  (document.getElementById("agentKeyBtn") || document.createElement("button")).addEventListener("click", function(){
     document.getElementById("agentApiKeyInput").value = safeGet(window.localStorage, "geminiApiKey") || "";
     openModal("agentKeyModalOverlay");
   });
@@ -19250,9 +19247,10 @@
   function inboxPending(){ return state.agentProposals.filter(function(p){ return p.status === "pending"; }); }
   function inboxUnread(){ return state.agentReports.filter(function(r){ return !r.readAt; }); }
   function renderInboxBadge(){
+    var n = inboxPending().length + inboxUnread().length;
+    if(commandHandle && commandHandle.setWaiting) commandHandle.setWaiting(n);
     var badge = document.getElementById("inboxNavBadge");
     if(!badge) return;
-    var n = inboxPending().length + inboxUnread().length;
     badge.hidden = !n;
     badge.textContent = !n ? "" : (n > 99 ? "99+" : String(n));
   }
@@ -19297,13 +19295,36 @@
         '<div class="ib-day-body">' + g.items.map(inboxReportHtml).join("") + '</div></details>';
     }).join("");
   }
+  /* The "Waiting for you" drawer: To approve / Reports / History (what Claude changed, plus decided proposals).
+     It opens over the Command Center from its header; the old Inbox page redirects here. */
+  var waitDrawerOpen = false, waitLastFocus = null;
+  function openWaitDrawer(tab){
+    if(tab) activeInboxTab = tab;
+    waitDrawerOpen = true; waitLastFocus = document.activeElement;
+    document.getElementById("inboxSection").hidden = false; document.getElementById("waitShade").hidden = false;
+    renderInbox(); var x = document.getElementById("waitClose"); if(x) x.focus();
+    if(typeof loadActivityLog === "function" && activityReady === null) loadActivityLog();
+  }
+  function closeWaitDrawer(){
+    waitDrawerOpen = false;
+    document.getElementById("inboxSection").hidden = true; document.getElementById("waitShade").hidden = true;
+    if(waitLastFocus && waitLastFocus.focus) try { waitLastFocus.focus(); } catch(e){}
+  }
+  document.addEventListener("click", function(e){
+    if(e.target && (e.target.id === "waitClose" || e.target.id === "waitShade")) closeWaitDrawer();
+    var u = e.target && e.target.closest && e.target.closest("[data-wait-undo]");
+    if(u){ var id = u.getAttribute("data-wait-undo"); u.disabled = true; Promise.resolve(fxUndo(id)).then(function(){ renderInbox(); }); }
+  });
+  document.addEventListener("keydown", function(e){ if(e.key === "Escape" && waitDrawerOpen) closeWaitDrawer(); });
+  document.addEventListener("click", function(e){ var st = e.target && e.target.closest && e.target.closest("#termStats"); if(st){ showSection("command"); renderAll(); setTimeout(function(){ if(commandHandle && commandHandle.setView) commandHandle.setView("strategy"); }, 50); } });
   function renderInbox(){
-    if(activeSection !== "inbox") return;
+    if(!waitDrawerOpen) return;
     var body = document.getElementById("inboxBody");
     document.querySelectorAll("#inboxTabs .view-tab").forEach(function(t){
       var k = t.dataset.itab;
       var n = k === "proposals" ? inboxPending().length : (k === "reports" ? inboxUnread().length : 0);
-      t.textContent = (k === "proposals" ? "to approve" : k) + (n ? " · " + n : "");
+      t.textContent = ({ proposals:"To approve", reports:"Reports", history:"History" })[k] + (n ? " · " + n : "");
+      t.setAttribute("aria-selected", String(k === activeInboxTab));
       t.classList.toggle("active", k === activeInboxTab);
     });
     if(activeInboxTab === "proposals"){
@@ -19319,9 +19340,9 @@
         : '<div class="ib-empty">No reports yet. Briefs, digests and run summaries from your agents land here.</div>';
     } else {
       var decided = state.agentProposals.filter(function(p){ return p.status !== "pending"; });
-      body.innerHTML = decided.length
-        ? '<div class="ib-list">' + decided.map(function(p){ return inboxProposalHtml(p, true); }).join("") + '</div>'
-        : '<div class="ib-empty">No decisions yet.</div>';
+      var feed = fxFeedEntries().slice(0, 60);
+      body.innerHTML = '<div class="wait-feed"><h3>What Claude changed</h3>' + (feed.length ? feed.map(function(e){ var d = new Date(e.created_at); return '<div class="row"><span>' + escapeHtml(fxChangeText(e)) + ' <i>· ' + escapeHtml(fxSource(e.actor)) + " · " + d.toLocaleString("en-GB", { day:"numeric", month:"short", hour:"2-digit", minute:"2-digit" }) + '</i></span><button class="btn" type="button" data-wait-undo="' + escapeHtml(String(e.id)) + '">undo</button></div>'; }).join("") : '<div class="ib-empty">' + (activityReady === false ? "The change log starts once its database update has been run." : "No changes yet.") + "</div>") +
+        (decided.length ? '<h3>Decided proposals</h3><div class="ib-list">' + decided.map(function(p){ return inboxProposalHtml(p, true); }).join("") + "</div>" : "") + "</div>";
     }
   }
   var INBOX_TABLE = { action:"actions", note:"journal", event:"events", scenario:"action_scenarios", person:"people" };
@@ -20104,7 +20125,7 @@
   };
   /* Health page. Its code is loaded on first open, in order, and versioned so the service worker's
      cache-first rule for static files can never serve a stale copy: bump HEALTH_VER with each release. */
-  var HEALTH_VER = "6", healthLoading = null;
+  var HEALTH_VER = "7", healthLoading = null;
   function healthLoadScripts(){
     if(healthLoading) return healthLoading;
     var files = ["body", "model", "charts", "view", "today", "health"];
@@ -20371,7 +20392,7 @@
   /* Command Center (command/): one page for tasks, events, deadlines and time blocks. The module only
      draws; every save goes through the functions below, so the activity log and undo keep working.
      Bump COMMAND_VER with each release of command/*. */
-  var COMMAND_VER = "11", commandLoading = null, commandHandle = null, commandBoard = null, commandBoardLoad = null;
+  var COMMAND_VER = "12", commandLoading = null, commandHandle = null, commandBoard = null, commandBoardLoad = null;
   // Hours that count as booked in the free-time bars. Change here if the work pattern changes.
   var COMMAND_WORK = { days:[1, 2, 3, 4, 5], start:"09:00", end:"18:00" };
   function commandLoadScripts(){
@@ -20660,7 +20681,7 @@
         onSetMain: function(id){ return fxSetMain(id, todayStr()); },
         onUndo: function(logId){ return fxUndo(logId); },
         onOpenFull: function(id){ var hit = commandFind(id); if(hit && hit.table === "events") editEvent(id); else editAction(id); },
-        onOpenWorkout: commandOpenWorkout, onSetWorkoutTime: commandSetWorkoutTime,
+        onOpenWorkout: commandOpenWorkout, onSetWorkoutTime: commandSetWorkoutTime, onOpenWaiting: function(){ openWaitDrawer(inboxPending().length ? "proposals" : inboxUnread().length ? "reports" : "history"); },
         onGo: function(where){ var map = { health:"health", people:"people", finance:"finance", knowledge:"knowledge", work:null }; if(map[where]){ showSection(map[where]); renderAll(); } else if(commandHandle) commandHandle.setView("week"); },
         onOpenGoal: function(id){ openGoalDetailPage(id); },
         onOpenProject: function(id){ editProject(id); },
@@ -20668,6 +20689,7 @@
         onNewProject: function(){ openProjectModal(null, null); }
       }));
       if(activityReady === null) loadActivityLog();
+      renderInboxBadge();
     }).catch(function(err){
       if(!host.shadowRoot) host.innerHTML = '<div class="empty-note" style="padding:60px 24px;">The Command Center couldn’t load. Check your connection and open it again.</div>';
       console.warn(err);
@@ -20676,7 +20698,7 @@
   /* Knowledge page (knowledge/): files and saved items, sorted and linked. Files are read in the browser;
      rows live in the knowledge_* tables and files in the private "knowledge" bucket, all behind RLS.
      Bump KNOWLEDGE_VER with each release of knowledge/*. */
-  var KNOWLEDGE_VER = "8", knowledgeLoading = null, knowledgeHandle = null, knowledgeFetching = null;
+  var KNOWLEDGE_VER = "9", knowledgeLoading = null, knowledgeHandle = null, knowledgeFetching = null;
   var KN = { items:null, edges:[], topics:{}, files:{}, settings:{ external:{} }, usage:null, meaning:{ ready:false, pending:0, busy:false } };
   var KN_MAX_FILE = 50 * 1024 * 1024, KN_PLAN_LIMIT = 1024 * 1024 * 1024;   // free-plan figures, shown as a guide
   function knowledgeLoadScripts(){
@@ -21108,7 +21130,7 @@
         css: "knowledge/knowledge.css?v=" + KNOWLEDGE_VER,
         onUpload: knowledgeUpload, onSearch: knowledgeSearch, onPatch: knowledgePatch, onArchive: knowledgeArchive, onCreate: knowledgeCreate,
         onOpenFile: knowledgeOpenFile, onSetting: knowledgeSetting, onMeaning: knowledgeMeaning, onLink: knowledgeLink, onUnlink: function(a, b){ return knowledgeUnlink(a, b); }, onPreview: knowledgePreview, onBulk: knowledgeBulk, onBulkArchive: knowledgeBulkArchive, onTopic: knowledgeTopic,
-        onOpenMirror: function(){ showSection("self"); renderAll(); },
+        onOpenMirror: function(){ showSection("self"); renderAll(); }, onOpenNotes: function(){ showSection("self"); renderAll(); },
         onOneDrive: knowledgeOd, onSaveCopy: knowledgeSaveCopy
       }));
       knowledgeOdStatus().then(knowledgeIndexQueue);

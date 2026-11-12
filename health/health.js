@@ -168,6 +168,13 @@
   function saved(form, text, after) { say(form, text); load(true, after); }
   function sample(form) { say(form, "This is sample data, so nothing was saved."); }
   function onSubmit(e) {
+    var lf = e.target.dataset && e.target.dataset.form;
+    if (lf === "logval" || lf === "logsum") {
+      e.preventDefault(); var dd = S.ui.logDay || isoToday(), fdl = new FormData(e.target);
+      if (lf === "logval") { var vv = String(fdl.get("v") || "").trim(); if (vv) logWrite(e.target.dataset.id, dd, vv); } else logSummary(dd, String(fdl.get("s") || "").trim());
+      var b2 = e.target.querySelector("button"); if (b2) { var was = b2.textContent; b2.textContent = "Saved"; setTimeout(function () { b2.textContent = was; }, 1200); }
+      return;
+    }
     var f = e.target; if (!f.id) return; e.preventDefault();
     var db = sb(), fd = new FormData(f), today = H.iso(S.M.now);
     if (!db) return sample(f);
@@ -217,6 +224,8 @@
     if (t.dataset.day) { var k = t.dataset.day; S.ui = Object.assign({}, ui, { day: k, histAll: true }); paintPage(); var w = $("#w-" + k); if (w) { w.open = true; w.scrollIntoView({ behavior: REDUCED ? "auto" : "smooth", block: "center" }); w.querySelector("summary").focus({ preventScroll: true }); } return; }
     if (t.dataset.ex) { S.ui = Object.assign({}, ui, { ex: t.dataset.ex }); paintPage('[data-ex="' + t.dataset.ex.replace(/"/g, '\\"') + '"]'); var x = $(".exd"); if (x && x.getBoundingClientRect().top > window.innerHeight) x.scrollIntoView({ behavior: REDUCED ? "auto" : "smooth", block: "start" }); return; }
     if (a === "back") return go(null);
+    if (a === "logday") { var nd = new Date((ui.logDay || isoToday()) + "T12:00:00"); nd.setDate(nd.getDate() + (+t.dataset.d)); var ns = nd.toISOString().slice(0, 10); S.ui = Object.assign({}, ui, { logDay: ns > isoToday() ? isoToday() : ns }); paintPage(); return; }
+    if (a === "logset") return logWrite(t.dataset.id, (ui.logDay || isoToday()), t.getAttribute("aria-pressed") === "true" ? "false" : "true");
     if (a === "checkin") { S.ui = Object.assign({}, ui, { checkin: !ui.checkin }); paintPage(ui.checkin ? '[data-act="checkin"]' : "#fCheckin input"); return; }
     if (a === "fixnight") { var dt = t.dataset.date; if (!ui.detail) return go("sleep", { fix: dt }); S.ui = Object.assign({}, ui, { fix: ui.fix === dt ? null : dt }); paintPage(ui.fix === dt ? null : "#fFix input"); return; }
     if (a === "unfix") { var db = sb(); if (!db) return; db.from("health_daily").update({ bed_time_corrected: null, wake_time_corrected: null, sleep_minutes_corrected: null, corrected_at: null }).eq("user_id", S.opts.userId).eq("date", t.dataset.date).then(function () { S.ui = Object.assign({}, ui, { fix: null }); load(true); }); return; }
@@ -231,6 +240,21 @@
     if (a === "sfedit") return set("sfEdit", !ui.sfEdit);
     if (a === "cond") return set("cond", t.dataset.id || null);
     if (a === "condarchive") { var db2 = sb(); if (!db2) return; var c = (S.raw.conditions || []).filter(function (x) { return x.id === t.dataset.id; })[0]; db2.from("health_conditions").update({ archived_at: new Date().toISOString() }).eq("id", t.dataset.id).then(function () { if (c && c.action_id) db2.from("actions").update({ archived_at: new Date().toISOString() }).eq("id", c.action_id).then(function () { S.ui = Object.assign({}, ui, { cond: null }); load(true); }); else { S.ui = Object.assign({}, ui, { cond: null }); load(true); } }); return; }
+  }
+  /* Daily log writes: one value per variable per day (tracker_entries, unique per day). Unticking stores
+     "false" instead of deleting the row. */
+  function isoToday() { var n = S.opts.now || new Date(); return new Date(n.getTime() - n.getTimezoneOffset() * 6e4).toISOString().slice(0, 10); }
+  function logWrite(vid, day, value) {
+    var Ts = [S.raw && S.raw.tracker, S.M && S.M.raw && S.M.raw.tracker].filter(function (x, i, a) { return x && a.indexOf(x) === i; }); if (!Ts.length) return;
+    Ts.forEach(function (T) { var cur = T.entries.filter(function (x) { return x.variable_id === vid && x.date === day; })[0]; if (cur) cur.value = value; else T.entries.push({ variable_id: vid, date: day, value: value }); });
+    paintPage('[data-act="logset"][data-id="' + vid + '"]');
+    var db = sb(); if (!db) return;
+    db.from("tracker_entries").upsert({ user_id: S.opts.userId, variable_id: vid, date: day, value: value }, { onConflict: "user_id,date,variable_id" }).then(function (r) { if (r.error && window.console) console.warn("Daily log save failed", r.error); });
+  }
+  function logSummary(day, text) {
+    var Ts = [S.raw && S.raw.tracker, S.M && S.M.raw && S.M.raw.tracker].filter(function (x, i, a) { return x && a.indexOf(x) === i; }); if (!Ts.length) return;
+    Ts.forEach(function (T) { var cur = T.days.filter(function (x) { return x.date === day; })[0]; if (cur) cur.summary = text; else T.days.push({ date: day, summary: text }); });
+    var db = sb(); if (db) db.from("tracker_days").upsert({ user_id: S.opts.userId, date: day, summary: text }, { onConflict: "user_id,date" }).then(function (r) { if (r.error && window.console) console.warn("Day summary save failed", r.error); });
   }
   function fail(err) {
     S.hp.innerHTML = '<div class="err" role="alert"><b>Health data couldn’t be loaded</b><span>' + esc((err && err.message) || "The connection dropped or the server didn’t answer.") + '</span><span>Nothing was changed. Your data is safe.</span><button class="btn" id="retry">Try again</button></div>';

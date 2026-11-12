@@ -362,3 +362,17 @@ table.ex{width:100%;border-collapse:collapse;font-size:13.5px}
   .pcard{scroll-snap-align:start;padding:12px}.pbig{font-size:28px}
 }
 @media (prefers-reduced-motion:reduce){.pcard{transition:none}}
+
+/* Daily log (formerly the Tracker page) */
+.dl-nav{display:flex;align-items:center;gap:10px;margin:4px 0 14px}.dl-nav b{font-weight:600}
+.dl{display:grid;gap:2px}
+.dl-r{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.dl-n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dl-n small{color:var(--muted)}
+.dl-t{min-width:84px;padding:5px 12px;border-radius:999px;border:1px solid var(--line);font:inherit;font-size:13px;color:var(--muted);background:transparent;cursor:pointer}
+.dl-t.on{background:var(--good);border-color:var(--good);color:var(--bg);font-weight:600}
+.dl-f{display:flex;gap:6px}.dl-f input{width:96px;padding:4px 8px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--text);font:inherit}
+.dl-cells{display:flex;gap:3px}.dl-c{width:9px;height:9px;border-radius:50%;background:var(--band)}.dl-c.on{background:var(--good)}.dl-c.auto{background:transparent;box-shadow:inset 0 0 0 1.5px var(--good)}
+.dl-key{margin-top:10px}
+.detail textarea{width:100%;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--text);font:inherit;resize:vertical}
+@container hp (max-width:620px){.dl-r{grid-template-columns:minmax(0,1fr) auto}.dl-cells{grid-column:1/-1}}
+.detail .chip{border:1px solid var(--line);border-radius:999px;padding:4px 12px;background:transparent;color:var(--text);cursor:pointer;font:inherit;font-size:13px}.detail .chip:disabled{opacity:.4;cursor:default}

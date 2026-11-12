@@ -285,3 +285,5 @@ svg.ring{width:100%;height:auto;display:block}svg.ring.drop .rfree{fill:color-mi
 .dr.od .it{box-shadow:inset 3px 0 0 var(--attn)}
 .feed .src{font-weight:600;font-style:normal}
 .agenda .r.act{color:var(--area-health-text)}.agenda .r.act span:first-child{color:var(--area-health)}
+/* Waiting for you: proposals, reports and the change history */
+.btn.wait{position:relative}.wbadge{display:inline-block;min-width:18px;margin-left:6px;padding:0 6px;border-radius:999px;background:var(--attn);color:var(--card);font-size:11px;font-weight:700;line-height:18px;text-align:center}

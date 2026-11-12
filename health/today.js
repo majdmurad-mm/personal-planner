@@ -116,7 +116,7 @@
     var prog = sf && nextMs ? '<span class="pprog" role="img" aria-label="' + Math.round(sf.days / nextMs[0] * 100) + '% of the way to ' + nextMs[1] + '"><i style="width:' + Math.min(100, Math.round(sf.days / nextMs[0] * 100)) + '%"></i></span><span class="pprog-l">' + Math.round(sf.days / nextMs[0] * 100) + "% of the way to " + nextMs[1] + "</span>" : line(M.weightMA.slice(-60), { label: "Weight, 7-day average, last 60 days", empty: "No weigh-ins yet" });
     out.push(pillarCard(5, "extras", "records", "Extras", sf ? ["good", "Going strong"] : ["none", "Records"], sf ? fmt(sf.days) : wNow != null ? wNow.toFixed(1) : "–", sf ? "days smoke-free" : wNow != null ? "kg, 7-day average" : "", sf ? (sf.days >= 60 ? span(sf.days) + " · " : "") + "since " + dstr(sf.since) : "Milestones, check-ups and weight", prog,
       [["Next check-up", nc ? dstr(nc.next) + " · in " + span(dd(nc.next, now)) : "none set"], wNow != null && sf ? ["Weight", wNow.toFixed(1) + " kg, 7-day average"] : ["Pains", M.pains.length ? M.pains.map(function (f) { return esc(f.label); }).join(", ") : "none active"]], sf ? sf.days + " days smoke-free" : "records"));
-    return '<nav class="pcards" aria-label="Health pillars">' + out.join("") + '</nav><p class="later"><span>Each pillar opens its details. Nutrition fills in once MyFitnessPal is connected.</span><button class="linkish" data-detail="more">Movement, weight, notes and the day so far ›</button></p>';
+    return '<nav class="pcards" aria-label="Health pillars">' + out.join("") + '</nav><p class="later"><span>Each pillar opens its details. Nutrition fills in once MyFitnessPal is connected.</span><button class="linkish" data-detail="more">Movement, weight, notes and the day so far ›</button><button class="linkish" data-detail="dailylog">Daily log ›</button></p>';
   }
   H.overviewHTML = function (M, ui, heroFigure) {
     return '<section class="hero o" id="stage" aria-label="Today and your body"><div class="duo">' + heroFigure + '<div class="side">' + todayCard(M, ui) + "</div></div>" + H.layerControls() + "</section>" + pillarCards(M);
@@ -242,8 +242,31 @@
     return head("Movement and more", "Steps, weight, the day so far, notes and gaps") + (P ? '<div class="pillars solo">' + P.move + "</div>" : "") +
       card("Nutrition", '<p class="sub">Coming later: daily calories and protein against your targets, from MyFitnessPal.</p>' + (H.nutritionHTML ? H.nutritionHTML(M) : "")) + (H.extrasHTML ? '<div class="dsec">' + H.extrasHTML(M) + "</div>" : "");
   }
+  /* Daily log: what used to be the Tracker page. The custom daily variables (habits, counts, notes) and a
+     short summary of the day. How the body feels stays in the check-in on the Health overview: one check-in,
+     one place. Data: tracker_variables / tracker_entries / tracker_days. */
+  function dailylog(M, ui) {
+    var T = (M.raw && M.raw.tracker) || { vars: [], entries: [], days: [] }, today = H.iso(M.now);
+    var day = ui.logDay || today, days = []; for (var i = 13; i >= 0; i--) { var d = new Date(day + "T12:00:00"); d.setDate(d.getDate() - i); days.push(d.toISOString().slice(0, 10)); }
+    var val = function (vid, d) { var e = T.entries.filter(function (x) { return x.variable_id === vid && x.date === d; })[0]; return e ? e.value : null; };
+    var on = function (v) { return v === "true" || v === "auto" || v === "1" || v === "yes"; };
+    var sum = (T.days.filter(function (x) { return x.date === day; })[0] || {}).summary || "";
+    var label = new Date(day + "T12:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
+    var nav = '<div class="acts dl-nav"><button class="chip" data-act="logday" data-d="-1" aria-label="Previous day">←</button><b>' + esc(day === today ? "Today, " + label : label) + '</b><button class="chip" data-act="logday" data-d="1" aria-label="Next day"' + (day >= today ? " disabled" : "") + ">→</button></div>";
+    if (!T.vars.length) return head("Daily log", "The day, one line at a time") + card("Nothing to log yet", '<p class="sub">Your daily variables appear here: habits, counts or short notes. The check-in about how your body feels is on the Health overview.</p>');
+    var rows = T.vars.map(function (v) {
+      var cur = val(v.id, day), cells = days.map(function (d) { var x = val(v.id, d); return '<i class="dl-c' + (on(x) ? (x === "auto" ? " auto" : " on") : x != null && v.type !== "boolean" ? " on" : "") + '" title="' + esc(d + (x != null ? ": " + (x === "auto" ? "done (filled in automatically)" : x) : "")) + '"></i>'; }).join("");
+      var ctl = v.type === "boolean" ? '<button class="dl-t' + (on(cur) ? " on" : "") + '" data-act="logset" data-id="' + esc(v.id) + '" aria-pressed="' + on(cur) + '" aria-label="' + esc(v.name + (on(cur) ? ": done" : ": not done")) + '">' + (on(cur) ? (cur === "auto" ? "✓ auto" : "✓ done") : "Not yet") + "</button>"
+        : '<form class="dl-f" data-form="logval" data-id="' + esc(v.id) + '"><input name="v" value="' + esc(cur || "") + '" aria-label="' + esc(v.name) + '"' + (v.type === "number" || v.type === "scale" ? ' inputmode="decimal"' : "") + '><button class="chip">Save</button></form>';
+      return '<div class="dl-r"><span class="dl-n">' + esc(v.name) + (v.unit ? ' <small>' + esc(v.unit) + "</small>" : "") + '</span>' + ctl + '<span class="dl-cells" aria-hidden="true">' + cells + "</span></div>";
+    }).join("");
+    var done = T.vars.filter(function (v) { return v.type === "boolean" && on(val(v.id, day)); }).length, nb = T.vars.filter(function (v) { return v.type === "boolean"; }).length;
+    return head("Daily log", "The day, one line at a time") + nav +
+      card(done + " of " + nb + " done", '<div class="dl">' + rows + '</div><p class="sub dl-key">The dots are the last 14 days. A hollow dot was filled in automatically.</p>') +
+      card("Day summary", '<form data-form="logsum"><textarea name="s" rows="3" aria-label="Day summary" placeholder="One or two lines about the day">' + esc(sum) + '</textarea><div class="acts"><button class="chip">Save summary</button></div></form>');
+  }
   H.detailHTML = function (M, key, ui) {
-    return '<div class="detail" data-d="' + key + '">' + ({ workouts: workouts, sleep: sleep, readiness: readiness, vitals: vitals, records: records, more: more }[key] || more)(M, ui) + "</div>";
+    return '<div class="detail" data-d="' + key + '">' + ({ workouts: workouts, sleep: sleep, readiness: readiness, vitals: vitals, records: records, more: more, dailylog: dailylog }[key] || more)(M, ui) + "</div>";
   };
 
   /* ---------------- the open exercise library (free-exercise-db, public domain) ---------------- */

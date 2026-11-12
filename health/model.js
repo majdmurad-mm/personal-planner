@@ -57,10 +57,14 @@
       opt(t("health_milestones").is("archived_at", null)),
       opt(t("bp_readings").is("archived_at", null).gte("date", since(365)).order("measured_at")),
       opt(t("actions").is("archived_at", null).eq("kind", "block")),
-      opt(t("planner_settings").limit(1))
+      opt(t("planner_settings").limit(1)),
+      // the Daily log (formerly the Tracker page): custom daily variables, their values, and a day summary
+      opt(t("tracker_variables").order("position")),
+      opt(t("tracker_entries").gte("date", since(30)).order("date")),
+      opt(t("tracker_days").gte("date", since(30)).order("date"))
     ]).then(function (r) {
       var raw = { daily: r[0], workouts: r[1], sets: [], muscleMap: r[2], activities: r[3], metrics: r[4], status: r[5], flags: r[6], briefs: r[7], settings: r[8][0] || null, meals: r[9] || [], missingTables: missing,
-        routines: r[10], checkins: r[11], conditions: r[12], milestones: r[13], bp: r[14], blocks: r[15], planner: r[16][0] || null };
+        routines: r[10], checkins: r[11], conditions: r[12], milestones: r[13], bp: r[14], blocks: r[15], planner: r[16][0] || null, tracker: { vars: r[17] || [], entries: r[18] || [], days: r[19] || [] } };
       var ids = raw.workouts.map(function (w) { return w.id; }), chunks = [];
       for (var i = 0; i < ids.length; i += 20) chunks.push(ids.slice(i, i + 20));
       return Promise.all(chunks.map(function (c) { return run("workout_sets", sb.from("workout_sets").select("*").in("workout_id", c).is("superseded_at", null)); })).then(function (parts) {
