@@ -139,3 +139,10 @@ svg text{font-family:var(--sans);fill:var(--text);pointer-events:none;user-selec
 .spk{display:flex;flex-wrap:wrap;gap:6px}.spl{display:grid;gap:2px;margin-top:6px}.spthr{padding:4px 0;border-top:1px solid var(--line)}
 @media (prefers-reduced-motion:reduce){.spweb.fresh .spoke,.spweb.fresh .silk,.spweb.fresh .sbr,.spweb.fresh .spn,.spweb.fresh .spt,.spweb.fresh .thr{animation:none;stroke-dashoffset:0;opacity:1}}
 @container kn (max-width:700px){.spt text{font-size:30px;stroke-width:8px}.spt.l2 text{font-size:24px}.sphub text{font-size:40px}.sphub text.s{font-size:17px}.spn{stroke-width:2.4}}
+/* Spider labels: never smaller than 11 px on screen (--spu = viewBox units per pixel, set after drawing) */
+.spt text,.sphub text{font-size:max(15px,calc(13px*var(--spu,1)))}
+.spt.l2 text{font-size:max(12px,calc(11px*var(--spu,1)))}
+.sptl{font-size:max(10px,calc(11px*var(--spu,1)))}
+.sphub text.s{font-size:max(10px,calc(11px*var(--spu,1)))}
+/* a label with no free room shows on hover or focus of its theme */
+.spweb text.hid{display:none}.spt:hover text.hid,.spt:focus-visible text.hid,.spt.on text.hid{display:block}

@@ -135,6 +135,28 @@
         '<svg id="knWeb" viewBox="' + vb.map(function (v) { return v.toFixed(0); }).join(" ") + '" role="group" aria-label="The spider’s web: ' + M.tops.length + ' main themes. Choose a theme to open it.">' + s + "</svg>" +
         '<p class="sub sphint">Choose a theme to open it, a dot to see the item. Threads show why two things belong together when you point at them.</p></div>';
     }
+    /* After the web is drawn: every label is at least 11 px on screen (font sizes are in viewBox units, so they
+       grow when the web is drawn small), and labels that overlap move outward along their spoke in a few steps;
+       one that still has no room shows only on hover or focus. Main themes keep their place first. */
+    function spDeclutter() {
+      var svg = root.getElementById("knWeb"); if (!svg) return;
+      var r = svg.getBoundingClientRect(), vb = (svg.getAttribute("viewBox") || "0 0 1 1").split(" ").map(Number); if (!r.width || !vb[2]) return;
+      var u = vb[2] / r.width, fit = Math.min(r.width / vb[2], r.height / vb[3]); u = 1 / fit;   // viewBox units per screen pixel
+      svg.style.setProperty("--spu", u.toFixed(3));
+      var labs = [].slice.call(svg.querySelectorAll("g.spt.l1 text, g.spt.l2 text, text.sptl")), placed = [];
+      [].forEach.call(svg.querySelectorAll("g.spt circle, .sphub circle"), function (c) { var b = c.getBoundingClientRect(); placed.push([b.left, b.top, b.right, b.bottom]); });
+      var hit = function (b) { return placed.some(function (q) { return b.left < q[2] - 1 && b.right > q[0] + 1 && b.top < q[3] - 1 && b.bottom > q[1] + 1; }); };
+      labs.forEach(function (t) {
+        t.classList.remove("hid"); var x0 = +t.getAttribute("x"), y0 = +t.getAttribute("y"), len = Math.hypot(x0, y0) || 1, ux = x0 / len, uy = y0 / len, rot = t.getAttribute("transform");
+        for (var k = 0; k < 6; k++) {
+          var d = k * 16 * u; t.setAttribute("x", (x0 + ux * d).toFixed(1)); t.setAttribute("y", (y0 + uy * d).toFixed(1));
+          if (rot) t.setAttribute("transform", rot.replace(/rotate\(([-\d.]+) [-\d.]+ [-\d.]+\)/, function (m0, a) { return "rotate(" + a + " " + (x0 + ux * d).toFixed(1) + " " + (y0 + uy * d).toFixed(1) + ")"; }));
+          var b = t.getBoundingClientRect(); if (!b.width) return;
+          if (!hit(b)) { placed.push([b.left, b.top, b.right, b.bottom]); return; }
+        }
+        t.setAttribute("x", x0); t.setAttribute("y", y0); if (rot) t.setAttribute("transform", rot); t.classList.add("hid");
+      });
+    }
     function spPanel() {
       var M = spModel(); if (!M) return "";
       var x = '<button class="btn sm x" data-sptheme="" aria-label="Back to the whole web">✕</button>';
@@ -478,6 +500,7 @@
         (S.sheet ? '<div class="shade" data-shade="1"><div class="sheet" role="dialog" aria-modal="true">' + sheetHtml() + "</div></div>" : "");
       if (keepFocus) { var q = $("#knQ"); q.focus(); try { q.setSelectionRange(pos, pos); } catch (e) {} }
       mountGraph();
+      if (S.view === "spider") spDeclutter();
     }
     function select(id, fromHit) {
       S.sel = id; S.edit = false; S.linking = false; S.linkQ = ""; if (!S.preview || S.preview.id !== id) S.preview = null;
