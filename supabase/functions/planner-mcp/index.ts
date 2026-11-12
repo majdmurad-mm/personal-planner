@@ -30,6 +30,7 @@ import { McpServer, StreamableHttpTransport } from "mcp-lite";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import { AsyncLocalStorage } from "node:async_hooks";
+import "../_shared/freetime.js"; // sets globalThis.PPFree: the same free-time function the page uses
 
 // ---- Secrets / environment -------------------------------------------------
 // SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are injected automatically into
@@ -4972,7 +4973,8 @@ vtool("today", "Today at a glance: the main thing, what's next with times, free 
   const wd = new Date(t + "T12:00:00Z").getUTCDay() || 7, ws = set.data || { work_days: [1, 2, 3, 4, 5], work_start: "09:00", work_end: "18:00" };
   const busy: [number, number][] = sched.map((x) => [vMin(x.time), vMin(x.time) + (x.minutes || (x.kind === "task" || x.kind === "deadline" ? 30 : 60))]);
   if ((ws.work_days || []).includes(wd)) busy.push([vMin(String(ws.work_start).slice(0, 5)), vMin(String(ws.work_end).slice(0, 5))]);
-  let free = 0; for (let m = Math.max(now, 7 * 60); m < 23 * 60; m += 5) if (!busy.some(([a, b]) => m >= a && m < b)) free += 5;
+  // deno-lint-ignore no-explicit-any
+  const free = (globalThis as any).PPFree.compute({ nowMin: now, isToday: true, busy, dayStart: 420, dayEnd: 1380, minGap: 15 }).minutes;
   const parts: string[] = [o.weekday + "."];
   if (o.mainThing) parts.push("Main thing: " + o.mainThing.title + ".");
   parts.push(next.length ? "Next: " + vAnd(next.slice(0, 3).map((x) => x.time + " " + x.title)) + (next.length > 3 ? ", and " + (next.length - 3) + " more" : "") + "." : "Nothing else at a fixed time today.");

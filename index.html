@@ -17,6 +17,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="shared/areas.css?v=1">
+<script src="shared/areas.js?v=1"></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 <script>
   // Applied synchronously, before first paint, so a saved dark-mode preference doesn't flash light
@@ -52,13 +54,13 @@
     --p1: #AB5300; --p1-bg: rgba(255,159,69,0.12);
     --p2: #826609; --p2-bg: rgba(242,203,73,0.12);
     --p3: #54761B; --p3-bg: rgba(163,214,76,0.12);
-    --cat-health: #177F3D; --cat-health-bg: rgba(74,222,128,0.12);
-    --cat-finance: #7C6801; --cat-finance-bg: rgba(253,224,71,0.14);
-    --cat-career: #B15204; --cat-career-bg: rgba(251,146,60,0.12);
-    --cat-maintenance: #8A6905; --cat-maintenance-bg: rgba(234,179,8,0.14);
-    --cat-growth: #8744F0; --cat-growth-bg: rgba(176,132,245,0.14);
-    --cat-relationships: #0068E4; --cat-relationships-bg: rgba(95,168,255,0.12);
-    --cat-sol: #6B6B6B; --cat-sol-bg: rgba(107,107,107,0.12);
+    --cat-health: var(--area-health-text); --cat-health-bg: rgba(74,222,128,0.12);
+    --cat-finance: var(--area-task-text); --cat-finance-bg: rgba(253,224,71,0.14);
+    --cat-career: var(--area-work-text); --cat-career-bg: rgba(251,146,60,0.12);
+    --cat-maintenance: var(--area-task-text); --cat-maintenance-bg: rgba(234,179,8,0.14);
+    --cat-growth: var(--area-growth-text); --cat-growth-bg: rgba(176,132,245,0.14);
+    --cat-relationships: var(--area-people-text); --cat-relationships-bg: rgba(95,168,255,0.12);
+    --cat-sol: var(--area-sol-ink); --cat-sol-bg: rgba(107,107,107,0.12);
     /* Sol is deliberately neutral (gray in light mode, white in dark) everywhere it's used — EXCEPT
        goals specifically, which get this distinct cyan instead. A neutral color reads fine as a
        background tint or an icon accent, but a goal card/badge/matrix-tile in Sol would otherwise be
@@ -147,13 +149,13 @@
     --p1: #FF9F45; --p1-bg: rgba(255,159,69,0.12);
     --p2: #F2CB49; --p2-bg: rgba(242,203,73,0.12);
     --p3: #A3D64C; --p3-bg: rgba(163,214,76,0.12);
-    --cat-health: #4ADE80; --cat-health-bg: rgba(74,222,128,0.12);
-    --cat-finance: #FDE047; --cat-finance-bg: rgba(253,224,71,0.14);
-    --cat-career: #FB923C; --cat-career-bg: rgba(251,146,60,0.12);
-    --cat-maintenance: #EAB308; --cat-maintenance-bg: rgba(234,179,8,0.14);
-    --cat-growth: #B084F5; --cat-growth-bg: rgba(176,132,245,0.14);
-    --cat-relationships: #5FA8FF; --cat-relationships-bg: rgba(95,168,255,0.12);
-    --cat-sol: #FFFFFF; --cat-sol-bg: rgba(255,255,255,0.14);
+    --cat-health: var(--area-health-text); --cat-health-bg: rgba(74,222,128,0.12);
+    --cat-finance: var(--area-task-text); --cat-finance-bg: rgba(253,224,71,0.14);
+    --cat-career: var(--area-work-text); --cat-career-bg: rgba(251,146,60,0.12);
+    --cat-maintenance: var(--area-task-text); --cat-maintenance-bg: rgba(234,179,8,0.14);
+    --cat-growth: var(--area-growth-text); --cat-growth-bg: rgba(176,132,245,0.14);
+    --cat-relationships: var(--area-people-text); --cat-relationships-bg: rgba(95,168,255,0.12);
+    --cat-sol: var(--area-sol-ink); --cat-sol-bg: rgba(255,255,255,0.14);
     --cat-goal-sol: #22D3EE; --cat-goal-sol-bg: rgba(34,211,238,0.12); /* goals-only accent, see the :root block above */
     --daynight-day: #FDE047; --daynight-day-glow: rgba(253,224,71,0.6);
     --daynight-night: #5FA8FF; --daynight-night-glow: rgba(95,168,255,0.6);
@@ -19866,9 +19868,18 @@
   }
   function fxChangeText(e){
     var b = e.before || {}, a = e.after || {};
-    var t = a.title || b.title || String(a.text || b.text || "").slice(0, 60) || "an item";
+    var path = a.display_path || b.display_path || "";
+    var t = a.title || b.title || a.name || b.name || (path ? path.split("/").filter(Boolean).pop() : "") || String(a.text || b.text || "").slice(0, 60) || "an item";
     var q = '"' + t + '"';
-    var noun = e.table_name === "journal" ? "note " : e.table_name === "events" ? "event " : "";
+    var noun = ({ journal:"note ", events:"event ", knowledge_items:"", knowledge_sources:"OneDrive folder ", goals:"goal ", projects:"project " })[e.table_name] || "";
+    // a move into another parent, topic or folder names where it went
+    if(e.op === "update" && a.parent_id && a.parent_id !== b.parent_id){
+      var into = a.parent_type === "project" ? projectById(a.parent_id) : a.parent_type === "goal" ? goalById(a.parent_id) : null;
+      if(into && into.title) return "Moved " + q + ' into "' + into.title + '"';
+    }
+    if(e.op === "update" && e.table_name === "knowledge_items" && a.topic_id && a.topic_id !== b.topic_id && typeof KN !== "undefined" && KN.topics && KN.topics[a.topic_id]) return "Moved " + q + ' into the topic "' + KN.topics[a.topic_id] + '"';
+    if(e.op === "update" && e.table_name === "knowledge_items" && (a.meta || {}).folder !== (b.meta || {}).folder && (a.meta || {}).folder) return "Moved " + q + ' into the folder "' + a.meta.folder + '"';
+    if(e.op === "update" && e.table_name === "knowledge_sources" && a.privacy !== b.privacy) return "Set " + noun + q + " to " + ({ index:"Index", links:"Links only", private:"Private" })[a.privacy] + " (was " + ({ index:"Index", links:"Links only", private:"Private" })[b.privacy] + ")";
     // Health rows have no title/text; name them by what they are so the activity log stays readable.
     var hx = fxHealthText(e, a, b) || fxPeopleText(e, a, b); if(hx) return hx;
     if(e.op === "insert") return "Added " + noun + q;
@@ -19900,11 +19911,16 @@
     if(parts.length) return "Changed " + noun + q + ": " + parts.slice(0, 3).join(", ");
     return "Edited " + noun + q;
   }
+  // who made a change, as the feed shows it: a Claude chat, a voice call, the app itself, or an agent by name
+  function fxSource(actor){ return actor === "claude" ? "chat" : actor === "voice" ? "voice" : actor === "me" || actor === "upload" ? "app" : String(actor || ""); }
+  // sync bookkeeping (a OneDrive run, reading a file) is not a change worth reporting
+  var FX_BOOKKEEPING = ["delta_link", "last_synced_at", "status", "last_error", "item_count", "indexed_count", "index_status", "indexed_at", "last_sync_at", "state", "remote_modified_at", "size_bytes", "web_url", "provider_item_id"];
   function fxFeedEntries(){
     return activityLog.filter(function(e){
       if(e.actor === "me" || e.actor === "upload" || e.undone_at) return false;
       if(e.op !== "update") return true;
       var keys = fxChangedKeys(e);
+      if(keys.length && keys.every(function(k){ return FX_BOOKKEEPING.indexOf(k) >= 0; })) return false;
       // Clearing the previous main thing is a side effect of choosing a new one, not a change to report.
       return keys.length && !(keys.length === 1 && keys[0] === "focus_date" && !e.after.focus_date);
     });
@@ -19963,7 +19979,7 @@
 
     html += '<section><h2 class="fx-label">What Claude changed</h2>' + (feed.length ? '<div>' + feed.map(function(e){
       var at = new Date(e.created_at).toLocaleTimeString("en-GB", { hour:"2-digit", minute:"2-digit" });
-      return '<div class="fx-feed-row"><span class="d">' + at + '</span><span class="t">' + escapeHtml(fxChangeText(e)) + (e.actor !== "claude" ? ' <span class="src-tag">' + escapeHtml(e.actor) + '</span>' : '') + '</span>' +
+      return '<div class="fx-feed-row"><span class="d">' + at + '</span><span class="t">' + escapeHtml(fxChangeText(e)) + (true ? ' <span class="src-tag">' + escapeHtml(fxSource(e.actor)) + '</span>' : '') + '</span>' +
         '<button class="fx-link" type="button" data-fx-undo="' + e.id + '">undo</button></div>';
     }).join("") + '</div>' : '<p class="fx-empty">' + (activityReady === false ? 'The change log starts once its database update has been run.' : 'No changes in the last 24 hours.') + '</p>') + '</section>';
 
@@ -20355,12 +20371,12 @@
   /* Command Center (command/): one page for tasks, events, deadlines and time blocks. The module only
      draws; every save goes through the functions below, so the activity log and undo keep working.
      Bump COMMAND_VER with each release of command/*. */
-  var COMMAND_VER = "10", commandLoading = null, commandHandle = null, commandBoard = null, commandBoardLoad = null;
+  var COMMAND_VER = "11", commandLoading = null, commandHandle = null, commandBoard = null, commandBoardLoad = null;
   // Hours that count as booked in the free-time bars. Change here if the work pattern changes.
   var COMMAND_WORK = { days:[1, 2, 3, 4, 5], start:"09:00", end:"18:00" };
   function commandLoadScripts(){
     if(commandLoading) return commandLoading;
-    commandLoading = ["core", "view", "ring", "terrain", "board", "command"].reduce(function(chain, f){
+    commandLoading = ["../supabase/functions/_shared/freetime", "core", "view", "ring", "terrain", "board", "command"].reduce(function(chain, f){
       return chain.then(function(){
         return new Promise(function(resolve, reject){
           var el = document.createElement("script");
@@ -20397,6 +20413,32 @@
     }catch(err){ console.warn("actual", err); }
     return commandActual;
   }
+  /* The Money tile: the latest finance snapshot (finance_snapshots, behind RLS), read once and cached.
+     Spent this month, what is safe to spend above the cash floor, and the next money action. */
+  var commandMoney = null, commandMoneyAt = 0;
+  async function commandMoneyFetch(){
+    if(!currentUser || (commandMoney && Date.now() - commandMoneyAt < 10 * 60 * 1000)) return commandMoney;
+    var r = await sb.from("finance_snapshots").select("as_of,snapshot").order("as_of", { ascending:false }).limit(1);
+    commandMoney = r.error ? { error:true } : (r.data && r.data[0] ? r.data[0].snapshot : { none:true }); commandMoneyAt = Date.now();
+    return commandMoney;
+  }
+  function commandMoneyTile(today){
+    var s = commandMoney;
+    if(!s) return { big:"…", sub:"reading your finance snapshot" };
+    if(s.error || s.none) return { big:"–", sub:s.none ? "no finance snapshot yet" : "couldn’t read the finance snapshot" };
+    var num = function(v){ return typeof v === "number" && isFinite(v) ? v : null; }, mon = String(today).slice(0, 7), cur = s.currency || "EUR";
+    var eur = function(v){ return new Intl.NumberFormat("en-GB", { style:"currency", currency:cur, maximumFractionDigits:0 }).format(v); };
+    var months = Array.isArray(s.monthly) ? s.monthly : [], m = months.filter(function(x){ return x.month === mon; })[0] || months.filter(function(x){ return s.period && x.month === s.period.partial_month; })[0];
+    var bal = (Array.isArray(s.balances_eom) ? s.balances_eom : []).filter(function(b){ return num(b.giro) != null && num(b.tagesgeld) != null; }).slice(-1)[0];
+    var floor = s.kpis ? num(s.kpis.cash_floor_target) : null, safe = bal && floor != null ? bal.giro + bal.tagesgeld - floor : null;
+    var next = (Array.isArray(s.actions) ? s.actions : []).filter(function(a){ return a.status === "open" || a.status === "waiting"; }).sort(function(a, b){ return (num(a.rank) || 99) - (num(b.rank) || 99); })[0];
+    var spent = m ? num(m.spend) : null, label = m ? new Date(m.month + "-01T12:00:00").toLocaleDateString("en-GB", { month:"short" }) : "";
+    var parts = [];
+    if(safe != null) parts.push(eur(Math.max(0, safe)) + " safe to spend");
+    if(next) parts.push("next: " + String(next.title || next.action || next.text || "").slice(0, 60));
+    if(String(s.as_of || "").slice(0, 7) !== mon) parts.push("snapshot " + new Date(String(s.as_of).slice(0, 10) + "T12:00:00").toLocaleDateString("en-GB", { day:"numeric", month:"short" }));
+    return { big:spent != null ? eur(spent) : "–", sub:(spent != null ? "spent in " + label : "nothing for this month yet") + (parts.length ? " · " + parts.join(" · ") : ""), blur:true };
+  }
   /* Area pulse on Today: one number or word per area. Names only for people; money stays blurred until tapped. */
   function commandPulse(today){
     var out = {}, sl = commandActual && commandActual.sleepBy ? commandActual.sleepBy[today] : null;
@@ -20406,7 +20448,7 @@
     if(best) out.people = { big:String(best.p.name || "").replace(/^\s*\[[^\]]*\]\s*/, "").split(" ")[0], sub:"birthday " + (best.n === 0 ? "today" : best.n === 1 ? "tomorrow" : best.d.toLocaleDateString("en-GB", { weekday:"short" })) };
     else { var late = (state.people || []).filter(function(p){ return !p.archivedAt && !p.inMemory && p.rhythmDays && p.lastContactAt && (t0 - new Date(p.lastContactAt)) / 864e5 > p.rhythmDays; }).sort(function(a, b){ return new Date(a.lastContactAt) - new Date(b.lastContactAt); })[0];
       out.people = late ? { big:String(late.name || "").replace(/^\s*\[[^\]]*\]\s*/, "").split(" ")[0], sub:"time to get in touch" } : { big:"–", sub:"nobody waiting" }; }
-    out.money = { big:"–", sub:"no money summary yet" };
+    out.money = commandMoneyTile(today);
     var wk = new Date(t0.getTime() - ((t0.getDay() + 6) % 7) * 864e5).toISOString().slice(0, 10), notes = (state.journal || []).filter(function(n){ return n.date >= wk && !n.archivedAt; }).length;
     out.growth = { big:String(notes), sub:notes === 1 ? "note this week" : "notes this week" };
     return out;
@@ -20521,7 +20563,7 @@
       }),
       feed: fxFeedEntries().slice(0, 8).map(function(e){
         var d = new Date(e.created_at), same = d.toDateString() === new Date().toDateString();
-        return { id:String(e.id), text:fxChangeText(e), when:(same ? "" : d.toLocaleDateString("en-GB", { weekday:"short" }) + " ") + d.toLocaleTimeString("en-GB", { hour:"2-digit", minute:"2-digit" }) };
+        return { id:String(e.id), text:fxChangeText(e), src:fxSource(e.actor), when:(same ? "" : d.toLocaleDateString("en-GB", { weekday:"short" }) + " ") + d.toLocaleTimeString("en-GB", { hour:"2-digit", minute:"2-digit" }) };
       }),
       feedNote: activityReady === false ? "The change log starts once its database update has been run." : "No changes in the last 24 hours."
     };
@@ -20608,7 +20650,7 @@
   function renderCommand(){
     if(activeSection !== "command") return;
     var host = document.getElementById("commandSection");
-    Promise.all([commandLoadScripts(), commandBoardFetch(), commandActualFetch()]).then(function(){
+    Promise.all([commandLoadScripts(), commandBoardFetch(), commandActualFetch(), commandMoneyFetch().catch(function(){ return null; })]).then(function(){
       if(activeSection !== "command") return;
       var d = commandData();
       if(commandHandle){ commandHandle.update(d); return; }
@@ -20634,7 +20676,7 @@
   /* Knowledge page (knowledge/): files and saved items, sorted and linked. Files are read in the browser;
      rows live in the knowledge_* tables and files in the private "knowledge" bucket, all behind RLS.
      Bump KNOWLEDGE_VER with each release of knowledge/*. */
-  var KNOWLEDGE_VER = "7", knowledgeLoading = null, knowledgeHandle = null, knowledgeFetching = null;
+  var KNOWLEDGE_VER = "8", knowledgeLoading = null, knowledgeHandle = null, knowledgeFetching = null;
   var KN = { items:null, edges:[], topics:{}, files:{}, settings:{ external:{} }, usage:null, meaning:{ ready:false, pending:0, busy:false } };
   var KN_MAX_FILE = 50 * 1024 * 1024, KN_PLAN_LIMIT = 1024 * 1024 * 1024;   // free-plan figures, shown as a guide
   function knowledgeLoadScripts(){
@@ -21083,7 +21125,7 @@
      (IMAP with an app-specific password kept in Vault; this page never gets it back); WhatsApp is saved by
      Claude on the desktop through the connector. Rows: comm_accounts / comm_messages, read-only here (RLS).
      Bump COMM_VER with each release of communication/*. */
-  var COMM_VER = "1", commLoading = null, commHandle = null, commFetching = null, commTimer = 0;
+  var COMM_VER = "2", commLoading = null, commHandle = null, commFetching = null, commTimer = 0;
   var COMM = { accounts:[], messages:[], ready:true };
   var COMM_WA_PROMPT = "Please save my recent WhatsApp chats to my planner, using the planner connector and computer use.\n1. Call comm_status with view whatsapp to see what is already saved and when.\n2. Open the WhatsApp app on this computer (the desktop app, not a browser). Go down the chat list from the top and open each chat that has messages newer than what is saved. On the first run, take the chats from the last 7 days.\n3. In each chat, read the new messages and save them with save_whatsapp_chat: the chat name, and for every message who sent it, the text, the time as WhatsApp shows it (YYYY-MM-DD HH:MM) and whether I sent it. For photos, voice notes or files write what it is, like [photo] or [voice message, 0:42].\n4. Only read. Never type, send, reply, react, delete, or open media or links in WhatsApp.\n5. When done, tell me which chats you saved and how many messages.";
   function commLoadScripts(){

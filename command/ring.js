@@ -11,6 +11,8 @@
   var lenOf = function (it) { return it.dur || it.est || (it.kind === "task" || it.kind === "deadline" ? 30 : 60); };
   var areaOf = function (it) { return it.kind === "event" && it.people && it.people.length ? "Relationships" : it.area; };
 
+  /* open tasks due today or earlier: the Today list and the area counts read the same set */
+  V.openDue = function (S) { var t = S.today; return C.overdue(S.items, t).concat(C.expand(S.items, t, t).filter(function (o) { return !o.done && C.hasDone(o.item); })); };
   /* everything the ring and the centre need for one day */
   V.dayModel = function (S) {
     var t = S.today, now = S.nowMin, occ = C.expand(S.items, t, t), act = S.showActual !== false && S.actual ? S.actual : null;
@@ -22,15 +24,14 @@
       var it = x.it, has = C.hasDone(it);
       x.state = has ? (x.o.done ? "done" : "plan") : x.gym && act ? (wos.length ? "met" : x.e < now ? "missed" : "plan") : x.e <= now ? "done" : "plan";
     });
-    /* free time between waking up (or 07:00) and 23:00 */
-    var d0 = wake != null && wake < 720 ? wake : 420, d1 = 1380, iv = [];
+    /* free time from now (today) or from waking / 07:00, until 23:00: the same function as the voice connector */
+    var iv = [];
     if (work) iv.push(work); timed.forEach(function (x) { if (x.it.kind !== "deadline") iv.push([x.s, x.e]); }); wos.forEach(function (w) { if (w.start != null) iv.push([w.start, w.start + (w.mins || 60)]); });
-    iv = iv.map(function (x) { return [Math.max(d0, x[0]), Math.min(d1, x[1])]; }).filter(function (x) { return x[1] > x[0]; }).sort(function (a, b) { return a[0] - b[0]; });
-    var free = [], cur = d0; iv.forEach(function (x) { if (x[0] - cur >= 30) free.push([cur, x[0]]); cur = Math.max(cur, x[1]); }); if (d1 - cur >= 30) free.push([cur, d1]);
-    var freeMin = free.reduce(function (a, f) { return a + f[1] - f[0]; }, 0);
+    var F = window.PPFree.compute({ nowMin: now, isToday: true, wake: wake, busy: iv, dayStart: 420, dayEnd: 1380, minGap: 15 });
+    var d0 = F.from, d1 = F.to, free = F.gaps, freeMin = F.minutes, fromNow = F.fromNow;
     var current = timed.filter(function (x) { return x.s <= now && x.e > now && x.state !== "missed"; })[0], next = timed.filter(function (x) { return x.s > now && !(C.hasDone(x.it) && x.o.done); }).sort(function (a, b) { return a.s - b.s; })[0];
     var untimed = occ.filter(function (o) { return !o.done && C.hasDone(o.item) && (!o.item.time || o.item.allDay); });
-    return { occ: occ, timed: timed, sleep: sleep, wake: wake, bed: bed, work: work, wos: wos, energy: energy, free: free, freeMin: freeMin, d0: d0, d1: d1, current: current, next: next, untimed: untimed, open: occ.filter(function (o) { return !o.done && C.hasDone(o.item); }) };
+    return { occ: occ, timed: timed, sleep: sleep, wake: wake, bed: bed, work: work, wos: wos, energy: energy, free: free, freeMin: freeMin, d0: d0, d1: d1, fromNow: fromNow, current: current, next: next, untimed: untimed, open: occ.filter(function (o) { return !o.done && C.hasDone(o.item); }) };
   };
   /* greedy proposal: untimed tasks into the free gaps that are still ahead */
   V.proposePlan = function (S) {
@@ -87,7 +88,7 @@
     var morning = hour >= 4 && hour < 12, evening = hour >= 19 || hour < 4;
     /* left: the ring */
     var chips = D.wos.filter(function (w) { return w.start == null; }).map(function (w) { return '<button class="wochip" data-workout="' + t + '">✓ ' + esc(w.title) + (w.mins ? " · " + hm(w.mins) : "") + ' <span class="nt">time not synced</span></button>'; }).join("");
-    var openLine = !D.timed.length ? "Open day. " + hm(D.freeMin) + " free between " + C.hhmm(D.d0) + " and 23:00." : hm(D.freeMin) + " free today";
+    var openLine = D.d0 >= D.d1 ? "The day is over. Rest well." : (D.fromNow ? hm(D.freeMin) + " free from now until 23:00" : (!D.timed.length ? "Open day. " : "") + hm(D.freeMin) + " free between " + C.hhmm(D.d0) + " and 23:00") + ".";
     var left = '<div class="sun-l"><div class="ringwrap">' + ring(S, D) + centre(S, D, main) + '</div><p class="ropen">' + openLine + "</p>" + (chips ? '<div class="wochips" style="max-width:420px;margin:8px auto 0">' + chips + "</div>" : "") +
       '<p class="rlegend mono"><span><i class="k1"></i>filled = happened</span><span><i class="k2"></i>outlined = planned</span><span><i class="k3"></i>free time</span>' + (D.energy.length > 1 ? '<span><i class="k4"></i>energy</span>' : "") + "</p>" +
       (morning && D.untimed.length && !S.plan ? '<p class="rplan"><button class="btn" data-act="planday">✦ Plan my day <span class="mono">times for ' + D.untimed.length + " untimed " + (D.untimed.length === 1 ? "task" : "tasks") + "</span></button></p>" : "") + "</div>";
@@ -108,16 +109,16 @@
       var tm = C.expand(S.items, C.add(t, 1), C.add(t, 1)).filter(function (o) { return o.item.time; })[0];
       r += '<section class="card eve"><p class="mono">Evening check-in · one tap each</p>' + D.open.map(function (o) { return '<div class="erow" style="' + C.areaVars(o.item.area) + '"><span>' + esc(o.item.title) + '</span><span class="seg3"><button data-eve="done" data-key="' + esc(o.key) + '">Done</button><button data-eve="moved" data-key="' + esc(o.key) + '">Moved</button><button data-eve="dropped" data-key="' + esc(o.key) + '">Dropped</button></span></div>'; }).join("") + '<p class="sub" style="margin-top:6px">Moved goes to tomorrow; Dropped archives it (it can be restored).' + (tm ? " Tomorrow starts with <b>" + esc(tm.item.title) + " · " + tm.item.time + "</b>." : "") + "</p></section>";
     } else {
-      r += '<section aria-label="Today"><p class="mono">Today' + (D.untimed.length ? " · drag a task onto the ring to give it a time" : "") + '</p><div class="tlist">' + (D.occ.length ? D.occ.map(function (o) { return C.hasDone(o.item) && !o.done ? drow(S, o) : V.row(S, o); }).join("") : '<p class="none">Nothing planned. Add something with N, or enjoy the room.</p>') + "</div>";
+      r += '<section aria-label="Today"><p class="mono">Today' + (D.untimed.length ? " · drag a task onto the ring to give it a time" : "") + '</p><div class="tlist">' + (over.length || D.occ.length ? over.map(function (o) { return '<div class="dr od" draggable="true" data-drag="' + esc(o.item.id) + '">' + V.row(S, o, "overdue · " + V.fmt(o.date, { day: "numeric", month: "short" })) + "</div>"; }).join("") + D.occ.map(function (o) { return C.hasDone(o.item) && !o.done ? drow(S, o) : V.row(S, o); }).join("") : '<p class="none">Nothing planned. Add something with N, or enjoy the room.</p>') + "</div>";
       r += "</section>";
     }
-    if (over.length) r += '<section class="fold"><div class="over"><span><span class="attn">' + over.length + "</span> from earlier · no rush</span><button class=\"btn\" data-act=\"overdue\" aria-expanded=\"" + !!S.overdueOpen + '">' + (S.overdueOpen ? "Close" : "Go through them") + "</button></div>" + (S.overdueOpen ? '<div style="margin-top:8px">' + over.map(function (o) { return V.row(S, o, V.fmt(o.date, { day: "numeric", month: "short" })) + V.triage(o); }).join("") + "</div>" : "") + "</section>";
+    if (over.length) r += '<section class="fold"><div class="over"><span><span class="attn">' + over.length + "</span> overdue · sort them in one go</span><button class=\"btn\" data-act=\"overdue\" aria-expanded=\"" + !!S.overdueOpen + '">' + (S.overdueOpen ? "Close" : "Go through them") + "</button></div>" + (S.overdueOpen ? '<div style="margin-top:8px">' + over.map(function (o) { return V.row(S, o, V.fmt(o.date, { day: "numeric", month: "short" })) + V.triage(o); }).join("") + "</div>" : "") + "</section>";
     /* area pulse */
-    var wdl = D.occ.filter(function (o) { return o.item.kind === "deadline" && !o.done && C.areaKey(o.item.area) === "work"; }).length, wtasks = D.open.filter(function (o) { return C.areaKey(o.item.area) === "work"; }).length;
-    var tiles = [["health", "Health", pulse.health, "health"], ["people", "People", pulse.people, "people"], ["task", "Money", pulse.money, "finance"], ["work", "Work", { big: wdl ? String(wdl) : String(wtasks), sub: wdl ? (wdl === 1 ? "deadline today" : "deadlines today") : (wtasks === 1 ? "open task today" : "open tasks today") }, "work"], ["growth", "Growth", pulse.growth, "knowledge"]];
+    var wdl = D.occ.filter(function (o) { return o.item.kind === "deadline" && !o.done && C.areaKey(o.item.area) === "work"; }).length, wopen = V.openDue(S).filter(function (o) { return C.areaKey(o.item.area) === "work"; }), wtasks = wopen.length, wlate = wopen.filter(function (o) { return o.date < t; }).length;
+    var tiles = [["health", "Health", pulse.health, "health"], ["people", "People", pulse.people, "people"], ["task", "Money", pulse.money, "finance"], ["work", "Work", { big: wdl ? String(wdl) : String(wtasks), sub: wdl ? (wdl === 1 ? "deadline today" : "deadlines today") : (wtasks === 1 ? "open task" : "open tasks") + (wlate ? " · " + wlate + " overdue" : " due today") }, "work"], ["growth", "Growth", pulse.growth, "knowledge"]];
     r += '<section aria-label="Area pulse"><div class="pulse">' + tiles.map(function (p) { var d = p[2] || { big: "–", sub: "no data yet" }; return '<button class="ptile" data-go="' + p[3] + '" style="--c:var(--area-' + p[0] + ");--ct:var(--area-" + p[0] + '-text)"><span class="mono">' + p[1] + '</span><b' + (d.blur && !S.unblur ? ' class="blur" data-blur="1"' : "") + ">" + esc(d.big) + "</b><span>" + esc(d.sub || "") + "</span></button>"; }).join("") + "</div></section>";
     /* what Claude changed: the last three */
-    r += '<section class="feed" aria-label="What Claude changed"><p class="mono">What Claude changed</p>' + (feed.length ? feed.slice(0, 3).map(function (f) { return "<p><span>" + esc(f.text) + " <i>· " + esc(f.when) + "</i></span>" + (f.canUndo === false ? "" : '<button class="link" data-undo="' + esc(f.id) + '">undo</button>') + "</p>"; }).join("") : '<p class="none">' + esc(S.feedNote || "No changes in the last 24 hours.") + "</p>") + "</section>";
+    r += '<section class="feed" aria-label="What Claude changed"><p class="mono">What Claude changed</p>' + (feed.length ? feed.slice(0, 3).map(function (f) { return "<p><span>" + esc(f.text) + " <i>· " + (f.src ? '<b class="src">' + esc(f.src) + "</b> · " : "") + esc(f.when) + "</i></span>" + (f.canUndo === false ? "" : '<button class="link" data-undo="' + esc(f.id) + '">undo</button>') + "</p>"; }).join("") : '<p class="none">' + esc(S.feedNote || "No changes in the last 24 hours.") + "</p>") + "</section>";
     /* the next three days, one line each */
     var nx = C.expand(S.items, C.add(t, 1), C.add(t, 3));
     r += '<section class="next3" aria-label="Next three days">' + [1, 2, 3].map(function (n) { var d = C.add(t, n), day = nx.filter(function (o) { return o.date === d; }), seen = [], fixed = day.filter(function (o) { return o.item.kind !== "task"; }); day.forEach(function (o) { var k = C.areaKey(o.item.area); if (seen.indexOf(k) < 0) seen.push(k); });

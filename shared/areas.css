@@ -1,0 +1,19 @@
+/* GENERATED from shared/areas.js by shared/build-areas.js. Do not edit here. */
+:root,:host,[data-theme="light"]{
+  --area-task:#A18C0B;--area-task-soft:#EDE8CF;--area-task-text:#716208;
+  --area-work:#BB4100;--area-work-soft:#F1DCCD;--area-work-text:#A83A00;
+  --area-health:#00793D;--area-health-soft:#D3E5D7;--area-health-text:#00733A;
+  --area-growth:#6331A0;--area-growth-soft:#E3D9E7;--area-growth-text:#6331A0;
+  --area-people:#007AC5;--area-people-soft:#D3E5EC;--area-people-text:#0068A7;
+  --area-sol:#FFFFFF;--area-sol-soft:#FFFFFF;--area-sol-text:#3F3A33;--area-sol-line:#9A9286;--area-sol-ink:#6B6B6B;
+  --area-none:#8A8378;--area-none-soft:#EBE8E3;--area-none-text:#5A544B;
+}
+[data-theme="dark"]{
+  --area-task:#F9D460;--area-task-soft:#4E442A;--area-task-text:#F9D460;
+  --area-work:#E4744B;--area-work-soft:#4A3126;--area-work-text:#E88966;
+  --area-health:#5CCB89;--area-health-soft:#2E4233;--area-health-text:#5CCB89;
+  --area-growth:#9E6CC6;--area-growth-soft:#3C2F3F;--area-growth-text:#B691D4;
+  --area-people:#63B9FE;--area-people-soft:#303F4A;--area-people-text:#63B9FE;
+  --area-sol:#F4F1EA;--area-sol-soft:#3A3732;--area-sol-text:#F4F1EA;--area-sol-line:transparent;--area-sol-ink:#FFFFFF;
+  --area-none:#9A9286;--area-none-soft:#383530;--area-none-text:#D8D1C5;
+}

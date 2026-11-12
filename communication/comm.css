@@ -1,12 +1,13 @@
+@import url("../shared/areas.css?v=1");
 /* Communication page. Quiet neutrals with a slight blue bias; the accent is the People blue,
    since messages are about people. WhatsApp gets no green: green means Health in this planner. */
 :host{display:block}
 *{box-sizing:border-box;margin:0;padding:0}
 button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .cm{--sans:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;--disp:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;--r:14px;
- --bg:#F2F4F3;--panel:#FBFCFB;--inset:#E7EBEC;--text:#1D2430;--muted:#59636F;--line:#D5DBDE;--acc:#007AC5;--accSoft:#D8E8F2;--onAcc:#fff;--bad:#B4331F;--badSoft:#F6E0DA;--run:#8A6A00;--shade:rgba(20,28,38,.42);color-scheme:light;
+ --bg:#F2F4F3;--panel:#FBFCFB;--inset:#E7EBEC;--text:#1D2430;--muted:#59636F;--line:#D5DBDE;--acc:var(--area-people);--accSoft:#D8E8F2;--onAcc:#fff;--bad:#B4331F;--badSoft:#F6E0DA;--run:#8A6A00;--shade:rgba(20,28,38,.42);color-scheme:light;
  position:relative;min-height:100vh;background:var(--bg);color:var(--text);font:15px/1.5 var(--sans);-webkit-font-smoothing:antialiased;text-align:left;container:cm/inline-size;padding-top:var(--ppm-top,0px)}
-.cm[data-theme=dark]{--bg:#11161C;--panel:#171D24;--inset:#212932;--text:#E5E9ED;--muted:#9AA5B0;--line:#2A343F;--acc:#63B9FE;--accSoft:#1D3446;--onAcc:#0D1620;--bad:#F08A73;--badSoft:#3A231E;--run:#E2C25A;--shade:rgba(0,0,0,.6);color-scheme:dark}
+.cm[data-theme=dark]{--bg:#11161C;--panel:#171D24;--inset:#212932;--text:#E5E9ED;--muted:#9AA5B0;--line:#2A343F;--acc:var(--area-people);--accSoft:#1D3446;--onAcc:#0D1620;--bad:#F08A73;--badSoft:#3A231E;--run:#E2C25A;--shade:rgba(0,0,0,.6);color-scheme:dark}
 :focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:6px}
 a{color:var(--acc)}
 .ribbon{padding:6px 16px;font-size:11px;letter-spacing:.08em;text-align:center;color:var(--muted);border-bottom:1px dashed var(--line)}

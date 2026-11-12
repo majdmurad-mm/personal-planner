@@ -1,3 +1,4 @@
+@import url("../shared/areas.css?v=1");
 /* Command Center: warm graphite. The five area colours are the only colour; everything else is neutral.
    AREA TOKENS (one source of truth): --area-<key> strong (edges, dots), -soft (block fill, hover), -text (text on the soft tint).
    Keys: task (Finance, Maintenance), work (Career), health (Health), growth (Growth, knowledge), people (Relationships), none.
@@ -5,22 +6,13 @@
 *{box-sizing:border-box;margin:0}
 button{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer;text-align:left}
 input,select,textarea{font:inherit;color:inherit}
-.cc{--area-task:#A18C0B;--area-task-soft:#EDE8CF;--area-task-text:#716208;
- --area-work:#BB4100;--area-work-soft:#F1DCCD;--area-work-text:#A83A00;
- --area-health:#00793D;--area-health-soft:#D3E5D7;--area-health-text:#00733A;
- --area-growth:#6331A0;--area-growth-soft:#E3D9E7;--area-growth-text:#6331A0;
- --area-people:#007AC5;--area-people-soft:#D3E5EC;--area-people-text:#0068A7;
- --area-sol:#FFFFFF;--area-sol-soft:#FFFFFF;--area-sol-text:#3F3A33;--area-sol-line:#9A9286;
- --area-none:#8A8378;--area-none-soft:#EBE8E3;--area-none-text:#5A544B;--attn:#B26B00;
+.cc{--attn:#B26B00;
  --Health:var(--area-health);--Relationships:var(--area-people);--Finance:var(--area-task);--Career:var(--area-work);--Maintenance:var(--area-task);--Growth:var(--area-growth);--Sol:var(--area-sol);--none:var(--area-none);
  --sans:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;--disp:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;--r:14px;
  --bg:#F2EEE7;--card:#FBF9F4;--inset:#EAE4DA;--text:#28241F;--muted:#6A6257;--line:#DDD5C8;--acc:#28241F;--accText:#28241F;--onAcc:#FBF9F4;--work:#EDE8DF;--shade:rgba(40,36,31,.35);color-scheme:light;
  position:relative;min-height:100vh;background:var(--bg);color:var(--text);font:16px/1.5 var(--sans);font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased;text-align:left;letter-spacing:0;
  container:cc/inline-size;padding-top:var(--ppc-top,0px)}
-.cc[data-theme=dark]{--area-task:#F9D460;--area-task-soft:#4E442A;--area-task-text:#F9D460;--area-work:#E4744B;--area-work-soft:#4A3126;--area-work-text:#E88966;
- --area-health:#5CCB89;--area-health-soft:#2E4233;--area-health-text:#5CCB89;--area-growth:#9E6CC6;--area-growth-soft:#3C2F3F;--area-growth-text:#B691D4;
- --area-people:#63B9FE;--area-people-soft:#303F4A;--area-people-text:#63B9FE;--area-sol:#F4F1EA;--area-sol-soft:#3A3732;--area-sol-text:#F4F1EA;--area-sol-line:transparent;
- --area-none:#9A9286;--area-none-soft:#383530;--area-none-text:#D8D1C5;--attn:#E3AB52;
+.cc[data-theme=dark]{--attn:#E3AB52;
  --bg:#1A1816;--card:#23201D;--inset:#2C2824;--text:#EEE7DB;--muted:#A69D8F;--line:#37322D;--acc:#EEE7DB;--accText:#EEE7DB;--onAcc:#1A1816;--work:#26231F;--shade:rgba(0,0,0,.55);color-scheme:dark}
 :focus-visible{outline:2px solid var(--acc);outline-offset:2px;border-radius:6px}
 .ribbon{padding:6px 16px;font-size:11px;letter-spacing:.08em;text-align:center;color:var(--muted);border-bottom:1px dashed var(--line)}
@@ -288,3 +280,8 @@ svg.ring{width:100%;height:auto;display:block}svg.ring.drop .rfree{fill:color-mi
 .wot:hover{background:var(--area-health);color:var(--bg,#fff)}.wot:focus-visible{outline:2px solid var(--area-health);outline-offset:1px}
 .woedit{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:4px;padding:6px 8px;border-radius:8px;background:var(--area-health-soft);color:var(--area-health-text);font-size:12.5px}
 .woedit input{font:inherit;padding:2px 4px;border-radius:6px;border:1px solid var(--line);background:var(--bg,#fff);color:var(--text);margin-left:4px}
+/* overdue rows in Today, the source of a change, the narrow week's actual rows */
+.dr.od .when{color:var(--attn);font-weight:600}
+.dr.od .it{box-shadow:inset 3px 0 0 var(--attn)}
+.feed .src{font-weight:600;font-style:normal}
+.agenda .r.act{color:var(--area-health-text)}.agenda .r.act span:first-child{color:var(--area-health)}
