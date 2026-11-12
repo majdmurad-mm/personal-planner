@@ -86,7 +86,7 @@
     /* energy */
     var rhr = n("resting_hr"), hs = M.vitals.heart.s, bbn = n("body_battery_now"), bbh = n("body_battery_high"), sa = n("stress_avg"), ys = M.Y.stress_avg;
     var energyBody = '<div class="row">' + H.spark(M.col("resting_hr", 7), { band: band(B.resting_hr), label: "Resting heart rate, last 7 days", w: 300, h: 64, wide: true }) + '<span class="cap">7 days' + (B.resting_hr ? " · band is your usual range" : "") + "</span></div>" +
-      kv([["HRV", n("hrv_avg") == null ? "no reading" : n("hrv_avg") + " ms" + (T.hrv_status ? " · " + esc(T.hrv_status) : "")], ["Body Battery", bbn == null && bbh == null ? "no reading" : (bbn != null ? bbn + " now" : "") + (bbn != null && bbh != null ? " · " : "") + (bbh != null ? "high " + bbh : "")], ["Stress", sa == null && ys == null ? "no reading" : (sa != null ? sa + " so far" : "") + (sa != null && ys != null ? " · " : "") + (ys != null ? ys + " yesterday" : "")]]) +
+      kv([["HRV", n("hrv_avg") == null ? (M.hrvNever ? "not provided by your watch" : "no reading") : n("hrv_avg") + " ms" + (T.hrv_status ? " · " + esc(T.hrv_status) : "")], ["Body Battery", bbn == null && bbh == null ? "no reading" : (bbn != null ? bbn + " now" : "") + (bbn != null && bbh != null ? " · " : "") + (bbh != null ? "high " + bbh : "")], ["Stress", sa == null && ys == null ? "no reading" : (sa != null ? sa + " so far" : "") + (sa != null && ys != null ? " · " : "") + (ys != null ? ys + " yesterday" : "")]]) +
       '<p class="lab">Body Battery since midnight</p>' + H.bbCurve(T.body_battery_curve);
     /* movement */
     var steps = n("steps"), goal = M.cfg.stepsGoal, ms = steps == null ? "none" : steps >= goal ? "good" : "watch", iw = M.intensityWeek, it = M.cfg.intensity;
@@ -97,7 +97,7 @@
     return { sleep:
       pillar("sleep", "Last night", ss, { good: "Good night", watch: "Fair night", low: "Rough night", none: "No data" }[ss], sl, "score", rel(sl, B.sleep_score), sleepBody), vitals:
       pillar("energy", "Heart, recovery and stress", hs, hs === "none" ? "No data" : M.paused ? "Resting" : M.vitals.heart.label, rhr, "bpm resting", rel(rhr, B.resting_hr), energyBody), move:
-      pillar("move", "Everyday movement", ms, ms === "none" ? "No data" : ms === "good" ? "Goal reached" : M.paused ? "No target today" : "Room to build", steps, "steps so far", "7-day average " + fmt(M.stepsAvg7) + " · goal " + fmt(goal), moveBody) };
+      pillar("move", "Everyday movement", ms, ms === "none" ? "No data" : ms === "good" ? "Goal reached" : M.paused ? "No target today" : "Room to build", steps, "steps so far" + (function () { var at = T.synced_at || T.updated_at; if (!at || steps == null) return ""; var d = new Date(at); return " · last synced " + H.pad2(d.getHours()) + ":" + H.pad2(d.getMinutes()) + (H.dayDiff(M.now, d) ? " " + d.toLocaleDateString("en-GB", { weekday: "short" }) : ""); })(), "7-day average " + fmt(M.stepsAvg7) + " · goal " + fmt(goal), moveBody) };
   }
 
   /* Training calendar: the days a strength session or a gym-type activity was actually logged.

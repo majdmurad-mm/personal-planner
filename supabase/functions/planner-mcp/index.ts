@@ -4866,7 +4866,7 @@ merged("set_health", "Change the Health page's state. kinds: condition (a long-t
 merged("log_metric", "Log a number. kinds: tracker (a Tracker variable for a day), body (weight_kg, body_fat_pct, muscle_mass_kg, waist_cm, or blood_pressure with systolic/diastolic).", ["kind"], [
   { when: { kind: "tracker" }, tool: "log_metric" }, { when: { kind: "body" }, tool: "log_body_metric" },
 ]);
-merged("upsert_health", "Save synced health data, idempotent (formerly upsert_health_day, upsert_workout, upsert_activity, upsert_routine). kinds: day (one Garmin day; send every field you can read, incl. hrvAvg, hrvStatus, bodyBatteryHigh/Low, trainingReadiness), workout (one Hevy session; ALWAYS send startedAt and durationMinutes), activity (swim, sauna, walk, run…), routine (the Hevy routines and rotation).", ["kind"], [
+merged("upsert_health", "Save synced health data, idempotent (formerly upsert_health_day, upsert_workout, upsert_activity, upsert_routine). kinds: day (one Garmin day; send every field you can read: hrvAvg and hrvStatus come from Garmin's separate per-day HRV call, not the daily summary; also bodyBatteryHigh/Low, trainingReadiness; re-send today later in the day so steps stay current), workout (one Hevy session; ALWAYS send startedAt and durationMinutes), activity (swim, sauna, walk, run…), routine (the Hevy routines and rotation).", ["kind"], [
   { when: { kind: "day" }, tool: "upsert_health_day" }, { when: { kind: "workout" }, tool: "upsert_workout" },
   { when: { kind: "activity" }, tool: "upsert_activity" }, { when: { kind: "routine" }, tool: "upsert_routine" },
 ]);

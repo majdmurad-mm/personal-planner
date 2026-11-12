@@ -26,6 +26,9 @@
   var EX = { "incline chest press": ["chest", ["shoulders", "triceps"]], "chest press": ["chest", ["triceps", "shoulders"]], "lat pulldown": ["lats", ["biceps"]], "shoulder press": ["shoulders", ["triceps"]], "leg press": ["quads", ["glutes", "hamstrings"]],
     "bicep curl": ["biceps", []], "ab crunch": ["abs", []], "crunch": ["abs", []], "seated row": ["lats", ["biceps", "rear"]], "lateral raise": ["shoulders", []], "leg curl": ["hamstrings", []], "triceps extension": ["triceps", []],
     "back extension": ["lower_back", ["glutes"]], "reverse butterfly": ["rear", ["traps"]], "reverse fly": ["rear", ["traps"]], "butterfly": ["chest", []], "pec deck": ["chest", []], "leg extension": ["quads", []], "hip thrust": ["glutes", ["hamstrings"]] };
+  // cardio that still works muscles: the rowing machine (back, lats, legs, biceps) and swimming (shoulders, lats, back, core)
+  EX["rowing machine"] = EX["rowing"] = EX["row machine"] = EX["rower"] = ["lats", ["lower_back", "quads", "hamstrings", "glutes", "biceps"]];
+  EX["swimming"] = EX["swim"] = ["shoulders", ["lats", "lower_back", "abs", "obliques"]];
   var EXK = Object.keys(EX);
   H.STATUS = { good: { label: "Fresh", word: "Recovered", icon: "●" }, watch: { label: "Recovering", word: "Take note", icon: "◐" }, low: { label: "Worked hard", word: "Strained", icon: "▲" }, none: { label: "No data", word: "No data", icon: "○" } };
   var st = H.st = function (s) { return s == null ? "none" : s >= 70 ? "good" : s >= 45 ? "watch" : "low"; };
@@ -204,6 +207,7 @@
   /* ---------- the model: everything the page shows, computed from the raw rows ---------- */
   H.build = function (raw, now) {
     var S = raw.settings || {}, M = { raw: raw, now: now, sample: !!raw.sample, missing: raw.missingTables || [] };
+    M.hrvNever = raw.daily.length >= 7 && !raw.daily.some(function (d) { return d.hrv_avg != null || d.hrv_status; });
     var cfg = M.cfg = { steps: num(S.steps_target), perWeek: num(S.strength_target_per_week) || 3, bed: S.bedtime_target ? String(S.bedtime_target).slice(0, 5) : "00:30", intensity: num(S.intensity_target) || 150,
       rotation: S.rotation && S.rotation.length ? S.rotation : ROT, repTop: num(S.rep_top) || 12, step: num(S.weight_step_kg) || 2.5 };
     /* a corrected night wins everywhere; the watch's own values stay on r.watch for reference */
@@ -296,6 +300,14 @@
 
     /* vitals */
     var acts = M.acts = raw.activities.map(function (a) { return { a: a, d: pd(a.date), at: a.started_at ? new Date(a.started_at) : null, type: a.type, name: a.name || a.type, mins: num(a.duration_minutes), dist: num(a.distance_m) }; });
+    // swims and rows from Garmin count toward the recovery and week layers: about one set per 10 minutes, at most 6
+    acts.forEach(function (x) {
+      var ago = dayDiff(now, x.d), what = String(x.type || "") + " " + String(x.name || ""); if (ago < 0 || ago > 6) return;
+      var map = /swim/i.test(what) ? EX.swimming : /\brow(ing)?\b|rower/i.test(what) ? EX["rowing machine"] : null; if (!map) return;
+      var n = Math.max(1, Math.min(6, Math.round((x.mins || 20) / 10))), f = DECAY[ago] || 0;
+      var add = function (m, w) { if (LOAD[m] == null) return; LOAD[m] += n * w * f; WEEK[m] += n * w; };
+      add(map[0], 1); map[1].forEach(function (m) { add(m, 0.5); });
+    });
     var intens = M.col("intensity_minutes", 7), haveInt = vals(intens).length;
     M.intensityWeek = haveInt ? vals(intens).reduce(function (a, b) { return a + b; }, 0) : null;
     var heartS = have.filter(function (c) { return c.key === "rhr" || c.key === "hrv"; }), hs = heartS.length ? st(avg(heartS.map(function (c) { return c.score; }))) : "none";
