@@ -4583,6 +4583,39 @@ function commWhen(at: string): string | null {
   const wall = new Date(guess.toLocaleString("sv-SE", { timeZone: "Europe/Berlin" }).replace(" ", "T") + "Z");
   return new Date(guess.getTime() - (wall.getTime() - guess.getTime())).toISOString();
 }
+// ---- iCloud Mail, read-only, for Claude on demand: the comm-mail function holds the password and talks IMAP.
+// Every call is noted in the activity log ("Searched mail: …"), never with contents.
+async function mailCall(route: string, body: Record<string, unknown>, note: string) {
+  const r = await fetch(SUPABASE_URL + "/functions/v1/comm-mail" + route, { method: "POST", headers: { "Content-Type": "application/json", "x-internal-key": SERVICE_KEY }, body: JSON.stringify(body) });
+  // deno-lint-ignore no-explicit-any
+  const j: any = await r.json().catch(() => ({ error: "the mail service answered " + r.status }));
+  await db.from("activity_log").insert({ user_id: OWNER, actor: actorStore.getStore() === dbVoice ? "voice" : "claude", table_name: "mail", row_id: crypto.randomUUID(), op: "read", after: { text: note } });
+  return j.error ? fail(j.error) : spOk(j);
+}
+tool("mail_search", {
+  description: "Search the owner's iCloud Mail (read-only; Inbox, Sent and Archive unless folder is given). Returns per hit: uid, folder, date, from, to, subject, a 200-character snippet and attachment names. Then mail_get to read one.",
+  inputSchema: z.object({
+    query: z.string().max(200).optional().describe("words in the subject, sender or body"),
+    from: z.string().max(200).optional(), to: z.string().max(200).optional(), folder: z.string().max(200).optional().describe("from mail_folders"),
+    since: DAY.optional(), before: DAY.optional(), has_attachment: z.boolean().optional(), limit: z.number().int().min(1).max(25).optional().describe("default 10"),
+  }),
+  handler: (a: Record<string, unknown>) => mailCall("/search", a, "Searched mail: " + String(a.query || a.from || a.to || "recent").slice(0, 80)),
+});
+tool("mail_get", {
+  description: "Open one email (read-only): headers, the full body as plain text (HTML stripped) and the attachment list with index, name, type and size.",
+  inputSchema: z.object({ uid: z.number().int().positive(), folder: z.string().max(200).describe("as returned by mail_search") }),
+  handler: (a: { uid: number; folder: string }) => mailCall("/message", a, "Opened an email in " + a.folder),
+});
+tool("mail_attachment", {
+  description: "Read one attachment as text (read-only): PDF text, docx, xlsx, pptx, csv and txt. Images and scanned PDFs return their details and a note. Capped at about 50,000 characters, and says when it was cut.",
+  inputSchema: z.object({ uid: z.number().int().positive(), folder: z.string().max(200), index: z.number().int().min(0).describe("from mail_get") }),
+  handler: (a: { uid: number; folder: string; index: number }) => mailCall("/attachment", a, "Read a mail attachment"),
+});
+tool("mail_folders", {
+  description: "The owner's iCloud Mail folders with message and unread counts (read-only).",
+  inputSchema: z.object({}),
+  handler: () => mailCall("/folders", {}, "Listed mail folders"),
+});
 async function commHash(x: string) { const h = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(x)); return Array.from(new Uint8Array(h)).map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 40); }
 
 tool("get_whatsapp_sync_state", {

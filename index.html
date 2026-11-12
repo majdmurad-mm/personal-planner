@@ -19381,7 +19381,7 @@
     } else {
       var decided = state.agentProposals.filter(function(p){ return p.status !== "pending"; });
       var feed = fxFeedEntries().slice(0, 60);
-      body.innerHTML = '<div class="wait-feed"><h3>What Claude changed</h3>' + (feed.length ? feed.map(function(e){ var d = new Date(e.created_at); return '<div class="row"><span>' + escapeHtml(fxChangeText(e)) + ' <i>· ' + escapeHtml(fxSource(e.actor)) + " · " + d.toLocaleString("en-GB", { day:"numeric", month:"short", hour:"2-digit", minute:"2-digit" }) + '</i></span><button class="btn" type="button" data-wait-undo="' + escapeHtml(String(e.id)) + '">undo</button></div>'; }).join("") : '<div class="ib-empty">' + (activityReady === false ? "The change log starts once its database update has been run." : "No changes yet.") + "</div>") +
+      body.innerHTML = '<div class="wait-feed"><h3>What Claude changed</h3>' + (feed.length ? feed.map(function(e){ var d = new Date(e.created_at); return '<div class="row"><span>' + escapeHtml(fxChangeText(e)) + ' <i>· ' + escapeHtml(fxSource(e.actor)) + " · " + d.toLocaleString("en-GB", { day:"numeric", month:"short", hour:"2-digit", minute:"2-digit" }) + '</i></span>' + (e.table_name === "mail" ? "" : '<button class="btn" type="button" data-wait-undo="' + escapeHtml(String(e.id)) + '">undo</button>') + '</div>'; }).join("") : '<div class="ib-empty">' + (activityReady === false ? "The change log starts once its database update has been run." : "No changes yet.") + "</div>") +
         (decided.length ? '<h3>Decided proposals</h3><div class="ib-list">' + decided.map(function(p){ return inboxProposalHtml(p, true); }).join("") + "</div>" : "") + "</div>";
     }
   }
@@ -19942,6 +19942,7 @@
     if(e.op === "update" && e.table_name === "knowledge_items" && (a.meta || {}).folder !== (b.meta || {}).folder && (a.meta || {}).folder) return "Moved " + q + ' into the folder "' + a.meta.folder + '"';
     if(e.op === "update" && e.table_name === "knowledge_sources" && a.privacy !== b.privacy) return "Set " + noun + q + " to " + ({ index:"Index", links:"Links only", private:"Private" })[a.privacy] + " (was " + ({ index:"Index", links:"Links only", private:"Private" })[b.privacy] + ")";
     // Health rows have no title/text; name them by what they are so the activity log stays readable.
+    if(e.table_name === "mail") return a.text || "Searched mail";
     var hx = fxHealthText(e, a, b) || fxPeopleText(e, a, b); if(hx) return hx;
     if(e.op === "insert") return "Added " + noun + q;
     if(e.op === "delete") return "Deleted " + noun + q;
@@ -20625,7 +20626,7 @@
       }),
       feed: fxFeedEntries().slice(0, 8).map(function(e){
         var d = new Date(e.created_at), same = d.toDateString() === new Date().toDateString();
-        return { id:String(e.id), text:fxChangeText(e), src:fxSource(e.actor), when:(same ? "" : d.toLocaleDateString("en-GB", { weekday:"short" }) + " ") + d.toLocaleTimeString("en-GB", { hour:"2-digit", minute:"2-digit" }) };
+        return { id:String(e.id), text:fxChangeText(e), src:fxSource(e.actor), canUndo:e.table_name !== "mail", when:(same ? "" : d.toLocaleDateString("en-GB", { weekday:"short" }) + " ") + d.toLocaleTimeString("en-GB", { hour:"2-digit", minute:"2-digit" }) };
       }),
       feedNote: activityReady === false ? "The change log starts once its database update has been run." : "No changes in the last 24 hours."
     };
@@ -21188,7 +21189,7 @@
      (IMAP with an app-specific password kept in Vault; this page never gets it back); WhatsApp is saved by
      Claude on the desktop through the connector. Rows: comm_accounts / comm_messages, read-only here (RLS).
      Bump COMM_VER with each release of communication/*. */
-  var COMM_VER = "2", commLoading = null, commHandle = null, commFetching = null, commTimer = 0;
+  var COMM_VER = "3", commLoading = null, commHandle = null, commFetching = null, commTimer = 0;
   var COMM = { accounts:[], messages:[], ready:true };
   var COMM_WA_PROMPT = "Please save my recent WhatsApp chats to my planner, using the planner connector and computer use.\n1. Call comm_status with view whatsapp to see what is already saved and when.\n2. Open the WhatsApp app on this computer (the desktop app, not a browser). Go down the chat list from the top and open each chat that has messages newer than what is saved. On the first run, take the chats from the last 7 days.\n3. In each chat, read the new messages and save them with save_whatsapp_chat: the chat name, and for every message who sent it, the text, the time as WhatsApp shows it (YYYY-MM-DD HH:MM) and whether I sent it. For photos, voice notes or files write what it is, like [photo] or [voice message, 0:42].\n4. Only read. Never type, send, reply, react, delete, or open media or links in WhatsApp.\n5. When done, tell me which chats you saved and how many messages.";
   function commLoadScripts(){

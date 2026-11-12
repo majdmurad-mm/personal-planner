@@ -68,7 +68,7 @@
     function sources() {
       var m = acc("icloud"), w = acc("whatsapp"), cnt = function (p) { return S.messages.filter(function (x) { return x.provider === p; }).length; };
       var mail = '<section class="src" aria-label="iCloud Mail"><div class="sh">' + ENV + "<div><h2>iCloud Mail</h2>" + (m ? '<p class="sub">' + esc(m.address) + "</p>" : '<p class="sub">Not connected</p>') + "</div>" + pill(m) + "</div>" +
-        (m ? (m.lastError && m.status !== "ok" ? '<p class="warn">' + esc(m.lastError) + "</p>" : "") + '<p class="sub">' + cnt("icloud") + " emails from Inbox and Sent · read-only</p>" +
+        (m ? (m.lastError && m.status !== "ok" ? '<p class="warn">' + esc(m.lastError) + "</p>" : "") + '<p class="sub">Claude can search your mail, open an email and read its attachments when you ask, in a chat or with the planner connector. Read-only: nothing in iCloud is marked read, moved, deleted or sent.</p>' +
           (S.confirm === m.id ? '<div class="acts"><span class="sub">Disconnect? The password is removed from the planner; the emails stay here, archived.</span><button class="btn sm" data-disc-ok="' + esc(m.id) + '">Disconnect</button><button class="btn sm ghost" data-disc-no="1">Keep</button></div>'
             : '<div class="acts">' + (m.status === "reconnect" ? '<button class="btn sm pri" data-act="connect">Connect again</button>' : '<button class="btn sm" data-sync="' + esc(m.id) + '"' + (S.busy["sync:" + m.id] ? " disabled" : "") + ">" + (S.busy["sync:" + m.id] ? "Syncing…" : "Sync now") + "</button>") + accessChip(m) + '<button class="btn sm ghost" data-disc="' + esc(m.id) + '">Disconnect</button></div>')
           : '<p class="sub">Reads your Inbox and Sent with an app-specific password from Apple. Nothing is changed, moved or sent in iCloud.</p><div class="acts"><button class="btn pri" data-act="connect">Connect iCloud Mail</button></div>') + "</section>";
@@ -144,11 +144,11 @@
       var all = threads(), ts = visible(all), sel = S.sel && all.filter(function (t) { return t.key === S.sel; })[0], unread = all.reduce(function (s, t) { return s + t.unread; }, 0);
       var keep = root.activeElement && root.activeElement.id === "cmQ", pos = keep ? root.activeElement.selectionStart : 0, typed = {}, fid = root.activeElement && root.activeElement.id;
       ["cmA", "cmP"].forEach(function (k) { var el = $("#" + k); if (el) typed[k] = el.value; });
+      void listHtml; void reader; void sel; void ts; void unread;
       var listCol = '<div class="lc"><div class="tools"><input class="q" id="cmQ" type="search" placeholder="Search messages" aria-label="Search messages" value="' + esc(S.q) + '"><div class="seg" role="group" aria-label="Show">' +
         [["all", "All"], ["mail", "Mail"], ["wa", "WhatsApp"]].map(function (f) { return '<button data-filter="' + f[0] + '" aria-pressed="' + (S.filter === f[0]) + '">' + f[1] + "</button>"; }).join("") + '</div><button class="chip" data-act="unread" aria-pressed="' + S.unread + '">Unread</button></div>' + listHtml(ts) + "</div>";
       cm.innerHTML = (S.sample ? '<div class="ribbon" role="note"><b>SAMPLE DATA</b> · invented messages and names · nothing below is yours</div>' : "") +
-        '<div class="wrap"><header class="top"><div><p class="eyebrow">Communication</p><h1>' + all.length + (all.length === 1 ? " conversation" : " conversations") + "</h1>" + (unread ? '<p class="sub">' + unread + " unread</p>" : "") + "</div></header>" + sources() +
-        '<div class="mail2' + (sel && !S.narrow ? " two" : "") + '">' + (S.narrow ? (sel ? reader(sel) : listCol) : listCol + reader(sel)) + "</div></div>" +
+        '<div class="wrap"><header class="top"><div><p class="eyebrow">Communication</p><h1>Mail and WhatsApp</h1><p class="sub">The connections Claude uses. Ask Claude to search your mail, for example “find the CBRE offer and read the PDF”.</p></div></header>' + sources() + "</div>" +
         (S.sheet ? '<div class="shade" data-shade="1"><div class="sheet" role="dialog" aria-modal="true" aria-label="' + (S.sheet === "connect" ? "Connect iCloud Mail" : "Save WhatsApp chats") + '">' + sheet() + "</div></div>" : "");
       if (keep) { var q = $("#cmQ"); q.focus(); try { q.setSelectionRange(pos, pos); } catch (e) {} }
       Object.keys(typed).forEach(function (k) { var el = $("#" + k); if (el) { el.value = typed[k]; if (fid === k) el.focus(); } });

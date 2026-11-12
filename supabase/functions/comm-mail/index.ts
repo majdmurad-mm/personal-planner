@@ -7,7 +7,10 @@
 // - Sync: Inbox and Sent, newest first. Only sender, recipients, subject, date, flags and a short preview
 //   are stored (public.comm_messages). New mail arrives through pg_cron every 10 minutes or "Sync now".
 // - Reading: /body fetches one full email from iCloud when the owner opens it and keeps nothing.
-// - Nothing is ever written to iCloud: no flags are changed, nothing is moved, sent or deleted.
+// - Nothing is ever written to iCloud: every folder is opened with EXAMINE, bodies are read with BODY.PEEK;
+//   no flags are changed, nothing is moved, sent or deleted.
+// - For Claude (through the planner connector): /folders, /search (IMAP SEARCH on the server), /message (one
+//   email as plain text) and /attachment (text from PDF, docx, xlsx, pptx, csv, txt; images give details only).
 //
 // Callers: the page (Supabase user JWT), the planner-mcp connector (x-internal-key = service role key,
 // acting for OWNER_USER_ID) and the cron schedule (x-cron-key from knowledge_cron_key).
@@ -122,7 +125,7 @@ async function syncAccount(acc: any, budget = PER_RUN): Promise<{ added: number;
   try {
     c = await open(acc.address, pass.data as string);
     for (const f of await folders(c)) {
-      const lock = await c.getMailboxLock(f.path);
+      const lock = await c.getMailboxLock(f.path, { readOnly: true });   // EXAMINE: nothing in iCloud changes
       try {
         const mb = c.mailbox, uv = String(mb.uidValidity);
         let st = state[f.path] || {};
@@ -192,6 +195,162 @@ async function syncAccount(acc: any, budget = PER_RUN): Promise<{ added: number;
     throw e;
   } finally { if (c) { try { await c.logout(); } catch { /* closed */ } } }
   return { added, more };
+}
+
+// ---------------------------------------------------------------- search and read, for Claude (read-only)
+// Every mailbox is opened with EXAMINE (readOnly), bodies are fetched with BODY.PEEK, so nothing is ever
+// marked read, moved, flagged, deleted or sent. The connector calls these with the service key; the
+// account's "Claude may read" switch is honoured.
+const ATT_CAP = 50000;
+// deno-lint-ignore no-explicit-any
+const attNames = (n: any): { name: string; type: string; size: number }[] => {
+  // deno-lint-ignore no-explicit-any
+  const out: any[] = [];
+  // deno-lint-ignore no-explicit-any
+  const walk = (x: any) => {
+    if (!x) return;
+    const name = (x.dispositionParameters && x.dispositionParameters.filename) || (x.parameters && x.parameters.name);
+    if (x.disposition === "attachment" || (name && !String(x.type || "").startsWith("multipart"))) out.push({ name: name || "attachment", type: x.type || "", size: x.size || 0 });
+    (x.childNodes || []).forEach(walk);
+  };
+  walk(n); return out;
+};
+// deno-lint-ignore no-explicit-any
+async function mailAccount(uid: string, via: string): Promise<{ acc?: any; pass?: string; error?: string; status?: number }> {
+  const a = await db.from("comm_accounts").select("id,address,claude_access,status").eq("user_id", uid).eq("provider", "icloud").is("archived_at", null).maybeSingle();
+  if (a.error) return { error: a.error.message + COMM_HINT, status: 500 };
+  if (!a.data) return { error: "iCloud Mail is not connected. Connect it once on the Communication page.", status: 404 };
+  if (via === "connector" && !a.data.claude_access) return { error: "iCloud Mail is kept from Claude (switch on the Communication page).", status: 403 };
+  const p = await db.rpc("comm_secret_get", { p_account: a.data.id });
+  if (p.error || !p.data) return { error: "iCloud Mail needs to be connected again on the Communication page.", status: 409 };
+  return { acc: a.data, pass: p.data as string };
+}
+// deno-lint-ignore no-explicit-any
+async function withMail<T>(req: Request, uid: string, via: string, fn: (c: any) => Promise<T>): Promise<Response> {
+  const A = await mailAccount(uid, via); if (A.error) return json(req, { error: A.error }, A.status || 500);
+  const c = await open(A.acc.address, A.pass!);
+  try { return json(req, await fn(c)); } finally { try { await c.logout(); } catch { /* closed */ } }
+}
+async function mailFolders(req: Request, uid: string, via: string) {
+  // deno-lint-ignore no-explicit-any
+  return withMail(req, uid, via, async (c: any) => {
+    // deno-lint-ignore no-explicit-any
+    const list: any[] = await c.list({ statusQuery: { messages: true, unseen: true } });
+    return { folders: list.filter((b) => !(b.flags && b.flags.has && b.flags.has("\\Noselect"))).map((b) => ({ folder: b.path, role: b.specialUse ? String(b.specialUse).replace("\\", "").toLowerCase() : undefined, messages: b.status ? b.status.messages : undefined, unread: b.status ? b.status.unseen : undefined })) };
+  });
+}
+async function mailSearch(req: Request, uid: string, via: string) {
+  // deno-lint-ignore no-explicit-any
+  const b: any = await req.json().catch(() => ({}));
+  const limit = Math.max(1, Math.min(25, +b.limit || 10)), q = String(b.query || "").trim();
+  // deno-lint-ignore no-explicit-any
+  return withMail(req, uid, via, async (c: any) => {
+    // deno-lint-ignore no-explicit-any
+    const list: any[] = await c.list();
+    const pick = (re: RegExp, use?: string) => list.find((x) => x.specialUse === use) || list.find((x) => re.test(x.name || ""));
+    const boxes = b.folder ? [String(b.folder)] : [list.find((x) => String(x.path).toUpperCase() === "INBOX"), pick(/^sent/i, "\\Sent"), pick(/^archive/i, "\\Archive")].filter(Boolean).map((x) => x.path);
+    // deno-lint-ignore no-explicit-any
+    const crit: any = {};
+    if (b.from) crit.from = String(b.from); if (b.to) crit.to = String(b.to);
+    if (b.since) crit.since = new Date(String(b.since)); if (b.before) crit.before = new Date(String(b.before));
+    if (q) crit.or = [{ subject: q }, { from: q }, { body: q }];
+    if (!Object.keys(crit).length) crit.all = true;
+    // deno-lint-ignore no-explicit-any
+    const hits: any[] = [];
+    for (const path of boxes) {
+      let lock; try { lock = await c.getMailboxLock(path, { readOnly: true }); } catch { continue; }
+      try {
+        const uids: number[] = ((await c.search(crit, { uid: true })) || []).sort((x: number, y: number) => y - x).slice(0, limit * (b.has_attachment ? 4 : 1));
+        for (const u of uids) {
+          // deno-lint-ignore no-explicit-any
+          const m: any = await c.fetchOne(String(u), { uid: true, envelope: true, bodyStructure: true, internalDate: true }, { uid: true });
+          if (!m) continue;
+          const att = attNames(m.bodyStructure); if (b.has_attachment && !att.length) continue;
+          let snippet = ""; const tp = textPart(m.bodyStructure);
+          if (tp) { try { const d = await c.download(String(u), tp.part, { uid: true, maxBytes: 4000 }); snippet = previewOf(new TextDecoder().decode(await streamBytes(d.content, 4000)), tp.html).slice(0, 200); } catch { /* no snippet */ } }
+          const env = m.envelope || {};
+          hits.push({ uid: u, folder: path, date: new Date(env.date || m.internalDate || 0).toISOString(), from: addr(env.from).map((x) => x.name ? x.name + " <" + x.address + ">" : x.address).join(", "), to: addr(env.to).map((x) => x.name || x.address).join(", "), subject: env.subject || "", snippet, attachments: att.map((x) => x.name) });
+          if (hits.filter((h) => h.folder === path).length >= limit) break;
+        }
+      } finally { lock.release(); }
+    }
+    hits.sort((x, y) => (x.date < y.date ? 1 : -1));
+    return { query: q || null, folders: boxes, count: Math.min(hits.length, limit), hits: hits.slice(0, limit) };
+  });
+}
+// deno-lint-ignore no-explicit-any
+async function mailParse(c: any, folder: string, uid: number) {
+  const lock = await c.getMailboxLock(folder, { readOnly: true });
+  try {
+    const d = await c.download(String(uid), undefined, { uid: true, maxBytes: 25 * 1048576 });
+    if (!d || !d.content) return null;
+    return await PostalMime.parse(await streamBytes(d.content, 25 * 1048576));
+  } finally { lock.release(); }
+}
+async function mailGet(req: Request, uid: string, via: string) {
+  // deno-lint-ignore no-explicit-any
+  const b: any = await req.json().catch(() => ({}));
+  // deno-lint-ignore no-explicit-any
+  return withMail(req, uid, via, async (c: any) => {
+    const p = await mailParse(c, String(b.folder || "INBOX"), +b.uid);
+    if (!p) return { error: "no message with that uid in " + (b.folder || "INBOX") };
+    const text = (p.text && p.text.trim()) ? p.text : previewOfHtml(p.html || "");
+    // deno-lint-ignore no-explicit-any
+    const who = (a: any) => (a ? [].concat(a).map((x: any) => x.name ? x.name + " <" + (x.address || "") + ">" : x.address || "").filter(Boolean).join(", ") : "");
+    return {
+      uid: +b.uid, folder: String(b.folder || "INBOX"), date: p.date || null, from: who(p.from), to: who(p.to), cc: who(p.cc), subject: p.subject || "", messageId: p.messageId || null,
+      text: text.length > 100000 ? text.slice(0, 100000) : text, truncated: text.length > 100000 || undefined,
+      // deno-lint-ignore no-explicit-any
+      attachments: (p.attachments || []).map((a: any, i: number) => ({ index: i, name: a.filename || "attachment", type: a.mimeType, size: a.content ? (a.content.byteLength || a.content.length || 0) : 0, inline: a.disposition === "inline" || undefined })),
+    };
+  });
+}
+function previewOfHtml(h: string) {
+  return String(h || "").replace(/<(style|script|head)[\s\S]*?<\/\1>/gi, " ").replace(/<br\s*\/?>|<\/(p|div|tr|li|h\d)>/gi, "\n").replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/[ \t]+/g, " ").replace(/\n\s*\n+/g, "\n\n").trim();
+}
+const xmlText = (x: string) => x.replace(/<w:tab\/>/g, "\t").replace(/<\/w:p>/g, "\n").replace(/<a:p>/g, "\n").replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'");
+async function extractText(name: string, type: string, bytes: Uint8Array): Promise<{ text?: string; note?: string; pages?: number }> {
+  const ext = (name.match(/\.([a-z0-9]{1,6})$/i)?.[1] || "").toLowerCase(), t = String(type || "").toLowerCase();
+  if (t === "application/pdf" || ext === "pdf") {
+    const { extractText: pdfText, getDocumentProxy } = await import("unpdf");
+    const doc = await getDocumentProxy(bytes);
+    const r = await pdfText(doc, { mergePages: true });
+    const text = String(r.text || "").trim();
+    if (text.length < 20) return { text: "", pages: r.totalPages, note: "This PDF has no text layer (it is a scan or an image). OCR is not available on the mail server, so its text can't be read here; open it in iCloud Mail." };
+    return { text, pages: r.totalPages };
+  }
+  if (["docx", "xlsx", "pptx"].includes(ext) || /officedocument/.test(t)) {
+    const { unzipSync, strFromU8 } = await import("fflate");
+    const z = unzipSync(bytes), get = (k: string) => (z[k] ? strFromU8(z[k]) : "");
+    if (ext === "docx" || /wordprocessing/.test(t)) return { text: xmlText(get("word/document.xml")).replace(/\n{3,}/g, "\n\n").trim() };
+    if (ext === "pptx" || /presentation/.test(t)) return { text: Object.keys(z).filter((k) => /^ppt\/slides\/slide\d+\.xml$/.test(k)).sort((a, b) => +a.replace(/\D/g, "") - +b.replace(/\D/g, "")).map((k, i) => "Slide " + (i + 1) + "\n" + xmlText(get(k)).trim()).join("\n\n") };
+    const shared = (get("xl/sharedStrings.xml").match(/<si>[\s\S]*?<\/si>/g) || []).map((s) => xmlText(s).trim());
+    const sheets = Object.keys(z).filter((k) => /^xl\/worksheets\/sheet\d+\.xml$/.test(k)).sort();
+    return { text: sheets.map((k, i) => "Sheet " + (i + 1) + "\n" + (get(k).match(/<row[\s\S]*?<\/row>/g) || []).map((row) => (row.match(/<c [^>]*?(\/>|>[\s\S]*?<\/c>)/g) || []).map((cell) => { const v = (cell.match(/<v>([\s\S]*?)<\/v>/) || [])[1]; const is = (cell.match(/<is>([\s\S]*?)<\/is>/) || [])[1]; return / t="s"/.test(cell) && v != null ? shared[+v] || "" : is != null ? xmlText(is) : v || ""; }).join("\t")).join("\n")).join("\n\n") };
+  }
+  if (/^text\//.test(t) || ["txt", "csv", "tsv", "md", "json", "xml", "ics", "vcf", "log", "html", "htm"].includes(ext)) {
+    const s = new TextDecoder().decode(bytes); return { text: /html?$/.test(ext) || t === "text/html" ? previewOfHtml(s) : s };
+  }
+  if (/^image\//.test(t) || ["png", "jpg", "jpeg", "gif", "heic", "webp", "tif", "tiff"].includes(ext)) return { note: "This is an image. Only its details are returned; open it in iCloud Mail to see it." };
+  return { note: "This file type (" + (t || ext || "unknown") + ") can't be read as text here; open it in iCloud Mail." };
+}
+async function mailAttachment(req: Request, uid: string, via: string) {
+  // deno-lint-ignore no-explicit-any
+  const b: any = await req.json().catch(() => ({}));
+  // deno-lint-ignore no-explicit-any
+  return withMail(req, uid, via, async (c: any) => {
+    const p = await mailParse(c, String(b.folder || "INBOX"), +b.uid);
+    if (!p) return { error: "no message with that uid in " + (b.folder || "INBOX") };
+    // deno-lint-ignore no-explicit-any
+    const a: any = (p.attachments || [])[+b.index];
+    if (!a) return { error: "no attachment " + b.index + "; this email has " + (p.attachments || []).length };
+    const bytes = a.content instanceof Uint8Array ? a.content : new Uint8Array(a.content);
+    let r: { text?: string; note?: string; pages?: number };
+    try { r = await extractText(a.filename || "", a.mimeType || "", bytes); } catch (e) { r = { note: "The attachment could not be read: " + String((e as Error).message || e).slice(0, 120) }; }
+    const text = r.text || "", cut = text.length > ATT_CAP;
+    return { uid: +b.uid, folder: String(b.folder || "INBOX"), index: +b.index, name: a.filename || "attachment", type: a.mimeType, size: bytes.length, pages: r.pages, text: cut ? text.slice(0, ATT_CAP) : text || undefined, truncated: cut || undefined, chars: text.length || undefined, note: r.note || (cut ? "Cut at " + ATT_CAP + " characters of " + text.length + "." : undefined) };
+  });
 }
 
 // ---------------------------------------------------------------- routes
@@ -300,6 +459,10 @@ Deno.serve(async (req) => {
       case "/body": return await body(req, who.uid);
       case "/disconnect": return who.via === "page" ? await disconnect(req, who.uid) : json(req, { error: "disconnect from the Communication page" }, 403);
       case "/access": return who.via === "page" ? await access(req, who.uid) : json(req, { error: "change this on the Communication page" }, 403);
+      case "/folders": return await mailFolders(req, who.uid, who.via);
+      case "/search": return await mailSearch(req, who.uid, who.via);
+      case "/message": return await mailGet(req, who.uid, who.via);
+      case "/attachment": return await mailAttachment(req, who.uid, who.via);
     }
     return json(req, { error: "not found" }, 404);
   } catch (e) {

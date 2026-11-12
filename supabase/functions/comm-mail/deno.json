@@ -2,6 +2,8 @@
   "imports": {
     "@supabase/supabase-js": "npm:@supabase/supabase-js@^2.45.0",
     "imapflow": "npm:imapflow@2.10.0",
-    "postal-mime": "npm:postal-mime@4.1.4"
+    "postal-mime": "npm:postal-mime@4.1.4",
+    "unpdf": "npm:unpdf@2.0.1",
+    "fflate": "npm:fflate@0.8.2"
   }
 }
