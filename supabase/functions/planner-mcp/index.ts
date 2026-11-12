@@ -29,6 +29,7 @@ import { Hono } from "hono";
 import { McpServer, StreamableHttpTransport } from "mcp-lite";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
+import { AsyncLocalStorage } from "node:async_hooks";
 
 // ---- Secrets / environment -------------------------------------------------
 // SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are injected automatically into
@@ -41,9 +42,14 @@ const MCP_TOKEN = Deno.env.get("MCP_TOKEN") ?? "";
 // Optional second token for agents (Agent PgM). Unset = agents can't connect at all.
 const AGENT_TOKEN = Deno.env.get("AGENT_TOKEN") ?? "";
 
-const db = createClient(SUPABASE_URL, SERVICE_KEY, {
-  auth: { persistSession: false, autoRefreshToken: false },
-});
+// Every write runs as the service role; the activity log names that "claude". Calls from the voice
+// endpoint run inside actorStore with a client that also sends x-planner-actor: voice, so the log trigger
+// (with _Memory/migration_voice_actor.sql applied) records them as "voice". Same key, same rights.
+const dbBase = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+const dbVoice = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false }, global: { headers: { "x-planner-actor": "voice" } } });
+const actorStore = new AsyncLocalStorage<typeof dbBase>();
+// deno-lint-ignore no-explicit-any
+const db: typeof dbBase = new Proxy({} as any, { get: (_t, p) => { const c: any = actorStore.getStore() || dbBase; const v = c[p]; return typeof v === "function" ? v.bind(c) : v; } });
 
 // ---- Vocabulary (kept in lockstep with index.html's own constants) ---------
 const PRIORITIES = ["P0", "P1", "P2", "P3"] as const;
@@ -272,6 +278,31 @@ const AGENT_READABLE = new Set([
   "geocode_address",
 ]);
 type Audience = "owner" | "agent" | "both";
+// Served on the owner endpoint only through a merged tool (see MERGED TOOLS below). The agent endpoint
+// keeps every tool under its own name.
+const FOLD = new Set([
+  "archive_action", "archive_goal", "archive_project", "archive_item", "archive_record", "restore_item", "restore_record",
+  "complete_action", "complete_item", "uncomplete_item",
+  "save_note", "save_idea", "save_link", "save_quote", "save_author", "add_note",
+  "list_actions", "list_events", "list_goals", "list_items", "list_notes", "list_people", "list_projects", "list_decisions", "list_proposals", "list_agent_reports", "list_pois", "list_located_items", "list_recent_knowledge", "get_tracker",
+  "link_item", "link_people", "set_link_kind", "link_scenarios", "link_knowledge", "add_dependency", "remove_dependency",
+  "set_recurrence", "end_recurrence", "skip_occurrence", "edit_occurrence",
+  "reschedule", "snooze", "make_someday",
+  "get_planner_settings", "set_planner_settings", "get_reminder_settings", "set_reminder_settings", "set_reminders", "list_upcoming_reminders",
+  "set_health_condition", "set_health_flag", "set_health_status",
+  "log_metric", "log_body_metric",
+  "upsert_health_day", "upsert_workout", "upsert_activity", "upsert_routine",
+  "list_topics", "rename_topic", "merge_topics",
+  "add_knowledge_source", "set_source_privacy", "remove_knowledge_source", "sync_source",
+  "memory_get", "memory_search", "memory_overview", "memory_topics",
+  "create_place", "edit_place", "create_scenario", "edit_scenario",
+  "get_finance", "get_finance_snapshot",
+  "get_communication_status", "get_whatsapp_sync_state",
+]);
+// deno-lint-ignore no-explicit-any
+const LEGACY: Record<string, any> = {};   // folded owner tools, by old name
+// deno-lint-ignore no-explicit-any
+const ALL_DEFS: Record<string, any> = {}; // every tool, by name (the voice tools reuse them)
 // deno-lint-ignore no-explicit-any
 function tool(name: string, def: any, audience?: Audience) {
   const who = audience || (AGENT_READABLE.has(name) ? "both" : "owner");
@@ -284,8 +315,11 @@ function tool(name: string, def: any, audience?: Audience) {
     }
     return inner(args, ctx);
   } };
-  if (who !== "agent" && !OWNER_TOOLS.includes(name)) OWNER_TOOLS.push(name);
-  if (who !== "agent") mcp.tool(name, def);
+  ALL_DEFS[name] = def;
+  if (who !== "agent") {
+    if (FOLD.has(name)) LEGACY[name] = def;
+    else { if (!OWNER_TOOLS.includes(name)) OWNER_TOOLS.push(name); mcp.tool(name, def); }
+  }
   if (who !== "owner") mcpAgent.tool(name, def);
 }
 
@@ -615,7 +649,7 @@ tool("get_decision", {
   description:
     "One decision's full scenario canvas: every scenario with its weighted advantages and disadvantages, its computed net score and rank, and the branching links between them. Weights are 1-5 for HOW MUCH SOMETHING MATTERS, not how likely it is; net score = summed advantages minus summed disadvantages. Scenarios with nothing weighed are reported scored:false and left out of the ranking.",
   inputSchema: z.object({
-    actionId: z.string().describe("id of the action flagged as a decision (from list_decisions)"),
+    actionId: z.string().describe("id of the action flagged as a decision (from the decisions list)"),
   }),
   handler: async (args: { actionId: string }) => {
     const [actionR, scenR] = await Promise.all([
@@ -1261,7 +1295,7 @@ async function knTopicId(zone: string, name: string): Promise<string | null> {
 }
 
 tool("map_knowledge", {
-  description: "The whole Knowledge page at a glance, for sorting it: every item Claude may read (id, title, zone, type, topic, folder, tags, a short summary, whether it has text to read) and the links between them. Start here before reading items with get_knowledge_item and grouping them with cluster_knowledge and link_knowledge. Zones the owner keeps from Claude are only counted. OneDrive files come as a list of folders (file count, newest change, a few sample titles); pass folder to list that folder's files with id, title, type, modified date, path and webUrl (get_knowledge_item gives one file).",
+  description: "The whole Knowledge page at a glance, for sorting it: every item Claude may read (id, title, zone, type, topic, folder, tags, a short summary, whether it has text to read) and the links between them. Start here before reading items with get_knowledge_item and grouping them with cluster_knowledge and link (kind knowledge). Zones the owner keeps from Claude are only counted. OneDrive files come as a list of folders (file count, newest change, a few sample titles); pass folder to list that folder's files with id, title, type, modified date, path and webUrl (get_knowledge_item gives one file).",
   inputSchema: z.object({ folder: z.string().max(300).optional().describe("only OneDrive files whose folder starts with this, with path and webUrl") }),
   handler: async (a: { folder?: string }) => {
     const allowed = await knAllowed();
@@ -1680,7 +1714,7 @@ tool("create_action", {
     area: z.enum(AREA_INPUT).optional().describe("the action's own area; otherwise inferred from its parent. " + AREA_GUIDE),
     secondaryAreas: z.array(z.enum(AREA_INPUT)).optional().describe("other areas this action also touches"),
     isMilestone: z.boolean().optional().describe("mark it a milestone — a dated checkpoint rather than ordinary work"),
-    isDecision: z.boolean().optional().describe("mark it a decision — a fork with a scenario canvas rather than a task. Add scenarios with create_scenario."),
+    isDecision: z.boolean().optional().describe("mark it a decision — a fork with a scenario canvas rather than a task. Add scenarios with scenario (action create)."),
     notes: z.string().optional().describe("longer free-form notes for the action's own page (Markdown)"),
     location: z.string().optional().describe("where it happens — an address or place name, geocoded for you and pinned on the Location map"),
     kind: z.enum(["task", "deadline", "block"]).optional().describe("task = something to tick off (default); deadline = a date something is due; block = time reserved, e.g. gym or deep work (no done state). For something that simply happens, use create_event."),
@@ -1853,7 +1887,7 @@ tool("create_event", {
     area: z.enum(AREA_INPUT).optional().describe("the event's primary area. " + AREA_GUIDE),
     secondaryAreas: z.array(z.enum(AREA_INPUT)).optional(),
     location: z.string().optional().describe("where it happens — an address or place name, geocoded for you and pinned on the Location map"),
-    linkedPeopleIds: z.array(z.string()).optional().describe("ids from list_people — who it's with"),
+    linkedPeopleIds: z.array(z.string()).optional().describe("ids from list (kind people) — who it's with"),
     notes: z.string().optional(),
     allDay: z.boolean().optional(),
     recurrence: CC_RECUR,
@@ -2183,7 +2217,7 @@ async function findPerson(ref: string): Promise<{ person?: any; error?: string }
   const exact = rows.filter((p) => String(p.name).trim().toLowerCase() === low);
   if (exact.length === 1) return { person: exact[0] };
   if (rows.length === 1) return { person: rows[0] };
-  if (!rows.length) return { error: 'Nobody called "' + r + '" in People. Use list_people to check the name, or create_person first.' };
+  if (!rows.length) return { error: 'Nobody called "' + r + '" in People. Use list (kind people) to check the name, or create_person first.' };
   return { error: 'More than one person matches "' + r + '": ' + rows.map((p) => p.name + " (" + p.id + ")").join(", ") + ". Pass the id." };
 }
 
@@ -2308,7 +2342,7 @@ tool("set_link_kind", {
     if (!fa.person) return fail(fa.error!); if (!fb.person) return fail(fb.error!);
     const a = fa.person.id < fb.person.id ? fa.person.id : fb.person.id, b = a === fa.person.id ? fb.person.id : fa.person.id;
     const cur = await db.from("person_links").select("id").eq("user_id", OWNER).eq("person_a", a).eq("person_b", b).is("archived_at", null).maybeSingle();
-    if (!cur.data) return fail("Those two are not linked yet; use link_people.");
+    if (!cur.data) return fail("Those two are not linked yet; use link (kind people).");
     const dir = await linkDirection(args.kind, fa.person.id, fb.person.id, args.parent);
     if (dir.error) return fail(dir.error);
     const up = await db.from("person_links").update({ kind: args.kind, from_person: dir.from }).eq("id", cur.data.id).select().single();
@@ -2404,7 +2438,7 @@ tool("get_person_context", {
 tool("log_metric", {
   description: "Record a self-tracking value for a date (mood, weight, etc.). The variable must already exist — call get_tracker to see available variables and their ids. Upserts, so re-logging the same day overwrites.",
   inputSchema: z.object({
-    variableId: z.string().describe("id of an existing tracker variable (from get_tracker)"),
+    variableId: z.string().describe("id of an existing tracker variable (from list kind=tracker)"),
     value: z.string().describe('the value as text — e.g. "4", "true", "72.5", or a category label'),
     date: z.string().optional().describe("YYYY-MM-DD; defaults to today (Berlin)"),
   }),
@@ -2447,7 +2481,7 @@ tool("edit_place", {
   description:
     "Edit a saved place by id — rename it, move it, or change its notes. Only the fields you pass are changed. Passing `address` re-geocodes and moves the pin; passing `lat`/`lng` moves it to exactly those coordinates.",
   inputSchema: z.object({
-    id: z.string().describe("the place's id (from list_pois)"),
+    id: z.string().describe("the place's id (from list kind=pois)"),
     name: z.string().optional(),
     address: z.string().optional().describe("new address to geocode and move the pin to"),
     lat: z.number().optional(),
@@ -2514,9 +2548,9 @@ tool("set_item_location", {
 
 tool("log_transaction", {
   description:
-    "Record a finance transaction against an existing account. Amount is POSITIVE for money in and NEGATIVE for money out — a €12 lunch is -12. Call get_finance first for account ids.",
+    "Record a finance transaction against an existing account. Amount is POSITIVE for money in and NEGATIVE for money out — a €12 lunch is -12. Call get_finance (view summary) first for account ids.",
   inputSchema: z.object({
-    accountId: z.string().describe("id of an existing account (from get_finance)"),
+    accountId: z.string().describe("id of an existing account (from get_finance, view summary)"),
     amount: z.number().describe("positive = money in, negative = money out"),
     description: z.string(),
     date: z.string().optional().describe("YYYY-MM-DD; defaults to today (Berlin)"),
@@ -3973,7 +4007,7 @@ function statusPatch(status: string, row: any, table: string): Record<string, un
   p.archived_at = null;
   if (table === "events") { if (status === "done" || status === "someday") return "an event has no " + status + " state"; return p; }
   if (status === "someday") { p.someday = true; p.date = null; p.time_of_day = null; }
-  else if (status === "done") { if (row.recurrence) return "a repeating task is ticked off per date: use complete_item with the date"; p.done = true; p.someday = false; }
+  else if (status === "done") { if (row.recurrence) return "a repeating task is ticked off per date: use set_done (kind item) with the date"; p.done = true; p.someday = false; }
   else { p.done = false; p.someday = false; }
   return p;
 }
@@ -4002,7 +4036,7 @@ async function itemCreate(a: any): Promise<{ item?: any; created?: boolean; erro
 }
 // deno-lint-ignore no-explicit-any
 async function itemEdit(id: string, a: any): Promise<{ item?: any; error?: string }> {
-  const f = await itemFind(id); if (!f) return { error: "no item with that id (use list_items or search_items)" };
+  const f = await itemFind(id); if (!f) return { error: "no item with that id (use list with kind items, or search_items)" };
   if (a.kind && (a.kind === "event") !== (f.table === "events")) return { error: "an event and a task are stored differently and cannot be converted; create a new item with create_item and archive this one" };
   const built = await itemRow(a, f.table, f.row); if (built.error) return { error: built.error };
   const patch = built.row!;
@@ -4013,7 +4047,7 @@ async function itemEdit(id: string, a: any): Promise<{ item?: any; error?: strin
   if (up.error) return { error: up.error.message };
   return { item: await itemOutFull(f.table, id) };
 }
-const ITEM_ID = z.string().describe("item id (from list_items, search_items, plan_day …)");
+const ITEM_ID = z.string().describe("item id (from list kind=items, search_items, plan_day …)");
 const itemResult = (r: { item?: unknown; error?: string; created?: boolean }) => r.error ? fail(r.error) : ok(r.created === undefined ? { ok: true, item: r.item } : { ok: true, created: r.created, alreadyExisted: !r.created, item: r.item });
 
 tool("create_item", {
@@ -4022,7 +4056,7 @@ tool("create_item", {
   handler: async (a: Record<string, unknown>) => itemResult(await itemCreate(a)),
 });
 tool("edit_item", {
-  description: "Change any field of an item (task, event, deadline or block). Only the fields you pass change. status: open | done | archived | someday (done for a repeating task needs complete_item with a date). To move one date of a repeating item use edit_occurrence or skip_occurrence. Returns the full item.",
+  description: "Change any field of an item (task, event, deadline or block). Only the fields you pass change. status: open | done | archived | someday (done for a repeating task needs set_done (kind item) with a date). To move one date of a repeating item use recurrence (action edit_occurrence) or recurrence (action skip). Returns the full item.",
   inputSchema: z.object({ id: ITEM_ID, kind: z.enum(ITEM_KINDS).optional().describe("task, deadline and block can switch between each other; event cannot"), status: z.enum(ITEM_STATUS).optional(), ...ITEM_FIELDS }),
   handler: async (a: Record<string, unknown>) => { const { id, ...rest } = a; return itemResult(await itemEdit(String(id), rest)); },
 });
@@ -4190,7 +4224,7 @@ tool("skip_occurrence", {
   inputSchema: z.object({ id: ITEM_ID, date: z.string().regex(CC_DAY) }),
   handler: async (a: { id: string; date: string }) => {
     const f = await itemFind(a.id); if (!f) return fail("no item with that id");
-    if (!f.row.recurrence) return fail("this item does not repeat; use snooze, reschedule or archive_item");
+    if (!f.row.recurrence) return fail("this item does not repeat; use reschedule (mode snooze or date) or archive (kind item)");
     if (!ccDates(f.row, a.date, a.date).length) return fail("the item does not fall on " + a.date);
     return itemResult(await itemEdit(a.id, { exceptions: Array.from(new Set([...(f.row.recurrence_exceptions || []), a.date])) }));
   },
@@ -4658,7 +4692,7 @@ tool("search_everything", {
 tool("connector_info", {
   description: "Which version of this connector is live: the deployed commit, when it was deployed, when this instance started, and every tool it serves. Use it to check that a new tool is available.",
   inputSchema: z.object({}),
-  handler: () => ok({ commit: BUILD_COMMIT.startsWith("__") ? "not stamped (deployed by hand from the dashboard)" : BUILD_COMMIT, deployedAt: BUILD_TIME.startsWith("__") ? null : BUILD_TIME, instanceStartedAt: BOOTED_AT, toolCount: OWNER_TOOLS.length, tools: OWNER_TOOLS.slice().sort(), timezone: "Europe/Berlin" }),
+  handler: () => ok({ version: CONNECTOR_VERSION, commit: BUILD_COMMIT.startsWith("__") ? "not stamped (deployed by hand from the dashboard)" : BUILD_COMMIT, deployedAt: BUILD_TIME.startsWith("__") ? null : BUILD_TIME, instanceStartedAt: BOOTED_AT, toolCount: OWNER_TOOLS.length, tools: OWNER_TOOLS.slice().sort(), merged: MERGED_SUMMARY, mergedNote: Object.keys(MERGED_ROUTES).length + " older tools are served through the merged tools above (old name → new tool and kind: docs/CONNECTOR.md)", voice: { endpoint: "/mcp-voice", tools: VOICE_TOOLS }, timezone: "Europe/Berlin" }),
 }, "both");
 // ==== V2-END ====
 
@@ -4711,8 +4745,359 @@ tool("sync_source", {
 });
 // ==== OD-END ====
 
+// ============================ MERGED TOOLS (owner endpoint) ============================
+// Tools that share a pattern are served as one tool with a kind / action / mode / view. Each route calls
+// the original tool's handler after checking the arguments against that tool's own schema, so what it
+// does, who may call it, what stays hidden from Claude and what the activity log records are exactly the
+// old tool's. The agent endpoint still serves the old names. Old name → new tool: docs/CONNECTOR.md.
+const CONNECTOR_VERSION = "2.0.0";
+// deno-lint-ignore no-explicit-any
+type MRoute = { when: Record<string, any>; tool: string; rename?: Record<string, string>; consume?: string[] };
+export const MERGED_ROUTES: Record<string, { tool: string; when: Record<string, unknown>; rename?: Record<string, string> }> = {};
+const MERGED_SUMMARY: Record<string, string> = {};
+// deno-lint-ignore no-explicit-any
+const zInner = (s: any) => { let x = s; while (x && x._zod && ["optional", "default", "nullable"].includes(x._zod.def.type)) x = x._zod.def.innerType; return x; };
+// deno-lint-ignore no-explicit-any
+const zSig = (s: any) => { try { const j: any = z.toJSONSchema(zInner(s), { unrepresentable: "any" }); delete j.description; delete j.$schema; return JSON.stringify(j); } catch { return String(zInner(s)?._zod?.def?.type); } };
+function merged(name: string, description: string, discs: string[], routes: MRoute[]) {
+  // deno-lint-ignore no-explicit-any
+  const shape: Record<string, any> = {}, keysOf: string[][] = [], reqOf: string[][] = [];
+  const values: Record<string, string[]> = {}; discs.forEach((d) => { values[d] = []; });
+  routes.forEach((r, i) => {
+    const def = LEGACY[r.tool]; if (!def) throw new Error(name + ": " + r.tool + " is not a folded tool");
+    for (const d of discs) if (r.when[d] !== undefined && !values[d].includes(r.when[d])) values[d].push(r.when[d]);
+    const back: Record<string, string> = {}; Object.entries(r.rename || {}).forEach(([n, o]) => { back[o] = n; });
+    keysOf[i] = []; reqOf[i] = [];
+    // deno-lint-ignore no-explicit-any
+    for (const [old, zs] of Object.entries<any>(def.inputSchema.shape || {})) {
+      const k = back[old] || old;
+      if (discs.includes(k)) throw new Error(name + ": field '" + k + "' of " + r.tool + " clashes with the " + k + " switch; rename it");
+      keysOf[i].push(k); if (!zs.safeParse(undefined).success) reqOf[i].push(k);
+      if (!shape[k]) shape[k] = zs.optional();
+      else if (zSig(shape[k]) !== zSig(zs)) shape[k] = z.any().optional().describe(shape[k].description || zs.description || k);
+    }
+    for (const k of Object.keys(r.when).filter((k) => !discs.includes(k)).concat(r.consume || [])) {
+      if (!keysOf[i].includes(k)) keysOf[i].push(k);
+      if (!shape[k]) shape[k] = z.boolean().optional();
+    }
+    MERGED_ROUTES[r.tool] = { tool: name, when: r.when, rename: r.rename };
+  });
+  const label = (r: MRoute) => Object.entries(r.when).map(([k, v]) => k + "=" + v).join(" ");
+  const fields = (i: number) => keysOf[i].filter((k) => !(k in routes[i].when)).map((k) => k + (reqOf[i].includes(k) ? "*" : "")).join(", ") || "nothing else";
+  // deno-lint-ignore no-explicit-any
+  const discShape: Record<string, any> = {}; for (const d of discs) discShape[d] = z.enum(values[d] as [string, ...string[]]);
+  const guide = routes.map((r, i) => label(r) + ": " + fields(i)).join(" · ");
+  MERGED_SUMMARY[name] = discs.map((d) => d + ": " + values[d].join("|")).join("; ");
+  OWNER_TOOLS.push(name);
+  mcp.tool(name, {
+    description: description + " Fields (* required) — " + guide,
+    inputSchema: z.object({ ...discShape, ...shape }),
+    // deno-lint-ignore no-explicit-any
+    handler: (a: any, ctx: any) => {
+      const i = routes.findIndex((r) => Object.entries(r.when).every(([k, v]) => a[k] === v));
+      if (i < 0) return fail(name + ": " + discs.map((d) => d + " must be one of " + values[d].join(", ")).join("; "));
+      const r = routes[i], extra = Object.keys(a).filter((k) => !discs.includes(k) && a[k] !== undefined && !keysOf[i].includes(k));
+      if (extra.length) return fail(name + " " + label(r) + ": not a field here: " + extra.join(", ") + ". Fields for " + label(r) + ": " + fields(i));
+      const skip = new Set([...discs, ...Object.keys(r.when), ...(r.consume || [])]);
+      // deno-lint-ignore no-explicit-any
+      const fwd: any = {}; for (const k of keysOf[i]) if (!skip.has(k) && a[k] !== undefined) fwd[(r.rename || {})[k] || k] = a[k];
+      const p = LEGACY[r.tool].inputSchema.safeParse(fwd);
+      if (!p.success) {
+        const back: Record<string, string> = {}; Object.entries(r.rename || {}).forEach(([n, o]) => { back[o] = n; });
+        // deno-lint-ignore no-explicit-any
+        return fail(name + " " + label(r) + ": " + p.error.issues.map((x: any) => { const f = String(x.path[0] ?? ""); return (back[f] || f || "input") + (x.path.length > 1 ? "." + x.path.slice(1).join(".") : "") + ": " + x.message; }).join("; ") + ". Fields for " + label(r) + ": " + fields(i));
+      }
+      return LEGACY[r.tool].handler(p.data, ctx);
+    },
+  });
+}
+
+merged("archive", "Hide something; nothing is ever deleted. kinds: action, goal, project (archived:false brings it back), item, record (type: event, note, person, place, …). Use restore for items and records.", ["kind"], [
+  { when: { kind: "action" }, tool: "archive_action" }, { when: { kind: "goal" }, tool: "archive_goal" }, { when: { kind: "project" }, tool: "archive_project" },
+  { when: { kind: "item" }, tool: "archive_item" }, { when: { kind: "record" }, tool: "archive_record" },
+]);
+merged("restore", "Bring back something archived. kinds: item, record.", ["kind"], [
+  { when: { kind: "item" }, tool: "restore_item" }, { when: { kind: "record" }, tool: "restore_record" },
+]);
+merged("set_done", "Tick something off, or done:false to untick. kinds: action (occurrenceDate for one date of a repeating one), item (a task or deadline; date for a repeating one).", ["kind"], [
+  { when: { kind: "action" }, tool: "complete_action" },
+  { when: { kind: "item", done: false }, tool: "uncomplete_item" },
+  { when: { kind: "item" }, tool: "complete_item", consume: ["done"] },
+]);
+merged("save_knowledge", "Keep something the owner wants kept. kinds: note, idea (ideaKind: idea|question|…), link, quote, author (Knowledge page), journal (a note on the Notes page).", ["kind"], [
+  { when: { kind: "note" }, tool: "save_note" }, { when: { kind: "idea" }, tool: "save_idea", rename: { ideaKind: "kind" } }, { when: { kind: "link" }, tool: "save_link" },
+  { when: { kind: "quote" }, tool: "save_quote" }, { when: { kind: "author" }, tool: "save_author" }, { when: { kind: "journal" }, tool: "add_note" },
+]);
+merged("list", "List records of one kind, with that kind's filters. kinds: actions, events, items (itemKind filters task/event/deadline/block), goals, projects, notes, people, decisions, proposals, agent_reports, pois, located_items, recent_knowledge, tracker.", ["kind"], [
+  { when: { kind: "actions" }, tool: "list_actions" }, { when: { kind: "events" }, tool: "list_events" }, { when: { kind: "items" }, tool: "list_items", rename: { itemKind: "kind" } },
+  { when: { kind: "goals" }, tool: "list_goals" }, { when: { kind: "projects" }, tool: "list_projects" }, { when: { kind: "notes" }, tool: "list_notes" },
+  { when: { kind: "people" }, tool: "list_people" }, { when: { kind: "decisions" }, tool: "list_decisions" }, { when: { kind: "proposals" }, tool: "list_proposals" },
+  { when: { kind: "agent_reports" }, tool: "list_agent_reports" }, { when: { kind: "pois" }, tool: "list_pois" }, { when: { kind: "located_items" }, tool: "list_located_items" },
+  { when: { kind: "recent_knowledge" }, tool: "list_recent_knowledge" }, { when: { kind: "tracker" }, tool: "get_tracker" },
+]);
+merged("link", "Connect two things, or undo it. kinds: item (to a goal/project), people (relation: the link kind; remove:true unlinks), people_kind (change an existing people link), scenarios, knowledge, dependency (remove:true drops it).", ["kind"], [
+  { when: { kind: "item" }, tool: "link_item" }, { when: { kind: "people" }, tool: "link_people", rename: { relation: "kind" } },
+  { when: { kind: "people_kind" }, tool: "set_link_kind", rename: { relation: "kind" } }, { when: { kind: "scenarios" }, tool: "link_scenarios" },
+  { when: { kind: "knowledge" }, tool: "link_knowledge" },
+  { when: { kind: "dependency", remove: true }, tool: "remove_dependency" }, { when: { kind: "dependency" }, tool: "add_dependency", consume: ["remove"] },
+]);
+merged("recurrence", "Change how an item repeats. actions: set (rule), end, skip (one date), edit_occurrence (change one date or this-and-following).", ["action"], [
+  { when: { action: "set" }, tool: "set_recurrence" }, { when: { action: "end" }, tool: "end_recurrence" },
+  { when: { action: "skip" }, tool: "skip_occurrence" }, { when: { action: "edit_occurrence" }, tool: "edit_occurrence" },
+]);
+merged("reschedule", "Move an item in time. modes: date (an action or event to a day and/or time; occurrenceDate moves one date of a series), snooze (to a later day, default tomorrow, keeping its time), someday (no date, never late).", ["mode"], [
+  { when: { mode: "date" }, tool: "reschedule" }, { when: { mode: "snooze" }, tool: "snooze" }, { when: { mode: "someday" }, tool: "make_someday" },
+]);
+merged("settings", "Read or change settings. action get|set with scope planner (work days and hours, gym days, timezone) or reminders (on/off, quiet hours, digest); set+item sets one item's reminder offsets; get+upcoming lists reminders due soon.", ["action", "scope"], [
+  { when: { action: "get", scope: "planner" }, tool: "get_planner_settings" }, { when: { action: "set", scope: "planner" }, tool: "set_planner_settings" },
+  { when: { action: "get", scope: "reminders" }, tool: "get_reminder_settings" }, { when: { action: "set", scope: "reminders" }, tool: "set_reminder_settings" },
+  { when: { action: "set", scope: "item" }, tool: "set_reminders" }, { when: { action: "get", scope: "upcoming" }, tool: "list_upcoming_reminders" },
+]);
+merged("set_health", "Change the Health page's state. kinds: condition (a long-term condition with check-ups), flag (a body region: watch/recovering/cleared), status (normal, sick, injured, break).", ["kind"], [
+  { when: { kind: "condition" }, tool: "set_health_condition" }, { when: { kind: "flag" }, tool: "set_health_flag" }, { when: { kind: "status" }, tool: "set_health_status" },
+]);
+merged("log_metric", "Log a number. kinds: tracker (a Tracker variable for a day), body (weight_kg, body_fat_pct, muscle_mass_kg, waist_cm, or blood_pressure with systolic/diastolic).", ["kind"], [
+  { when: { kind: "tracker" }, tool: "log_metric" }, { when: { kind: "body" }, tool: "log_body_metric" },
+]);
+merged("upsert_health", "Save synced health data, idempotent (formerly upsert_health_day, upsert_workout, upsert_activity, upsert_routine). kinds: day (one Garmin day; send every field you can read, incl. hrvAvg, hrvStatus, bodyBatteryHigh/Low, trainingReadiness), workout (one Hevy session; ALWAYS send startedAt and durationMinutes), activity (swim, sauna, walk, run…), routine (the Hevy routines and rotation).", ["kind"], [
+  { when: { kind: "day" }, tool: "upsert_health_day" }, { when: { kind: "workout" }, tool: "upsert_workout" },
+  { when: { kind: "activity" }, tool: "upsert_activity" }, { when: { kind: "routine" }, tool: "upsert_routine" },
+]);
+merged("topics", "Knowledge topics. actions: list, rename, merge.", ["action"], [
+  { when: { action: "list" }, tool: "list_topics" }, { when: { action: "rename" }, tool: "rename_topic" }, { when: { action: "merge" }, tool: "merge_topics" },
+]);
+merged("knowledge_source", "Change the OneDrive folders mapped into Knowledge (read-only in OneDrive). actions: add, set_privacy (level, overrides, zone, filters), remove (archives in the planner), sync.", ["action"], [
+  { when: { action: "add" }, tool: "add_knowledge_source" }, { when: { action: "set_privacy" }, tool: "set_source_privacy" },
+  { when: { action: "remove" }, tool: "remove_knowledge_source" }, { when: { action: "sync" }, tool: "sync_source" },
+]);
+merged("memory_read", "Read Claude's memory. actions: get (one entry by key or id), search, overview, topics.", ["action"], [
+  { when: { action: "get" }, tool: "memory_get" }, { when: { action: "search" }, tool: "memory_search" },
+  { when: { action: "overview" }, tool: "memory_overview" }, { when: { action: "topics" }, tool: "memory_topics" },
+]);
+merged("place", "Places on the Location page. actions: create, edit.", ["action"], [
+  { when: { action: "create" }, tool: "create_place" }, { when: { action: "edit" }, tool: "edit_place" },
+]);
+merged("scenario", "Scenarios for a decision. actions: create (under an action, optionally under another scenario), edit.", ["action"], [
+  { when: { action: "create" }, tool: "create_scenario" }, { when: { action: "edit" }, tool: "edit_scenario" },
+]);
+merged("get_finance", "Money. views: summary (accounts and transactions in a range), snapshot (the latest imported finance snapshot, or as of a date).", ["view"], [
+  { when: { view: "summary" }, tool: "get_finance" }, { when: { view: "snapshot" }, tool: "get_finance_snapshot" },
+]);
+merged("comm_status", "Communication page. views: sources (iCloud Mail and WhatsApp: status, last sync, counts, whether Claude may read), whatsapp (what is saved per chat, before saving more).", ["view"], [
+  { when: { view: "sources" }, tool: "get_communication_status" }, { when: { view: "whatsapp" }, tool: "get_whatsapp_sync_state" },
+]);
+{ const left = [...FOLD].filter((t) => !MERGED_ROUTES[t]); if (left.length) throw new Error("folded but not merged: " + left.join(", ")); }
+
+// ============================ VOICE (/mcp-voice) ============================
+// A small, separate connector for Claude voice calls: 12 tools, flat parameters, answers written to be
+// spoken (times and titles first, at most five things, no ids, no JSON). Names are matched loosely; if two
+// things fit, it asks which and changes nothing. Same database, same rules; its writes are logged as "voice".
+const VOICE_TOKEN = Deno.env.get("VOICE_MCP_TOKEN") ?? "";
+const mcpVoice = new McpServer({ name: "personal-planner-voice", version: "1.0.0", schemaAdapter });
+const VOICE_TOOLS: string[] = [];
+const VOICE_INSTRUCTIONS = "Your planner, voice edition. Europe/Berlin time. Call today first for anything about the day. Answers are spoken: be brief, times and titles first, never read ids. Archive, never delete.";
+// deno-lint-ignore no-explicit-any
+const vOut = (r: any) => { try { return JSON.parse(r.content[0].text); } catch { return { error: "unexpected answer" }; } };
+// deno-lint-ignore no-explicit-any
+function vtool(name: string, description: string, schema: any, fn: (a: any) => Promise<string>) {
+  VOICE_TOOLS.push(name);
+  mcpVoice.tool(name, {
+    description, inputSchema: schema,
+    // deno-lint-ignore no-explicit-any
+    handler: async (a: any) => { let text: string; try { text = await actorStore.run(dbVoice, () => fn(a || {})); } catch (e) { text = "Sorry, that didn't work: " + String((e as Error).message || e).slice(0, 120); } return { content: [{ type: "text" as const, text }] }; },
+  });
+}
+const vNorm = (s: string) => String(s || "").toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9ß ]+/g, " ").replace(/\s+/g, " ").trim();
+function vScore(q: string, title: string) {
+  const a = vNorm(q), b = vNorm(title); if (!a || !b) return 0; if (a === b) return 1;
+  if (b.includes(a) || a.includes(b)) return 0.55 + 0.4 * Math.min(a.length, b.length) / Math.max(a.length, b.length);
+  const ta = a.split(" "), tb = b.split(" "); let hit = 0;
+  for (const t of ta) if (tb.some((x) => x === t || (t.length >= 3 && (x.startsWith(t) || t.startsWith(x))))) hit++;
+  return 0.9 * hit / Math.max(ta.length, tb.length);
+}
+// deno-lint-ignore no-explicit-any
+function vPick<T>(q: string, rows: T[], title: (r: T) => string, boost?: (r: T) => number): { one?: T; many?: T[]; none?: boolean } {
+  const s = rows.map((r) => ({ r, s: vScore(q, title(r)) + (boost ? boost(r) : 0) })).filter((x) => x.s >= 0.45).sort((x, y) => y.s - x.s);
+  if (!s.length) return { none: true };
+  if (s.length > 1 && s[1].s >= s[0].s - 0.1 && !(vNorm(title(s[0].r)) === vNorm(q) && vNorm(title(s[1].r)) !== vNorm(q))) return { many: [s[0].r, s[1].r] };
+  return { one: s[0].r };
+}
+const vDays = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+const vDeDays = ["sonntag", "montag", "dienstag", "mittwoch", "donnerstag", "freitag", "samstag"];
+function vDay(d: string | null | undefined) {
+  if (!d) return ""; const t = berlinToday(); if (d === t) return "today"; if (d === ccAdd(t, 1)) return "tomorrow"; if (d === ccAdd(t, -1)) return "yesterday";
+  const dt = new Date(d + "T12:00:00Z"), diff = (dt.getTime() - new Date(t + "T12:00:00Z").getTime()) / 864e5;
+  if (diff > 0 && diff < 7) return dt.toLocaleDateString("en-GB", { weekday: "long", timeZone: "UTC" });
+  return dt.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" });
+}
+const vAnd = (xs: string[]) => xs.length <= 1 ? (xs[0] || "") : xs.slice(0, -1).join(", ") + " and " + xs[xs.length - 1];
+const vMins = (m: number) => { const h = Math.floor(m / 60), r = m % 60; return h && r ? h + " hours " + r + " minutes" : h ? h + (h === 1 ? " hour" : " hours") : r + " minutes"; };
+const vNowMin = () => { const p = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Berlin", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date()).split(":"); return +p[0] * 60 + +p[1]; };
+const vMin = (t: string | null | undefined) => ccMins(t ? String(t).slice(0, 5) : null) ?? 0;
+function vResolveDay(day: string): string | null {
+  const t = berlinToday(), x = vNorm(day || "today");
+  if (!x || x === "today" || x === "heute") return t;
+  if (x === "tomorrow" || x === "morgen") return ccAdd(t, 1);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(day).trim())) return String(day).trim();
+  let w = vDays.findIndex((d) => x.startsWith(d.slice(0, 3))); if (w < 0) w = vDeDays.findIndex((d) => x.startsWith(d.slice(0, 2)) && x.length >= 2 && d.startsWith(x));
+  if (w >= 0) { for (let i = 0; i < 7; i++) { const d = ccAdd(t, i); if (new Date(d + "T12:00:00Z").getUTCDay() === w) return d; } }
+  const p = qaParse("x " + day, t, CATEGORIES); return p && p.date ? p.date : null;
+}
+// open things the voice tools can act on by name
+// deno-lint-ignore no-explicit-any
+async function vOpen(includeEvents: boolean): Promise<any[]> {
+  const t = berlinToday();
+  const [a, e] = await Promise.all([
+    db.from("actions").select("*").eq("user_id", OWNER).is("archived_at", null).eq("done", false).limit(1500),
+    includeEvents ? db.from("events").select("*").eq("user_id", OWNER).is("archived_at", null).limit(1500) : Promise.resolve({ data: [] }),
+  ]);
+  // deno-lint-ignore no-explicit-any
+  const ev = (e.data || []).filter((r: any) => r.recurrence || !r.date || r.date >= ccAdd(t, -1)).map((r: any) => ({ ...r, _table: "events" }));
+  // deno-lint-ignore no-explicit-any
+  return (a.data || []).map((r: any) => ({ ...r, _table: "actions" })).concat(ev);
+}
+// deno-lint-ignore no-explicit-any
+const vWhen = (r: any) => { const t = berlinToday(), d = r.recurrence ? (ccDates(r, t, ccAdd(t, 60))[0] || null) : r.date; return [vDay(d), hhmm(r.time_of_day) ? "at " + hhmm(r.time_of_day) : ""].filter(Boolean).join(" "); };
+// deno-lint-ignore no-explicit-any
+const vBoost = (r: any) => { const t = berlinToday(); return (r.recurrence ? ccDates(r, t, t).length > 0 : r.date && r.date <= t) ? 0.04 : 0; };
+// deno-lint-ignore no-explicit-any
+const vWhich = (xs: any[]) => "Did you mean " + xs.map((r) => (r.title || r.name) + (vWhen(r) ? ", " + vWhen(r) : "")).join(", or ") + "? Nothing changed.";
+
+vtool("today", "Today at a glance: the main thing, what's next with times, free time from now, and the workout.", z.object({}), async () => {
+  const t = berlinToday(), now = vNowMin(), o = vOut(await ALL_DEFS.get_today_overview.handler({}));
+  if (o.error) return "I couldn't read today: " + o.error;
+  // deno-lint-ignore no-explicit-any
+  const sched = (o.schedule || []) as any[], next = sched.filter((x) => { const s = vMin(x.time); return s + (x.minutes || 30) > now; });
+  const set = await db.from("planner_settings").select("work_days,work_start,work_end").eq("user_id", OWNER).maybeSingle();
+  const wd = new Date(t + "T12:00:00Z").getUTCDay() || 7, ws = set.data || { work_days: [1, 2, 3, 4, 5], work_start: "09:00", work_end: "18:00" };
+  const busy: [number, number][] = sched.map((x) => [vMin(x.time), vMin(x.time) + (x.minutes || (x.kind === "task" || x.kind === "deadline" ? 30 : 60))]);
+  if ((ws.work_days || []).includes(wd)) busy.push([vMin(String(ws.work_start).slice(0, 5)), vMin(String(ws.work_end).slice(0, 5))]);
+  let free = 0; for (let m = Math.max(now, 7 * 60); m < 23 * 60; m += 5) if (!busy.some(([a, b]) => m >= a && m < b)) free += 5;
+  const parts: string[] = [o.weekday + "."];
+  if (o.mainThing) parts.push("Main thing: " + o.mainThing.title + ".");
+  parts.push(next.length ? "Next: " + vAnd(next.slice(0, 3).map((x) => x.time + " " + x.title)) + (next.length > 3 ? ", and " + (next.length - 3) + " more" : "") + "." : "Nothing else at a fixed time today.");
+  const loose = ((o.tasks || []) as string[]).filter((x) => !o.mainThing || x !== o.mainThing.title);
+  if (loose.length) parts.push((o.mainThing ? "Also " : "") + loose.length + (loose.length === 1 ? " task" : " tasks") + " without a time" + (loose.length <= 2 ? ": " + vAnd(loose) : "") + ".");
+  if (o.overdue && o.overdue.count) parts.push(o.overdue.count + " overdue.");
+  parts.push(free >= 30 ? "About " + vMins(Math.round(free / 15) * 15) + " free from now until 23:00." : "Hardly any free time left today.");
+  const g = o.nextGym; if (g) parts.push(g.trainedToday ? "Workout done today." : g.date === t ? "Gym today" + (g.time ? " at " + g.time : "") + (g.routine ? ", " + g.routine : "") + "." : "Next gym " + vDay(g.date) + (g.time ? " at " + g.time : "") + ".");
+  return parts.join(" ");
+});
+vtool("agenda", "A short spoken agenda for one day: today, tomorrow, a weekday or a date.", z.object({ day: z.string().max(40).optional().describe("today, tomorrow, a weekday like Friday, or YYYY-MM-DD") }), async (a) => {
+  const d = vResolveDay(a.day || "today"); if (!d) return "Which day? Say today, tomorrow, a weekday or a date.";
+  const o = vOut(await ALL_DEFS.get_today_overview.handler({ date: d })); if (o.error) return "I couldn't read that day: " + o.error;
+  // deno-lint-ignore no-explicit-any
+  const s = (o.schedule || []) as any[], items = s.map((x) => x.time + " " + x.title).concat((o.allDay || []).map((x: string) => x + " (all day)"));
+  const head = (vDay(d) === "today" || vDay(d) === "tomorrow" ? vDay(d).charAt(0).toUpperCase() + vDay(d).slice(1) : vDay(d)) + ": ";
+  const out = [items.length ? head + vAnd(items.slice(0, 5)) + (items.length > 5 ? ", and " + (items.length - 5) + " more" : "") + "." : head + "nothing at a fixed time."];
+  if (o.tasks && o.tasks.length) out.push(o.tasks.length + (o.tasks.length === 1 ? " task" : " tasks") + ": " + vAnd(o.tasks.slice(0, 3)) + (o.tasks.length > 3 ? " and more" : "") + ".");
+  return out.join(" ");
+});
+vtool("add", "Add something from one plain sentence, like 'call the landlord Wednesday 10:00'.", z.object({ text: z.string().min(2).max(300) }), async (a) => {
+  const p = qaParse(a.text, berlinToday(), CATEGORIES); if (!p.title) return "I didn't catch what to add.";
+  // deno-lint-ignore no-explicit-any
+  const draft: any = { kind: p.kind, title: p.title, date: p.date, start: p.time, duration_min: p.dur, recurrence: p.recurrence, priority: p.priority || undefined, area: p.area || undefined, source: "voice" };
+  for (const k of Object.keys(draft)) if (draft[k] === null || draft[k] === undefined) delete draft[k];
+  if (draft.kind === "event") delete draft.priority;
+  const r = await itemCreate(draft); if (r.error) return "I couldn't add that: " + r.error;
+  return "Added: " + p.title + (p.recurrence ? ", repeating" : p.date ? ", " + vDay(p.date) : "") + (p.time ? " at " + p.time : "") + ".";
+});
+vtool("done", "Mark a task done by saying its name.", z.object({ title: z.string().min(2).max(200) }), async (a) => {
+  // deno-lint-ignore no-explicit-any
+  const rows = (await vOpen(false)).filter((r: any) => ccKind(r, "actions") !== "block");
+  const m = vPick(a.title, rows, (r) => r.title, vBoost);
+  if (m.none) return "I couldn't find an open task called " + a.title + ".";
+  if (m.many) return vWhich(m.many);
+  const r = m.one, res = vOut(await itemComplete(r.id, true, r.recurrence ? berlinToday() : undefined));
+  return res.error ? "I couldn't mark " + r.title + " done: " + res.error : "Done: " + r.title + ".";
+});
+vtool("move", "Move a task or event by name to another time: tomorrow, Friday 9:00, or someday.", z.object({ title: z.string().min(2).max(200), when: z.string().min(2).max(60) }), async (a) => {
+  const m = vPick(a.title, await vOpen(true), (r) => r.title, vBoost);
+  if (m.none) return "I couldn't find anything called " + a.title + ".";
+  if (m.many) return vWhich(m.many);
+  const r = m.one, t = berlinToday();
+  if (/some ?day|later|no date|backlog|irgendwann/i.test(a.when)) {
+    if (r._table === "events") return r.title + " is an event, so it needs a day. Say when instead.";
+    const res = vOut(itemResult(await itemEdit(r.id, { status: "someday" })));
+    return res.error ? "I couldn't park it: " + res.error : "Moved " + r.title + " to someday.";
+  }
+  const p = qaParse("x " + a.when, t, CATEGORIES), d = p.date || (p.time ? t : null) || vResolveDay(a.when);
+  if (!d) return "When should " + r.title + " move to? Say a day or a time.";
+  const occ = r.recurrence ? (ccDates(r, t, ccAdd(t, 90))[0] || undefined) : undefined;
+  const res = vOut(await itemMove(r.id, d, p.time || undefined, occ));
+  return res.error ? "I couldn't move it: " + res.error : "Moved " + r.title + (occ ? " (just this once)" : "") + " to " + vDay(d) + (p.time ? " at " + p.time : "") + ".";
+});
+vtool("main_thing", "Set today's main thing, by naming a task or saying a new one.", z.object({ text: z.string().min(2).max(200) }), async (a) => {
+  // deno-lint-ignore no-explicit-any
+  const rows = (await vOpen(false)).filter((r: any) => ccKind(r, "actions") !== "block");
+  const m = vPick(a.text, rows, (r) => r.title, vBoost);
+  if (m.many) return vWhich(m.many);
+  let id = m.one ? m.one.id : null, title = m.one ? m.one.title : a.text.trim(), made = false;
+  if (!id) { const c = await itemCreate({ kind: "task", title, date: berlinToday(), priority: "P1", source: "voice" }); if (c.error || !c.item) return "I couldn't add it: " + (c.error || "unknown"); id = c.item.id; made = true; }
+  const res = vOut(await ALL_DEFS.set_main_thing.handler({ id, date: berlinToday() }));
+  return res.error ? "I couldn't set it: " + res.error : (made ? "Added and set as today's main thing: " : "Today's main thing: ") + title + ".";
+});
+vtool("next_workout", "When the next workout is and which routine is due.", z.object({}), async () => {
+  const n = await hvNextSession(), t = berlinToday();
+  const head = n.trainedToday ? "You already trained today. " : "";
+  const when = n.date ? (n.date === t && n.trainedToday ? "" : "Next workout: " + vDay(n.date) + (n.time ? " at " + n.time : "") + (n.routine ? ", " + n.routine : "") + ".") : (n.routine ? "No gym day is planned yet. Next routine: " + n.routine + "." : "No gym day is planned yet.");
+  const last = n.lastWorkoutDate ? " Last one was " + (n.lastRoutine || "a workout") + ", " + vDay(n.lastWorkoutDate) + "." : "";
+  return (head + when + last).trim();
+});
+vtool("health", "One line on readiness: energy, sleep, last workout and any pains.", z.object({}), async () => {
+  const t = berlinToday();
+  const [days, wk, flags, st] = await Promise.all([
+    db.from("health_daily").select("date,sleep_minutes,sleep_minutes_corrected,sleep_score,body_battery_now,body_battery_high,training_readiness").eq("user_id", OWNER).is("archived_at", null).gte("date", ccAdd(t, -1)).order("date", { ascending: false }).limit(2),
+    db.from("workouts").select("date,routine,title").eq("user_id", OWNER).is("archived_at", null).order("date", { ascending: false }).limit(1),
+    db.from("health_flags").select("region,state").eq("user_id", OWNER).is("archived_at", null),
+    db.from("health_status").select("status,start_date,end_date").eq("user_id", OWNER).is("archived_at", null).order("start_date", { ascending: false }).limit(1),
+  ]);
+  // deno-lint-ignore no-explicit-any
+  const d: any = (days.data || [])[0], out: string[] = [];
+  const s = st.data && st.data[0]; if (s && s.status !== "normal" && (!s.end_date || s.end_date >= t)) out.push("Marked as " + s.status + " since " + vDay(s.start_date) + ".");
+  if (d) {
+    const bb = d.body_battery_now ?? d.body_battery_high; if (bb != null) out.push("Body battery " + bb + (d.body_battery_now == null ? " at its high" : " now") + ".");
+    if (d.training_readiness != null) out.push("Training readiness " + d.training_readiness + ".");
+    const sm = d.sleep_minutes_corrected ?? d.sleep_minutes; if (sm != null) out.push("Slept " + vMins(sm) + (d.sleep_score != null ? ", score " + d.sleep_score : "") + ".");
+  } else out.push("No watch data for today yet.");
+  const w = wk.data && wk.data[0]; if (w) out.push("Last workout " + vDay(w.date) + ", " + (w.routine || w.title || "a session") + ".");
+  // deno-lint-ignore no-explicit-any
+  const p = (flags.data || []).filter((f: any) => f.state !== "cleared"); if (p.length) out.push("Watching: " + vAnd(p.slice(0, 3).map((f: any) => String(f.region).replace(/_/g, " ") + " (" + f.state + ")")) + ".");
+  return out.join(" ");
+});
+vtool("checkin", "Log how you feel today: energy and mood from 1 to 5, and an optional note.", z.object({ energy: z.number().int().min(1).max(5), mood: z.number().int().min(1).max(5), note: z.string().max(300).optional() }), async (a) => {
+  const res = vOut(await ALL_DEFS.log_checkin.handler({ energy: a.energy, note: ("Mood " + a.mood + "/5" + (a.note ? ". " + a.note.trim() : "")).slice(0, 400), source: "claude" }));
+  return res.error ? "I couldn't log that: " + res.error : "Logged: energy " + a.energy + ", mood " + a.mood + (a.note ? ", with your note" : "") + ".";
+});
+vtool("note", "Save a quick idea or note to Knowledge.", z.object({ text: z.string().min(2).max(2000) }), async (a) => {
+  const title = a.text.trim().split(/\s+/).slice(0, 8).join(" ");
+  const res = vOut(await ALL_DEFS.save_note.handler({ text: a.text.trim(), title }));
+  return res.error ? "I couldn't save it: " + res.error : "Saved to Knowledge: " + title + (a.text.trim().split(/\s+/).length > 8 ? "…" : ".");
+});
+vtool("find", "Search everything and say the top three results.", z.object({ query: z.string().min(2).max(200) }), async (a) => {
+  const res = vOut(await ALL_DEFS.search_everything.handler({ query: a.query, limit: 15 }));
+  if (res.error) return "Search failed: " + res.error;
+  const names: Record<string, string> = { task: "task", deadline: "deadline", block: "time block", event: "event", note: "note", person: "person", goal: "goal", project: "project", knowledge_item: "in Knowledge", memory: "memory" };
+  // deno-lint-ignore no-explicit-any
+  const hits = ((res.hits || []) as any[]).map((h) => ({ h, s: vScore(a.query, h.title || "") })).sort((x, y) => y.s - x.s).slice(0, 3).map((x) => x.h);
+  if (!hits.length) return "Nothing found for " + a.query + ".";
+  return (res.total > 3 ? "Top three: " : "Found: ") + hits.map((h) => (names[h.type] || h.type) + " " + h.title + (h.date && ["task", "deadline", "event", "block"].includes(h.type) ? ", " + vDay(h.date) : "")).join("; ") + ".";
+});
+vtool("contact", "Log that you talked to someone, with an optional short note.", z.object({ person: z.string().min(2).max(120), note: z.string().max(400).optional() }), async (a) => {
+  const pe = await db.from("people").select("id,name").eq("user_id", OWNER).is("archived_at", null).limit(2000);
+  // deno-lint-ignore no-explicit-any
+  const m = vPick(a.person, (pe.data || []) as any[], (r) => r.name);
+  if (m.none) return "I couldn't find " + a.person + " in People.";
+  if (m.many) return "Did you mean " + m.many.map((r) => r.name).join(" or ") + "? Nothing changed.";
+  const r = m.one, res = vOut(await ALL_DEFS.log_contact.handler({ person: r.id }));
+  if (res.error) return "I couldn't log it: " + res.error;
+  if (a.note) { const n = vOut(await ALL_DEFS.set_person_situation.handler({ person: r.id, text: a.note.trim() })); if (n.error) return "Logged that you talked to " + r.name + " today, but the note didn't save."; }
+  return "Logged that you talked to " + r.name + " today" + (a.note ? ", and saved your note" : "") + ".";
+});
+
 const httpHandler = new StreamableHttpTransport().bind(mcp);
 const agentHttpHandler = new StreamableHttpTransport().bind(mcpAgent);
+const voiceHttpHandler = new StreamableHttpTransport().bind(mcpVoice);
 
 // ---- Reminders on the phone (Web Push) -----------------------------------------
 // Three small routes next to the MCP endpoint:
@@ -4875,10 +5260,10 @@ const app = new Hono();
 // The same three places carry AGENT_TOKEN, which gets the restricted agent server instead.
 // An AGENT_TOKEN identical to MCP_TOKEN is ignored rather than honoured: it would make the
 // "restricted" token the owner token, which is exactly the mistake a second token exists to stop.
-function tokenRole(req: Request): "owner" | "agent" | null {
+function tokenRole(req: Request): "owner" | "agent" | "voice" | null {
   const url = new URL(req.url);
   const header = req.headers.get("authorization") || "";
-  const pathMatch = url.pathname.match(/\/([^/]+)\/mcp$/);
+  const pathMatch = url.pathname.match(/\/([^/]+)\/mcp(?:-voice)?$/);
   const presented = [
     header.replace(/^Bearer\s+/i, "").trim(),
     url.searchParams.get("token") || "",
@@ -4886,6 +5271,7 @@ function tokenRole(req: Request): "owner" | "agent" | null {
   ].filter(Boolean);
   if (MCP_TOKEN && presented.includes(MCP_TOKEN)) return "owner";
   if (AGENT_TOKEN && AGENT_TOKEN !== MCP_TOKEN && presented.includes(AGENT_TOKEN)) return "agent";
+  if (VOICE_TOKEN && VOICE_TOKEN !== MCP_TOKEN && VOICE_TOKEN !== AGENT_TOKEN && presented.includes(VOICE_TOKEN)) return "voice";
   return null;
 }
 
@@ -4897,13 +5283,13 @@ const SERVER_INSTRUCTIONS = [
   "To add something said aloud, quick_add takes plain language (\"call the landlord Wed 10:00\").",
   "Archive, never delete. Health notes and notes about other people are private: summarise them, and only read details aloud when asked.",
 ].join(" ");
-async function withInstructions(res: Response): Promise<Response> {
+async function withInstructions(res: Response, instructions = SERVER_INSTRUCTIONS): Promise<Response> {
   try {
     const text = await res.clone().text(), sse = /^\s*(event:|data:)/.test(text);
     const json = sse ? text.split("\n").filter((l) => l.startsWith("data:")).map((l) => l.slice(5).trim()).join("") : text;
     const msg = JSON.parse(json);
     if (!msg || !msg.result || typeof msg.result !== "object") return res;
-    msg.result.instructions = SERVER_INSTRUCTIONS;
+    msg.result.instructions = instructions;
     const body = sse ? "event: message\ndata: " + JSON.stringify(msg) + "\n\n" : JSON.stringify(msg);
     const h = new Headers(res.headers); h.delete("content-length");
     return new Response(body, { status: res.status, headers: h });
@@ -4918,9 +5304,18 @@ async function withInstructions(res: Response): Promise<Response> {
 app.all("*", async (c) => {
   const pathname = new URL(c.req.url).pathname;
   if (/\/push\/(key|run|test)$/.test(pathname)) return await pushRoute(c.req.raw, pathname);
+  // The voice edition: its own token, 12 tools, spoken answers.
+  if (pathname.endsWith("/mcp-voice") && !pathname.includes("/.well-known/")) {
+    if (tokenRole(c.req.raw) !== "voice") return c.json({ error: "unauthorized" }, 401);
+    if (!OWNER) return c.json({ error: "server not configured: OWNER_USER_ID is unset" }, 500);
+    let vInit = false;
+    if (c.req.method === "POST") { try { const b = await c.req.raw.clone().json(); vInit = !!b && !Array.isArray(b) && b.method === "initialize"; } catch { /* not JSON */ } }
+    const vres = await voiceHttpHandler(c.req.raw);
+    return vInit ? await withInstructions(vres, VOICE_INSTRUCTIONS) : vres;
+  }
   if (pathname.endsWith("/mcp") && !pathname.includes("/.well-known/")) {
     const role = tokenRole(c.req.raw);
-    if (!role) return c.json({ error: "unauthorized" }, 401);
+    if (!role || role === "voice") return c.json({ error: "unauthorized" }, 401);
     if (!OWNER) return c.json({ error: "server not configured: OWNER_USER_ID is unset" }, 500);
     let isInit = false;
     if (role !== "agent" && c.req.method === "POST") { try { const b = await c.req.raw.clone().json(); isInit = !!b && !Array.isArray(b) && b.method === "initialize"; } catch { /* not JSON */ } }
