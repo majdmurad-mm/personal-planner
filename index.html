@@ -10854,7 +10854,7 @@
   // same "first wins" rule pplNodeGroup's caller relies on. Colors are assigned dynamically (cycling a
   // fixed palette in alphabetical group order) since there's no pre-themed --cat-* variable for an
   // arbitrary group name the way there is for the fixed areas.
-  var PPL_GROUP_PALETTE = ["#63B9FE", "#3D93DA", "#9AD1FF", "#7FA6D6", "#2F78B8", "#B9DDFB", "#5C8FC2", "#A6BED8"];   // people-blue shades (shared/areas.js)
+  var PPL_GROUP_PALETTE = ["#4ADE80", "#5FA8FF", "#F15A22", "#A78BFA", "#FDE047", "#FB7185", "#2DD4BF", "#FB923C"];
   // Every group's color: a user-chosen one (state.socialGroupColors, set from the person modal's
   // group multi-select — see saveSocialGroupColor) if it has one, otherwise the same deterministic
   // auto-cycled palette color as before (alphabetical index into PPL_GROUP_PALETTE) — a group without
@@ -10868,8 +10868,7 @@
     var colors = {};
     sortedGroups.forEach(function(g, i){
       var custom = state.socialGroupColors.find(function(x){ return x.groupName === g; });
-      // every group is a shade of the people blue (shared/areas.js); green, orange and yellow mean health, work and money
-      colors[g] = window.PPAreas ? PPAreas.peopleShade(i, "dark") : PPL_GROUP_PALETTE[i % PPL_GROUP_PALETTE.length]; void custom;
+      colors[g] = custom ? custom.color : PPL_GROUP_PALETTE[i % PPL_GROUP_PALETTE.length];
     });
     return colors;
   }
@@ -20218,7 +20217,7 @@
   }
   /* People page (constellation and list). Same pattern as Health: loaded on first open, in order, and
      versioned against the service worker's cache-first rule: bump PEOPLE_VER with each release of people/*. */
-  var PEOPLE_VER = "6", peopleLoading = null, peopleNotesMemo = null;
+  var PEOPLE_VER = "7", peopleLoading = null, peopleNotesMemo = null;
   // The 3D graph is parked: it only shows after localStorage.setItem("pp_people_3d", "1").
   function people3dEnabled(){ try{ return localStorage.getItem("pp_people_3d") === "1"; } catch(e){ return false; } }
   function peopleLoadScripts(){
