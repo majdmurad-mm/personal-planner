@@ -1356,6 +1356,195 @@ tool("spider_note", {
   handler: async (a: { text: string }) => { await knTrace("note", null, null, a.text); return ok({ ok: true }); },
 });
 
+// ---- The spider's web: a structure Claude weaves over the knowledge. Themes (inside themes), each item
+// in one theme, and threads between items or themes, each with a reason. Stored as one JSON value on
+// knowledge_settings.spider_map; the Knowledge page draws it as its first view, "Spider". Weaving only
+// changes this structure, never the items. Items kept from Claude never enter it.
+const SP_HINT = " (the web needs one new column first: run _Memory/migration_knowledge_spidermap.sql in the Supabase SQL editor)";
+type SpTheme = { id: string; name: string; parent: string | null; why: string; items: string[] };
+type SpThread = { from: string; to: string; why: string };
+type SpMap = { version: 1; startedAt: string; updatedAt: string; summary: string; themes: SpTheme[]; threads: SpThread[]; previous?: unknown };
+const SP_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const spOk = (d: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(d) }] });
+const spEmpty = (): SpMap => { const t = new Date().toISOString(); return { version: 1, startedAt: t, updatedAt: t, summary: "", themes: [], threads: [] }; };
+async function spLoad(): Promise<{ map?: SpMap; error?: string }> {
+  const r = await db.from("knowledge_settings").select("spider_map").eq("user_id", OWNER).maybeSingle();
+  if (r.error) return { error: r.error.message + (/spider_map/.test(r.error.message) ? SP_HINT : "") };
+  // deno-lint-ignore no-explicit-any
+  const m = r.data && (r.data as any).spider_map;
+  return { map: m && Array.isArray(m.themes) ? m as SpMap : spEmpty() };
+}
+async function spSave(map: SpMap): Promise<string | null> {
+  map.updatedAt = new Date().toISOString();
+  const r = await db.from("knowledge_settings").upsert({ user_id: OWNER, spider_map: map, updated_at: map.updatedAt }, { onConflict: "user_id" });
+  return r.error ? r.error.message + (/spider_map/.test(r.error.message) ? SP_HINT : "") : null;
+}
+const spFind = (m: SpMap, name: string) => m.themes.find((t) => t.name.toLowerCase() === String(name || "").trim().toLowerCase());
+const spName = (m: SpMap, id: string | null) => (id && m.themes.find((t) => t.id === id)?.name) || null;
+async function spAllowed(ids: string[]): Promise<{ ok: Set<string>; titles: Record<string, string>; error?: string }> {
+  const want = Array.from(new Set(ids.filter((x) => SP_UUID.test(x)))), out = new Set<string>(), titles: Record<string, string> = {};
+  if (!want.length) return { ok: out, titles };
+  const allowed = await knAllowed();
+  for (let i = 0; i < want.length; i += 200) {
+    const r = await knItems("id,zone,title,provider,privacy").eq("user_id", OWNER).is("archived_at", null).in("id", want.slice(i, i + 200));
+    if (r.error) return { ok: out, titles, error: r.error.message + KN_HINT };
+    for (const x of r.data || []) if (knCan(x, allowed)) { out.add(x.id); titles[x.id] = x.title; }
+  }
+  return { ok: out, titles };
+}
+// "item:<id>" or "theme:<id>" from an item id or a theme name
+async function spEnd(m: SpMap, ref: string): Promise<{ key?: string; label?: string; error?: string }> {
+  if (SP_UUID.test(ref)) { const A = await spAllowed([ref]); if (A.error) return { error: A.error }; if (!A.ok.has(ref)) return { error: "item " + ref + " was not found or is kept from Claude" }; return { key: "item:" + ref, label: A.titles[ref] }; }
+  const t = spFind(m, ref); if (!t) return { error: "no theme called '" + ref + "' and not an item id" };
+  return { key: "theme:" + t.id, label: t.name };
+}
+
+tool("get_spider_web", {
+  description: "The web the spider has woven over the Knowledge page so far: every theme (parent, reason, item count), the threads between items or themes, the summary, and items not in the web yet (id, title, folder) so you can place them. Call this first, so you extend the web instead of starting over. Pass theme to list that theme's items.",
+  inputSchema: z.object({
+    unplaced: z.number().int().min(0).max(300).optional().describe("how many items not yet in the web to list (default 60)"),
+    theme: z.string().max(60).optional().describe("list this theme's items with their titles"),
+  }),
+  handler: async (a: { unplaced?: number; theme?: string }) => {
+    const L = await spLoad(); if (L.error) return fail(L.error); const m = L.map!;
+    const allowed = await knAllowed();
+    const r = await knItems("id,zone,title,provider,privacy,meta,remote_path").eq("user_id", OWNER).is("archived_at", null).limit(3000);
+    if (r.error) return fail(r.error.message + KN_HINT);
+    // deno-lint-ignore no-explicit-any
+    const vis = (r.data || []).filter((x: any) => knCan(x, allowed)), title: Record<string, string> = {};
+    // deno-lint-ignore no-explicit-any
+    vis.forEach((x: any) => { title[x.id] = x.title; });
+    const placed = new Set<string>(); m.themes.forEach((t) => t.items.forEach((i) => { if (title[i]) placed.add(i); }));
+    // deno-lint-ignore no-explicit-any
+    const folderOf = (x: any) => x.remote_path ? String(x.remote_path).split("/").slice(0, -1).join("/") : (x.meta && x.meta.folder) || "";
+    // deno-lint-ignore no-explicit-any
+    const un = vis.filter((x: any) => !placed.has(x.id));
+    const th = a.theme ? spFind(m, a.theme) : null;
+    if (a.theme && !th) return fail("no theme called '" + a.theme + "'");
+    const lab = (k: string) => k.startsWith("theme:") ? "theme " + (spName(m, k.slice(6)) || "?") : title[k.slice(5)] || "(an item kept from Claude)";
+    return spOk({
+      summary: m.summary || null, updatedAt: m.updatedAt, items: vis.length, inWeb: placed.size, notInWebYet: un.length,
+      themes: m.themes.map((t) => ({ name: t.name, parent: spName(m, t.parent), why: t.why || undefined, items: t.items.filter((i) => title[i]).length })),
+      threads: m.threads.map((t) => ({ from: lab(t.from), to: lab(t.to), why: t.why })),
+      themeItems: th ? th.items.filter((i) => title[i]).map((i) => ({ id: i, title: title[i] })) : undefined,
+      // deno-lint-ignore no-explicit-any
+      unplaced: un.slice(0, a.unplaced ?? 60).map((x: any) => ({ id: x.id, title: x.title, folder: folderOf(x) || undefined })),
+      hasPrevious: !!m.previous,
+    });
+  },
+});
+
+tool("weave_theme", {
+  description: "Create or change one theme in the spider's web and place items in it. Leave parent out for a main theme, or name the theme it sits inside. An item lives in one theme, so placing it here takes it out of any other. Give a short reason the owner would understand. Use rename to rename. Only the web changes; the items themselves are never edited.",
+  inputSchema: z.object({
+    name: z.string().min(2).max(60),
+    parent: z.string().max(60).optional().describe("the theme this one sits inside; an empty string moves it back to the top"),
+    why: z.string().max(300).optional(),
+    itemIds: z.array(z.string()).max(200).optional(),
+    rename: z.string().min(2).max(60).optional(),
+  }),
+  handler: async (a: { name: string; parent?: string; why?: string; itemIds?: string[]; rename?: string }) => {
+    const L = await spLoad(); if (L.error) return fail(L.error); const m = L.map!;
+    let t = spFind(m, a.name), created = false;
+    if (!t) {
+      if (m.themes.length >= 150) return fail("the web already has 150 themes; fold some together first");
+      t = { id: "t" + crypto.randomUUID().slice(0, 8), name: a.name.trim(), parent: null, why: "", items: [] }; m.themes.push(t); created = true;
+    }
+    const me = t;
+    if (a.parent !== undefined) {
+      if (!a.parent.trim()) me.parent = null;
+      else {
+        const p = spFind(m, a.parent); if (!p) return fail("no theme called '" + a.parent + "' yet; weave it first");
+        for (let cur: SpTheme | undefined = p; cur; cur = cur.parent ? m.themes.find((x) => x.id === cur!.parent) : undefined) if (cur.id === me.id) return fail("that would put a theme inside itself");
+        me.parent = p.id;
+      }
+    }
+    if (a.rename) { const clash = spFind(m, a.rename); if (clash && clash.id !== me.id) return fail("a theme called '" + a.rename + "' already exists"); me.name = a.rename.trim(); }
+    if (a.why !== undefined) me.why = a.why.trim();
+    let added = 0, refused: string[] = [], first: string | null = null;
+    if (a.itemIds && a.itemIds.length) {
+      const A = await spAllowed(a.itemIds); if (A.error) return fail(A.error);
+      refused = a.itemIds.filter((x) => !A.ok.has(x));
+      m.themes.forEach((o) => { if (o.id !== me.id) o.items = o.items.filter((i) => !A.ok.has(i)); });
+      A.ok.forEach((i) => { if (!first) first = i; if (!me.items.includes(i)) { me.items.push(i); added++; } });
+    }
+    const e = await spSave(m); if (e) return fail(e);
+    await knTrace("cluster", first, null, "Web: " + me.name + (a.why ? " — " + a.why : ""));
+    return spOk({ ok: true, theme: me.name, created, parent: spName(m, me.parent), items: me.items.length, added, refused: refused.length ? refused : undefined });
+  },
+});
+
+tool("spin_thread", {
+  description: "Spin a thread in the spider's web between two things that relate across themes: an item and an item, an item and a theme, or two themes. Pass an item id or a theme name for each end, and say why in a few words (shown on the page). Spinning the same pair again updates the reason.",
+  inputSchema: z.object({ from: z.string().min(1), to: z.string().min(1), why: z.string().min(2).max(200) }),
+  handler: async (a: { from: string; to: string; why: string }) => {
+    const L = await spLoad(); if (L.error) return fail(L.error); const m = L.map!;
+    const f = await spEnd(m, a.from); if (f.error) return fail(f.error);
+    const t = await spEnd(m, a.to); if (t.error) return fail(t.error);
+    if (f.key === t.key) return fail("a thread needs two different ends");
+    const had = m.threads.find((x) => (x.from === f.key && x.to === t.key) || (x.from === t.key && x.to === f.key));
+    if (had) had.why = a.why.trim(); else { if (m.threads.length >= 400) return fail("the web already has 400 threads"); m.threads.push({ from: f.key!, to: t.key!, why: a.why.trim() }); }
+    const e = await spSave(m); if (e) return fail(e);
+    const fi = f.key!.startsWith("item:") ? f.key!.slice(5) : null, ti = t.key!.startsWith("item:") ? t.key!.slice(5) : null;
+    await knTrace("link", fi || ti, fi ? ti : null, "Thread: " + f.label + " ↔ " + t.label + " — " + a.why);
+    return spOk({ ok: true, from: f.label, to: t.label, updated: !!had, threads: m.threads.length });
+  },
+});
+
+tool("unweave", {
+  description: "Take something out of the spider's web: a theme (its sub-themes move up to its parent, its items wait to be placed again), some items, or one thread (from and to). Only the web changes; nothing is archived or edited.",
+  inputSchema: z.object({ theme: z.string().max(60).optional(), itemIds: z.array(z.string()).max(200).optional(), threadFrom: z.string().optional(), threadTo: z.string().optional() }),
+  handler: async (a: { theme?: string; itemIds?: string[]; threadFrom?: string; threadTo?: string }) => {
+    const L = await spLoad(); if (L.error) return fail(L.error); const m = L.map!; const did: string[] = [];
+    if (a.theme) {
+      const t = spFind(m, a.theme); if (!t) return fail("no theme called '" + a.theme + "'");
+      m.themes.forEach((x) => { if (x.parent === t.id) x.parent = t.parent; });
+      m.themes = m.themes.filter((x) => x.id !== t.id); m.threads = m.threads.filter((x) => x.from !== "theme:" + t.id && x.to !== "theme:" + t.id);
+      did.push("theme " + t.name);
+    }
+    if (a.itemIds && a.itemIds.length) {
+      const drop = new Set(a.itemIds);
+      m.themes.forEach((x) => { x.items = x.items.filter((i) => !drop.has(i)); });
+      m.threads = m.threads.filter((x) => !drop.has(x.from.slice(5)) && !drop.has(x.to.slice(5)));
+      did.push(a.itemIds.length + " items");
+    }
+    if (a.threadFrom && a.threadTo) {
+      const f = await spEnd(m, a.threadFrom), t = await spEnd(m, a.threadTo);
+      if (f.error || t.error) return fail(f.error || t.error || "");
+      const n = m.threads.length; m.threads = m.threads.filter((x) => !((x.from === f.key && x.to === t.key) || (x.from === t.key && x.to === f.key)));
+      if (n !== m.threads.length) did.push("thread " + f.label + " ↔ " + t.label);
+    }
+    if (!did.length) return fail("say what to take out: theme, itemIds, or threadFrom with threadTo");
+    const e = await spSave(m); if (e) return fail(e);
+    return spOk({ ok: true, removed: did });
+  },
+});
+
+tool("start_spider_web", {
+  description: "Start a fresh web when the current structure no longer fits. The current web is kept as the previous one (one level back), so nothing is lost; the items are never touched. Usually you extend the web with weave_theme instead.",
+  inputSchema: z.object({ reason: z.string().max(200).optional() }),
+  handler: async (a: { reason?: string }) => {
+    const L = await spLoad(); if (L.error) return fail(L.error); const m = L.map!;
+    const fresh = spEmpty();
+    if (m.themes.length || m.threads.length) fresh.previous = { savedAt: new Date().toISOString(), summary: m.summary, themes: m.themes, threads: m.threads };
+    const e = await spSave(fresh); if (e) return fail(e);
+    await knTrace("note", null, null, "Started a fresh web" + (a.reason ? ": " + a.reason : ""));
+    return spOk({ ok: true, keptPrevious: !!fresh.previous });
+  },
+});
+
+tool("finish_spider_web", {
+  description: "Finish a weaving pass: two or three plain sentences on how the web is structured and why, shown at the top of the Spider view.",
+  inputSchema: z.object({ summary: z.string().min(10).max(600) }),
+  handler: async (a: { summary: string }) => {
+    const L = await spLoad(); if (L.error) return fail(L.error); const m = L.map!;
+    m.summary = a.summary.trim();
+    const e = await spSave(m); if (e) return fail(e);
+    await knTrace("note", null, null, a.summary.slice(0, 300));
+    return spOk({ ok: true, themes: m.themes.length, threads: m.threads.length });
+  },
+});
+
 tool("set_item_type", {
   description: "Change what a Knowledge item is (for example from 'document' to 'contract'). The zone follows from the type. Also clears the 'to sort' flag.",
   inputSchema: z.object({ id: z.string(), type: z.string().max(40) }),

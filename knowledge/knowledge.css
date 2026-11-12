@@ -106,3 +106,36 @@ svg text{font-family:var(--sans);fill:var(--text);pointer-events:none;user-selec
 .crumbs [aria-current]{color:var(--text)}
 .ck{display:flex;gap:8px;align-items:center;margin-top:8px;font-size:14px;cursor:pointer}
 .odsrc .f{margin-top:8px}
+/* ----- spider: the web Claude wove ----- */
+.spweb{position:relative;border:1px solid var(--line);border-radius:var(--r);background:radial-gradient(circle at 50% 56%,color-mix(in srgb,var(--glow) 9%,transparent),transparent 62%),var(--panel);overflow:hidden;min-width:0}
+.spweb svg#knWeb{display:block;width:100%;height:auto;max-height:76vh;touch-action:manipulation}
+.sphead{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:flex-start;justify-content:space-between;padding:14px 18px 0}
+.spsum{font:400 17px/1.45 var(--disp);max-width:68ch;margin:4px 0 2px;text-wrap:pretty}
+.sphint{padding:0 18px 14px;font-size:13px}
+.spweb .link{color:var(--acc);text-decoration:underline;text-underline-offset:2px;font:inherit;padding:0}
+.spoke{stroke:var(--edge);stroke-width:1;opacity:.5;vector-effect:non-scaling-stroke}
+.silk{fill:none;stroke:var(--edge);stroke-width:1;opacity:.5;vector-effect:non-scaling-stroke}
+.teth{stroke:var(--edge);stroke-width:1;opacity:.35;vector-effect:non-scaling-stroke}
+.sbr{stroke:var(--edge);stroke-width:2;opacity:.95;vector-effect:non-scaling-stroke}
+.thr{fill:none;stroke:var(--acc);stroke-width:1.6;opacity:.75;vector-effect:non-scaling-stroke;pointer-events:stroke;cursor:help}
+.thr:hover{opacity:1;stroke-width:3.2}
+.spn{fill:var(--f,var(--node));stroke:var(--c,var(--muted));stroke-width:1.6;cursor:pointer;vector-effect:non-scaling-stroke;transition:stroke-width .15s}
+.spn:hover,.spn.sel{stroke-width:3.4}
+.spt{cursor:pointer;outline:none}.spt circle{fill:var(--panel);stroke:var(--acc);stroke-width:2.2;vector-effect:non-scaling-stroke}
+.spt.l2 circle{stroke-width:1.6}.spt.on circle,.spt:hover circle{fill:color-mix(in srgb,var(--acc) 22%,var(--panel))}
+.spt:focus-visible circle,.sphub:focus-visible circle{stroke-width:4.5}
+.spt text,.sphub text{fill:var(--text);font:600 15px var(--sans);paint-order:stroke;stroke:var(--panel);stroke-width:5px;stroke-linejoin:round}
+.spt.l2 text{font-size:12px;font-weight:500;fill:var(--muted)}
+.sphub{cursor:pointer;outline:none}.sphub circle{fill:var(--panel);stroke:var(--acc);stroke-width:2.5;vector-effect:non-scaling-stroke}.sphub text{font:500 22px var(--disp);stroke-width:0}.sphub text.s{font:600 10px var(--sans);letter-spacing:.1em;text-transform:uppercase;fill:var(--muted)}
+.sptl{fill:var(--text);font:10px var(--sans);paint-order:stroke;stroke:var(--panel);stroke-width:3px;pointer-events:none}
+.spweb .dim{opacity:.14}.spweb .spt.dim{opacity:.3}
+.spweb.fresh .spoke,.spweb.fresh .silk,.spweb.fresh .sbr{stroke-dasharray:1600;stroke-dashoffset:1600;animation:spspin 1.8s cubic-bezier(.3,.6,.2,1) forwards}
+.spweb.fresh .spn,.spweb.fresh .teth,.spweb.fresh .spt,.spweb.fresh .thr{opacity:0;animation:spshow .5s ease-out 1.1s forwards}
+@keyframes spspin{to{stroke-dashoffset:0}}@keyframes spshow{to{opacity:1}}
+.spweb.fresh .dim{animation:none;opacity:.14}
+.spweb.none{display:block}.spnone{display:flex;flex-wrap:wrap;gap:24px;align-items:center;padding:28px}.spnone h2{font:500 24px var(--disp);margin-bottom:6px}.spnone .sub{max-width:56ch}
+.spempty{width:180px;height:180px;flex:none}
+.panel .pt{font:500 22px/1.2 var(--disp);margin:2px 0 6px;overflow-wrap:anywhere}
+.spk{display:flex;flex-wrap:wrap;gap:6px}.spl{display:grid;gap:2px;margin-top:6px}.spthr{padding:4px 0;border-top:1px solid var(--line)}
+@media (prefers-reduced-motion:reduce){.spweb.fresh .spoke,.spweb.fresh .silk,.spweb.fresh .sbr,.spweb.fresh .spn,.spweb.fresh .spt,.spweb.fresh .thr{animation:none;stroke-dashoffset:0;opacity:1}}
+@container kn (max-width:700px){.spt text{font-size:30px;stroke-width:8px}.spt.l2 text{font-size:24px}.sphub text{font-size:40px}.sphub text.s{font-size:17px}.spn{stroke-width:2.4}}

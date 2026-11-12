@@ -31,7 +31,7 @@
     var kn = root.querySelector(".kn"), $ = function (q) { return root.querySelector(q); };
 
     function setData(d) {
-      ["items", "edges", "settings", "usage", "meaning", "spider", "onedrive"].forEach(function (k) { if (d[k] !== undefined) S[k] = d[k]; });
+      ["items", "edges", "settings", "usage", "meaning", "spider", "onedrive", "spiderMap", "spiderReady"].forEach(function (k) { if (d[k] !== undefined) S[k] = d[k]; });
       S.items.forEach(function (i) { if (!i.topic) i.topic = K.topicOf(i); });
       byId = {}; S.items.forEach(function (i) { byId[i.id] = i; });
       if (S.sel && (!byId[S.sel] || byId[S.sel].archived)) S.sel = null;
@@ -41,12 +41,112 @@
       narrow = host.getBoundingClientRect().width < 900;
       links = K.edges(S.items, S.edges); buildSim();
       if (!S.cam.set) { S.cam = home(); S.cam.set = 1; } else S.cam = clampCam(S.cam);
-      if (S.view == null) S.view = narrow ? "list" : "graph";
+      if (S.view == null) S.view = "spider";
     }
     var live = function () { return S.items.filter(function (i) { return !i.archived; }); };
     var linked = function (id) { var out = []; links.forEach(function (e) { if (e.from === id) out.push([e.to, e.kind]); else if (e.to === id) out.push([e.from, e.kind]); }); return out; };
     var degree = function (id) { return linked(id).length; };
     var hitIds = function () { return S.results ? S.results.map(function (r) { return r.id; }).filter(function (id, i, a) { return a.indexOf(id) === i; }) : []; };
+
+    /* ----- spider: the web Claude wove over the knowledge (get_spider_web / weave_theme / spin_thread).
+       Main themes sit on the inner ring, sub-themes on the next, items on the outer rings inside their
+       theme's slice; threads cross the web between items or themes. Items not in the web are counted. ----- */
+    var SPR1 = 130, SPR2 = 235, SPR3 = 312, SPSTEP = 24, SPGAP = 17;
+    function spModel() {
+      var m = S.spiderMap; if (!m || !m.themes || !m.themes.length) return null;
+      var th = {}, tops = [], placed = {};
+      m.themes.forEach(function (t) { th[t.id] = { t: t, kids: [], items: (t.items || []).filter(function (id) { return byId[id] && !byId[id].archived && !placed[id] && (placed[id] = t.id); }) }; });
+      m.themes.forEach(function (t) { var p = t.parent && th[t.parent]; if (p) p.kids.push(th[t.id]); else tops.push(th[t.id]); });
+      var flat = function (n) { return n.kids.reduce(function (a, k) { return a.concat(flat(k)); }, n.items.slice()); };
+      var pos = {}, rings = [], spokes = [], maxR = SPR3, nodes = [], top = {}, n2 = {};
+      var W2 = tops.map(function (n) { return 1 + Math.sqrt(flat(n).length + n.kids.length); }), sum = W2.reduce(function (a, b) { return a + b; }, 0) || 1, gap = tops.length > 1 ? 0.05 : 0, free = Math.PI * 2 - gap * tops.length, a = -Math.PI / 2;
+      var put = function (ids, a0, a1, owner, node) {
+        var r = SPR3, k = 0, span = Math.max(0.02, a1 - a0 - 0.02);
+        while (k < ids.length) {
+          var cap = Math.max(1, Math.floor(span * r / SPGAP)), row = ids.slice(k, k + cap);
+          row.forEach(function (id, j) { var an = a0 + 0.01 + span * (row.length === 1 ? 0.5 : (j + 0.5) / row.length); pos["item:" + id] = [Math.cos(an) * r, Math.sin(an) * r, owner, an, node]; });
+          k += cap; maxR = Math.max(maxR, r); r += SPSTEP;
+        }
+      };
+      tops.forEach(function (n, i) {
+        var span = free * W2[i] / sum, a0 = a, a1 = a + span, mid = (a0 + a1) / 2; a = a1 + gap;
+        var all = flat(n); top[n.t.id] = n.t.id; pos["theme:" + n.t.id] = [Math.cos(mid) * SPR1, Math.sin(mid) * SPR1, n.t.id, mid];
+        nodes.push({ n: n, lvl: 1, a: mid, x: Math.cos(mid) * SPR1, y: Math.sin(mid) * SPR1, count: all.length, top: n.t.id }); spokes.push(mid);
+        var groups = n.kids.map(function (k) { return { k: k, ids: flat(k), w: 1 + Math.sqrt(flat(k).length) }; });
+        if (n.items.length) groups.unshift({ k: null, ids: n.items, w: Math.sqrt(n.items.length) + 0.5 });
+        var gw = groups.reduce(function (s, g) { return s + g.w; }, 0) || 1, b = a0;
+        groups.forEach(function (g) {
+          var s0 = b, s1 = b + (a1 - a0) * g.w / gw, gm = (s0 + s1) / 2; b = s1;
+          if (g.k) {
+            var mark = function (k) { top[k.t.id] = n.t.id; n2[k.t.id] = g.k.t.id; k.kids.forEach(mark); }; mark(g.k);
+            pos["theme:" + g.k.t.id] = [Math.cos(gm) * SPR2, Math.sin(gm) * SPR2, n.t.id, gm];
+            (function deep(k) { k.kids.forEach(function (c) { pos["theme:" + c.t.id] = pos["theme:" + g.k.t.id]; deep(c); }); })(g.k);
+            nodes.push({ n: g.k, lvl: 2, a: gm, x: Math.cos(gm) * SPR2, y: Math.sin(gm) * SPR2, count: g.ids.length, top: n.t.id, parentA: mid }); spokes.push(gm);
+          }
+          put(g.ids, s0, s1, n.t.id, g.k ? "theme:" + g.k.t.id : "theme:" + n.t.id);
+        });
+      });
+      maxR += 30; for (var sk = 0; sk < 24; sk++) { var sa = -Math.PI / 2 + sk / 24 * Math.PI * 2; if (!spokes.some(function (x) { return Math.abs(x - sa) < 0.08; })) spokes.push(sa); }
+      spokes = spokes.map(function (x) { return ((x % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2); }); spokes.sort(function (p, q) { return p - q; });
+      for (var r = SPR1 * 0.55; r <= maxR; r += r < SPR3 ? 52 : SPSTEP * 2) rings.push(r);
+      var un = live().filter(function (i) { return !i.mirror && !placed[i.id]; });
+      return { m: m, tops: tops, pos: pos, nodes: nodes, spokes: spokes, rings: rings, maxR: maxR, top: top, n2: n2, placed: placed, unplaced: un, byTheme: th };
+    }
+    var spLabel = function (s, n) { s = String(s || ""); return s.length > n ? s.slice(0, n - 1) + "…" : s; };
+    var spAgo = function (iso) { var d = (Date.now() - new Date(iso).getTime()) / 60000; return !iso ? "" : d < 2 ? "just now" : d < 60 ? Math.round(d) + " min ago" : d < 1440 ? Math.round(d / 60) + " h ago" : new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" }); };
+    function spEmptyWeb() {
+      var s = "", R = 150; for (var k = 0; k < 9; k++) { var an = k / 9 * Math.PI * 2; s += '<line class="spoke" x1="0" y1="0" x2="' + (Math.cos(an) * R).toFixed(1) + '" y2="' + (Math.sin(an) * R).toFixed(1) + '"/>'; }
+      for (var r = 30; r <= R; r += 24) s += '<polygon class="silk" points="' + [0, 1, 2, 3, 4, 5, 6, 7, 8].map(function (k2) { var an = k2 / 9 * Math.PI * 2; return (Math.cos(an) * r).toFixed(1) + "," + (Math.sin(an) * r).toFixed(1); }).join(" ") + '"/>';
+      return '<svg class="spempty" viewBox="-170 -170 340 340" aria-hidden="true">' + s + "</svg>";
+    }
+    function spiderWebHtml() {
+      if (S.spiderReady === false) return '<div class="spweb none"><div class="spnone">' + spEmptyWeb() + '<div><h2>The web needs one setup step</h2><p class="sub">Saving the spider’s web needs a small database update (one new column). Once it is in, ask the spider to spin the web and it appears here.</p></div></div></div>';
+      var M = spModel();
+      if (!M) return '<div class="spweb none"><div class="spnone">' + spEmptyWeb() + '<div><h2>No web yet</h2><p class="sub">The spider is Claude reading your documents through the connector and deciding how they fit together: main themes, themes inside them, and threads between things that relate. Ask it once and the web appears here, ready to explore.</p><div class="acts"><button class="btn pri" data-act="spider">Ask the spider to spin it</button></div></div></div></div>';
+      var foc = S.spFocus && S.spFocus !== "__un" && M.byTheme[S.spFocus] ? S.spFocus : null, ftop = foc ? M.top[foc] : null;
+      var inF = function (topId) { return !foc || topId === ftop; };
+      var s = "", R = M.maxR;
+      M.spokes.forEach(function (an) { s += '<line class="spoke" x1="0" y1="0" x2="' + (Math.cos(an) * R).toFixed(1) + '" y2="' + (Math.sin(an) * R).toFixed(1) + '"/>'; });
+      M.rings.forEach(function (r) { s += '<polygon class="silk" points="' + M.spokes.map(function (an) { return (Math.cos(an) * r).toFixed(1) + "," + (Math.sin(an) * r).toFixed(1); }).join(" ") + '"/>'; });
+      M.nodes.forEach(function (nd) { var px = nd.lvl === 1 ? 0 : Math.cos(nd.parentA) * SPR1, py = nd.lvl === 1 ? 0 : Math.sin(nd.parentA) * SPR1; s += '<line class="sbr' + (inF(nd.top) ? "" : " dim") + '" x1="' + px.toFixed(1) + '" y1="' + py.toFixed(1) + '" x2="' + nd.x.toFixed(1) + '" y2="' + nd.y.toFixed(1) + '"/>'; });
+      (M.m.threads || []).forEach(function (t) {
+        var p = M.pos[t.from], q = M.pos[t.to]; if (!p || !q) return;
+        var cx = (p[0] + q[0]) / 2 * 0.35, cy = (p[1] + q[1]) / 2 * 0.35, on = inF(p[2]) || inF(q[2]);
+        var nm = function (k) { return k.indexOf("theme:") === 0 ? (M.byTheme[k.slice(6)] || { t: { name: "?" } }).t.name : (byId[k.slice(5)] || { title: "?" }).title; };
+        s += '<path class="thr' + (on ? "" : " dim") + '" d="M' + p[0].toFixed(1) + " " + p[1].toFixed(1) + " Q" + cx.toFixed(1) + " " + cy.toFixed(1) + " " + q[0].toFixed(1) + " " + q[1].toFixed(1) + '"><title>' + esc(nm(t.from) + " ↔ " + nm(t.to) + (t.why ? ": " + t.why : "")) + "</title></path>";
+      });
+      Object.keys(M.placed).forEach(function (id) { var p = M.pos["item:" + id], o = p && M.pos[p[4]]; if (o) s += '<line class="teth' + (inF(p[2]) ? "" : " dim") + '" x1="' + o[0].toFixed(1) + '" y1="' + o[1].toFixed(1) + '" x2="' + p[0].toFixed(1) + '" y2="' + p[1].toFixed(1) + '"/>'; });
+      var showT = foc && (M.byTheme[ftop] ? Object.keys(M.placed).filter(function (id) { return M.top[M.placed[id]] === ftop; }).length : 0) <= 80;
+      Object.keys(M.placed).forEach(function (id) {
+        var p = M.pos["item:" + id], i = byId[id]; if (!p || !i) return; var a = K.areaOf(i), on = inF(p[2]);
+        s += '<circle class="spn' + (on ? "" : " dim") + (S.sel === id ? " sel" : "") + '" data-spitem="' + esc(id) + '" cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="5" style="--c:' + (i.onedrive ? "var(--od)" : aVar(a)) + ";--f:var(--a-" + a + '-soft)"><title>' + esc(i.title + " · " + (M.byTheme[M.placed[id]] || { t: { name: "" } }).t.name) + "</title></circle>";
+        if (showT && on) { var c = Math.cos(p[3]) >= 0; s += '<text class="sptl" x="' + (p[0] + (c ? 8 : -8)).toFixed(1) + '" y="' + (p[1] + 3).toFixed(1) + '" text-anchor="' + (c ? "start" : "end") + '" transform="rotate(' + ((c ? p[3] : p[3] + Math.PI) * 180 / Math.PI).toFixed(1) + " " + p[0].toFixed(1) + " " + p[1].toFixed(1) + ')">' + esc(spLabel(i.title, 34)) + "</text>"; }
+      });
+      M.nodes.forEach(function (nd) {
+        var c = Math.cos(nd.a), right = c >= -0.2 && c <= 0.2 ? null : c > 0, rr = nd.lvl === 1 ? Math.min(22, 10 + Math.sqrt(nd.count) * 1.6) : Math.min(14, 6 + Math.sqrt(nd.count));
+        var lx = nd.x + Math.cos(nd.a) * (rr + 6), ly = nd.y + Math.sin(nd.a) * (rr + 6) + (right === null ? (Math.sin(nd.a) > 0 ? 12 : -4) : 4);
+        s += '<g class="spt l' + nd.lvl + (inF(nd.top) ? "" : " dim") + (foc === nd.n.t.id ? " on" : "") + '" data-sptheme="' + esc(nd.n.t.id) + '" tabindex="0" role="button" aria-label="' + esc(nd.n.t.name + ", " + nd.count + (nd.count === 1 ? " item" : " items")) + '"><circle cx="' + nd.x.toFixed(1) + '" cy="' + nd.y.toFixed(1) + '" r="' + rr.toFixed(1) + '"/><text x="' + lx.toFixed(1) + '" y="' + ly.toFixed(1) + '" text-anchor="' + (right === null ? "middle" : right ? "start" : "end") + '">' + esc(spLabel(nd.n.t.name, nd.lvl === 1 ? 26 : 22)) + "</text><title>" + esc(nd.n.t.name + (nd.n.t.why ? ": " + nd.n.t.why : "")) + "</title></g>";
+      });
+      s += '<g class="sphub" data-sptheme="" tabindex="0" role="button" aria-label="The whole web"><circle r="44"/><text y="-2" text-anchor="middle">' + Object.keys(M.placed).length + '</text><text class="s" y="14" text-anchor="middle">in the web</text></g>';
+      var vb; if (foc) { var xs = [], ys = []; Object.keys(M.pos).forEach(function (k) { var p = M.pos[k]; if (p[2] === ftop) { xs.push(p[0]); ys.push(p[1]); } }); xs.push(0); ys.push(0); var x0 = Math.min.apply(null, xs) - 150, x1 = Math.max.apply(null, xs) + 150, y0 = Math.min.apply(null, ys) - 70, y1 = Math.max.apply(null, ys) + 70; vb = [x0, y0, x1 - x0, y1 - y0]; } else vb = [-R - 140, -R - 30, 2 * R + 280, 2 * R + 60];
+      var fresh = !S.spDrawn; S.spDrawn = true;
+      var tN = M.m.themes.length, thN = (M.m.threads || []).length;
+      return '<div class="spweb' + (fresh && !still ? " fresh" : "") + '"><div class="sphead"><div><p class="lab">Woven by the spider' + (M.m.updatedAt ? " · " + esc(spAgo(M.m.updatedAt)) : "") + "</p>" + (M.m.summary ? '<p class="spsum">' + esc(M.m.summary) + "</p>" : "") + '<p class="sub">' + M.tops.length + (M.tops.length === 1 ? " main theme" : " main themes") + " · " + tN + (tN === 1 ? " theme" : " themes") + " in all · " + thN + (thN === 1 ? " thread" : " threads") + (M.unplaced.length ? ' · <button class="link" data-sptheme="__un">' + M.unplaced.length + " not in the web yet</button>" : "") + '</p></div><div class="acts" style="margin-top:0">' + (S.spFocus ? '<button class="btn sm" data-sptheme="">Whole web</button>' : "") + '<button class="btn sm" data-act="spider">Ask the spider</button></div></div>' +
+        '<svg id="knWeb" viewBox="' + vb.map(function (v) { return v.toFixed(0); }).join(" ") + '" role="group" aria-label="The spider’s web: ' + M.tops.length + ' main themes. Choose a theme to open it.">' + s + "</svg>" +
+        '<p class="sub sphint">Choose a theme to open it, a dot to see the item. Threads show why two things belong together when you point at them.</p></div>';
+    }
+    function spPanel() {
+      var M = spModel(); if (!M) return "";
+      var x = '<button class="btn sm x" data-sptheme="" aria-label="Back to the whole web">✕</button>';
+      var row = function (id) { var i = byId[id]; return i ? '<button class="res" data-id="' + esc(id) + '">' + iconOf(i) + "<span>" + esc(i.title) + "</span></button>" : ""; };
+      if (S.spFocus === "__un") return x + '<p class="lab">Not in the web yet</p><h2 class="pt">' + M.unplaced.length + (M.unplaced.length === 1 ? " item" : " items") + '</h2><p class="sub">New or not yet placed by the spider. Items kept from Claude never enter the web.</p><div class="spl">' + M.unplaced.slice(0, 120).map(function (i) { return row(i.id); }).join("") + (M.unplaced.length > 120 ? '<p class="sub">and ' + (M.unplaced.length - 120) + " more</p>" : "") + "</div>";
+      var n = M.byTheme[S.spFocus]; if (!n) return "";
+      var parent = n.t.parent && M.byTheme[n.t.parent], thr = (M.m.threads || []).filter(function (t) { return t.from === "theme:" + n.t.id || t.to === "theme:" + n.t.id; });
+      return x + '<p class="lab">' + (parent ? '<button class="link" data-sptheme="' + esc(parent.t.id) + '">' + esc(parent.t.name) + "</button> ›" : "Main theme") + '</p><h2 class="pt">' + esc(n.t.name) + "</h2>" + (n.t.why ? '<p class="sub">' + esc(n.t.why) + "</p>" : "") +
+        (n.kids.length ? '<div class="sec"><p class="lab">Inside</p><div class="spk">' + n.kids.map(function (k) { return '<button class="chip" data-sptheme="' + esc(k.t.id) + '">' + esc(k.t.name) + " · " + (k.items.length + k.kids.length) + "</button>"; }).join("") + "</div></div>" : "") +
+        (thr.length ? '<div class="sec"><p class="lab">Threads</p>' + thr.map(function (t) { var o = t.from === "theme:" + n.t.id ? t.to : t.from, nm = o.indexOf("theme:") === 0 ? (M.byTheme[o.slice(6)] || { t: { name: "?" } }).t.name : (byId[o.slice(5)] || { title: "?" }).title; return '<p class="sub spthr"><b>' + esc(nm) + "</b> · " + esc(t.why || "") + "</p>"; }).join("") + "</div>" : "") +
+        '<div class="sec"><p class="lab">' + n.items.length + (n.items.length === 1 ? " item" : " items") + '</p><div class="spl">' + (n.items.length ? n.items.map(row).join("") : '<p class="sub">Everything here sits in the themes inside it.</p>') + "</div></div>";
+    }
 
     /* ----- graph: a live layout. Items float, are pulled to their group and sub-group, push each other
        apart, and linked items are drawn together. Change "Group by" and they fly to new clusters. ----- */
@@ -361,18 +461,18 @@
     function render() {
       kn.dataset.theme = theme;
       K.ZONES.forEach(function (z, k) { if (K.isCustomZone(z[0])) { var c = K.CUSTOM_COLORS[k % K.CUSTOM_COLORS.length]; kn.style.setProperty("--" + z[0], theme === "dark" ? c[1] : c[0]); } });
-      var items = live(), toSort = items.filter(function (i) { return i.needsSort; }).length, sel = S.sel ? byId[S.sel] : null, side = sel ? detail(sel) : S.results ? resultsHtml() : "";
+      var items = live(), toSort = items.filter(function (i) { return i.needsSort; }).length, sel = S.sel ? byId[S.sel] : null, side = sel ? detail(sel) : S.results ? resultsHtml() : S.view === "spider" && S.spFocus ? spPanel() : "";
       var keepFocus = root.activeElement && root.activeElement.id === "knQ", pos = keepFocus ? root.activeElement.selectionStart : 0;
       kn.innerHTML = (S.sample ? '<div class="ribbon" role="note"><b>SAMPLE DATA</b> · invented documents, books and names · nothing below is yours</div>' : "") +
         '<header class="top"><div><p class="eyebrow">Knowledge</p><h1>' + items.length + (items.length === 1 ? " thing" : " things") + '</h1></div><input class="search" id="knQ" type="search" placeholder="Search by word' + (S.meaning && S.meaning.ready ? " or by meaning" : "") + '" aria-label="Search your knowledge" value="' + esc(S.q) + '">' +
-        '<div class="seg" role="group" aria-label="View"><button data-view="graph" aria-pressed="' + (S.view === "graph") + '">Graph</button><button data-view="list" aria-pressed="' + (S.view === "list") + '">List</button></div>' +
+        '<div class="seg" role="group" aria-label="View"><button data-view="spider" aria-pressed="' + (S.view === "spider") + '">Spider</button><button data-view="graph" aria-pressed="' + (S.view === "graph") + '">Graph</button><button data-view="list" aria-pressed="' + (S.view === "list") + '">List</button></div>' +
         '<button class="btn pri" data-act="pick">+ Add files</button><button class="btn" data-act="pickdir" title="Copy the files of a folder on this device into the planner">+ Add a folder</button><button class="btn" data-act="onedrive" title="Map a OneDrive folder; files stay in OneDrive">+ OneDrive folder</button><input type="file" id="knDir" webkitdirectory multiple hidden><button class="btn" data-act="add">+ Note or link</button><button class="btn spbtn" data-act="spider" title="Claude sorting your knowledge"><svg viewBox="-24 -24 48 48" class="ic" aria-hidden="true"><ellipse cx="0" cy="5" rx="7" ry="9" fill="currentColor"/><circle cx="0" cy="-7" r="5" fill="currentColor"/><path d="M-6 0 L-20 -10 M-6 4 L-21 2 M-6 8 L-19 14 M6 0 L20 -10 M6 4 L21 2 M6 8 L19 14" stroke="currentColor" stroke-width="2.4" fill="none"/></svg> Spider</button><button class="btn" data-act="privacy">Privacy and search</button><input type="file" id="knFile" multiple hidden accept=".pdf,.png,.jpg,.jpeg,.webp,.epub,.docx,.txt,.md,image/*,application/pdf"></header>' +
         (S.view === "list" || S.results ? filtersHtml() : "") +
         (S.progress ? '<div class="note" role="status" aria-live="polite"><span>' + esc(S.progress) + "</span></div>" : "") +
         (S.onedrive && S.onedrive.connected && S.onedrive.status === "reconnect" ? '<div class="note"><span><b>OneDrive needs to be reconnected</b> · your items are still here; new changes wait until then</span><button class="btn sm" data-act="odconnect">Reconnect OneDrive</button></div>' : "") +
         (S.onedrive && S.onedrive.reading && S.onedrive.reading.left ? '<div class="note"><span>Reading ' + S.onedrive.reading.left + " OneDrive " + (S.onedrive.reading.left === 1 ? "file" : "files") + " on this device…</span></div>" : "") +
         (toSort ? '<div class="note"><span><b>' + toSort + " to sort</b> · not sure what " + (toSort === 1 ? "this is" : "these are") + ' yet</span><button class="btn sm" data-act="sort">Review</button></div>' : "") +
-        spiderBar() + '<div class="stage' + (side && S.view === "graph" && !narrow ? " two" : "") + '">' + (S.view === "list" ? (side && narrow ? "" : listHtml()) : (side && narrow ? "" : graphHtml())) + (side ? '<aside class="panel" aria-label="' + (sel ? "Details" : "Search results") + '">' + side + "</aside>" : "") +
+        spiderBar() + '<div class="stage' + (side && S.view !== "list" && !narrow ? " two" : "") + '">' + (S.view === "list" ? (side && narrow ? "" : listHtml()) : S.view === "spider" ? (side && narrow ? "" : spiderWebHtml()) : (side && narrow ? "" : graphHtml())) + (side ? '<aside class="panel" aria-label="' + (sel ? "Details" : S.results ? "Search results" : "Theme") + '">' + side + "</aside>" : "") +
         (S.view === "graph" && !side && !items.length ? '<p class="sub">Nothing here yet. Add a file, or ask Claude to save a link or an idea, and it will appear in its zone.</p>' : "") + (S.view === "graph" && !side && items.length ? '<p class="sub">Drag an item to move it; the rest make room. Pinch, scroll or use + and − to zoom in until every title shows.</p>' : "") + "</div>" +
         '<div class="ctx" id="knCtx" role="menu" aria-label="Item menu" hidden></div>' +
         (S.sheet ? '<div class="shade" data-shade="1"><div class="sheet" role="dialog" aria-modal="true">' + sheetHtml() + "</div></div>" : "");
@@ -413,6 +513,10 @@
         return;
       }
       if (e.target.dataset && e.target.dataset.shade) { S.sheet = null; render(); return; }
+      var spt = e.target.closest && e.target.closest("[data-sptheme]");
+      if (spt) { var fid = spt.getAttribute("data-sptheme"); S.spFocus = fid || null; S.sel = null; render(); var back = root.querySelector('.panel [data-sptheme]') || root.querySelector('.sphead [data-sptheme=""]'); void back; return; }
+      var spi = e.target.closest && e.target.closest("[data-spitem]");
+      if (spi) { select(spi.getAttribute("data-spitem")); return; }
       var node = e.target.closest && e.target.closest(".n"), t = e.target.closest("button,a"), d = t ? t.dataset : {};
       if (node && !t) { if (drag.moved) return; select(node.getAttribute("data-id")); return; }
       if (!t || t.disabled || t.tagName === "A") return;
@@ -487,7 +591,7 @@
     });
     kn.addEventListener("input", function (e) { if (e.target.id === "knLq") { S.linkQ = e.target.value; var box = $("#knLr"), cur = S.sel && byId[S.sel]; if (box && cur) box.innerHTML = linkChoices(cur); return; } if (e.target.id === "knQ") { S.q = e.target.value; clearTimeout(searchT); searchT = setTimeout(runSearch, 260); } });
     kn.addEventListener("keydown", function (e) {
-      var n = e.target.closest && e.target.closest(".n");
+      var n = e.target.closest && e.target.closest(".n,g[data-sptheme]");
       if (n && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); n.dispatchEvent(new MouseEvent("click", { bubbles: true })); }
       if (e.key === "Escape") { if (S.sheet) { S.sheet = null; render(); } else if (S.sel) { S.sel = null; S.edit = false; render(); } else if (S.q && e.target.id === "knQ") { S.q = ""; runSearch(); } }
       if (e.key === "Enter" && e.target.id === "knCtxNew") { e.preventDefault(); var nb = root.querySelector('[data-ctx="new"]'); if (nb) nb.click(); return; }

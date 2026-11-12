@@ -20626,7 +20626,7 @@
   /* Knowledge page (knowledge/): files and saved items, sorted and linked. Files are read in the browser;
      rows live in the knowledge_* tables and files in the private "knowledge" bucket, all behind RLS.
      Bump KNOWLEDGE_VER with each release of knowledge/*. */
-  var KNOWLEDGE_VER = "6", knowledgeLoading = null, knowledgeHandle = null, knowledgeFetching = null;
+  var KNOWLEDGE_VER = "7", knowledgeLoading = null, knowledgeHandle = null, knowledgeFetching = null;
   var KN = { items:null, edges:[], topics:{}, files:{}, settings:{ external:{} }, usage:null, meaning:{ ready:false, pending:0, busy:false } };
   var KN_MAX_FILE = 50 * 1024 * 1024, KN_PLAN_LIMIT = 1024 * 1024 * 1024;   // free-plan figures, shown as a guide
   function knowledgeLoadScripts(){
@@ -20658,7 +20658,8 @@
       sb.from("knowledge_topics").select("id,zone,name"),
       sb.from("knowledge_edges").select("from_id,to_id,kind"),
       sb.from("knowledge_settings").select("external_zones,custom_zones").maybeSingle(),
-      sb.from("knowledge_chunks").select("id", { count:"exact", head:true }).is("embedding", null)
+      sb.from("knowledge_chunks").select("id", { count:"exact", head:true }).is("embedding", null),
+      sb.from("knowledge_settings").select("spider_map").maybeSingle()
     ]);
     if(res[0].error) throw res[0].error;
     KN.files = {}; KN.topics = {}; var bytes = 0;
@@ -20673,6 +20674,8 @@
     KN.usage = { bytes:bytes, limit:KN_PLAN_LIMIT, maxFile:KN_MAX_FILE };
     KN.meaning.ready = safeGet(window.localStorage, "pp_kn_meaning") === "1";
     KN.meaning.pending = res[5].error ? 0 : (res[5].count || 0);
+    // The spider's web (needs _Memory/migration_knowledge_spidermap.sql; without the column the view explains it)
+    KN.spiderReady = !res[6].error; KN.spiderMap = !res[6].error && res[6].data ? res[6].data.spider_map || null : null;
   }
   // Journal notes typed idea, reference or decision appear as read-only items; reflections never do.
   function knowledgeMirror(){
@@ -20684,7 +20687,7 @@
   /* The spider: Claude sorting the knowledge in a chat through the connector. This polls its recent steps
      while the Knowledge page is open, refreshes the items when it has grouped or linked something, and
      hands the page a prompt to paste into a Claude chat. */
-  var KN_SPIDER_PROMPT = "Please sort my Knowledge page in the planner, using the planner connector.\n1. Call map_knowledge to see everything.\n2. Read the items that have text (get_knowledge_item), one at a time, starting with anything marked to sort.\n3. Group items that belong together with cluster_knowledge, using short topic names I would use; reuse existing topics when they fit.\n4. Connect items that clearly relate (an idea and the book it came from, two papers about the same flat, an author and their work) with link_knowledge, saying why in a few words.\n5. Do not change titles or delete anything. Finish with spider_note: one sentence on what you did.";
+  var KN_SPIDER_PROMPT = "Please spin the web over my Knowledge page in the planner, using the planner connector.\n1. Call get_spider_web to see the web so far and which items are not in it yet. Call map_knowledge to see every folder, and map_knowledge with a folder to list its files.\n2. Where a title does not tell you what something is, read it with get_knowledge_item.\n3. Build the structure you think makes sense: main themes with weave_theme (about 5 to 9), sub-themes inside them (parent), and place every item in the theme where it belongs. Give each theme a short reason.\n4. Connect things that relate across themes with spin_thread (item to item, item to theme, or theme to theme), saying why in a few words.\n5. Never change titles and never archive anything. Items kept from you stay out of the web.\n6. When done, call finish_spider_web with two or three sentences on how you structured it.";
   var knSpider = { events:[], prompt:KN_SPIDER_PROMPT }, knSpiderTimer = 0, knSpiderLast = 0;
   async function knowledgeSpiderPoll(){
     clearTimeout(knSpiderTimer);
@@ -20694,7 +20697,7 @@
       if(!r.error){
         var rows = r.data || [], newest = rows.length ? rows[0].id : 0, fresh = rows.filter(function(x){ return x.id > knSpiderLast; });
         knSpider.events = rows.map(function(x){ return { id:x.id, action:x.action, item:x.item_id, other:x.other_id, note:x.note || "", at:x.created_at }; });
-        var changed = knSpiderLast && fresh.some(function(x){ return x.action === "cluster" || x.action === "link"; });
+        var changed = knSpiderLast && fresh.some(function(x){ return x.action === "cluster" || x.action === "link" || x.action === "note"; });
         knSpiderLast = Math.max(knSpiderLast, newest);
         if(changed){ await knowledgeFetch(); knowledgeRefresh(); }
         else if(knowledgeHandle) knowledgeHandle.update({ spider:{ events:knSpider.events, prompt:knSpider.prompt } });
@@ -20704,7 +20707,7 @@
     knSpiderTimer = setTimeout(knowledgeSpiderPoll, live ? 3000 : 15000);
   }
   function knowledgeData(){
-    return { items:(KN.items || []).concat(knowledgeMirror()), edges:KN.edges, settings:KN.settings, usage:KN.usage, meaning:KN.meaning, theme:currentTheme(), spider:{ events:knSpider.events, prompt:knSpider.prompt }, onedrive:KN.od };
+    return { items:(KN.items || []).concat(knowledgeMirror()), edges:KN.edges, settings:KN.settings, usage:KN.usage, meaning:KN.meaning, theme:currentTheme(), spider:{ events:knSpider.events, prompt:knSpider.prompt }, onedrive:KN.od, spiderMap:KN.spiderMap || null, spiderReady:KN.spiderReady !== false };
   }
   function knowledgeRefresh(){ if(knowledgeHandle && activeSection === "knowledge") knowledgeHandle.update(knowledgeData()); }
   async function knowledgeTopicId(zone, name){
