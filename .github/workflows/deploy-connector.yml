@@ -51,7 +51,7 @@ jobs:
           VOICE_MCP_TOKEN: ${{ secrets.VOICE_MCP_TOKEN }}
         run: |
           if [ -n "$VOICE_MCP_TOKEN" ]; then
-            supabase secrets set VOICE_MCP_TOKEN="$VOICE_MCP_TOKEN" --project-ref "$PROJECT_REF" --yes > /dev/null && echo "VOICE_MCP_TOKEN set"
+            supabase secrets set VOICE_MCP_TOKEN="$VOICE_MCP_TOKEN" --project-ref "$PROJECT_REF" --yes > /dev/null && echo "VOICE_MCP_TOKEN set" \n              || echo "::warning::Could not set VOICE_MCP_TOKEN (the access token needs the edge_functions_secrets_write permission). Add it in Supabase: Edge Functions > Secrets."
           else
             echo "::notice::VOICE_MCP_TOKEN is not set; the voice connector (/mcp-voice) stays closed."
           fi
