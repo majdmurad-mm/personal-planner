@@ -261,6 +261,7 @@
       if (f === "title") { v = v.trim(); if (!v) { e.target.value = it.title; return; } }
       if (f === "dur") v = v === "" ? null : Math.max(0, Math.round(+v) || 0);
       if (f === "date" || f === "time" || f === "area" || f === "priority" || f === "recurrence") v = v || null;
+      if (f === "parent") { var pp = v ? v.split(":") : ["none", null]; guard(call("onPatch", it.id, { parentType: pp[0], parentId: pp[1] || null }, "move")); return; }
       patch[f] = v;
       if (f === "date" && v) patch.someday = false;
       if (f === "recurrence" && v && !it.date) patch.date = S.today;
@@ -310,6 +311,109 @@
       guard(call("onPatch", id, patch, "schedule"));
     });
     P._ringDrop = function (id, clientX, clientY) { dragId = id; var tm = ringTime($("#ccRing"), { clientX: clientX, clientY: clientY }); dragId = null; return call("onPatch", id, { date: S.today, time: tm, someday: false }, "schedule").then(function () { return tm; }); };
+    /* Week grid, calendar style: drag a block to move it (day and time, 15-minute steps), drag its top or bottom
+       edge to change the start or the length. The move shows at once and saves (the host's toast offers Undo).
+       Repeating items ask "this one / this and all following". Google items are locked. Esc cancels a drag. */
+    var gd = null, noClick = 0, WDAYS = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
+    var gTop = function (m) { return "calc(" + ((m - 420) / 60).toFixed(3) + "*var(--hh) + 1px)"; }, gH = function (l) { return "calc(" + (l / 60).toFixed(3) + "*var(--hh) - 2px)"; };
+    var dayDiff = function (a, b) { return Math.round((C.ms(a) - C.ms(b)) / 864e5); };
+    function shiftRule(rule, delta) {
+      if (!delta) return rule;
+      return rule.split(";").map(function (p) {
+        var kv = p.split("="); if (kv[0] === "BYDAY") return "BYDAY=" + kv[1].split(",").map(function (d) { var m = /^([+-]?\d*)(SU|MO|TU|WE|TH|FR|SA)$/.exec(d); return m ? m[1] + WDAYS[((WDAYS.indexOf(m[2]) + delta) % 7 + 7) % 7] : d; }).join(",");
+        if (kv[0] === "BYMONTHDAY") return "BYMONTHDAY=" + kv[1].split(",").map(function (d) { var n = +d; return n > 0 ? Math.max(1, Math.min(31, n + delta)) : n; }).join(",");
+        return p;
+      }).join(";");
+    }
+    var untilRule = function (rule, last) { return rule.split(";").filter(function (p) { return !/^(UNTIL|COUNT)=/.test(p); }).concat("UNTIL=" + last.replace(/-/g, "")).join(";"); };
+    var dropCount = function (rule) { return rule.split(";").filter(function (p) { return !/^(UNTIL|COUNT)=/.test(p); }).join(";"); };
+    function gCols() { return [].slice.call(root.querySelectorAll("[data-dropcol]")); }
+    function gCancel() { if (!gd) return; var g = gd; gd = null; try { g.el.releasePointerCapture(g.pid); } catch (x) {} if (g.moved) { noClick = Date.now(); draw(); } }
+    cc.addEventListener("pointerdown", function (e) {
+      if (e.button !== 0 || gd) return;
+      var b = e.target.closest && e.target.closest(".blk[data-blk]"), col = b && b.closest("[data-dropcol]"), it = b && S.byId[b.dataset.blk]; if (!col || !it) return;
+      var rz = e.target.closest(".rz"), r = col.getBoundingClientRect();
+      gd = { el: b, it: it, mode: rz ? (rz.classList.contains("t") ? "top" : "bot") : "move", x0: e.clientX, y0: e.clientY, ppm: r.height / (16 * 60), s0: +b.dataset.s, len0: +b.dataset.len, d0: b.dataset.date, pid: e.pointerId, moved: false };
+      gd.s = gd.s0; gd.len = gd.len0; gd.d = gd.d0;
+      if (rz) e.preventDefault();
+    });
+    cc.addEventListener("pointermove", function (e) {
+      var g = gd; if (!g || e.pointerId !== g.pid) return;
+      var dy = e.clientY - g.y0, dx = e.clientX - g.x0;
+      if (!g.moved) { if (Math.abs(dx) + Math.abs(dy) < 5) return; g.moved = true; try { g.el.setPointerCapture(g.pid); } catch (x) {} g.el.classList.add("gdrag"); g.tip = document.createElement("span"); g.tip.className = "gtip"; g.el.appendChild(g.tip); }
+      e.preventDefault();
+      var snap = function (m) { return Math.round(m / 15) * 15; }, lo = 420, hi = 420 + 16 * 60;
+      if (g.mode === "move") {
+        g.s = Math.max(lo, Math.min(hi - 15, snap(g.s0 + dy / g.ppm)));
+        var col = gCols().filter(function (c) { var r = c.getBoundingClientRect(); return e.clientX >= r.left && e.clientX < r.right; })[0];
+        if (col && col.dataset.dropcol !== g.d) { g.d = col.dataset.dropcol; col.appendChild(g.el); }
+      } else if (g.mode === "bot") g.len = Math.max(15, Math.min(hi, snap(g.s0 + g.len0 + dy / g.ppm)) - g.s0);
+      else { var end = g.s0 + g.len0; g.s = Math.max(lo, Math.min(end - 15, snap(g.s0 + dy / g.ppm))); g.len = end - g.s; }
+      g.el.style.top = gTop(g.s); g.el.style.height = gH(g.len);
+      g.tip.textContent = (g.d !== g.d0 ? fmtShort(g.d) + " · " : "") + C.hhmm(g.s) + "–" + C.hhmm(g.s + g.len);
+    });
+    var fmtShort = function (d) { return new Date(d + "T12:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric" }); };
+    cc.addEventListener("pointercancel", gCancel);
+    cc.addEventListener("pointerup", function (e) {
+      var g = gd; if (!g || e.pointerId !== g.pid) return; gd = null;
+      try { g.el.releasePointerCapture(g.pid); } catch (x) {}
+      if (!g.moved) return;
+      noClick = Date.now();
+      var patch = {}; if (g.d !== g.d0) patch.date = g.d; if (g.s !== g.s0) patch.time = C.hhmm(g.s); if (g.len !== g.len0) patch.dur = g.len;
+      if (!Object.keys(patch).length) { draw(); return; }
+      gApply(g, patch);
+    });
+    cc.addEventListener("click", function (e) { if (Date.now() - noClick < 400 && e.target.closest && e.target.closest(".blk")) { e.stopPropagation(); e.preventDefault(); } }, true);
+    function gApply(g, patch) {
+      var it = g.it, label = g.mode === "move" ? "move" : "resize";
+      if (!it.recurrence) {
+        if (patch.date) it.date = patch.date; if (patch.time) it.time = patch.time; if (patch.dur) it.dur = patch.dur; draw();   // shows at once
+        guard(call("onPatch", it.id, patch, label)); return;
+      }
+      gAsk("Move a repeating item", "“" + it.title + "” repeats. Change only " + fmtShort(g.d0) + ", or this one and every one after it?", function (which) {
+        if (!which) { draw(); return; }
+        var time = patch.time || it.time, dur = patch.dur || it.dur || g.len0;
+        if (which === "one") {
+          var copy = { title: it.title, kind: it.kind, area: it.area || null, date: g.d, time: time, dur: dur, notes: it.notes || "", priority: it.priority || null };
+          guard(call("onPatch", it.id, { exceptions: (it.exceptions || []).concat(g.d0) }, "move one date of").then(function () { return call("onCreate", copy); }).then(function (nid) {
+            if (nid && (it.projectId || it.goalId)) return call("onPatch", nid, it.projectId ? { parentType: "project", parentId: it.projectId } : { parentType: "goal", parentId: it.goalId }, "file");
+          }));
+          return;
+        }
+        var delta = g.d === g.d0 ? 0 : dayDiff(g.d, g.d0);
+        if (!it.date || g.d0 <= it.date) {   // the first one: move the whole series
+          var sp = { time: time, dur: dur }; if (delta) { sp.date = C.add(it.date || g.d0, delta); sp.recurrence = shiftRule(it.recurrence, delta); }
+          guard(call("onPatch", it.id, sp, label)); return;
+        }
+        var next = { title: it.title, kind: it.kind, area: it.area || null, date: g.d, time: time, dur: dur, notes: it.notes || "", priority: it.priority || null, recurrence: shiftRule(dropCount(it.recurrence), delta) };
+        guard(call("onPatch", it.id, { recurrence: untilRule(it.recurrence, C.add(g.d0, -1)) }, "end").then(function () { return call("onCreate", next); }).then(function (nid) {
+          if (nid && (it.projectId || it.goalId)) return call("onPatch", nid, it.projectId ? { parentType: "project", parentId: it.projectId } : { parentType: "goal", parentId: it.goalId }, "file");
+        }));
+      });
+    }
+    /* the small "this one / all following" question */
+    var askDone = null;
+    function gAsk(title, text, done, labels) {
+      var old = root.getElementById("ccAsk"); if (old) old.remove();
+      labels = labels || ["This one", "This and all following"];
+      var d = document.createElement("div"); d.id = "ccAsk"; d.className = "ask-ov";
+      d.innerHTML = '<div class="ask" role="dialog" aria-modal="true" aria-labelledby="ccAskT"><h3 id="ccAskT"></h3><p class="sub"></p><div class="acts"><button class="btn pri" data-ask="one"></button><button class="btn" data-ask="all"></button><button class="btn ghost" data-ask="">Cancel</button></div></div>';
+      d.querySelector("h3").textContent = title; d.querySelector("p").textContent = text; d.querySelector('[data-ask="one"]').textContent = labels[0]; d.querySelector('[data-ask="all"]').textContent = labels[1];
+      var prev = root.activeElement;
+      askDone = function (v) { askDone = null; d.remove(); try { if (prev && prev.isConnected) prev.focus(); } catch (x) {} done(v); };
+      d.addEventListener("click", function (e) { var b = e.target.closest("[data-ask]"); if (b) askDone(b.dataset.ask || null); else if (e.target === d) askDone(null); });
+      cc.appendChild(d); d.querySelector('[data-ask="one"]').focus();
+    }
+    /* Delete on a focused block archives it (a repeating one asks: just this date, or the whole series) */
+    function gArchive(b) {
+      var it = S.byId[b.dataset.blk]; if (!it) return;
+      if (!it.recurrence) { it.archived = true; draw(); guard(call("onArchive", it.id)); return; }
+      gAsk("Archive a repeating item", "“" + it.title + "” repeats. Archive only " + fmtShort(b.dataset.date) + ", or the whole series?", function (which) {
+        if (which === "one") guard(call("onPatch", it.id, { exceptions: (it.exceptions || []).concat(b.dataset.date) }, "skip one date of"));
+        else if (which === "all") guard(call("onArchive", it.id));
+      }, ["Only this date", "The whole series"]);
+    }
+    P._ask = function (v) { if (askDone) askDone(v); };
     P._drop = function (id, date, time) { return call("onPatch", id, time ? { date: date, time: time, someday: false } : { date: date, someday: false }, "schedule"); };
     /* keyboard: N add, / search, 1-5 views, arrows move, Esc closes, D done */
     function onKey(e) {
@@ -317,8 +421,11 @@
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); S.pq = ""; S.psel = 0; open({ type: "palette" }); return; }
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       var el = e.composedPath ? e.composedPath()[0] : e.target, typing = el && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable);
+      if (e.key === "Escape" && gd) { e.preventDefault(); gCancel(); return; }
+      if (e.key === "Escape" && askDone) { e.preventDefault(); askDone(null); return; }
       if (e.key === "Escape" && S.over) { e.preventDefault(); close(); return; }
       if (typing || document.querySelector(".modal-overlay.open,.modal.open")) return;
+      if ((e.key === "Delete" || e.key === "Backspace") && !askDone && el && el.closest && el.closest(".blk[data-blk]")) { e.preventDefault(); gArchive(el.closest(".blk[data-blk]")); return; }
       var k = e.key.toLowerCase();
       if (k === "n") { e.preventDefault(); S.qa.date = null; open({ type: "quick" }); }
       else if (k === "/") { e.preventDefault(); $("#ccSearch").focus(); }
