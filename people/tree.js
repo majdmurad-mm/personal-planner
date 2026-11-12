@@ -24,7 +24,7 @@
       nodes += '<g class="nd tr' + (p.color ? ' gc" style="--gc:' + esc(p.color) : "") + (p.off && !p.inMemory ? " quiet" : "") + (p.inMemory ? " mem" : "") + (st.q && dn.toLowerCase().indexOf(st.q) >= 0 ? " hit" : "") + '" data-id="' + p.id + '" tabindex="0" role="button" aria-label="' + esc(dn + (cap ? ", " + cap : "") + (p.inMemory ? ", in memory" : "") + (p.group ? ", " + p.group : "")) + '" transform="translate(' + f(x) + "," + f(y) + ')"><title>' + esc(dn + (p.inMemory ? " · in memory" : "")) + "</title>" + (p.inMemory ? '<circle class="memring" r="' + (r + 4) + '"/>' : "") +
         '<circle r="' + (r + 7) + '" fill="transparent"/><circle class="disc" r="' + r + '"/><text class="ini" style="font-size:' + f(r * .8) + 'px">' + esc(p.ini) + "</text>" +
         (p.threads.length ? '<circle class="dot" cx="' + f(r * .74) + '" cy="' + f(-r * .74) + '" r="' + f(Math.max(3.2, r * .3)) + '"/>' : "") +
-        '<text class="nm" style="font-size:calc(' + (r > 14 ? 12 : 10.5) + 'px*var(--iz,1))" y="' + (r + 14) + '">' + esc(lab) + "</text>" + (cap ? '<text class="cap" y="' + (r + 27) + '">' + esc(cap) + "</text>" : "") + "</g>";
+        '<text class="nm" style="font-size:calc(' + (r > 14 ? 12 : 10.5) + 'px*var(--iz,1)*var(--tz,1))" y="' + (r + 14) + '">' + esc(lab) + "</text>" + (cap ? '<text class="cap" y="' + (r + 27) + '">' + esc(cap) + "</text>" : "") + "</g>";
     }
     /* a bar above a row of siblings with a drop to each; xs are the node centres, y the row */
     function bar(xs, y, r) { if (!xs.length) return y; var yb = y - r - 20, a = Math.min.apply(0, xs), b = Math.max.apply(0, xs); if (b > a) line("M" + f(a) + "," + f(yb) + "H" + f(b)); xs.forEach(function (x) { line("M" + f(x) + "," + f(yb) + "V" + f(y - r - 3)); }); return yb; }
@@ -165,7 +165,7 @@
       var exX = coreR + CW, open = !!st.exOpen;
       coreR = exX;
       line("M" + f(exX - CW + (partners.length ? R + 2 : 23)) + ",0H" + f(exX - R - 2), "dash");
-      nodes += '<g class="exn' + (open ? " open" : "") + '" data-exes="1" tabindex="0" role="button" aria-expanded="' + open + '" aria-label="Exes, ' + exes.length + (exes.length === 1 ? " person" : " people") + (open ? ", shown" : ", hidden") + '" transform="translate(' + f(exX) + ',0)"><circle r="' + (R + 7) + '" fill="transparent"/><circle class="disc" r="' + R + '"/><text class="ini" style="font-size:' + f(R * .8) + 'px">' + exes.length + '</text><text class="nm" style="font-size:calc(12px*var(--iz,1))" y="' + (R + 14) + '">Exes</text><text class="cap" y="' + (R + 27) + '">' + (open ? "tap to fold" : "tap to open") + "</text></g>";
+      nodes += '<g class="exn' + (open ? " open" : "") + '" data-exes="1" tabindex="0" role="button" aria-expanded="' + open + '" aria-label="Exes, ' + exes.length + (exes.length === 1 ? " person" : " people") + (open ? ", shown" : ", hidden") + '" transform="translate(' + f(exX) + ',0)"><circle r="' + (R + 7) + '" fill="transparent"/><circle class="disc" r="' + R + '"/><text class="ini" style="font-size:' + f(R * .8) + 'px">' + exes.length + '</text><text class="nm" style="font-size:calc(12px*var(--iz,1)*var(--tz,1))" y="' + (R + 14) + '">Exes</text><text class="cap" y="' + (R + 27) + '">' + (open ? "tap to fold" : "tap to open") + "</text></g>";
       grow(exX, 0, R + 34);
       if (open) {
         exes.forEach(function (p, i) { put(p, exX + ((i % 3) - 1) * BCW, 74 + Math.floor(i / 3) * BCH, SR, ""); });

@@ -58,7 +58,35 @@
       h += '<text class="nm' + (lbl ? "" : " hov") + '" style="text-anchor:' + anc + ";font-size:calc(" + fs(lbl ? (p.circle === 1 ? 12 : 11) : 11) + "px*var(--iz,1));stroke-width:" + fs(4) + 'px" x="' + lx.toFixed(1) + '" y="' + ly.toFixed(1) + '">' + esc(lbl ? first : p.name) + "</text></g>";
     });
     h += '<g class="me"><circle class="pulse" r="' + (ME + 8).toFixed(1) + '"/><circle class="disc" r="' + ME.toFixed(1) + '"/><text style="font-size:' + fs(11) + 'px">You</text></g>';
-    svg.innerHTML = h; paint(svg, M, st);
+    svg.innerHTML = h; declutter(svg, K); paint(svg, M, st);
+  }
+  /* Label collision avoidance. Inner circles first. A label that overlaps another label or a dot tries a few
+     spots around its dot (drawing a thin leader line when it moves away); if none is free it is shown only on
+     hover or focus. Every dot also carries its full name as a tooltip. */
+  function declutter(svg, K) {
+    var nodes = [].slice.call(svg.querySelectorAll("g.nd")), placed = [], dots = [];
+    var pos = function (g) { var m = /translate\(([-\d.]+),([-\d.]+)\)/.exec(g.getAttribute("transform") || ""); return m ? [+m[1], +m[2]] : [0, 0]; };
+    nodes.forEach(function (g) { var d = g.querySelector(".disc"), p = pos(g), r = d ? +d.getAttribute("r") : 6; dots.push([p[0] - r, p[1] - r, p[0] + r, p[1] + r, g]);
+      if (!g.querySelector("title")) { var t = document.createElementNS("http://www.w3.org/2000/svg", "title"), al = g.getAttribute("aria-label") || ""; t.textContent = al.split(",")[0]; g.insertBefore(t, g.firstChild); } });
+    var hit = function (b, skip) { return placed.some(function (q) { return b[0] < q[2] && b[2] > q[0] && b[1] < q[3] && b[3] > q[1]; }) || dots.some(function (q) { return q[4] !== skip && b[0] < q[2] && b[2] > q[0] && b[1] < q[3] && b[3] > q[1]; }); };
+    var labels = nodes.map(function (g) { return { g: g, t: g.querySelector("text.nm:not(.hov)"), c: +((/\bc(\d)\b/.exec(g.getAttribute("class")) || [])[1] || 9) }; }).filter(function (x) { return x.t; }).sort(function (a, b) { return a.c - b.c; });
+    labels.forEach(function (L) {
+      var bb; try { bb = L.t.getBBox(); } catch (e) { return; } if (!bb || !bb.width) return;
+      var p = pos(L.g), x0 = +L.t.getAttribute("x") || 0, y0 = +L.t.getAttribute("y") || 0, d = L.g.querySelector(".disc"), r = d ? +d.getAttribute("r") : 6, pad = 2 * K;
+      var at = function (dx, dy) { return [p[0] + bb.x + dx - pad, p[1] + bb.y + dy - pad, p[0] + bb.x + bb.width + dx + pad, p[1] + bb.y + bb.height + dy + pad]; };
+      if (!hit(at(0, 0), L.g)) { placed.push(at(0, 0)); return; }
+      var step = bb.height + 3 * K, tries = [[0, step], [0, -step - r], [bb.width / 2 + r, -bb.height / 3], [-bb.width / 2 - r, -bb.height / 3], [0, 2 * step], [0, -2 * step - r], [bb.width / 2 + r, step], [-bb.width / 2 - r, step]];
+      for (var i = 0; i < tries.length; i++) {
+        var b = at(tries[i][0], tries[i][1]);
+        if (!hit(b, L.g)) {
+          L.t.setAttribute("x", (x0 + tries[i][0]).toFixed(1)); L.t.setAttribute("y", (y0 + tries[i][1]).toFixed(1)); placed.push(b);
+          var ln = document.createElementNS("http://www.w3.org/2000/svg", "line"), lx = x0 + tries[i][0], ly = y0 + tries[i][1] - bb.height / 3, len = Math.hypot(lx, ly) || 1;
+          ln.setAttribute("class", "lead"); ln.setAttribute("x1", (lx / len * r).toFixed(1)); ln.setAttribute("y1", (ly / len * r).toFixed(1)); ln.setAttribute("x2", lx.toFixed(1)); ln.setAttribute("y2", (ly + (ly > 0 ? -bb.height / 2 : bb.height / 3)).toFixed(1));
+          L.g.insertBefore(ln, L.t); return;
+        }
+      }
+      L.t.classList.add("hid");
+    });
   }
 
   /* focus, filters and the person-to-person lines: cheap, runs on every selection or keystroke */

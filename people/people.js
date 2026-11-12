@@ -32,13 +32,22 @@
       '<button class="fchip" data-f="archived" aria-pressed="false">Archived<span class="n"></span></button></div>' +
       '<button class="pill" id="pill" aria-expanded="false"></button>' +
       '<main class="stage"><div class="chart" id="chart"><svg id="sky" viewBox="-520 -520 1040 1040" role="group" aria-label="Constellation of people around you"></svg>' +
-      '<div class="legend" id="legend"></div><div class="cornertools"><button class="tool" id="famBtn">Family roles</button><button class="tool" id="conn" aria-pressed="false">Show connections</button><span class="zoom" role="group" aria-label="Zoom"><button class="tool" id="zOut" aria-label="Zoom out">−</button><button class="tool" id="zIn" aria-label="Zoom in">+</button><button class="tool" id="zHome" disabled>Reset</button></span></div></div>' +
+      '<div class="legend" id="legend"></div><div class="cornertools"><button class="tool" id="famBtn">Family roles</button><button class="tool" id="conn" aria-pressed="false">Show connections</button><span class="zoom" role="group" aria-label="Zoom"><button class="tool" id="zOut" aria-label="Zoom out">−</button><button class="tool" id="zIn" aria-label="Zoom in">+</button><button class="tool" id="zHome" disabled title="Fit everything on screen">Fit</button></span></div></div>' +
       '<div class="list" id="list" hidden></div>' +
       '<aside class="rail" id="rail" aria-label="Pulse and person details"><div class="pulse" id="pulse"></div><div class="panel" id="panel"></div></aside></main><div class="famshade" id="fam" hidden></div>';
     $("#legend").innerHTML = ["strong", "ok", "weak", "strained", "conflict"].map(function (q) { return "<span>" + K.glyph(q) + QL[q] + "</span>"; }).join("") + "<span><i></i>Open thread</span>";
     $("#fRing").innerHTML = '<option value="">Circle</option>' + [1, 2, 3, 4, 5].map(function (c) { return '<option value="' + c + '">' + RINGS[c] + "</option>"; }).join("");
     $("#fQual").innerHTML = '<option value="">Quality</option>' + Object.keys(QL).map(function (q) { return '<option value="' + q + '">' + QL[q] + "</option>"; }).join("");
     S.root.addEventListener("click", onClick); zoomWire($("#sky"));
+    S.root.addEventListener("submit", function (e) {
+      var f = e.target, kind = f.dataset && f.dataset.pform; if (!kind) return; e.preventDefault();
+      var fd = new FormData(f), who = String(fd.get("who") || "").trim().toLowerCase(), msg = f.querySelector(".msg");
+      var hits = S.M.P.filter(function (p) { return !p.archived && p.name.toLowerCase() === who; });
+      if (!hits.length) hits = S.M.P.filter(function (p) { return !p.archived && p.name.toLowerCase().indexOf(who) === 0; });
+      if (hits.length !== 1) { msg.textContent = hits.length ? "More than one person matches; type the full name." : "Nobody with that name in People."; return; }
+      if (kind === "bday") { var d = +fd.get("day"), m = +fd.get("month"); if (!(d >= 1 && d <= 31 && m >= 1 && m <= 12)) { msg.textContent = "Pick a day and a month."; return; } patch(hits[0].id, { birthdayMonth: m, birthdayDay: d }); }
+      else addSit(hits[0].id, String(fd.get("text") || "").trim());
+    });
     S.root.addEventListener("change", function (e) {
       var t = e.target, k = t.getAttribute && t.getAttribute("data-fam"), id = k && t.getAttribute("data-id"); if (!k) return;
       var p = person(id); if (!p) return;
@@ -118,9 +127,10 @@
   /* ---------- zoom and pan: the SVG viewBox is the camera ---------- */
   function home(svg) {
     if (!svg._tree) { var VB = S.st.narrow ? 600 : 540; return [-VB, -VB, 2 * VB, 2 * VB]; }
-    var vb = svg._vb || [-500, -300, 1000, 700], r = svg.getBoundingClientRect(), asp = r.width ? r.height / r.width : .7, f = svg._focus, w = Math.min(vb[2], S.st.narrow ? 640 : Math.min(1250, Math.max(900, f ? f[2] + 60 : 0)));
-    var cx = vb[2] <= w ? vb[0] + vb[2] / 2 : Math.max(vb[0] + w / 2, Math.min(vb[0] + vb[2] - w / 2, 0));
-    return [cx - w / 2, vb[1], w, w * asp];
+    // fit: the family block (or the whole tree) fully on screen, centred, never cut at the left edge
+    var vb = svg._vb || [-500, -300, 1000, 700], r = svg.getBoundingClientRect(), asp = r.width && r.height ? r.height / r.width : .7, f = svg._focus && svg._focus[2] ? svg._focus : vb, pad = 36;
+    var bw = f[2] + 2 * pad, bh = f[3] + 2 * pad, w = Math.max(bw, bh / asp, S.st.narrow ? 420 : 640), hh = w * asp;
+    return [f[0] - pad - (w - bw) / 2, f[1] - pad - (hh - bh) / 2, w, hh];
   }
   function span(svg, h) { return [h[2] / 9, Math.max(h[2], svg._tree && svg._vb ? svg._vb[2] : 0, svg._tree && svg._vb ? svg._vb[3] * h[2] / h[3] : 0) * 1.15]; }
   function setBox(b) {
@@ -128,7 +138,7 @@
     if (b && Math.abs(b[2] - h[2]) < 1 && Math.abs(b[0] - h[0]) < 1 && Math.abs(b[1] - h[1]) < 1) b = null;
     Z.box[S.view] = b; var v = b || h;
     svg.setAttribute("viewBox", v.map(function (n) { return n.toFixed(1); }).join(" "));
-    svg.classList.toggle("zoomed", h[2] / v[2] >= 1.45); svg.style.setProperty("--iz", Math.min(1, Math.pow(v[2] / h[2], .55)).toFixed(3)); svg.classList.toggle("zin", !!b);
+    svg.classList.toggle("zoomed", h[2] / v[2] >= 1.45); svg.style.setProperty("--iz", Math.min(1, Math.pow(v[2] / h[2], .55)).toFixed(3)); var pxw = svg.getBoundingClientRect().width || v[2]; svg.style.setProperty("--tz", svg._tree ? Math.max(1, Math.min(1.5, Math.pow(v[2] / pxw, .6))).toFixed(3) : "1"); svg.classList.toggle("zin", !!b);
     var z = $("#zHome"); if (z) z.disabled = !b;
   }
   function zoomAt(x, y, f) {
@@ -162,12 +172,17 @@
     svg.addEventListener("pointerup", up); svg.addEventListener("pointercancel", up);
     svg.addEventListener("dblclick", function (e) { if (!e.target.closest(".nd")) zoomAt(e.clientX, e.clientY, 1.8); });
   }
+  function names() { return '<datalist id="pnames">' + S.M.P.filter(function (p) { return !p.archived; }).map(function (p) { return '<option value="' + esc(p.name) + '">'; }).join("") + "</datalist>"; }
+  function bdayForm(open) { return '<details class="pform-d"' + (open ? " open" : "") + '><summary class="pnudge">Add a birthday</summary><form class="pform" data-pform="bday">' + names() + '<input name="who" list="pnames" placeholder="Name" aria-label="Whose birthday" required><div class="row"><input name="day" type="number" min="1" max="31" placeholder="Day" aria-label="Day" required><select name="month" aria-label="Month" required><option value="">Month</option>' + ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].map(function (m, i) { return '<option value="' + (i + 1) + '">' + m + "</option>"; }).join("") + '</select><button>Save</button></div><p class="msg" role="status"></p></form></details>'; }
+  function noteForm() { return '<details class="pform-d"><summary class="pnudge">Add how things are with someone</summary><form class="pform" data-pform="note"><input name="who" list="pnames" placeholder="Name" aria-label="Who" required><input name="text" placeholder="How things are, in a line" aria-label="Situation note" required><div class="row"><button>Save note</button></div><p class="msg" role="status"></p></form></details>'; }
   function pulse() {
+    var noBdays = !S.M.P.some(function (p) { return !p.archived && p.bm && p.bd; });
     var D = C.pulse(S.M), it = function (p, inner) { return '<button class="item" data-id="' + p.id + '">' + av(p) + "<span>" + inner + "</span></button>"; };
     $("#pulse").innerHTML =
       "<section><h2>Needs attention <small>" + (D.need.length || "") + "</small></h2>" + (D.need.length ? D.need.slice(0, 12).map(function (n) { return it(n.p, "<b>" + esc(n.p.name) + "</b>" + (n.tag ? '<span class="tag">' + esc(n.tag) + "</span>" : "") + '<span class="why">' + esc(n.why) + "</span>"); }).join("") : '<p class="empty">Nothing is waiting. Open threads and people you want a rhythm with show up here.</p>') + "</section>" +
-      "<section><h2>Coming up <small>next 30 days</small></h2>" + (D.soon.length ? D.soon.map(function (n) { return it(n.p, "<b>" + esc(n.p.name) + '</b><span class="why">' + esc(n.why) + "</span>"); }).join("") : '<p class="empty">No birthdays or events with someone in the next 30 days.</p>') + "</section>" +
-      "<section><h2>Recently updated</h2>" + (D.rec.length ? D.rec.map(function (n) { return it(n.p, "<b>" + esc(n.p.name) + "</b><q>" + esc(n.s.t.length > 92 ? n.s.t.slice(0, 90) + "…" : n.s.t) + '</q><span class="by">' + (n.s.by === "claude" ? "via Claude" : "you") + " · " + C.fmtDay(n.s.date) + "</span>"); }).join("") : '<p class="empty">No situation notes yet. Open someone and write how things are, or tell Claude.</p>') + "</section>";
+      "<section><h2>Coming up <small>next 30 days</small></h2>" + (D.soon.length ? D.soon.map(function (n) { return it(n.p, "<b>" + esc(n.p.name) + '</b><span class="why">' + esc(n.why) + "</span>"); }).join("") : '<p class="empty">No birthdays or events with someone in the next 30 days.</p>') +
+        (noBdays ? '<p class="pnudge">No birthdays saved yet. Add them and they show up here two weeks ahead.</p>' : "") + bdayForm(noBdays) + "</section>" +
+      "<section><h2>Recently updated</h2>" + (D.rec.length ? D.rec.map(function (n) { return it(n.p, "<b>" + esc(n.p.name) + "</b><q>" + esc(n.s.t.length > 92 ? n.s.t.slice(0, 90) + "…" : n.s.t) + '</q><span class="by">' + (n.s.by === "claude" ? "via Claude" : "you") + " · " + C.fmtDay(n.s.date) + "</span>"); }).join("") : '<p class="empty">No situation notes yet. Open someone and write how things are, or tell Claude.</p>') + noteForm() + "</section>";
     $("#pill").innerHTML = (D.need.length ? "<i></i><b>" + D.need.length + (D.need.length === 1 ? " needs" : " need") + " a moment</b>" : "<b>All calm</b>") + " · " + D.soon.length + ' coming up<span>' + (S.pp.classList.contains("pulse-open") ? "Close ▴" : "Open ▾") + "</span>";
   }
   function chip(key, label, extra) { return '<button class="chip" data-open="' + key + '" aria-expanded="' + (S.open === key) + '">' + (extra || "") + esc(label) + "</button>"; }

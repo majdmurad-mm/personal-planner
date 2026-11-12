@@ -21,8 +21,9 @@
   function shortName(name) { var m = /^\s*[\[(]([^\])]+)[\])]/.exec(String(name || "")); return m ? m[1].trim() : bare(name).split(/\s+/)[0]; }
   function initials(name) { return bare(name).split(/\s+/).map(function (w) { return w.charAt(0); }).join("").slice(0, 2).toUpperCase(); }
   /* group colours: the same rule as the Clusters view (alphabetical walk through one palette, a chosen colour wins) */
-  var PALETTE = ["#4ADE80", "#5FA8FF", "#F15A22", "#A78BFA", "#FDE047", "#FB7185", "#2DD4BF", "#FB923C"];
-  function groupColors(names, custom) { var o = {}; names.slice().sort().forEach(function (g, i) { o[g] = (custom && custom[g]) || PALETTE[i % PALETTE.length]; }); return o; }
+  // shades of the people blue (shared/areas.js); a group is told apart by its shade and its labelled arc
+  var PALETTE = (window.PPAreas && window.PPAreas.peopleShades.dark) || ["#63B9FE", "#3D93DA", "#9AD1FF", "#7FA6D6", "#2F78B8", "#B9DDFB", "#5C8FC2", "#A6BED8"];
+  function groupColors(names) { var o = {}; names.slice().sort().forEach(function (g, i) { o[g] = PALETTE[i % PALETTE.length]; }); return o; }
   /* family roles for the Tree view; "side" only matters for the roles marked true */
   var KIN = { father: "Father", mother: "Mother", brother: "Brother", sister: "Sister", grandfather: "Grandfather", grandmother: "Grandmother", uncle: "Uncle", aunt: "Aunt", cousin: "Cousin",
     partner: "Partner", ex: "Ex-partner", son: "Son", daughter: "Daughter", nephew: "Nephew", niece: "Niece", inlaw: "In-law", relative: "Relative" };

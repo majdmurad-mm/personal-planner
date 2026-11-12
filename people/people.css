@@ -233,3 +233,16 @@ svg .nd,svg .ln{transition:opacity .25s}
 .sidebtn.on rect{fill:var(--text)}.sidebtn.on text{fill:var(--bg)}
 .sidebtn:focus-visible rect{stroke:var(--text);stroke-width:2}
 .nd.tr.mem .disc{fill:var(--gc,var(--peri));fill-opacity:.62}
+/* labels that had no free spot wait for hover/focus; a moved label keeps a thin line to its dot */
+.nd .nm.hid{display:none}.nd:hover .nm.hid,.nd:focus-visible .nm.hid,.nd.on .nm.hid{display:block}
+.nd .lead{stroke:var(--muted);stroke-width:.8;opacity:.7;vector-effect:non-scaling-stroke;pointer-events:none}
+/* a small ring in the group's shade, so groups read even where the shades are close */
+.nd.gc .disc{stroke:var(--gc);stroke-width:2;stroke-opacity:.9;paint-order:stroke}
+/* the pulse panel's inline forms */
+.pform{display:grid;gap:6px;margin-top:8px}.pform .row{display:flex;gap:6px;flex-wrap:wrap}.pform input,.pform select{min-width:0;flex:1 1 90px;padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:transparent;color:var(--text);font:inherit;font-size:13px}
+.pform button{padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--text);font:inherit;font-size:13px;cursor:pointer}.pform .msg{font-size:12.5px;color:var(--muted)}
+.pnudge{font-size:13px;color:var(--text);margin:4px 0}
+
+/* the tree: when the fitted view is small, names and roles grow a little so the family block stays readable */
+#sky .nd.tr .nm{font-size:calc(11px*var(--tz,1))}
+#sky .nd.tr .cap{font-size:calc(9.5px*var(--tz,1))}

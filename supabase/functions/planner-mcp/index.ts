@@ -2172,7 +2172,7 @@ tool("create_person", {
 });
 
 tool("edit_person", {
-  description: "Edit an existing person by id. Only the fields you pass are changed.",
+  description: "Edit an existing person by id: name, relationship, contact, notes, group, or birthday (shows in People's Coming up). Only the fields you pass are changed.",
   inputSchema: z.object({
     id: z.string(),
     name: z.string().optional(),
@@ -2180,9 +2180,15 @@ tool("edit_person", {
     contact: z.string().optional(),
     notes: z.string().optional(),
     socialGroup: z.string().optional(),
+    birthdayMonth: z.number().int().min(1).max(12).nullable().optional().describe("1-12; null clears the birthday"),
+    birthdayDay: z.number().int().min(1).max(31).nullable().optional(),
+    birthdayYear: z.number().int().min(1900).max(2100).nullable().optional(),
   }),
   handler: async (args: any) => {
     const patch: Record<string, unknown> = {};
+    if (args.birthdayMonth !== undefined) patch.birthday_month = args.birthdayMonth;
+    if (args.birthdayDay !== undefined) patch.birthday_day = args.birthdayDay;
+    if (args.birthdayYear !== undefined) patch.birthday_year = args.birthdayYear;
     if (args.name !== undefined) patch.name = args.name;
     if (args.relationship !== undefined) patch.relationship = args.relationship;
     if (args.contact !== undefined) patch.contact = args.contact;
