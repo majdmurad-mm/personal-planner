@@ -31,6 +31,7 @@ import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import "../_shared/freetime.js"; // sets globalThis.PPFree: the same free-time function the page uses
+import { openPdf, scanPages, imageFileMime, isPdf, b64, MAX_IMAGE_BYTES } from "../_shared/scanpages.ts"; // scanned pages as pictures
 
 // ---- Secrets / environment -------------------------------------------------
 // SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are injected automatically into
@@ -1456,6 +1457,132 @@ tool("spider_note", {
   description: "Leave a short line on the Knowledge page about what you are doing or what you found, e.g. 'Grouped 6 tenancy papers under Housing & tenancy'. Call it once at the end of a sorting pass with a one-sentence summary.",
   inputSchema: z.object({ text: z.string().min(2).max(300) }),
   handler: async (a: { text: string }) => { await knTrace("note", null, null, a.text); return ok({ ok: true }); },
+});
+
+// ---- Scanned documents: the spider reads the pictures ----
+// Knowledge files whose pages have no text (scans the browser could not read, or skipped) are found here, their
+// pages handed to Claude as pictures, and what Claude reads is saved as that item's text, so search and the web
+// can use it. Files come from the planner's own storage (uploads, saved copies) or from OneDrive, read-only and
+// only for folders set to "Index". Nothing is written to OneDrive; the text is kept in Supabase only.
+const SCAN_EXT = /^(pdf|jpe?g|png)$/i;
+// deno-lint-ignore no-explicit-any
+const scanExt = (r: any) => String((r.meta && r.meta.ext) || (/\.([a-z0-9]+)$/i.exec(r.title || "") || [])[1] || "").toLowerCase();
+// deno-lint-ignore no-explicit-any
+const scanCurrent = (r: any) => { const s = r.meta && r.meta.scan_read; return s && (!r.remote_modified_at || s.at >= r.remote_modified_at) ? s : null; };
+// deno-lint-ignore no-explicit-any
+async function scanBytes(r: any): Promise<{ bytes?: Uint8Array; why?: string }> {
+  const f = await db.from("knowledge_files").select("storage_path").eq("item_id", r.id).limit(1).maybeSingle();
+  if (f.data && f.data.storage_path) {
+    const d = await db.storage.from("knowledge").download(f.data.storage_path);
+    if (d.data) return { bytes: new Uint8Array(await d.data.arrayBuffer()) };
+  }
+  if (r.provider === "onedrive") {
+    if (r.privacy !== "index") return { why: "this OneDrive file is set to links only, so its content is never opened" };
+    const res = await fetch(SUPABASE_URL + "/functions/v1/knowledge-onedrive/fetch", { method: "POST", headers: { "Content-Type": "application/json", "x-internal-key": SERVICE_KEY }, body: JSON.stringify({ itemId: r.id }) });
+    if (!res.ok) { const j = await res.json().catch(() => ({})); return { why: j.error === "reconnect" ? "OneDrive needs to be reconnected: the owner presses Reconnect OneDrive on the Knowledge page" : String(j.error || "OneDrive returned " + res.status) }; }
+    return { bytes: new Uint8Array(await res.arrayBuffer()) };
+  }
+  return { why: "no file is kept for this item, only its text" };
+}
+// deno-lint-ignore no-explicit-any
+async function scanItem(id: string): Promise<{ r?: any; err?: ReturnType<typeof fail> }> {
+  const q = await knItems("*").eq("id", id).eq("user_id", OWNER).is("archived_at", null).maybeSingle();
+  if (q.error) return { err: fail(q.error.message + KN_HINT) };
+  if (!q.data) return { err: fail("no open knowledge item with that id") };
+  const allowed = await knAllowed();
+  if (!knCan(q.data, allowed)) return { err: fail(knKept([q.data.zone])) };
+  if (knNoText(q.data)) return { err: fail("Links only: the owner shares this file's name and link, not its content, so its pages are not opened.") };
+  return { r: q.data };
+}
+const scanRange = (ps: number[]) => { const s = Array.from(new Set(ps)).sort((a, b) => a - b), out: string[] = []; for (let i = 0; i < s.length; i++) { let j = i; while (j + 1 < s.length && s[j + 1] === s[j] + 1) j++; out.push(j > i ? s[i] + "–" + s[j] : String(s[i])); i = j; } return out.join(", "); };
+tool("read_scans", {
+  description: "Scanned documents in Knowledge, read by you. Three steps: (1) no id: lists items whose pages have no text or weak text (scans), most in need first. (2) id: returns up to 4 of its pages as pictures (default: the first pages without text; pass pages to choose) plus which pages still need reading. Read them carefully, keeping names, numbers, dates and amounts exact. (3) id + save: keeps what you read as that page's text, so search and the spider web can use it; pass done: true after the last page. Read-only for the files: nothing in OneDrive changes. Pages stored as fax-style or JPEG 2000 scans cannot be shown and are listed with the reason.",
+  inputSchema: z.object({
+    id: z.string().optional().describe("the knowledge item; leave out to list scans that need reading"),
+    pages: z.array(z.number().int().min(1)).max(4).optional().describe("pages to return as pictures (1-based)"),
+    save: z.array(z.object({ page: z.number().int().min(1), text: z.string().min(1).max(20000) })).max(8).optional().describe("the text you read, one entry per page"),
+    done: z.boolean().optional().describe("with save: every page of this document has now been read"),
+    folder: z.string().max(300).optional().describe("listing: only OneDrive files whose folder starts with this"),
+    limit: z.number().int().min(1).max(100).optional(),
+  }),
+  // deno-lint-ignore no-explicit-any
+  handler: async (a: any) => {
+    // (1) the list
+    if (!a.id) {
+      const allowed = await knAllowed();
+      const it = await knItems("id,title,zone,type,meta,provider,privacy,index_status,remote_path,remote_modified_at,web_url").eq("user_id", OWNER).is("archived_at", null).limit(3000);
+      if (it.error) return fail(it.error.message + KN_HINT);
+      // deno-lint-ignore no-explicit-any
+      let cand = (it.data || []).filter((r: any) => knCan(r, allowed) && !knNoText(r) && (SCAN_EXT.test(scanExt(r)) || r.index_status === "failed") && !(scanCurrent(r) || {}).complete);
+      if (a.folder) cand = cand.filter((r: any) => String(r.remote_path || "").toLowerCase().startsWith(String(a.folder).toLowerCase().replace(/^\/+/, "")));
+      const ids = cand.map((r: any) => r.id), pagesOf: Record<string, Set<number>> = {}, chunksOf: Record<string, number> = {}, totalOf: Record<string, number> = {};
+      for (let i = 0; i < ids.length; i += 150) {
+        const part = ids.slice(i, i + 150);
+        const [ch, fl] = await Promise.all([db.from("knowledge_chunks").select("item_id,page").eq("user_id", OWNER).in("item_id", part).limit(20000), db.from("knowledge_files").select("item_id,pages").in("item_id", part)]);
+        for (const c of ch.data || []) { (pagesOf[c.item_id] = pagesOf[c.item_id] || new Set()).add(c.page || 1); chunksOf[c.item_id] = (chunksOf[c.item_id] || 0) + 1; }
+        for (const f of fl.data || []) if (f.pages) totalOf[f.item_id] = f.pages;
+      }
+      const rows = cand.map((r: any) => {
+        const has = pagesOf[r.id] ? pagesOf[r.id].size : 0, total = totalOf[r.id] || null, done = scanCurrent(r);
+        let why = "", rank = 9;
+        if (r.index_status === "failed") { why = "the browser could not read this file"; rank = 0; }
+        else if (!has) { why = "no text at all (probably a scan)"; rank = 1; }
+        else if (total && has < total * 0.8) { why = has + " of " + total + " pages have text"; rank = 2; }
+        else if (/not read/i.test(String((r.meta && r.meta.note) || ""))) { why = "some scanned pages were skipped"; rank = 3; }
+        else if (r.meta && r.meta.ocr) { why = "its text came from quick OCR in the browser and may be weak"; rank = 5; }
+        return why ? { id: r.id, title: r.title, zone: r.zone, type: r.type, folder: r.remote_path || (r.meta && r.meta.folder) || undefined, pages: total || undefined, pagesWithText: has, why, rank, readByClaude: done ? scanRange(done.pages || []) : undefined } : null;
+      }).filter(Boolean).sort((x: any, y: any) => x.rank - y.rank).slice(0, a.limit || 30).map(({ rank: _r, ...x }: any) => x);
+      return ok({ count: rows.length, items: rows, next: rows.length ? "Call read_scans with an id to see its pages." : "Nothing needs reading: every readable scan has text." });
+    }
+    const got = await scanItem(a.id); if (got.err) return got.err; const r = got.r;
+    // (3) keep what was read
+    if (a.save && a.save.length) {
+      const pages: number[] = [];
+      for (const s of a.save) {
+        const text = String(s.text).trim(); if (!text) continue;
+        await db.from("knowledge_chunks").delete().eq("item_id", r.id).eq("user_id", OWNER).eq("page", s.page);
+        const parts: string[] = []; for (let i = 0; i < text.length; i += 4000) parts.push(text.slice(i, i + 4000));
+        const ins = await db.from("knowledge_chunks").insert(parts.map((content) => ({ user_id: OWNER, item_id: r.id, page: s.page, content })));
+        if (ins.error) return fail("could not save page " + s.page + ": " + ins.error.message);
+        pages.push(s.page);
+      }
+      const prev = scanCurrent(r), all = Array.from(new Set([...(prev ? prev.pages || [] : []), ...pages])).sort((x, y) => x - y);
+      const patch: Record<string, unknown> = { meta: { ...(r.meta || {}), scan_read: { pages: all, at: new Date().toISOString(), complete: !!a.done } } };
+      if (r.provider === "onedrive" && r.index_status === "failed") patch.index_status = "indexed";
+      if (!r.summary && a.save[0]) patch.summary = String(a.save[0].text).replace(/\s+/g, " ").trim().slice(0, 240);
+      await db.from("knowledge_items").update(patch).eq("id", r.id).eq("user_id", OWNER);
+      await knTrace("note", r.id, null, "Read and saved the text of scanned page" + (pages.length === 1 ? " " : "s ") + scanRange(pages) + " of “" + r.title + "”");
+      return ok({ saved: pages, pagesReadSoFar: scanRange(all), complete: !!a.done, note: "The text is searchable now; the Knowledge page adds meaning search for it the next time it is open." });
+    }
+    // (2) the pages as pictures
+    const f = await scanBytes(r); if (!f.bytes) return fail(f.why || "the file could not be opened");
+    const img = imageFileMime(f.bytes);
+    if (img) {
+      if (f.bytes.length > MAX_IMAGE_BYTES) return fail("this picture is too large to pass on (" + Math.round(f.bytes.length / 1e5) / 10 + " MB)");
+      await knTrace("read", r.id, null, "Reading the scan “" + r.title + "”");
+      return { content: [{ type: "text" as const, text: JSON.stringify({ id: r.id, title: r.title, pageCount: 1, returned: [1], next: "Read it, then call read_scans with id and save: [{ page: 1, text }] and done: true." }) }, { type: "image" as const, data: b64(f.bytes), mimeType: img }] };
+    }
+    if (!isPdf(f.bytes)) return fail("this file is not a PDF or a picture, so it has no scanned pages to show");
+    const doc = await openPdf(f.bytes); if (!doc) return fail("this PDF could not be opened (damaged or locked with a password)");
+    const n = doc.getPageCount(), ch = await db.from("knowledge_chunks").select("page").eq("item_id", r.id).eq("user_id", OWNER).limit(20000);
+    const withText = new Set((ch.data || []).map((c: { page: number | null }) => c.page || 1)), need: number[] = [];
+    for (let p = 1; p <= n; p++) if (!withText.has(p)) need.push(p);
+    // named pages as asked; otherwise walk the pages without text until 4 can be shown (looking at 12 at most)
+    const pool = a.pages && a.pages.length ? a.pages.filter((p: number) => p <= n) : (need.length ? need : Array.from({ length: n }, (_, i) => i + 1)).slice(0, 12);
+    const shots: ReturnType<typeof scanPages> = [];
+    for (const p of pool) { const s1 = scanPages(doc, [p])[0]; shots.push(s1); if (shots.filter((x) => x.data).length >= 4) break; }
+    const out: { type: "image"; data: string; mimeType: string }[] = [], returned: number[] = [], skipped: { page: number; why: string }[] = [];
+    let total = 0;
+    for (const s of shots) {
+      if (!s.data || !s.mime) { skipped.push({ page: s.page, why: s.why || "no picture" }); continue; }
+      if (total + s.data.length > 7_000_000) { skipped.push({ page: s.page, why: "left for the next call (size)" }); continue; }
+      total += s.data.length; out.push({ type: "image", data: b64(s.data), mimeType: s.mime }); returned.push(s.page);
+      if (s.why) skipped.push({ page: s.page, why: "shown, but " + s.why });
+    }
+    if (returned.length) await knTrace("read", r.id, null, "Reading scanned page" + (returned.length === 1 ? " " : "s ") + scanRange(returned) + " of “" + r.title + "”");
+    const left = need.filter((p) => !returned.includes(p));
+    return { content: [{ type: "text" as const, text: JSON.stringify({ id: r.id, title: r.title, pageCount: n, pagesWithText: withText.size, returned, skipped: skipped.length ? skipped : undefined, stillWithoutText: left.length ? scanRange(left) : "none", next: returned.length ? "Read the pictures in order, then call read_scans with id and save: [{ page, text }, …]" + (left.length ? "; then ask for the next pages." : " and done: true.") : "Nothing could be shown; see skipped." }) }, ...out] };
+  },
 });
 
 // ---- The spider's web: a structure Claude weaves over the knowledge. Themes (inside themes), each item
@@ -4825,7 +4952,8 @@ tool("connector_info", {
 // ==== OD-BEGIN ====
 // ============================ KNOWLEDGE: ONEDRIVE SOURCES ============================
 // These call the knowledge-onedrive function, which holds the OneDrive sign-in. Read-only: nothing here can
-// write, move, rename or delete anything in OneDrive. File contents are never read through the connector.
+// write, move, rename or delete anything in OneDrive. File contents reach the connector only through read_scans,
+// and only for files in folders set to "Index" (their text is already Claude's to read).
 async function odCall(route: string, body: Record<string, unknown> = {}) {
   const r = await fetch(SUPABASE_URL + "/functions/v1/knowledge-onedrive" + route, { method: "POST", headers: { "Content-Type": "application/json", "x-internal-key": SERVICE_KEY }, body: JSON.stringify(body) });
   const j = await r.json().catch(() => ({ error: "knowledge-onedrive returned " + r.status }));

@@ -3,6 +3,8 @@
     "hono": "npm:hono@^4.6.14",
     "mcp-lite": "npm:mcp-lite@0.8.2",
     "zod": "npm:zod@^4.1.12",
-    "@supabase/supabase-js": "npm:@supabase/supabase-js@^2.45.0"
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@^2.45.0",
+    "pdf-lib": "npm:pdf-lib@1.17.1",
+    "fflate": "npm:fflate@0.8.2"
   }
 }

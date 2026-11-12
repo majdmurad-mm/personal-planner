@@ -7,7 +7,8 @@
 // - Sources: one row per folder the owner picked (public.knowledge_sources). Sync uses Graph delta per
 //   source, in resumable chunks (public.knowledge_jobs) started by pg_cron or "Sync now".
 // - Files are never stored here. For Index sources the browser asks /fetch for one file at a time,
-//   reads the text itself and saves chunks; /fetch streams the bytes and keeps nothing.
+//   reads the text itself and saves chunks; /fetch streams the bytes and keeps nothing. The connector may
+//   also ask /fetch, for Index files only, when Claude reads scanned pages (read_scans).
 //
 // Callers: the Knowledge page (Supabase user JWT), the planner-mcp connector (x-internal-key = service
 // role key, acting for OWNER_USER_ID), and the two cron schedules (x-cron-key from knowledge_cron_key).
@@ -395,13 +396,16 @@ async function applyPage(src: any, items: any[], folders: Record<string, { n: st
 }
 
 // ---------------------------------------------------------------- one file's bytes, for the page only
-async function fetchFile(req: Request, uid: string) {
+async function fetchFile(req: Request, uid: string, via: "page" | "connector" = "page") {
   const b = await req.json().catch(() => ({}));
+  if (via === "connector") { b.purpose = "index"; b.pdf = false; }
   const it = await db.from("knowledge_items").select("id,provider_item_id,privacy,index_status,source_id,size_bytes,title").eq("id", b.itemId).eq("user_id", uid).eq("provider", "onedrive").is("archived_at", null).maybeSingle();
   if (!it.data) return json(req, { error: "no OneDrive item with that id" }, 404);
   const purpose = b.purpose === "save" ? "save" : "index";
   // reading content is only allowed for Index items (and Private ones the owner indexes privately), or an explicit "save a copy"
   if (purpose === "index" && it.data.index_status !== "pending" && it.data.index_status !== "indexed" && it.data.index_status !== "failed") return json(req, { error: "this file is not set to be read" }, 403);
+  // the connector (read_scans) only gets files from "Index" folders: never links-only, never private ones
+  if (via === "connector" && it.data.privacy !== "index") return json(req, { error: "this file's folder is not set to Index, so its content stays closed to Claude" }, 403);
   const src = await db.from("knowledge_sources").select("max_index_mb").eq("id", it.data.source_id).maybeSingle();
   const cap = purpose === "save" ? 250 : (src.data?.max_index_mb || 50);
   if ((it.data.size_bytes || 0) > cap * 1048576) return json(req, { error: "file is larger than " + cap + " MB" }, 413);
@@ -440,7 +444,7 @@ Deno.serve(async (req) => {
       case "/sources/update": return await updateSource(req, who.uid);
       case "/sources/remove": return await removeSource(req, who.uid);
       case "/sync": return await syncNow(req, who.uid);
-      case "/fetch": return who.via === "page" ? await fetchFile(req, who.uid) : json(req, { error: "file contents are only read in the owner's browser" }, 403);
+      case "/fetch": return await fetchFile(req, who.uid, who.via);
     }
     return json(req, { error: "not found" }, 404);
   } catch (e) {
