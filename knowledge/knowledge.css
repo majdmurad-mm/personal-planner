@@ -146,3 +146,11 @@ svg text{font-family:var(--sans);fill:var(--text);pointer-events:none;user-selec
 .sphub text.s{font-size:max(10px,calc(11px*var(--spu,1)))}
 /* a label with no free room shows on hover or focus of its theme */
 .spweb text.hid{display:none}.spt:hover text.hid,.spt:focus-visible text.hid,.spt.on text.hid{display:block}
+
+/* the web's zoom */
+.spcan{position:relative}
+.spzoom{position:absolute;right:12px;bottom:12px;display:flex;align-items:center;gap:4px;padding:4px;border-radius:12px;background:color-mix(in srgb,var(--panel) 88%,transparent);border:1px solid var(--line);box-shadow:0 4px 14px rgba(0,0,0,.12);backdrop-filter:blur(6px)}
+.spzoom .btn{min-width:32px;justify-content:center}
+.spzk{font:500 11px ui-monospace,Consolas,monospace;color:var(--muted);min-width:40px;text-align:center;font-variant-numeric:tabular-nums}
+.spcan.zoomed svg#knWeb{cursor:grab;touch-action:none}.spcan.zoomed svg#knWeb.panning{cursor:grabbing}
+.spweb svg#knWeb:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}

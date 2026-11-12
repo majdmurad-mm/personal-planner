@@ -129,15 +129,45 @@
       });
       s += '<g class="sphub" data-sptheme="" tabindex="0" role="button" aria-label="The whole web"><circle r="44"/><text y="-2" text-anchor="middle">' + Object.keys(M.placed).length + '</text><text class="s" y="14" text-anchor="middle">in the web</text></g>';
       var vb; if (foc) { var xs = [], ys = []; Object.keys(M.pos).forEach(function (k) { var p = M.pos[k]; if (p[2] === ftop) { xs.push(p[0]); ys.push(p[1]); } }); xs.push(0); ys.push(0); var x0 = Math.min.apply(null, xs) - 150, x1 = Math.max.apply(null, xs) + 150, y0 = Math.min.apply(null, ys) - 70, y1 = Math.max.apply(null, ys) + 70; vb = [x0, y0, x1 - x0, y1 - y0]; } else vb = [-R - 140, -R - 30, 2 * R + 280, 2 * R + 60];
+      var fkey = foc || ""; if (S.spZoomFor !== fkey) { S.spZoom = null; S.spZoomFor = fkey; }   // a new focus starts at Fit
+      S.spBase = vb.slice(); vb = spView();
       var fresh = !S.spDrawn; S.spDrawn = true;
       var tN = M.m.themes.length, thN = (M.m.threads || []).length;
       return '<div class="spweb' + (fresh && !still ? " fresh" : "") + '"><div class="sphead"><div><p class="lab">Woven by the spider' + (M.m.updatedAt ? " · " + esc(spAgo(M.m.updatedAt)) : "") + "</p>" + (M.m.summary ? '<p class="spsum">' + esc(M.m.summary) + "</p>" : "") + '<p class="sub">' + M.tops.length + (M.tops.length === 1 ? " main theme" : " main themes") + " · " + tN + (tN === 1 ? " theme" : " themes") + " in all · " + thN + (thN === 1 ? " thread" : " threads") + (M.unplaced.length ? ' · <button class="link" data-sptheme="__un">' + M.unplaced.length + " not in the web yet</button>" : "") + '</p></div><div class="acts" style="margin-top:0">' + (S.spFocus ? '<button class="btn sm" data-sptheme="">Whole web</button>' : "") + '<button class="btn sm" data-act="spider">Ask the spider</button></div></div>' +
-        '<svg id="knWeb" viewBox="' + vb.map(function (v) { return v.toFixed(0); }).join(" ") + '" role="group" aria-label="The spider’s web: ' + M.tops.length + ' main themes. Choose a theme to open it.">' + s + "</svg>" +
-        '<p class="sub sphint">Choose a theme to open it, a dot to see the item. Threads show why two things belong together when you point at them.</p></div>';
+        '<div class="spcan' + (S.spZoom && S.spZoom.k > 1.01 ? " zoomed" : "") + '"><svg id="knWeb" tabindex="0" viewBox="' + vb.map(function (v) { return v.toFixed(1); }).join(" ") + '" role="group" aria-label="The spider’s web: ' + M.tops.length + ' main themes. Choose a theme to open it. Plus and minus zoom, 0 fits.">' + s + "</svg>" +
+        '<div class="spzoom" role="group" aria-label="Zoom the web"><button class="btn sm" data-spz="1" aria-label="Zoom in" title="Zoom in (+, Ctrl + scroll)">+</button><button class="btn sm" data-spz="-1" aria-label="Zoom out" title="Zoom out (−)">−</button><button class="btn sm" data-spz="0" title="Fit the whole web (0)">Fit</button><span class="spzk" id="knSpzK" aria-live="polite">' + Math.round((S.spZoom ? S.spZoom.k : 1) * 100) + "%</span></div></div>" +
+        '<p class="sub sphint">Choose a theme to open it, a dot to see the item. Threads show why two things belong together when you point at them. Zoom with + and −, Ctrl + scroll or a pinch, or double-click a spot; drag to move around.</p></div>';
     }
     /* After the web is drawn: every label is at least 11 px on screen (font sizes are in viewBox units, so they
        grow when the web is drawn small), and labels that overlap move outward along their spoke in a few steps;
        one that still has no room shows only on hover or focus. Main themes keep their place first. */
+    /* zoom: k (1 = the whole web) and a centre, applied to the base viewBox; the centre stays inside the web */
+    var SPZ_MAX = 8;
+    function spView() {
+      var b = S.spBase || [0, 0, 1, 1], z = S.spZoom; if (!z || z.k <= 1.001) return b.slice();
+      var w = b[2] / z.k, h = b[3] / z.k, cx = Math.max(b[0] + w / 2, Math.min(b[0] + b[2] - w / 2, z.cx)), cy = Math.max(b[1] + h / 2, Math.min(b[1] + b[3] - h / 2, z.cy));
+      z.cx = cx; z.cy = cy; return [cx - w / 2, cy - h / 2, w, h];
+    }
+    var spzT = 0;
+    function spApply() {
+      var svg = root.getElementById("knWeb"); if (!svg) return;
+      svg.setAttribute("viewBox", spView().map(function (v) { return v.toFixed(1); }).join(" "));
+      var k = S.spZoom ? S.spZoom.k : 1, lab = root.getElementById("knSpzK"); if (lab) lab.textContent = Math.round(k * 100) + "%";
+      var can = svg.parentNode; if (can && can.classList) can.classList.toggle("zoomed", k > 1.01);
+      cancelAnimationFrame(spzT); spzT = requestAnimationFrame(spDeclutter);
+    }
+    /* zoom by f around a screen point (or the middle) */
+    function spZoomAt(f, sx, sy) {
+      var svg = root.getElementById("knWeb"); if (!svg || !S.spBase) return;
+      var b = S.spBase, cur = spView(), r = svg.getBoundingClientRect(), z = S.spZoom || { k: 1, cx: b[0] + b[2] / 2, cy: b[1] + b[3] / 2 };
+      var nk = Math.max(1, Math.min(SPZ_MAX, z.k * f)); if (nk === z.k && f !== 0) return;
+      // the point under the pointer stays under the pointer (preserveAspectRatio meet: work out the drawn box)
+      var s = Math.min(r.width / cur[2], r.height / cur[3]), ox = r.left + (r.width - cur[2] * s) / 2, oy = r.top + (r.height - cur[3] * s) / 2;
+      var px = sx == null ? cur[0] + cur[2] / 2 : cur[0] + (sx - ox) / s, py = sy == null ? cur[1] + cur[3] / 2 : cur[1] + (sy - oy) / s;
+      var nw = b[2] / nk, nh = b[3] / nk, fx = (px - cur[0]) / cur[2], fy = (py - cur[1]) / cur[3];
+      S.spZoom = { k: nk, cx: px - fx * nw + nw / 2, cy: py - fy * nh + nh / 2 }; spApply();
+    }
+    function spFit() { S.spZoom = null; spApply(); }
     function spDeclutter() {
       var svg = root.getElementById("knWeb"); if (!svg) return;
       var r = svg.getBoundingClientRect(), vb = (svg.getAttribute("viewBox") || "0 0 1 1").split(" ").map(Number); if (!r.width || !vb[2]) return;
@@ -536,6 +566,9 @@
         return;
       }
       if (e.target.dataset && e.target.dataset.shade) { S.sheet = null; render(); return; }
+      var spz = e.target.closest && e.target.closest("[data-spz]");
+      if (spz) { var zv = +spz.getAttribute("data-spz"); if (zv === 0) spFit(); else spZoomAt(zv > 0 ? 1.5 : 1 / 1.5); return; }
+      if (spPan.moved && Date.now() - spPan.at < 350) return;
       var spt = e.target.closest && e.target.closest("[data-sptheme]");
       if (spt) { var fid = spt.getAttribute("data-sptheme"); S.spFocus = fid || null; S.sel = null; render(); var back = root.querySelector('.panel [data-sptheme]') || root.querySelector('.sphead [data-sptheme=""]'); void back; return; }
       var spi = e.target.closest && e.target.closest("[data-spitem]");
@@ -607,6 +640,29 @@
         });
       }
     });
+    /* the web: Ctrl/⌘ + wheel or a trackpad pinch zooms at the pointer; double-click zooms in there; drag pans */
+    var spPan = { on: false, moved: false, at: 0 };
+    kn.addEventListener("wheel", function (e) {
+      if (!(e.ctrlKey || e.metaKey) || !(e.target.closest && e.target.closest("#knWeb"))) return;
+      e.preventDefault(); spZoomAt(Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0022)), e.clientX, e.clientY);
+    }, { passive: false });
+    kn.addEventListener("dblclick", function (e) {
+      if (!(e.target.closest && e.target.closest("#knWeb")) || e.target.closest("[data-sptheme],[data-spitem]")) return;
+      e.preventDefault(); spZoomAt(e.shiftKey ? 1 / 2 : 2, e.clientX, e.clientY);
+    });
+    kn.addEventListener("pointerdown", function (e) {
+      var svg = e.target.closest && e.target.closest("#knWeb"); if (!svg || e.button !== 0 || !S.spZoom || S.spZoom.k <= 1.01) return;
+      var cur = spView(), r = svg.getBoundingClientRect();
+      spPan = { on: true, moved: false, at: 0, x: e.clientX, y: e.clientY, cx: S.spZoom.cx, cy: S.spZoom.cy, s: Math.min(r.width / cur[2], r.height / cur[3]), id: e.pointerId, svg: svg };
+    });
+    kn.addEventListener("pointermove", function (e) {
+      if (!spPan.on || e.pointerId !== spPan.id) return;
+      var dx = e.clientX - spPan.x, dy = e.clientY - spPan.y;
+      if (!spPan.moved) { if (Math.abs(dx) + Math.abs(dy) < 5) return; spPan.moved = true; try { spPan.svg.setPointerCapture(e.pointerId); } catch (x) {} spPan.svg.classList.add("panning"); }
+      S.spZoom.cx = spPan.cx - dx / spPan.s; S.spZoom.cy = spPan.cy - dy / spPan.s; spApply();
+    });
+    var spPanEnd = function (e) { if (!spPan.on || e.pointerId !== spPan.id) return; spPan.on = false; spPan.at = Date.now(); if (spPan.svg) spPan.svg.classList.remove("panning"); };
+    kn.addEventListener("pointerup", spPanEnd); kn.addEventListener("pointercancel", spPanEnd);
     kn.addEventListener("change", function (e) {
       if (e.target.id === "knFile" || e.target.id === "knDir") { if (e.target.files.length) call("onUpload", [].slice.call(e.target.files)); e.target.value = ""; }
       else if (e.target.dataset && e.target.dataset.f) { S.f[e.target.dataset.f] = e.target.value; render(); }
@@ -620,6 +676,7 @@
       if (e.key === "Escape") { if (S.sheet) { S.sheet = null; render(); } else if (S.sel) { S.sel = null; S.edit = false; render(); } else if (S.q && e.target.id === "knQ") { S.q = ""; runSearch(); } }
       if (e.key === "Enter" && e.target.id === "knCtxNew") { e.preventDefault(); var nb = root.querySelector('[data-ctx="new"]'); if (nb) nb.click(); return; }
       if (e.target.id === "knQ" && e.key === "Enter") { clearTimeout(searchT); runSearch(); }
+      if (e.target.closest && e.target.closest("#knWeb") && (e.key === "+" || e.key === "=" || e.key === "-" || e.key === "0")) { e.preventDefault(); if (e.key === "0") spFit(); else spZoomAt(e.key === "-" ? 1 / 1.4 : 1.4); return; }
       if (e.target.closest && e.target.closest("#knSvg") && (e.key === "+" || e.key === "=" || e.key === "-" || e.key === "0")) { e.preventDefault(); if (e.key === "0") flyTo(home()); else zoomBy(e.key === "-" ? 1 / 1.25 : 1.25); }
       if (e.key === "Escape" && ctxOpen()) { closeCtx(); return; }
       if ((e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) && e.target.closest && e.target.closest(".n")) { e.preventDefault(); var rb = e.target.getBoundingClientRect(); openCtx(e.target.getAttribute("data-id"), rb.left + rb.width / 2, rb.top + rb.height / 2); return; }
