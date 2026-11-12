@@ -19,6 +19,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="shared/areas.css?v=1">
 <script src="shared/areas.js?v=1"></script>
+<script src="shared/nav.js?v=1" defer></script>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 <script>
   // Applied synchronously, before first paint, so a saved dark-mode preference doesn't flash light
@@ -222,7 +223,6 @@
      the sidebar expanded, the button floats over .term instead — see #todayLabel's own clearance) —
      so this only needs to apply in the collapsed state, not as a blanket change to every page's
      normal padding. */
-  html[data-sidebar-collapsed] .main{ padding-top:52px; }
 
   /* ===== AUTH SCREEN ===== */
   .auth-screen{ min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
@@ -2272,6 +2272,7 @@
   /* Milestones everywhere else: the diamond prefix is added in JS (◆), this just tints Gantt bars. */
   .gantt-bar.gantt-milestone{ border-style:double; border-width:3px; font-weight:600; }
 </style>
+<link rel="stylesheet" href="shared/nav.css?v=1">
 </head>
 <body>
 
@@ -2303,35 +2304,52 @@
 <div id="appRoot" hidden>
 <div class="app">
   <button class="sidebar-toggle-btn" id="sidebarToggleBtn" type="button" aria-label="Toggle menu" title="Toggle menu">☰</button>
-  <aside class="term">
+  <aside class="term nv" aria-label="Main navigation">
     <div class="term-body">
-      <div class="brand-sub" id="todayLabel">// loading…</div>
+      <span class="brand-sub" id="todayLabel" hidden></span>
+      <header class="nv-mast">
+        <div class="nv-eye"><span id="nvWeekday"></span><span class="nv-clock" id="nvClock"></span></div>
+        <div class="nv-date" id="nvDate"></div>
+        <div class="nv-day" id="nvDay" role="img"></div>
+        <div class="nv-dayax" aria-hidden="true"><span>06</span><span>12</span><span>18</span><span>24</span></div>
+        <div class="nv-next" id="nvNext" aria-live="polite"></div>
+        <div class="nv-mini" id="nvMini" aria-hidden="true"></div>
+      </header>
 
-      <nav class="side-nav" id="sideNav">
-        <button class="side-link" data-section="command" id="navCommand" type="button"><span class="sl-glyph">◈</span>Command Center</button>
-        <button class="side-link" data-section="health" type="button"><span class="sl-glyph">♡</span>Health</button>
-        <button class="side-link" data-section="finance" type="button"><span class="sl-glyph">€</span>Finance</button>
-        <button class="side-link" data-section="knowledge" type="button"><span class="sl-glyph">❖</span>Knowledge</button>
-        <button class="side-link" data-section="comm" type="button"><span class="sl-glyph">✉</span>Communication</button>
-        <button class="side-link" data-section="people" type="button"><span class="sl-glyph">☺</span>People</button>
-        <button class="side-link" data-section="location" type="button"><span class="sl-glyph">⚲</span>Location</button>
-        <button class="side-link" data-section="memory" type="button"><span class="sl-glyph">◎</span>Agent memory</button>
+      <nav class="side-nav" id="sideNav" aria-label="Pages">
+        <span class="nv-ink" id="nvInk" aria-hidden="true"></span>
+        <button class="side-link" data-section="command" id="navCommand" data-tip="Command Center" type="button" style="--cs:var(--nv-ink);--ci:var(--nv-bg)"><span class="nv-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="m15.5 8.5-2 5-5 2 2-5z"/></svg></span><span class="nv-l">Command Center</span><span class="nv-meta" id="nvCmdMeta"></span></button>
+        <div class="nv-group">Life</div>
+        <button class="side-link" data-section="health" data-tip="Health" type="button" style="--cs:var(--area-health-soft);--ci:var(--area-health-text)"><span class="nv-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7a4.3 4.3 0 0 1 7.5 2.8C19.5 15.4 12 20 12 20z"/><path d="M7.5 12h2.2l1.3-2.2 2 4 1.2-1.8h2.3"/></svg></span><span class="nv-l">Health</span></button>
+        <button class="side-link" data-section="finance" data-tip="Finance" type="button" style="--cs:var(--area-task-soft);--ci:var(--area-task-text)"><span class="nv-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="10" cy="7.5" rx="5.5" ry="2.5"/><path d="M4.5 7.5v4c0 1.4 2.5 2.5 5.5 2.5s5.5-1.1 5.5-2.5v-4"/><path d="M8.5 16.4c.5 1.2 2.8 2.1 5.5 2.1 3 0 5.5-1.1 5.5-2.5v-4c0-1.2-1.7-2.1-4-2.4"/></svg></span><span class="nv-l">Finance</span></button>
+        <button class="side-link" data-section="people" data-tip="People" type="button" style="--cs:var(--area-people-soft);--ci:var(--area-people-text)"><span class="nv-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8.5" r="3"/><path d="M3.5 19c.6-3 2.8-5 5.5-5s4.9 2 5.5 5"/><circle cx="16.5" cy="9.5" r="2.3"/><path d="M15.5 14.2c2.3.1 4.2 1.9 4.8 4.3"/></svg></span><span class="nv-l">People</span></button>
+        <button class="side-link" data-section="self" data-tip="Self" type="button" style="--cs:var(--area-sol-soft);--ci:var(--area-sol-text)"><span class="nv-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a4.25 4.25 0 0 1 0 8.5 4.25 4.25 0 0 0 0 8.5"/><circle cx="12" cy="7.75" r=".6" fill="currentColor"/><circle cx="12" cy="16.25" r=".6" fill="currentColor"/></svg></span><span class="nv-l">Self</span></button>
+        <div class="nv-group">Sources</div>
+        <button class="side-link" data-section="knowledge" data-tip="Knowledge" type="button" style="--cs:var(--area-growth-soft);--ci:var(--area-growth-text)"><span class="nv-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 6.5C10.5 5.3 8.3 4.5 4.5 4.5v13c3.8 0 6 .8 7.5 2 1.5-1.2 3.7-2 7.5-2v-13c-3.8 0-6 .8-7.5 2z"/><path d="M12 6.5v13.5"/></svg></span><span class="nv-l">Knowledge</span></button>
+        <button class="side-link" data-section="comm" data-tip="Communication" type="button" style="--cs:var(--area-people-soft);--ci:var(--area-people-text)"><span class="nv-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="2.5"/><path d="m4.5 7.5 7.5 5.5 7.5-5.5"/></svg></span><span class="nv-l">Communication</span></button>
+        <button class="side-link" data-section="location" data-tip="Location" type="button" style="--cs:var(--area-none-soft);--ci:var(--area-none-text)"><span class="nv-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20.5s-6.5-5.8-6.5-10.8a6.5 6.5 0 0 1 13 0c0 5-6.5 10.8-6.5 10.8z"/><circle cx="12" cy="9.7" r="2.3"/></svg></span><span class="nv-l">Location</span></button>
+        <button class="side-link" data-section="memory" data-tip="Agent memory" type="button" style="--cs:var(--area-none-soft);--ci:var(--area-none-text)"><span class="nv-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 3.5l1.8 5.2 5.2 1.8-5.2 1.8L11 17.5l-1.8-5.2L4 10.5l5.2-1.8z"/><path d="M18.5 15.5v4.5M16.25 17.75h4.5"/></svg></span><span class="nv-l">Agent memory</span></button>
       </nav>
 
-      <div class="term-stats" id="termStats" role="button" tabindex="0" title="Open the Strategy view" style="cursor:pointer">
-        <div class="stat-line"><span class="k">active_goals</span><span class="v" id="statActive">0</span></div>
-        <div class="stat-line ok"><span class="k">completed</span><span class="v" id="statDone">0</span></div>
-        <div class="stat-line warn"><span class="k">behind_pace</span><span class="v" id="statBehind">0</span></div>
+      <div class="nv-pulse" id="nvPulse" role="button" tabindex="0" data-tip="Goals: open Strategy" title="Open the Strategy view">
+        <div class="nv-ph"><span>Goals</span><span id="nvAvg"></span></div>
+        <div class="nv-bars" id="nvBars" role="img"></div>
+        <div class="term-stats" id="termStats">
+          <div class="stat-line"><span class="k">active</span><span class="v" id="statActive">0</span></div>
+          <div class="stat-line ok"><span class="k">done</span><span class="v" id="statDone">0</span></div>
+          <div class="stat-line warn"><span class="k">behind</span><span class="v" id="statBehind">0</span></div>
+        </div>
       </div>
 
       <div class="user-foot">
+        <span class="nv-av" id="nvAv" aria-hidden="true">·</span>
         <div class="user-email" id="userEmailLabel"></div>
-        <button class="btn" id="themeToggleBtn" type="button" style="width:100%; margin-bottom:8px;">🌙 dark mode</button>
-        <div class="user-foot-row">
-          <button class="btn" id="openTrashBtn" type="button">trash</button>
-          <button class="btn" id="exportDataBtn" type="button">export data</button>
+        <div class="nv-acts">
+          <button class="nv-btn" id="themeToggleBtn" type="button" data-tip="Light or dark" aria-label="Switch light or dark" title="Switch light or dark"><svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19.5 14.5A7.5 7.5 0 0 1 9.5 4.5a7.5 7.5 0 1 0 10 10z"/></svg><svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.5 12h-2M21.5 12h-2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/></svg></button>
+          <button class="nv-btn" id="openTrashBtn" type="button" data-tip="Trash" aria-label="Trash" title="Trash"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 12.5h9l1-12.5"/></svg></button>
+          <button class="nv-btn" id="exportDataBtn" type="button" data-tip="Export data" aria-label="Export data" title="Export data"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14"/></svg></button>
+          <button class="nv-btn" id="signOutBtn" type="button" data-tip="Sign out" aria-label="Sign out" title="Sign out"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4.5h-8v15h8M10.5 12h10M17 8.5l3.5 3.5-3.5 3.5"/></svg></button>
         </div>
-        <button class="btn" id="signOutBtn" type="button" style="width:100%;">sign out</button>
       </div>
     </div>
   </aside>
@@ -4499,7 +4517,7 @@
   function currentTheme(){ return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light"; }
   function applyThemeChrome(theme){
     var btn = document.getElementById("themeToggleBtn");
-    if(btn) btn.textContent = theme === "dark" ? "☀ light mode" : "🌙 dark mode";
+    if(btn){ var tl = theme === "dark" ? "Switch to light" : "Switch to dark"; btn.setAttribute("aria-label", tl); btn.title = tl; }
     var meta = document.querySelector('meta[name="color-scheme"]');
     if(meta) meta.content = theme;
     // Keeps the mobile browser/status-bar tint (and the PWA's own chrome once installed) matching
@@ -5483,7 +5501,7 @@
       if(was === "tracker") setTimeout(function(){ var n = 0; (function go(){ if(window.PPHealth && window.PPHealth.state && window.PPHealth.state.M){ window.PPHealth.go("dailylog"); return; } if(++n < 40) setTimeout(go, 150); })(); }, 0);
     }
     activeSection = name;
-    document.querySelectorAll(".side-link").forEach(function(l){ l.classList.toggle("active", l.dataset.section === name || (name === "self" && l.dataset.section === "knowledge")); });
+    document.querySelectorAll(".side-link").forEach(function(l){ l.classList.toggle("active", l.dataset.section === name); });
     ALL_SECTION_IDS.forEach(function(id){
       document.getElementById(id).style.display = (id === name + "Section") ? "" : "none";
     });
@@ -8025,6 +8043,20 @@
     document.getElementById("statActive").textContent = active;
     document.getElementById("statDone").textContent = done;
     document.getElementById("statBehind").textContent = behindGoals + behindProjects + behindActions;
+    if(window.PPNav) try{ window.PPNav.update(navData()); }catch(e){ console.warn("nav", e); }
+  }
+  // What the sidebar shows: today's timed items (repeats included), counts and every open goal's score.
+  function navData(){
+    var t = todayStr(), C = window.PPCommandCore, d = null;
+    try{ d = commandData(); }catch(e){ d = null; }
+    var items = d ? d.items : [], occ = C && C.expand ? C.expand(items, t, t) : items.filter(function(i){ return i.date === t && !i.archived; }).map(function(i){ return { item:i, done:!!i.done }; });
+    return {
+      today:t,
+      items:occ.filter(function(o){ return o.item.time && !o.item.allDay; }).map(function(o){ var i = o.item; return { title:i.title, time:i.time, dur:i.dur || i.est || (i.kind === "event" ? 60 : 30), area:i.area, done:!!o.done }; }),
+      openToday:occ.filter(function(o){ return !o.done && o.item.kind !== "event" && o.item.kind !== "block"; }).length,
+      overdue:state.actions.filter(function(a){ return !a.done && !a.someday && !a.recurrence && a.date && a.date < t; }).length,
+      goals:(d ? d.goals || [] : []).filter(function(g){ return goalStatus(state.goals.find(function(x){ return x.id === g.id; }) || g) !== "done"; }).map(function(g){ return { title:g.title, area:g.area, score:g.score, mode:g.scoreMode }; })
+    };
   }
 
   /* ---------------- Goals ---------------- */
