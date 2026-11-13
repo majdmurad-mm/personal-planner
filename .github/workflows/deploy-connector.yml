@@ -36,7 +36,7 @@ jobs:
       - uses: supabase/setup-cli@v1
         if: steps.token.outputs.present == 'true'
         with:
-          version: latest
+          version: 3.1.0   # pinned: "latest" asks the GitHub API and can hit its rate limit (13 Nov deploy failure)
 
       - name: Stamp the build
         if: steps.token.outputs.present == 'true'
