@@ -5376,9 +5376,32 @@ vtool("contact", "Log that you talked to someone, with an optional short note.",
   return "Logged that you talked to " + r.name + " today" + (a.note ? ", and saved your note" : "") + ".";
 });
 
-const httpHandler = new StreamableHttpTransport().bind(mcp);
-const agentHttpHandler = new StreamableHttpTransport().bind(mcpAgent);
-const voiceHttpHandler = new StreamableHttpTransport().bind(mcpVoice);
+const httpHandler0 = new StreamableHttpTransport().bind(mcp);
+const agentHttpHandler0 = new StreamableHttpTransport().bind(mcpAgent);
+const voiceHttpHandler0 = new StreamableHttpTransport().bind(mcpVoice);
+// Protocol version negotiation. mcp-lite speaks 2025-03-26 and 2025-06-18, and answers any version it does not
+// know with the OLDEST one. claude.ai now asks for 2025-11-25 and gives up on a 2025-03-26 answer ("Couldn't
+// reach"). The MCP spec says to offer the newest version the server supports, so an unknown version in an
+// initialize request (and in the MCP-Protocol-Version header of later requests) is read as 2025-06-18.
+const MCP_KNOWN = ["2025-03-26", "2025-06-18"], MCP_NEWEST = "2025-06-18";
+async function negotiate(req: Request): Promise<Request> {
+  const hv = req.headers.get("mcp-protocol-version"), fixHeader = !!hv && !MCP_KNOWN.includes(hv);
+  let body: string | null = null;
+  if (req.method === "POST") {
+    try {
+      const txt = await req.clone().text(), b = JSON.parse(txt);
+      if (b && !Array.isArray(b) && b.method === "initialize" && b.params && b.params.protocolVersion && !MCP_KNOWN.includes(b.params.protocolVersion)) {
+        b.params.protocolVersion = MCP_NEWEST; body = JSON.stringify(b);
+      }
+    } catch { /* not JSON: leave it to the transport */ }
+  }
+  if (!fixHeader && body === null) return req;
+  const h = new Headers(req.headers); if (fixHeader) h.set("mcp-protocol-version", MCP_NEWEST);
+  return new Request(req.url, { method: req.method, headers: h, body: body !== null ? body : (req.method === "GET" || req.method === "HEAD" ? undefined : await req.clone().arrayBuffer()) });
+}
+const httpHandler = async (req: Request) => httpHandler0(await negotiate(req));
+const agentHttpHandler = async (req: Request) => agentHttpHandler0(await negotiate(req));
+const voiceHttpHandler = async (req: Request) => voiceHttpHandler0(await negotiate(req));
 
 // ---- Reminders on the phone (Web Push) -----------------------------------------
 // Three small routes next to the MCP endpoint:
