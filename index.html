@@ -2333,7 +2333,7 @@
         <button class="side-link" data-section="memory" data-tip="Agent memory" type="button" style="--cs:var(--area-none-soft);--ci:var(--area-none-text)"><span class="nv-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 3.5l1.8 5.2 5.2 1.8-5.2 1.8L11 17.5l-1.8-5.2L4 10.5l5.2-1.8z"/><path d="M18.5 15.5v4.5M16.25 17.75h4.5"/></svg></span><span class="nv-l">Agent memory</span></button>
       </nav>
 
-      <div class="nv-pulse" id="nvPulse" role="button" tabindex="0" data-tip="Goals: open Strategy" title="Open the Strategy view">
+      <div class="nv-pulse" id="nvPulse" role="button" tabindex="0" data-tip="Goals: open Big picture" title="Open Big picture">
         <div class="nv-ph"><span>Goals</span><span id="nvAvg"></span></div>
         <div class="nv-bars" id="nvBars" role="img"></div>
         <div class="term-stats" id="termStats">
@@ -19390,7 +19390,7 @@
     if(u){ var id = u.getAttribute("data-wait-undo"); u.disabled = true; Promise.resolve(fxUndo(id)).then(function(){ renderInbox(); }); }
   });
   document.addEventListener("keydown", function(e){ if(e.key === "Escape" && waitDrawerOpen) closeWaitDrawer(); });
-  document.addEventListener("click", function(e){ var st = e.target && e.target.closest && e.target.closest("#termStats"); if(st){ showSection("command"); renderAll(); setTimeout(function(){ if(commandHandle && commandHandle.setView) commandHandle.setView("strategy"); }, 50); } });
+  document.addEventListener("click", function(e){ var st = e.target && e.target.closest && e.target.closest("#termStats"); if(st){ showSection("command"); renderAll(); setTimeout(function(){ if(commandHandle && commandHandle.setView) commandHandle.setView("areas"); }, 50); } });
   function renderInbox(){
     if(!waitDrawerOpen) return;
     var body = document.getElementById("inboxBody");
@@ -20472,12 +20472,12 @@
   /* Command Center (command/): one page for tasks, events, deadlines and time blocks. The module only
      draws; every save goes through the functions below, so the activity log and undo keep working.
      Bump COMMAND_VER with each release of command/*. */
-  var COMMAND_VER = "16", commandLoading = null, commandHandle = null, commandBoard = null, commandBoardLoad = null;
+  var COMMAND_VER = "17", commandLoading = null, commandHandle = null;
   // Hours that count as booked in the free-time bars. Change here if the work pattern changes.
   var COMMAND_WORK = { days:[1, 2, 3, 4, 5], start:"09:00", end:"18:00" };
   function commandLoadScripts(){
     if(commandLoading) return commandLoading;
-    commandLoading = ["../supabase/functions/_shared/freetime", "core", "view", "ring", "terrain", "board", "trees", "bigpicture", "command"].reduce(function(chain, f){
+    commandLoading = ["../supabase/functions/_shared/freetime", "core", "view", "ring", "terrain", "constellation", "bigpicture", "command"].reduce(function(chain, f){
       return chain.then(function(){
         return new Promise(function(resolve, reject){
           var el = document.createElement("script");
@@ -20492,7 +20492,6 @@
     commandLoading.catch(function(){ commandLoading = null; });
     return commandLoading;
   }
-  // Strategy board layout (moved cards, folded branches, hand-drawn connections): one row per owner.
   /* What actually happened, for the timeline: synced workouts (Hevy) and sleep (Garmin, or the owner's correction).
      Read-only: nothing here is ever written back as an action or event. Times are shown in Europe/Berlin. */
   var commandActual = null, commandActualAt = 0;
@@ -20568,16 +20567,6 @@
   function commandOpenWorkout(date){
     showSection("health"); renderAll();
     var tries = 0; (function go(){ if(window.PPHealth && window.PPHealth.state && window.PPHealth.state.M){ window.PPHealth.go("workouts", { day:date, histAll:true }); return; } if(++tries < 40) setTimeout(go, 150); })();
-  }
-  function commandBoardFetch(){
-    if(!commandBoardLoad) commandBoardLoad = sb.from("strategy_board").select("layout").maybeSingle().then(function(r){ commandBoard = (r && r.data && r.data.layout) || {}; }, function(){ commandBoard = {}; });
-    return commandBoardLoad;
-  }
-  async function commandBoardSave(layout){
-    commandBoard = layout;
-    if(!currentUser) return;
-    var res = await sb.from("strategy_board").upsert({ user_id:currentUser.id, layout:layout, updated_at:new Date().toISOString() }, { onConflict:"user_id" });
-    if(res.error) console.warn(res.error);
   }
   /* Reminders on this device (Web Push). The browser subscribes with the public key the connector hands
      out; the subscription and the settings live in push_* tables behind RLS. The server sends. */
@@ -20656,8 +20645,8 @@
     }));
     var today = todayStr(), main = fxMainAction(today);
     return {
-      items: items, today: today, mainId: main ? main.id : null, work: COMMAND_WORK, actual: commandActual || undefined, pulse: commandPulse(today), theme: currentTheme(), board: commandBoard || undefined, push: Object.assign({}, commandPush),
-      goals: state.goals.map(function(g){ return { id:g.id, title:g.title, area:g.category || "", area2:(g.secondaryCategories || [])[0] || "", due:g.ongoing ? null : (g.due || null), ongoing:!!g.ongoing, progress:Math.round(goalProgress(g)) || 0,
+      items: items, today: today, mainId: main ? main.id : null, work: COMMAND_WORK, actual: commandActual || undefined, pulse: commandPulse(today), theme: currentTheme(), push: Object.assign({}, commandPush),
+      goals: state.goals.map(function(g){ return { id:g.id, title:g.title, priority:g.priority || null, area:g.category || "", area2:(g.secondaryCategories || [])[0] || "", due:g.ongoing ? null : (g.due || null), ongoing:!!g.ongoing, progress:Math.round(goalProgress(g)) || 0,
         score:g.scoreMode === "tasks" ? (Math.round(goalProgress(g)) || 0) : g.score, scoreMode:g.scoreMode || "tasks", scoreHistory:(g.scoreHistory || []).slice(-28), netZero:g.scoreMode === "net_zero" && g.scoreBase ? { cleared:g.scoreBase.cleared, of:g.scoreBase.debt0, currency:g.scoreBase.currency || "EUR" } : null,
         open: state.actions.filter(function(a){ return !a.done && resolveGoalIdForAction(a) === g.id; }).length }; }),
       projects: state.projects.map(function(p){
@@ -20753,13 +20742,13 @@
   function renderCommand(){
     if(activeSection !== "command") return;
     var host = document.getElementById("commandSection");
-    Promise.all([commandLoadScripts(), commandBoardFetch(), commandActualFetch(), commandMoneyFetch().catch(function(){ return null; })]).then(function(){
+    Promise.all([commandLoadScripts(), commandActualFetch(), commandMoneyFetch().catch(function(){ return null; })]).then(function(){
       if(activeSection !== "command") return;
       var d = commandData();
       if(commandHandle){ commandHandle.update(d); return; }
       commandHandle = window.PPCommand.mount(host, Object.assign(d, {
         css: "command/command.css?v=" + COMMAND_VER, areas: CATEGORIES,
-        onCreate: commandCreate, onPatch: commandPatch, onArchive: commandArchive, onHistory: commandHistory, onBoardSave: commandBoardSave, onPush: commandPushAction, onPushSettings: commandPushSettings,
+        onCreate: commandCreate, onPatch: commandPatch, onArchive: commandArchive, onHistory: commandHistory, onPush: commandPushAction, onPushSettings: commandPushSettings,
         onSetMain: function(id){ return fxSetMain(id, todayStr()); },
         onUndo: function(logId){ return fxUndo(logId); },
         onOpenFull: function(id){ var hit = commandFind(id); if(hit && hit.table === "events") editEvent(id); else editAction(id); },

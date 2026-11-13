@@ -209,41 +209,6 @@
     return head + '<section class="card"><div class="wide"><div class="hz"><div></div><div class="months" style="--n:' + n + '">' + months.slice(0, n).map(function (d) { return "<span>" + fmt(d, { month: "short" }) + "</span>"; }).join("") + "</div>" + wide + '</div></div><div class="narrow hlist">' + narrow + "</div></section>";
   };
 
-  /* ---------- Strategy: goal trees (goal → projects → tasks), then what hangs loose ---------- */
-  V.strategy = function (S) {
-    if (S.smode === "trees" && V.strategyTrees) return V.strategyTrees(S);
-    if (S.smode !== "board") return V.strategyOutline(S);
-    return '<div class="head"><div><p class="eyebrow">Strategy</p><h1>How it all connects</h1><p class="sub" style="margin-top:6px">Every goal is a tree of its projects and tasks. Move things around, fold branches, and connect any two cards.</p></div><div class="nav"><button class="btn sm" data-smode="trees">Trees</button><button class="btn sm" data-act="smode">Outline view</button><button class="btn sm" data-act="btidy">Tidy up</button>' + (S.board.undo ? '<button class="btn sm" data-act="bundo">Undo</button>' : "") + '<button class="btn sm" data-act="newgoal">+ Goal</button><button class="btn sm" data-act="newproject">+ Project</button></div></div>' + window.PPCommandBoard.html(S);
-  };
-  V.strategyOutline = function (S) {
-    var items = S.items.filter(function (i) { return !i.archived && i.kind !== "event"; }), goals = S.goals || [], projects = S.projects || [], t = S.today;
-    var asOcc = function (i) { return { item: i, date: i.date || t, key: i.id + "@" + (i.date || ""), repeats: !!i.recurrence, done: i.recurrence ? false : !!i.done }; };
-    var whenOf = function (i) { return i.someday ? "someday" : i.date ? fmt(i.date, { day: "numeric", month: "short" }) : "no date"; };
-    var leaves = function (list) {
-      var open = list.filter(function (i) { return i.recurrence || !i.done; }).sort(function (a, b) { return String(a.date || "9999").localeCompare(String(b.date || "9999")); }), done = list.length - open.length;
-      return (open.length ? open.map(function (i) { return '<li class="leaf">' + row(S, asOcc(i), whenOf(i)) + "</li>"; }).join("") : "") + (done ? '<li class="leaf sub">' + done + (done === 1 ? " task" : " tasks") + " done</li>" : "") + (!list.length ? '<li class="leaf sub">No tasks yet</li>' : "");
-    };
-    var bar = function (p, area) { return '<span class="tbar" role="img" aria-label="' + p + ' percent done"><i style="width:' + p + "%;" + (AREAS.indexOf(area) >= 0 ? "background:var(--" + area + ")" : "") + '"></i></span><span class="prog">' + p + " %</span>"; };
-    var projNode = function (p, area) {
-      var mine = items.filter(function (i) { return i.projectId === p.id; }), open = mine.filter(function (i) { return i.recurrence || !i.done; }).length;
-      return '<li><details class="tn"' + (S.treeOpen && S.treeOpen["p" + p.id] ? " open" : "") + ' data-tree="p' + esc(p.id) + '"><summary><span class="tk">Project</span><span class="tt">' + esc(p.title) + (p.done ? ' <span class="tag">done</span>' : "") + "</span>" + bar(p.progress, area) + '<span class="sub tc">' + open + " open" + (p.due ? " · due " + fmt(p.due, { day: "numeric", month: "short" }) : "") + '</span></summary><ul class="tree">' + leaves(mine) + '<li class="leaf"><button class="link" data-project="' + esc(p.id) + '">Open the project</button></li></ul></details></li>';
-    };
-    var html = '<div class="head"><div><p class="eyebrow">Strategy</p><h1>How it all connects</h1><p class="sub" style="margin-top:6px">Each goal with its projects, and each project with its tasks. Tasks that belong to nothing are listed at the end.</p></div><div class="nav"><button class="btn sm" data-smode="trees">Trees</button><button class="btn sm" data-act="smode">Board view</button><button class="btn sm" data-act="treeall">' + (S.treeAll ? "Close all" : "Open all") + '</button><button class="btn sm" data-act="newgoal">+ Goal</button><button class="btn sm" data-act="newproject">+ Project</button></div></div>';
-    if (!goals.length && !projects.length && !items.length) return html + '<section class="card"><p class="none">No goals, projects or tasks yet.</p></section>';
-    html += '<section class="card"><ul class="tree root">';
-    goals.forEach(function (g) {
-      var ps = projects.filter(function (p) { return p.goalId === g.id; }), direct = items.filter(function (i) { return i.goalId === g.id && !i.projectId; }), open = items.filter(function (i) { return i.goalId === g.id && (i.recurrence || !i.done); }).length;
-      html += '<li><details class="tn goalnode"' + (!S.treeOpen || S.treeOpen["g" + g.id] !== false ? " open" : "") + ' data-tree="g' + esc(g.id) + '"><summary><span class="tk"' + cvar(g.area) + ">" + dot(g.area) + 'Goal</span><span class="tt big">' + esc(g.title) + "</span>" + bar(g.progress, g.area) + '<span class="sub tc">' + ps.length + (ps.length === 1 ? " project" : " projects") + " · " + open + " open" + (g.due ? " · due " + fmt(g.due, { day: "numeric", month: "short", year: "numeric" }) : g.ongoing ? " · ongoing" : "") + '</span></summary><ul class="tree">' +
-        ps.map(function (p) { return projNode(p, g.area); }).join("") + (direct.length ? '<li><details class="tn"' + (S.treeOpen && S.treeOpen["d" + g.id] ? " open" : "") + ' data-tree="d' + esc(g.id) + '"><summary><span class="tk">Tasks</span><span class="tt">Straight under this goal</span><span class="sub tc">' + direct.filter(function (i) { return i.recurrence || !i.done; }).length + ' open</span></summary><ul class="tree">' + leaves(direct) + "</ul></details></li>" : "") +
-        (!ps.length && !direct.length ? '<li class="leaf sub">Nothing hangs under this goal yet</li>' : "") + '<li class="leaf"><button class="link" data-goal="' + esc(g.id) + '">Open the goal</button></li></ul></details></li>';
-    });
-    var looseP = projects.filter(function (p) { return !goals.some(function (g) { return g.id === p.goalId; }); });
-    if (looseP.length) html += '<li><details class="tn goalnode" open data-tree="loosep"><summary><span class="tk">No goal</span><span class="tt big">Projects without a goal</span><span class="sub tc">' + looseP.length + '</span></summary><ul class="tree">' + looseP.map(function (p) { return projNode(p, ""); }).join("") + "</ul></details></li>";
-    var orphans = items.filter(function (i) { return !i.goalId && !i.projectId && (i.recurrence || !i.done); });
-    html += '<li><details class="tn goalnode"' + (S.treeOpen && S.treeOpen.orph ? " open" : "") + ' data-tree="orph"><summary><span class="tk">Loose</span><span class="tt big">Tasks that belong to no goal or project</span><span class="sub tc">' + orphans.length + ' open</span></summary><ul class="tree">' + (orphans.length ? orphans.sort(function (a, b) { return String(a.date || "9999").localeCompare(String(b.date || "9999")); }).map(function (i) { return '<li class="leaf">' + row(S, asOcc(i), whenOf(i)) + "</li>"; }).join("") : '<li class="leaf sub">Every open task belongs somewhere.</li>') + "</ul></details></li>";
-    return html + "</ul></section>";
-  };
-
   /* ---------- Backlog ---------- */
   V.backlog = function (S) {
     var open = S.items.filter(function (i) { return !i.date && !i.done && !i.archived && i.kind !== "event"; }), now = open.filter(function (i) { return !i.someday; }), later = open.filter(function (i) { return i.someday; });
@@ -265,7 +230,7 @@
   /* ---------- command palette: jump, find, or do ---------- */
   V.paletteResults = function (S, q) {
     q = String(q || "").trim(); var ql = q.toLowerCase(), out = [];
-    var VW = [["today", "Today", "t"], ["week", "Week", "w"], ["month", "Month", "m"], ["horizon", "Horizon", "h"], ["strategy", "Strategy", ""], ["backlog", "Backlog", ""]];
+    var VW = [["today", "Today", "t"], ["week", "Week", "w"], ["month", "Month", "m"], ["horizon", "Horizon", "h"], ["areas", "Big picture", ""], ["backlog", "Backlog", ""]];
     var mv = /^move (.+?) to (\d{1,2})[:.](\d{2})$/i.exec(q) || /^move (.+?) to (\d{1,2})()$/i.exec(q);
     if (mv) { var hit = S.items.filter(function (i) { return !i.archived && !i.done && (i.title || "").toLowerCase().indexOf(mv[1].toLowerCase()) >= 0; }).sort(function (a, b) { return (a.date === S.today ? 0 : 1) - (b.date === S.today ? 0 : 1); })[0], tm = C.pad(+mv[2]) + ":" + (mv[3] || "00");
       if (hit && +mv[2] < 24) out.push({ kind: "move", id: hit.id, time: tm, label: "Move “" + hit.title + "” to " + tm, hint: hit.date ? fmt(hit.date) : "today" }); }

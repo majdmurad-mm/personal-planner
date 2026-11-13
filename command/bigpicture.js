@@ -99,7 +99,7 @@
         (x.last ? "<div><dt>Updated</dt><dd>" + esc(fmtD(x.last)) + "</dd></div>" : "") + "</dl>";
       if (x.ps.length) h += '<p class="bp-lab">Projects</p><ul class="bp-ps">' + x.ps.map(function (p) { return '<li><button data-project="' + esc(p.id) + '">' + esc(p.title) + '</button><span class="bp-bar" style="--c:' + ink(x.k) + '" role="img" aria-label="' + (p.doneCount || 0) + " of " + (p.total || 0) + ' tasks done"><i style="width:' + (p.total ? Math.round(p.doneCount / p.total * 100) : 0) + '%"></i></span><small>' + (p.doneCount || 0) + "/" + (p.total || 0) + (p.due ? " · " + esc(fmtD(p.due)) : "") + "</small></li>"; }).join("") + "</ul>";
       if (x.next.length) h += '<p class="bp-lab">Next tasks</p><ul class="bp-ts">' + x.next.slice(0, 3).map(function (i) { var late = i.date && i.date < S.today; return '<li><button data-open="' + esc(i.id) + '" data-date="' + esc(i.date || S.today) + '">' + esc(i.title) + "</button><small" + (late ? ' class="bad"' : "") + ">" + (i.date ? (late ? "overdue · " : "") + esc(fmtD(i.date)) : "no date") + "</small></li>"; }).join("") + (x.next.length > 3 ? '<li class="more">and ' + (x.next.length - 3) + " more</li>" : "") + "</ul>";
-      h += '<p class="bp-acts"><button class="btn sm" data-goal="' + esc(g.id) + '">Open the goal</button><button class="btn sm ghost" data-view="strategy">See it in Strategy</button></p></div>';
+      h += '<p class="bp-acts"><button class="btn sm" data-goal="' + esc(g.id) + '">Open the goal</button><button class="btn sm ghost" data-cnfocus="' + esc(g.id) + '">Show in the map</button></p></div>';
     }
     return h + "</li>";
   }
@@ -116,7 +116,8 @@
   V.areas = function (S) {
     var M = V.bigModel(S), keys = M.areas.filter(function (a) { return !S.areaFilter || S.areaFilter === a.k; }).filter(function (a) { return a.gs.length || a.open || S.areaFilter; });
     var n = M.goals.length, seg = function (k) { return M.cnt[k] ? '<i class="' + k + '" style="flex:' + M.cnt[k] + '" title="' + M.cnt[k] + " " + ST[k][1].toLowerCase() + '"></i>' : ""; };
-    var h = '<div class="head"><div><p class="eyebrow">Big picture</p><h1>How your areas stand</h1><p class="sub" style="margin-top:6px">Every area and goal at a glance. Open a goal for what its score is made of and the next step.</p></div></div>';
+    var h = '<div class="head"><div><p class="eyebrow">Big picture</p><h1>How your areas stand</h1><p class="sub" style="margin-top:6px">Your life as connected dots, then every area and goal in numbers. Open a goal for what its score is made of and the next step.</p></div></div>';
+    h += V.cnHtml ? V.cnHtml(S) : "";   // the constellation first, the numbers below it
     h += '<div class="bp-top"><div class="bp-k main"><span class="l">Overall</span><b>' + (M.avg == null ? "–" : M.avg + "<small>%</small>") + "</b>" + dl(M.d) + spark(M.hist, 120, 30, "none") + '<span class="s">average of ' + plural(n - M.cnt.none, "rated goal") + "</span></div>" +
       '<div class="bp-k wide"><span class="l">Goals by status</span><div class="bp-mix" role="img" aria-label="' + M.cnt.ok + " on track, " + M.cnt.watch + " to watch, " + M.cnt.risk + " at risk, " + M.cnt.none + ' not rated">' + seg("ok") + seg("watch") + seg("risk") + seg("none") + '</div><div class="bp-leg">' + ["ok", "watch", "risk", "none"].map(function (k) { return '<span class="bp-st ' + k + '"><i aria-hidden="true">' + ST[k][0] + "</i><b>" + M.cnt[k] + "</b> " + ST[k][1].toLowerCase() + "</span>"; }).join("") + "</div></div>" +
       '<div class="bp-k"><span class="l">Overdue tasks</span><b class="' + (M.late ? "bad" : "") + '">' + M.late + '</b><span class="s">of ' + M.open + " open</span></div>" +
