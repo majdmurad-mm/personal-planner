@@ -986,7 +986,8 @@ tool("push_finance", {
           if (x.ibanLast4 && !row.iban_last4) patch.iban_last4 = x.ibanLast4.toUpperCase();
           const up = await db.from("fin_accounts").update(patch).eq("id", row.id).eq("user_id", OWNER); if (up.error) return fail(up.error.message);
         }
-        const err = await reading(row.id, as_of, x.balance, det); if (err) return fail(err.message + FIN2_HINT);
+        const owes = row.type === "loan" || row.type === "credit_card" || (row.type === "building_savings" && String((keep.phase || (row.details || {}).phase) || "") === "loan");
+        const err = await reading(row.id, as_of, owes ? Math.abs(x.balance) : x.balance, det); if (err) return fail(err.message + FIN2_HINT);
         out.push({ account: row.name, balance: x.balance, created });
       }
       await refreshGoalScores().catch(() => null);

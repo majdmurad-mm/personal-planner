@@ -41,11 +41,13 @@
       var hist = (byAcc[a.id] || []).slice().sort(function (x, y) { return day(x.as_of) < day(y.as_of) ? -1 : 1; });
       var last = hist[hist.length - 1] || null, prev = null; hist.forEach(function (h) { if (day(h.as_of) <= prevEnd) prev = h; });
       var det = Object.assign({}, a.details || {}, (last && last.details) || {}), debt = F.isDebt(a, det), share = num(a.my_share) == null ? 1 : +a.my_share;
-      var bal = last ? num(last.balance) : null, sign = debt ? -1 : 1, age = last ? diff(day(last.as_of), today) : null;
+      // a debt is what is owed, whichever sign the bank or an import used
+      var owed = function (v) { v = num(v); return v == null ? null : debt ? Math.abs(v) : v; };
+      var bal = last ? owed(last.balance) : null, sign = debt ? -1 : 1, age = last ? diff(day(last.as_of), today) : null;
       var o = { id: a.id, bank: a.bank || "other", key: a.key, name: a.name, type: a.type, typeName: F.TYPES[a.type] || a.type, last4: a.iban_last4 || null, currency: a.currency || "EUR", share: share, shared: share < 1 || a.type === "shared",
         debt: debt, balance: bal, asOf: last ? day(last.as_of) : null, ageDays: age, stale: age == null || age > F.STALE_DAYS, never: !last, details: det,
-        mine: bal == null ? null : r2(sign * bal * share), prevMine: prev && num(prev.balance) != null ? r2(sign * +prev.balance * share) : null, prevAsOf: prev ? day(prev.as_of) : null,
-        history: hist.map(function (h) { return { d: day(h.as_of), v: num(h.balance) }; }).filter(function (h) { return h.v != null; }) };
+        mine: bal == null ? null : r2(sign * bal * share), prevMine: prev && num(prev.balance) != null ? r2(sign * owed(prev.balance) * share) : null, prevAsOf: prev ? day(prev.as_of) : null,
+        history: hist.map(function (h) { return { d: day(h.as_of), v: owed(h.balance) }; }).filter(function (h) { return h.v != null; }) };
       if (debt && a.type !== "credit_card") {
         var p = F.payoff(bal, det.rate, det.monthlyPayment), orig = num(det.original) != null ? +det.original : (o.history.length > 1 ? Math.max.apply(null, o.history.map(function (h) { return h.v; })) : null);
         o.loan = { rate: num(det.rate), payment: num(det.monthlyPayment), monthsLeft: num(det.monthsLeft) != null ? +det.monthsLeft : p.months, futureInterest: num(det.futureInterest) != null ? +det.futureInterest : p.interest, original: orig, progress: orig && bal != null ? Math.max(0, Math.min(1, 1 - bal / orig)) : null };
