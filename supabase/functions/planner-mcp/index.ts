@@ -5864,7 +5864,7 @@ const SERVER_INSTRUCTIONS = [
   "In voice mode the answer is spoken: keep it short, lead with times and titles, never read out ids, JSON or long lists, and prefer one tool call over several.",
   "To add something said aloud, quick_add takes plain language (\"call the landlord Wed 10:00\").",
   "Archive, never delete. Health notes and notes about other people are private: summarise them, and only read details aloud when asked.",
-  "Bank data: the owner signs in to each bank in the browser and approves 2FA; you read balances and transactions and send them with push_finance (get_finance view freshness lists what to read and how). Read-only: never click anything that moves money, and never keep a full IBAN or card number.",
+  "For money from the banks, the owner signs in to each bank in the browser and approves 2FA; you read balances and transactions and send them with push_finance (get_finance view freshness lists what to read and how). Read-only: never click anything that moves money, and never keep a full IBAN or card number.",
 ].join(" ");
 async function withInstructions(res: Response, instructions = SERVER_INSTRUCTIONS): Promise<Response> {
   try {
