@@ -271,7 +271,7 @@
   };
   V.daySheet = function (S, d) {
     var occ = C.expand(S.items, d, d), cap = C.capacity(occ, d, S.work);
-    return '<button class="btn sm ghost x" data-act="close" aria-label="Close">✕</button><p class="lab">' + (d === S.today ? "Today" : C.diff(S.today, d) === 1 ? "Tomorrow" : "Day") + "</p><h2>" + fmt(d, { weekday: "long", day: "numeric", month: "long" }) + '</h2><p class="sub">' + hrs(cap.free) + " free" + (isWork(S, d) ? " · work " + S.work.start + " to " + S.work.end : "") + '</p><div style="margin-top:10px">' + (occ.length ? occ.map(function (o) { return row(S, o); }).join("") : '<p class="none">Nothing planned.</p>') + '</div><div class="acts"><button class="btn pri" data-addday="' + d + '">+ Add to this day</button></div>';
+    return '<button class="btn sm ghost x" data-act="close" aria-label="Close">✕</button><p class="lab">' + (d === S.today ? "Today" : C.diff(S.today, d) === 1 ? "Tomorrow" : "Day") + "</p><h2>" + fmt(d, { weekday: "long", day: "numeric", month: "long" }) + '</h2><p style="margin:2px 0 6px"><button class="link" data-openday="' + d + '">Open the day page →</button></p><p class="sub">' + hrs(cap.free) + " free" + (isWork(S, d) ? " · work " + S.work.start + " to " + S.work.end : "") + '</p><div style="margin-top:10px">' + (occ.length ? occ.map(function (o) { return row(S, o); }).join("") : '<p class="none">Nothing planned.</p>') + '</div><div class="acts"><button class="btn pri" data-addday="' + d + '">+ Add to this day</button></div>';
   };
   V.pick = function (S, it) {
     var t = S.today;

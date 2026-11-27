@@ -310,6 +310,7 @@
   #knowledgeSection{ margin:-32px -40px -70px; }
   /* Communication (communication/), same full-bleed host. */
   #commSection{ margin:-32px -40px -70px; }
+  #daySection{ margin:-32px -40px -70px; }
   /* Finance snapshot page (finance/), same full-bleed host. */
   #financeSection{ margin:-32px -40px -70px; }
   /* People, constellation and list views: one full-bleed host; the older header, filters and panels step aside. */
@@ -1677,6 +1678,7 @@
     #commandSection{ margin:-56px -18px -60px; --ppc-top:46px; }
     #knowledgeSection{ margin:-56px -18px -60px; --ppk-top:46px; }
     #commSection{ margin:-56px -18px -60px; --ppm-top:46px; }
+    #daySection{ margin:-56px -18px -60px; --ppd-top:46px; }
     #financeSection{ margin:-56px -18px -60px; --ppf-top:46px; }
     #peopleSection.ppl-sky{ margin:-56px -18px -60px; --pph-top:46px; }
     #peopleSection.ppl-fullscreen-graph{ margin:-56px -18px -60px; padding:12px 18px 12px; }
@@ -1703,6 +1705,7 @@
     #commandSection{ margin:-44px -24px -20px; --ppc-top:36px; }
     #knowledgeSection{ margin:-44px -24px -20px; --ppk-top:36px; }
     #commSection{ margin:-44px -24px -20px; --ppm-top:36px; }
+    #daySection{ margin:-44px -24px -20px; --ppd-top:36px; }
     #financeSection{ margin:-44px -24px -20px; --ppf-top:36px; }
     #peopleSection.ppl-sky{ margin:-44px -24px -20px; --pph-top:36px; }
     #peopleSection.ppl-fullscreen-graph{ margin:-44px -24px -20px; padding:10px 24px 10px; }
@@ -2321,6 +2324,7 @@
       <nav class="side-nav" id="sideNav" aria-label="Pages">
         <span class="nv-ink" id="nvInk" aria-hidden="true"></span>
         <button class="side-link" data-section="command" id="navCommand" data-tip="Command Center" type="button" style="--cs:var(--nv-ink);--ci:var(--nv-bg)"><span class="nv-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="m15.5 8.5-2 5-5 2 2-5z"/></svg></span><span class="nv-l">Command Center</span><span class="nv-meta" id="nvCmdMeta"></span></button>
+        <button class="side-link" data-section="day" data-tip="Day" type="button" style="--cs:var(--area-none-soft);--ci:var(--area-none-text)"><span class="nv-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M3.5 9.5h17M8 3v4M16 3v4"/><circle cx="12" cy="14.5" r="1.6" fill="currentColor" stroke="none"/></svg></span><span class="nv-l">Day</span></button>
         <div class="nv-group">Life</div>
         <button class="side-link" data-section="health" data-tip="Health" type="button" style="--cs:var(--area-health-soft);--ci:var(--area-health-text)"><span class="nv-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7a4.3 4.3 0 0 1 7.5 2.8C19.5 15.4 12 20 12 20z"/><path d="M7.5 12h2.2l1.3-2.2 2 4 1.2-1.8h2.3"/></svg></span><span class="nv-l">Health</span></button>
         <button class="side-link" data-section="finance" data-tip="Finance" type="button" style="--cs:var(--area-task-soft);--ci:var(--area-task-text)"><span class="nv-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="10" cy="7.5" rx="5.5" ry="2.5"/><path d="M4.5 7.5v4c0 1.4 2.5 2.5 5.5 2.5s5.5-1.1 5.5-2.5v-4"/><path d="M8.5 16.4c.5 1.2 2.8 2.1 5.5 2.1 3 0 5.5-1.1 5.5-2.5v-4c0-1.2-1.7-2.1-4-2.4"/></svg></span><span class="nv-l">Finance</span></button>
@@ -3166,6 +3170,7 @@
     <!-- Knowledge: files and saved items as a graph (knowledge/, shadow root; see renderKnowledge). -->
     <section id="knowledgeSection" style="display:none;"></section>
     <section id="commSection" style="display:none;"></section>
+    <section id="daySection" style="display:none;"></section>
     <!-- Finance: the snapshot dashboard (finance/finance.js, shadow root; see renderFinancePage). The older
          accounts and transactions view stays inside the Finance area page. -->
     <section id="financeSection" style="display:none;"></section>
@@ -4539,6 +4544,7 @@
     if(activeSection === "command") renderCommand();
     if(activeSection === "knowledge") renderKnowledge();
     if(activeSection === "comm") renderComm();
+    if(activeSection === "day" && dayHandle) dayHandle.update({ theme:next });
   });
 
   // Sidebar hide/show. The data-sidebar-collapsed attribute (if saved) is already applied pre-paint
@@ -5463,6 +5469,13 @@
   var activeSection = UI_FLAGS.classicHome ? "home" : UI_FLAGS.commandCenter ? "command" : "focus";
   // #section addresses (old bookmarks included): open that page, or the one that replaced it, once signed in
   var bootHash = (location.hash || "").replace(/^#\/?/, "").split(/[?&]/)[0];
+  var dayWant = null;   // { date, tab } asked for by the address or by a link
+  function dayParseHash(h){ var m = /^day(?:\/(\d{4}-\d{2}-\d{2}|trends|today))?$/.exec(String(h || "").replace(/^#\/?/, "").split(/[?&]/)[0]); return m ? { date:/^\d{4}/.test(m[1] || "") ? m[1] : null, tab:m[1] === "trends" ? "trends" : "day" } : null; }
+  if(dayParseHash(bootHash)){ dayWant = dayParseHash(bootHash); bootHash = "day"; }
+  window.addEventListener("hashchange", function(){ var w = dayParseHash(location.hash); if(!w || !currentUser) return; dayWant = w; if(activeSection !== "day"){ showSection("day"); } else renderDay(); });
+  // Open one date's Day page from anywhere in the planner.
+  function openDay(date){ dayWant = { date:date || null, tab:"day" }; showSection("day"); renderAll(); }
+  window.openDay = openDay;
   var activePlannerTab = "areas";
   // "open" is the default everywhere; the last choice per list is remembered in this browser.
   var FILTERS_KEY = "pp_filters_v1";
@@ -5488,7 +5501,7 @@
     });
   }
 
-  var ALL_SECTION_IDS = ["focusSection","homeSection","todaySection","plannerSection","trackerSection","timelineSection","journalSection","peopleSection","locationSection","futureSection","goalDetailSection","areaDetailSection","entityPageSection","inboxSection","memorySection","healthSection","selfSection","financeSection","commandSection","knowledgeSection","commSection"].filter(function(id){ return id !== "inboxSection"; });
+  var ALL_SECTION_IDS = ["focusSection","homeSection","todaySection","plannerSection","trackerSection","timelineSection","journalSection","peopleSection","locationSection","futureSection","goalDetailSection","areaDetailSection","entityPageSection","inboxSection","memorySection","healthSection","selfSection","financeSection","commandSection","knowledgeSection","commSection","daySection"].filter(function(id){ return id !== "inboxSection"; });
   // Sidebar dropdown groups — a parent nav item with no page of its own, bundling a set of section
   // names under one submenu. See showSection() (active/auto-open) and the sideNav click handler
   // (data-toggle-submenu, open/close).
@@ -5503,6 +5516,7 @@
       if(was === "tracker") setTimeout(function(){ var n = 0; (function go(){ if(window.PPHealth && window.PPHealth.state && window.PPHealth.state.M){ window.PPHealth.go("dailylog"); return; } if(++n < 40) setTimeout(go, 150); })(); }, 0);
     }
     activeSection = name;
+    if(name !== "day" && /^#\/?day(\/|$)/.test(location.hash)) history.replaceState(null, "", location.pathname + location.search);
     document.querySelectorAll(".side-link").forEach(function(l){ l.classList.toggle("active", l.dataset.section === name); });
     ALL_SECTION_IDS.forEach(function(id){
       document.getElementById(id).style.display = (id === name + "Section") ? "" : "none";
@@ -20196,6 +20210,7 @@
     command: [renderCommand],
     knowledge: [renderKnowledge],
     comm: [renderComm],
+    day: [renderDay],
     timeline: [renderTimeline],
     journal: [renderJournal],
     people: [renderPeople],
@@ -20755,6 +20770,7 @@
         onOpenWorkout: commandOpenWorkout, onSetWorkoutTime: commandSetWorkoutTime, onOpenWaiting: function(){ openWaitDrawer(inboxPending().length ? "proposals" : inboxUnread().length ? "reports" : "history"); },
         onGo: function(where){ var map = { health:"health", people:"people", finance:"finance", knowledge:"knowledge", work:null }; if(map[where]){ showSection(map[where]); renderAll(); } else if(commandHandle) commandHandle.setView("week"); },
         onOpenGoal: function(id){ openGoalDetailPage(id); },
+        onOpenDay: function(date){ openDay(date); },
         onOpenProject: function(id){ editProject(id); },
         onNewGoal: function(){ openGoalModal(null); },
         onNewProject: function(){ openProjectModal(null, null); }
@@ -21290,6 +21306,61 @@
       commPoll();
     }).catch(function(err){
       if(!host.shadowRoot) host.innerHTML = '<div class="empty-note" style="padding:60px 24px;">The Communication page couldn’t load. Check your connection and open it again.</div>';
+      console.warn(err);
+    });
+  }
+  /* ---------------- Day page: one date, everything about it (day/, read-only) ----------------
+     The page and the connector share supabase/functions/_shared/day.js, which builds a day from the rows.
+     Nothing is stored: dayLoad reads the live tables for the range asked for. Bump DAY_VER on every change. */
+  var DAY_VER = "1", dayLoading = null, dayHandle = null, dayLog = null;
+  function dayLoadScripts(){
+    if(window.PPDayPage && window.PPDay && window.PPCommandCore) return Promise.resolve();
+    if(dayLoading) return dayLoading;
+    var one = function(src){ return new Promise(function(resolve, reject){ var el = document.createElement("script"); el.src = src; el.onload = resolve; el.onerror = function(){ reject(new Error(src)); }; document.head.appendChild(el); }); };
+    dayLoading = (window.PPCommandCore ? Promise.resolve() : one("command/core.js?v=" + COMMAND_VER)).then(function(){ return one("supabase/functions/_shared/day.js?v=" + DAY_VER); }).then(function(){ return one("day/day.js?v=" + DAY_VER); });
+    dayLoading.catch(function(){ dayLoading = null; });
+    return dayLoading;
+  }
+  // The raw rows for a range of dates. A table that does not exist yet simply contributes nothing.
+  async function dayLoad(from, to){
+    var rows = function(q){ return q.then(function(r){ return r.error ? [] : (r.data || []); }, function(){ return []; }); };
+    var live = function(t, cols){ return sb.from(t).select(cols).gte("date", from).lte("date", to); };
+    if(!dayLog) dayLog = rows(sb.from("activity_log").select("table_name,row_id,op,before,after,created_at,undone_at").in("table_name", ["actions", "people"]).eq("op", "update").order("created_at", { ascending:false }).limit(5000));
+    var got = await Promise.all([
+      rows(live("health_daily", "date,sleep_score,sleep_minutes,bed_time,wake_time,resting_hr,stress_avg,body_battery_high,steps").is("archived_at", null)),
+      rows(live("workouts", "id,date,started_at,duration_minutes,routine,title,volume_kg").is("archived_at", null)),
+      rows(live("activities", "date,type,name,duration_minutes,distance_m,avg_hr").is("archived_at", null)),
+      rows(live("health_checkins", "*").is("archived_at", null)),
+      rows(live("tracker_entries", "date,value,variable_id")), rows(sb.from("tracker_variables").select("id,name")),
+      rows(live("finance_transactions", "date,description,amount,area")), dayLog
+    ]);
+    var ids = got[1].map(function(w){ return w.id; });
+    var sets = ids.length ? await rows(sb.from("workout_sets").select("workout_id,exercise_index,set_index,exercise,set_type,weight_kg,reps,distance_m,duration_seconds,superseded_at").in("workout_id", ids).order("exercise_index").order("set_index").limit(5000)) : [];
+    var names = {}; got[5].forEach(function(v){ names[v.id] = v.name; });
+    var d = commandData(), C = window.PPCommandCore;
+    return {
+      health:got[0], workouts:got[1], sets:sets, activities:got[2], checkins:got[3],
+      tracker:got[4].map(function(e){ return { date:e.date, value:e.value, name:names[e.variable_id] || "Item" }; }),
+      transactions:got[6], log:got[7],
+      occ:C.expand(d.items, from, to).map(function(o){ var i = o.item; return { date:o.date, id:i.id, title:i.title, kind:i.kind, area:i.area, time:i.allDay ? null : i.time, dur:i.dur, done:!!o.done, repeats:!!i.recurrence }; }),
+      actions:state.actions.map(function(a){ return { id:a.id, title:a.title, date:a.date || null, done:!!a.done, recurring:!!a.recurrence, doneDates:a.recurrenceDone || [], area:actionCategory(a) || "" }; }),
+      notes:state.journal.map(function(n){ return { id:n.id, date:n.date, title:n.title || "", text:n.text || "", sentiment:n.sentiment || [] }; })
+    };
+  }
+  function renderDay(){
+    if(activeSection !== "day") return;
+    var host = document.getElementById("daySection"), want = dayWant || {}; dayWant = null;
+    dayLoadScripts().then(function(){
+      if(activeSection !== "day") return;
+      if(dayHandle){ dayLog = null; if(want.date || want.tab) dayHandle.show(want.date, want.tab); else dayHandle.update({ theme:currentTheme(), today:todayStr(), refresh:true }); return; }
+      dayHandle = window.PPDayPage.mount(host, {
+        css:"day/day.css?v=" + DAY_VER, theme:currentTheme(), today:todayStr(), date:want.date || todayStr(), tab:want.tab || "day", load:dayLoad,
+        onChange:function(date, tab){ var h = "#day/" + (tab === "trends" ? "trends" : date); if(location.hash !== h) history.replaceState(null, "", location.pathname + location.search + h); },
+        onOpenNote:function(id){ showSection("self"); renderAll(); var n = 0; (function go(){ if(selfHandle){ selfHandle.update({ select:id }); return; } if(++n < 40) setTimeout(go, 150); })(); }
+      });
+      var h0 = "#day/" + (want.tab === "trends" ? "trends" : (want.date || todayStr())); if(location.hash !== h0) history.replaceState(null, "", location.pathname + location.search + h0);
+    }).catch(function(err){
+      if(!host.shadowRoot) host.innerHTML = '<div class="empty-note" style="padding:60px 24px;">The Day page couldn’t load. Check your connection and open it again.</div>';
       console.warn(err);
     });
   }

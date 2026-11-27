@@ -130,6 +130,7 @@
       else if (d.done) guard(toggleDone(d.done));
       else if (d.tri) guard(tri(d.tri, d.key));
       else if (d.open) open({ type: "item", id: d.open, date: d.date || null });
+      else if (d.openday) { close(); call("onOpenDay", d.openday); }
       else if (d.day) open({ type: "day", date: d.day });
       else if (d.addday) { S.qa = { text: "", kind: null, msg: "", date: d.addday }; open({ type: "quick" }); }
       else if (d.main) { S.pickerOpen = false; guard(call("onSetMain", d.main)); }
