@@ -31,6 +31,7 @@ import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import "../_shared/freetime.js"; // sets globalThis.PPFree: the same free-time function the page uses
+import "../_shared/day.js"; // sets globalThis.PPDay: one day built from the planner's tables (the Day page uses the same code)
 import { openPdf, scanPages, imageFileMime, isPdf, b64, MAX_IMAGE_BYTES } from "../_shared/scanpages.ts"; // scanned pages as pictures
 
 // ---- Secrets / environment -------------------------------------------------
@@ -2679,6 +2680,70 @@ tool("get_person_context", {
   },
 });
 
+// ---- The day as one data point (the Day page's data, for Claude) ----
+// Computed from the live tables every time by PPDay (supabase/functions/_shared/day.js); nothing is stored.
+// Read-only. Day boundaries are Europe/Berlin; sleep belongs to the morning you wake.
+// deno-lint-ignore no-explicit-any
+const PPDay = (globalThis as any).PPDay;
+async function dayRaw(from: string, to: string) {
+  // deno-lint-ignore no-explicit-any
+  const rows = async (q: any) => { try { const r = await q; return r.error ? [] : (r.data || []); } catch { return []; } };
+  const span = (t: string) => owned(t).gte("date", from).lte("date", to);
+  const [L, health, workouts, activities, checkins, entries, vars, tx, log, notes] = await Promise.all([
+    ccLoad(), rows(span("health_daily").is("archived_at", null)), rows(span("workouts").is("archived_at", null)), rows(span("activities").is("archived_at", null)),
+    rows(span("health_checkins").is("archived_at", null)), rows(span("tracker_entries")), rows(owned("tracker_variables")), rows(span("finance_transactions")),
+    rows(db.from("activity_log").select("table_name,row_id,op,before,after,created_at,undone_at").eq("user_id", OWNER).in("table_name", ["actions", "people"]).eq("op", "update").order("created_at", { ascending: false }).limit(5000)),
+    rows(span("journal").is("archived_at", null)),
+  ]);
+  // deno-lint-ignore no-explicit-any
+  const ids = workouts.map((w: any) => w.id);
+  const sets = ids.length ? await rows(db.from("workout_sets").select("workout_id,exercise_index,set_index,exercise,set_type,weight_kg,reps,distance_m,duration_seconds,superseded_at").eq("user_id", OWNER).in("workout_id", ids).order("exercise_index").order("set_index").limit(5000)) : [];
+  const names: Record<string, string> = {}; for (const v of vars) names[v.id] = v.name;
+  return {
+    health, workouts, sets, activities, checkins, transactions: tx, log,
+    // deno-lint-ignore no-explicit-any
+    tracker: entries.map((e: any) => ({ date: e.date, value: e.value, name: names[e.variable_id] || "Item" })),
+    // deno-lint-ignore no-explicit-any
+    occ: ccOccurrences(L.actions, L.events, from, to).map((o: any) => ({ date: o.date, id: o.id, title: o.title, kind: o.kind, area: o.area || "", time: o.allDay ? null : o.timeOfDay, dur: o.durationMinutes, done: !!o.done, repeats: !!o.recurrence })),
+    // deno-lint-ignore no-explicit-any
+    actions: L.actions.map((a: any) => ({ id: a.id, title: a.title, date: a.date || null, done: !!a.done, recurring: !!a.recurrence, doneDates: a.recurrence_done || [], area: a.category || "" })),
+    // deno-lint-ignore no-explicit-any
+    notes: notes.map((n: any) => ({ id: n.id, date: n.date, title: n.title || "", text: n.text || "", sentiment: n.sentiment || [] })),
+  };
+}
+const DAY_METRICS = ["sleepScore", "mood", "stressAvg", "steps", "restingHr", "workoutVolume", "tasksDone", "spending"] as const;
+tool("get_day", {
+  description: "Everything about one day, in short form: a summary (sleep score, mood, stress, workout yes/no, tasks done, spending), then health, workouts with top sets, tasks done and due-not-done, events, notes (title and first lines), the check-in with the worked-out mood, money and people contacted. Sections with no data are left out; a missing value is null, never 0. Read-only. Mood is computed from note sentiment, your own check-ins from conversation, the owner's check-in, sleep and stress. Use it for 'how was my Tuesday' or before a daily review.",
+  inputSchema: z.object({ date: z.string().regex(CC_DAY, "use YYYY-MM-DD").optional().describe("defaults to today (Berlin)") }),
+  handler: async (a: { date?: string }) => { const d = a.date || berlinToday(); return ok(PPDay.brief(PPDay.build(d, await dayRaw(d, d)))); },
+});
+tool("get_days", {
+  description: "The same day data for a range of dates (at most 92 days), for trends and weekly reviews. Without metrics it returns each day's summary line (sleep score, mood, stress, workout, tasks done, spending); with metrics it returns one series per metric as [date, value] pairs plus the average, with null where a day has no data. Pass full: true (ranges up to 14 days) for every day in the get_day form.",
+  inputSchema: z.object({
+    from: z.string().regex(CC_DAY, "use YYYY-MM-DD"), to: z.string().regex(CC_DAY, "use YYYY-MM-DD"),
+    metrics: z.array(z.enum(DAY_METRICS)).max(8).optional(), full: z.boolean().optional(),
+  }),
+  handler: async (a: { from: string; to: string; metrics?: string[]; full?: boolean }) => {
+    if (a.to < a.from) return fail("to is before from");
+    const dates: string[] = PPDay.range(a.from, a.to);
+    if (dates.length > 92) return fail("at most 92 days at a time");
+    if (a.full && dates.length > 14) return fail("full: true works for up to 14 days; leave it out for summaries");
+    const raw = await dayRaw(a.from, a.to), days = dates.map((d) => PPDay.build(d, raw));
+    if (a.full) return ok({ from: a.from, to: a.to, days: days.map(PPDay.brief) });
+    if (a.metrics && a.metrics.length) {
+      const series: Record<string, unknown> = {};
+      for (const m of a.metrics) {
+        // deno-lint-ignore no-explicit-any
+        const pts = days.map((d: any) => [d.date, PPDay.metric(d, m)]), have = pts.filter((p: any) => p[1] != null).map((p: any) => p[1] as number);
+        series[m] = { label: PPDay.METRICS[m], average: have.length ? Math.round(have.reduce((x: number, y: number) => x + y, 0) / have.length * 10) / 10 : null, daysWithData: have.length, points: pts };
+      }
+      return ok({ from: a.from, to: a.to, days: dates.length, series });
+    }
+    // deno-lint-ignore no-explicit-any
+    return ok({ from: a.from, to: a.to, days: days.map((d: any) => ({ date: d.date, weekday: d.weekday, ...d.summary })) });
+  },
+});
+
 tool("log_metric", {
   description: "Record a self-tracking value for a date (mood, weight, etc.). The variable must already exist — call get_tracker to see available variables and their ids. Upserts, so re-logging the same day overwrites.",
   inputSchema: z.object({
@@ -3419,11 +3484,13 @@ tool("get_exercise_progress", {
 });
 tool("log_checkin", {
   description: "Record how the body feels today: energy 1 (very low) to 5 (great), a short note in the user's words, and any pains. One check-in per day per author; sending again the same day updates it. Pains also mark the region on the body figure (as a 'watch' flag, unless one is already open). Returns the check-in.",
-  inputSchema: z.object({ energy: z.number().int().min(1).max(5), note: z.string().max(400).optional(), pains: z.array(PAIN).max(8).optional(), date: DAY.optional().describe("defaults to today (Berlin)"), source: z.enum(["claude", "me"]).optional().describe("who wrote it; default claude") }),
+  inputSchema: z.object({ energy: z.number().int().min(1).max(5), mood: z.number().int().min(1).max(5).optional().describe("how the owner sounded in this conversation: 1 very low, 3 even, 5 bright. Feeds the day's worked-out mood. Set it whenever they tell you how they feel or their tone is clear; leave it out when unsure."), note: z.string().max(400).optional(), pains: z.array(PAIN).max(8).optional(), date: DAY.optional().describe("defaults to today (Berlin)"), source: z.enum(["claude", "me"]).optional().describe("who wrote it; default claude") }),
   handler: async (a: any) => {
     const date = a.date || berlinToday(), source = a.source || "claude";
     const pains = (a.pains || []).map((p: any) => ({ region: String(p.region).trim().toLowerCase().replace(/[\s-]+/g, "_"), level: p.level || 1, note: p.note || "" }));
-    const r = await healthUpsert("health_checkins", { date, source }, { energy: a.energy, note: a.note ?? null, pains });
+    let r = await healthUpsert("health_checkins", { date, source }, { energy: a.energy, note: a.note ?? null, pains, mood: a.mood });
+    // the mood column arrives with _Memory/migration_checkin_mood.sql; until then the check-in is saved without it
+    if (r.error && a.mood !== undefined && /mood/.test(r.error)) r = await healthUpsert("health_checkins", { date, source }, { energy: a.energy, note: a.note ?? null, pains });
     if (r.error) return fail(r.error);
     for (const p of pains) {
       const cur = await owned("health_flags").eq("region", p.region).maybeSingle();
@@ -5345,6 +5412,9 @@ vtool("health", "One line on readiness: energy, sleep, last workout and any pain
   // deno-lint-ignore no-explicit-any
   const p = (flags.data || []).filter((f: any) => f.state !== "cleared"); if (p.length) out.push("Watching: " + vAnd(p.slice(0, 3).map((f: any) => String(f.region).replace(/_/g, " ") + " (" + f.state + ")")) + ".");
   return out.join(" ");
+});
+vtool("day", "How one day went, in a sentence: sleep score, mood, stress, workout, tasks done, spending and the first note. Give a date as YYYY-MM-DD, or leave it out for today.", z.object({ date: z.string().regex(CC_DAY, "use YYYY-MM-DD").optional() }), async (a) => {
+  const d = a.date || berlinToday(); return PPDay.say(PPDay.build(d, await dayRaw(d, d)));
 });
 vtool("checkin", "Log how you feel today: energy and mood from 1 to 5, and an optional note.", z.object({ energy: z.number().int().min(1).max(5), mood: z.number().int().min(1).max(5), note: z.string().max(300).optional() }), async (a) => {
   const res = vOut(await ALL_DEFS.log_checkin.handler({ energy: a.energy, note: ("Mood " + a.mood + "/5" + (a.note ? ". " + a.note.trim() : "")).slice(0, 400), source: "claude" }));

@@ -2,7 +2,7 @@
 
 The owner connector (`/mcp`) used to list 146 tools. Claude voice calls stopped loading it, probably because voice mode
 skips large connectors. Tools that share a pattern are now **merged into one tool with a `kind`, `action`, `mode` or `view`**,
-and a separate **voice edition** (`/mcp-voice`) serves 12 small tools.
+and a separate **voice edition** (`/mcp-voice`) serves 13 small tools.
 
 Nothing was dropped. Each merged route checks the arguments against the old tool's own schema and then runs the old tool's code,
 so results, permissions, privacy (items kept from Claude stay hidden), archive-never-delete and activity-log entries are unchanged.
@@ -11,8 +11,8 @@ A field that belongs to another kind is refused with a message naming the allowe
 | | Tools | tools/list size |
 |---|---|---|
 | Owner connector before | 146 | 130,939 bytes (≈ 36.4k tokens) |
-| Owner connector now | **93** | 111,915 bytes (≈ 31.1k tokens) |
-| Voice edition (`/mcp-voice`) | **12** | 3,709 bytes (≈ 1k tokens) |
+| Owner connector now | **95** | about 114,900 bytes (≈ 32k tokens) |
+| Voice edition (`/mcp-voice`) | **13** | about 4,000 bytes (≈ 1.1k tokens) |
 | Agent connector (agent token, unchanged) | 28 | 25,195 bytes |
 
 The size falls less than the count because every field the old tools took is still there. Most of the remaining weight sits in
@@ -197,3 +197,16 @@ with the reason. Each read and save appears in the spider's steps on the Knowled
 with at least one source link, as a Research note on their People page. The owner's own view of a person (kind `opinion`)
 is a separate list written only in the app; no connector tool reads or writes it, and `get_person_context` returns
 research but never the owner's view. Both kinds live in `person_profile_notes` behind RLS and are hidden, never deleted.
+
+## The day as one data point (get_day, get_days)
+
+`get_day(date)` returns one day in short form: a summary (sleep score, mood, stress, workout yes/no, tasks done, spending), then health,
+workouts with top sets, tasks done and due-not-done, events, notes (title and first lines), the check-in, money and people contacted.
+`get_days(from, to, metrics?)` returns the same for up to 92 days: summary lines, or one series per metric, or (up to 14 days, `full: true`)
+every day in full. Both are read-only and computed fresh from the live tables by `supabase/functions/_shared/day.js`, the same code the Day
+page uses; nothing is stored. Sections without data are left out and a missing value is null, never 0. Days are Europe/Berlin; sleep belongs
+to the morning you wake. Tasks count as done on the day they were ticked when the change log has it (since 10 Nov 2026), else on their due date.
+
+**Mood** is never typed in. It is worked out per day from the feelings tagged in notes, Claude's own check-in from a conversation
+(`log_checkin` now takes an optional `mood` 1–5 for how the owner sounded), the owner's energy check-in, the sleep score and average stress.
+The voice edition has `day`: one spoken sentence for a date.
