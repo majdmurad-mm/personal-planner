@@ -108,13 +108,17 @@
     var spent = tx.filter(function (t) { return t.amount != null && t.amount < 0; });
     var money = tx.length ? { spent: spent.length ? Math.round(-spent.reduce(function (s, t) { return s + t.amount; }, 0) * 100) / 100 : 0, transactions: tx } : null;
     var people = (raw._contacts || (raw._contacts = D.contacts(raw.log))).filter(function (c) { return c.date === date; }).map(function (c) { return { name: c.name, kind: c.kind }; });
+    // conversations with Claude: summaries saved for this date, newest first (their own table, never Notes)
+    var conv = on(raw.summaries).filter(function (c) { return !c.archived_at; }).sort(function (a, b) { return String(b.created_at || "").localeCompare(String(a.created_at || "")); }).map(function (c) {
+      return { id: c.id, bullets: (Array.isArray(c.summary) ? c.summary : String(c.summary || "").split(/\n+/)).map(function (x) { return String(x).replace(/^[\s•*-]+/, "").trim(); }).filter(Boolean), topics: c.topics || [], source: c.source === "voice" ? "voice" : "chat", time: c.created_at ? new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(c.created_at)) : null };
+    });
     var vol = workouts.map(function (w) { return w.volumeKg; }).filter(function (v) { return v != null; });
     return {
       date: date, weekday: new Date(date + "T12:00:00Z").toLocaleDateString("en-GB", { weekday: "long", timeZone: "UTC" }),
       summary: { sleepScore: health ? health.sleepScore : null, stressAvg: health ? health.stressAvg : null, mood: mood ? mood.score : null, workout: workouts.length + activities.length > 0, tasksDone: done.length, spending: money ? money.spent : null },
       health: health, sport: workouts.length || activities.length ? { workouts: workouts, activities: activities, volumeKg: vol.length ? vol.reduce(function (s, v) { return s + v; }, 0) : null } : null,
       tasks: done.length || dueNot.length ? { done: done, dueNotDone: dueNot } : null,
-      events: events.length ? events : null, notes: notes.length ? notes : null, checkin: checkin, money: money, people: people.length ? people : null
+      events: events.length ? events : null, notes: notes.length ? notes : null, checkin: checkin, money: money, people: people.length ? people : null, conversations: conv.length ? conv : null
     };
   };
   /* one number per day for trends; null where there is no data */
@@ -136,6 +140,7 @@
     if (day.checkin) o.checkin = { energy: day.checkin.energy, note: day.checkin.note, dailyLog: day.checkin.dailyLog, mood: day.checkin.mood ? { score: day.checkin.mood.score, label: day.checkin.mood.label, basis: day.checkin.mood.basis } : null };
     if (day.money) o.money = { spent: day.money.spent, transactions: day.money.transactions.map(function (t) { return t.description + " " + t.amount; }) };
     if (day.people) o.people = day.people.map(function (p) { return p.name + " (" + p.kind + ")"; });
+    if (day.conversations) o.conversations = day.conversations.map(function (c) { return { source: c.source, time: c.time, topics: c.topics, summary: c.bullets }; });
     return o;
   };
   /* one or two spoken sentences */

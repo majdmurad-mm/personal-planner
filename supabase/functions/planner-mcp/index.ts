@@ -2689,18 +2689,19 @@ async function dayRaw(from: string, to: string) {
   // deno-lint-ignore no-explicit-any
   const rows = async (q: any) => { try { const r = await q; return r.error ? [] : (r.data || []); } catch { return []; } };
   const span = (t: string) => owned(t).gte("date", from).lte("date", to);
-  const [L, health, workouts, activities, checkins, entries, vars, tx, log, notes] = await Promise.all([
+  const [L, health, workouts, activities, checkins, entries, vars, tx, log, notes, summaries] = await Promise.all([
     ccLoad(), rows(span("health_daily").is("archived_at", null)), rows(span("workouts").is("archived_at", null)), rows(span("activities").is("archived_at", null)),
     rows(span("health_checkins").is("archived_at", null)), rows(span("tracker_entries")), rows(owned("tracker_variables")), rows(span("finance_transactions")),
     rows(db.from("activity_log").select("table_name,row_id,op,before,after,created_at,undone_at").eq("user_id", OWNER).in("table_name", ["actions", "people"]).eq("op", "update").order("created_at", { ascending: false }).limit(5000)),
     rows(span("journal").is("archived_at", null)),
+    rows(span("day_summaries").is("archived_at", null)),
   ]);
   // deno-lint-ignore no-explicit-any
   const ids = workouts.map((w: any) => w.id);
   const sets = ids.length ? await rows(db.from("workout_sets").select("workout_id,exercise_index,set_index,exercise,set_type,weight_kg,reps,distance_m,duration_seconds,superseded_at").eq("user_id", OWNER).in("workout_id", ids).order("exercise_index").order("set_index").limit(5000)) : [];
   const names: Record<string, string> = {}; for (const v of vars) names[v.id] = v.name;
   return {
-    health, workouts, sets, activities, checkins, transactions: tx, log,
+    health, workouts, sets, activities, checkins, transactions: tx, log, summaries,
     // deno-lint-ignore no-explicit-any
     tracker: entries.map((e: any) => ({ date: e.date, value: e.value, name: names[e.variable_id] || "Item" })),
     // deno-lint-ignore no-explicit-any
@@ -2711,6 +2712,26 @@ async function dayRaw(from: string, to: string) {
     notes: notes.map((n: any) => ({ id: n.id, date: n.date, title: n.title || "", text: n.text || "", sentiment: n.sentiment || [] })),
   };
 }
+// A conversation summary for a date: shown on that Day page under "Conversations with Claude".
+// Its own table (day_summaries), never Notes/journal. Several per day are fine; the owner can archive one.
+async function saveDaySummary(a: { date?: string; summary: string[]; topics?: string[]; source?: string }, fallbackSource: string) {
+  const bullets = (a.summary || []).map((x) => String(x).replace(/^[\s•*-]+/, "").trim()).filter(Boolean).slice(0, 8);
+  if (bullets.length < 3) return { error: "give 3 to 8 short bullet points" };
+  const row = { user_id: OWNER, date: a.date || berlinToday(), summary: bullets.map((b) => b.slice(0, 300)), topics: (a.topics || []).map((t) => String(t).trim().slice(0, 40)).filter(Boolean).slice(0, 8), source: a.source === "voice" || a.source === "chat" ? a.source : fallbackSource };
+  const r = await db.from("day_summaries").insert(row).select("id").single();
+  if (r.error) return { error: r.error.message + (/day_summaries/.test(r.error.message) ? " (the owner needs to run _Memory/migration_day_summaries.sql first)" : "") };
+  return { date: row.date, bullets: bullets.length, source: row.source };
+}
+tool("save_day_summary", {
+  description: "Save a short summary of this conversation to a day, shown on that Day page under 'Conversations with Claude' and returned by get_day. 3 to 8 bullet points of what was discussed, decided or planned, in plain words, plus a few topics. It goes to its own place, never to the owner's Notes. Save one at the end of a meaningful conversation, or when asked; several per day are fine. Leave out health details, other people's private matters and anything the owner asked to keep off the record.",
+  inputSchema: z.object({
+    date: z.string().regex(CC_DAY, "use YYYY-MM-DD").optional().describe("defaults to today (Berlin)"),
+    summary: z.array(z.string().min(3).max(300)).min(3).max(8).describe("3 to 8 short bullet points"),
+    topics: z.array(z.string().max(40)).max(8).optional(), source: z.enum(["chat", "voice"]).optional().describe("defaults to chat"),
+  }),
+  // deno-lint-ignore no-explicit-any
+  handler: async (a: any) => { const r = await saveDaySummary(a, "chat"); return r.error ? fail(r.error) : ok({ ok: true, ...r, note: "Saved to the Day page. The owner can archive it there." }); },
+});
 const DAY_METRICS = ["sleepScore", "mood", "stressAvg", "steps", "restingHr", "workoutVolume", "tasksDone", "spending"] as const;
 tool("get_day", {
   description: "Everything about one day, in short form: a summary (sleep score, mood, stress, workout yes/no, tasks done, spending), then health, workouts with top sets, tasks done and due-not-done, events, notes (title and first lines), the check-in with the worked-out mood, money and people contacted. Sections with no data are left out; a missing value is null, never 0. Read-only. Mood is computed from note sentiment, your own check-ins from conversation, the owner's check-in, sleep and stress. Use it for 'how was my Tuesday' or before a daily review.",
@@ -5415,6 +5436,9 @@ vtool("health", "One line on readiness: energy, sleep, last workout and any pain
 });
 vtool("day", "How one day went, in a sentence: sleep score, mood, stress, workout, tasks done, spending and the first note. Give a date as YYYY-MM-DD, or leave it out for today.", z.object({ date: z.string().regex(CC_DAY, "use YYYY-MM-DD").optional() }), async (a) => {
   const d = a.date || berlinToday(); return PPDay.say(PPDay.build(d, await dayRaw(d, d)));
+});
+vtool("save_summary", "Save a short summary of this voice conversation to today's Day page: 3 to 8 short points, and a few topics. Use it at the end of a conversation or when asked to remember what was discussed.", z.object({ summary: z.array(z.string().min(3).max(300)).min(3).max(8), topics: z.array(z.string().max(40)).max(8).optional(), date: z.string().regex(CC_DAY, "use YYYY-MM-DD").optional() }), async (a) => {
+  const r = await saveDaySummary(a, "voice"); return r.error ? "I couldn't save the summary: " + r.error : "Saved a summary with " + r.bullets + " points to your day page.";
 });
 vtool("checkin", "Log how you feel today: energy and mood from 1 to 5, and an optional note.", z.object({ energy: z.number().int().min(1).max(5), mood: z.number().int().min(1).max(5), note: z.string().max(300).optional() }), async (a) => {
   const res = vOut(await ALL_DEFS.log_checkin.handler({ energy: a.energy, note: ("Mood " + a.mood + "/5" + (a.note ? ". " + a.note.trim() : "")).slice(0, 400), source: "claude" }));

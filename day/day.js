@@ -1,4 +1,4 @@
-/* The Day page: everything about one date in one place, and trends across days. A view only: it edits nothing.
+/* The Day page: everything about one date in one place, and trends across days. A view only: the one thing it can do is archive a conversation summary.
    The host hands over load(from, to) → the raw rows for that range; PPDay.build (supabase/functions/_shared/day.js,
    the same code the connector uses) turns them into a day. Sections appear only when the day has data for them;
    a missing single value shows as "—". Each section carries its area colour. */
@@ -49,6 +49,9 @@
       if (d.checkin) { var c = d.checkin, m = c.mood; cards.push(sec("none", "Check-in", (m ? '<div class="mood"><b>' + m.score + '</b><span>/100 · ' + esc(m.label) + '</span></div><div class="mbar"><i style="width:' + m.score + '%"></i></div><ul class="mparts">' + m.parts.map(function (p) { return "<li><span>" + esc(p.k) + '</span><span class="mb"><i style="width:' + p.v + '%"></i></span><span class="mv">' + p.v + "</span><small>" + esc(p.t) + "</small></li>"; }).join("") + '</ul><p class="hint">Mood is worked out, not typed in: from the feelings tagged in your notes, how you sounded with Claude, your check-in, sleep and stress. ' + (m.basis === "sleep and stress only" ? "Today it rests on sleep and stress only." : "") + "</p>" : "") + kv([["Energy", c.energy == null ? "—" : c.energy + " of 5"]].concat(c.note ? [["Note", esc(c.note)]] : [])) + (c.dailyLog.length ? '<p class="lab">Daily log</p><p class="chips">' + c.dailyLog.map(function (t) { return "<span>" + esc(t) + "</span>"; }).join("") + "</p>" : ""))); }
       if (d.money) cards.push(sec("task", "Money", kv([["Spent", money(d.money.spent)]]) + '<ul class="list">' + d.money.transactions.map(function (t) { return "<li>" + esc(t.description || "Transaction") + '<small class="amt">' + money(t.amount) + "</small></li>"; }).join("") + "</ul>"));
       if (d.people) cards.push(sec("people", "People", '<ul class="list">' + d.people.map(function (p) { return "<li>" + esc(p.name) + "<small>" + esc({ call: "talked", met: "met", message: "messaged", other: "in touch" }[p.kind] || "in touch") + "</small></li>"; }).join("") + "</ul>"));
+      if (d.conversations) cards.push(sec("none", "Conversations with Claude", d.conversations.map(function (c) {
+        return '<article class="conv"><p class="cmeta"><span>' + (c.source === "voice" ? "Voice" : "Chat") + (c.time ? " · " + esc(c.time) : "") + '</span><button class="arch" data-archive="' + esc(c.id) + '" aria-label="Archive this summary">Archive</button></p><ul>' + c.bullets.map(function (b) { return "<li>" + esc(b) + "</li>"; }).join("") + "</ul>" + (c.topics.length ? '<p class="chips">' + c.topics.map(function (t) { return "<span>" + esc(t) + "</span>"; }).join("") + "</p>" : "") + "</article>";
+      }).join(""), "saved by Claude, not in your notes"));
       h += cards.length ? '<div class="grid">' + cards.join("") + "</div>" : '<section class="card empty"><p>' + (S.date > S.today ? "Nothing is planned for this day yet." : "Nothing was recorded for this day.") + "</p></section>";
       return h;
     }
@@ -79,13 +82,14 @@
     }
     function go(date, tab) { if (date) S.date = date; if (tab) S.tab = tab; if (o.onChange) o.onChange(S.date, S.tab); return load(); }
     dp.addEventListener("click", function (e) {
-      var t = e.target.closest && e.target.closest("[data-go],[data-tab],[data-span],[data-note],[data-date],[data-retry]"); if (!t || t.disabled) return; var d = t.dataset;
+      var t = e.target.closest && e.target.closest("[data-go],[data-tab],[data-span],[data-note],[data-date],[data-retry],[data-archive]"); if (!t || t.disabled) return; var d = t.dataset;
       if (d.go) go(d.go === "today" ? S.today : D.add(S.date, +d.go));
       else if (d.tab) go(null, d.tab);
       else if (d.span) { S.span = +d.span; load(); }
       else if (d.note) { if (o.onOpenNote) o.onOpenNote(d.note); }
       else if (d.date) go(d.date, "day");
       else if (d.retry) { S.rawKey = ""; load(); }
+      else if (d.archive && o.onArchiveSummary) { t.disabled = true; Promise.resolve(o.onArchiveSummary(d.archive)).then(function () { S.rawKey = ""; load(); }, function () { t.disabled = false; }); }
     });
     dp.addEventListener("change", function (e) { if (e.target.id === "dpDate" && /^\d{4}-\d{2}-\d{2}$/.test(e.target.value)) go(e.target.value); });
     dp.addEventListener("keydown", function (e) { var t = e.target.closest && e.target.closest(".pt[data-date]"); if (t && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); go(t.dataset.date, "day"); } });

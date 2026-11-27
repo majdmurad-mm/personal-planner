@@ -21312,7 +21312,7 @@
   /* ---------------- Day page: one date, everything about it (day/, read-only) ----------------
      The page and the connector share supabase/functions/_shared/day.js, which builds a day from the rows.
      Nothing is stored: dayLoad reads the live tables for the range asked for. Bump DAY_VER on every change. */
-  var DAY_VER = "1", dayLoading = null, dayHandle = null, dayLog = null;
+  var DAY_VER = "2", dayLoading = null, dayHandle = null, dayLog = null;
   function dayLoadScripts(){
     if(window.PPDayPage && window.PPDay && window.PPCommandCore) return Promise.resolve();
     if(dayLoading) return dayLoading;
@@ -21332,7 +21332,8 @@
       rows(live("activities", "date,type,name,duration_minutes,distance_m,avg_hr").is("archived_at", null)),
       rows(live("health_checkins", "*").is("archived_at", null)),
       rows(live("tracker_entries", "date,value,variable_id")), rows(sb.from("tracker_variables").select("id,name")),
-      rows(live("finance_transactions", "date,description,amount,area")), dayLog
+      rows(live("finance_transactions", "date,description,amount,area")), dayLog,
+      rows(live("day_summaries", "id,date,summary,topics,source,created_at,archived_at").is("archived_at", null))
     ]);
     var ids = got[1].map(function(w){ return w.id; });
     var sets = ids.length ? await rows(sb.from("workout_sets").select("workout_id,exercise_index,set_index,exercise,set_type,weight_kg,reps,distance_m,duration_seconds,superseded_at").in("workout_id", ids).order("exercise_index").order("set_index").limit(5000)) : [];
@@ -21341,7 +21342,7 @@
     return {
       health:got[0], workouts:got[1], sets:sets, activities:got[2], checkins:got[3],
       tracker:got[4].map(function(e){ return { date:e.date, value:e.value, name:names[e.variable_id] || "Item" }; }),
-      transactions:got[6], log:got[7],
+      transactions:got[6], log:got[7], summaries:got[8],
       occ:C.expand(d.items, from, to).map(function(o){ var i = o.item; return { date:o.date, id:i.id, title:i.title, kind:i.kind, area:i.area, time:i.allDay ? null : i.time, dur:i.dur, done:!!o.done, repeats:!!i.recurrence }; }),
       actions:state.actions.map(function(a){ return { id:a.id, title:a.title, date:a.date || null, done:!!a.done, recurring:!!a.recurrence, doneDates:a.recurrenceDone || [], area:actionCategory(a) || "" }; }),
       notes:state.journal.map(function(n){ return { id:n.id, date:n.date, title:n.title || "", text:n.text || "", sentiment:n.sentiment || [] }; })
@@ -21356,6 +21357,11 @@
       dayHandle = window.PPDayPage.mount(host, {
         css:"day/day.css?v=" + DAY_VER, theme:currentTheme(), today:todayStr(), date:want.date || todayStr(), tab:want.tab || "day", load:dayLoad,
         onChange:function(date, tab){ var h = "#day/" + (tab === "trends" ? "trends" : date); if(location.hash !== h) history.replaceState(null, "", location.pathname + location.search + h); },
+        onArchiveSummary:async function(id){
+          var r = await sb.from("day_summaries").update({ archived_at:new Date().toISOString() }).eq("id", id);
+          if(r.error){ dbErrorToast(r.error, "Couldn't archive"); throw r.error; }
+          pushUndo("archive a conversation summary", async function(){ await sb.from("day_summaries").update({ archived_at:null }).eq("id", id); if(dayHandle) dayHandle.update({ refresh:true }); });
+        },
         onOpenNote:function(id){ showSection("self"); renderAll(); var n = 0; (function go(){ if(selfHandle){ selfHandle.update({ select:id }); return; } if(++n < 40) setTimeout(go, 150); })(); }
       });
       var h0 = "#day/" + (want.tab === "trends" ? "trends" : (want.date || todayStr())); if(location.hash !== h0) history.replaceState(null, "", location.pathname + location.search + h0);
