@@ -2,7 +2,7 @@
 
 The owner connector (`/mcp`) used to list 146 tools. Claude voice calls stopped loading it, probably because voice mode
 skips large connectors. Tools that share a pattern are now **merged into one tool with a `kind`, `action`, `mode` or `view`**,
-and a separate **voice edition** (`/mcp-voice`) serves 14 small tools.
+and a separate **voice edition** (`/mcp-voice`) serves 15 small tools.
 
 Nothing was dropped. Each merged route checks the arguments against the old tool's own schema and then runs the old tool's code,
 so results, permissions, privacy (items kept from Claude stay hidden), archive-never-delete and activity-log entries are unchanged.
@@ -11,8 +11,8 @@ A field that belongs to another kind is refused with a message naming the allowe
 | | Tools | tools/list size |
 |---|---|---|
 | Owner connector before | 146 | 130,939 bytes (≈ 36.4k tokens) |
-| Owner connector now | **96** | about 114,900 bytes (≈ 32k tokens) |
-| Voice edition (`/mcp-voice`) | **14** | about 4,000 bytes (≈ 1.1k tokens) |
+| Owner connector now | **97** | about 114,900 bytes (≈ 32k tokens) |
+| Voice edition (`/mcp-voice`) | **15** | about 4,000 bytes (≈ 1.1k tokens) |
 | Agent connector (agent token, unchanged) | 28 | 25,195 bytes |
 
 The size falls less than the count because every field the old tools took is still there. Most of the remaining weight sits in
@@ -217,3 +217,22 @@ The voice edition has `day`: one spoken sentence for a date.
 "Conversations with Claude" and returned by `get_day` as `conversations` (newest first, no ids). Summaries live in their own table,
 `day_summaries`, never in Notes; several per day are fine; the owner can archive one on the page (archived, never deleted).
 The voice edition has `save_summary`, which saves with source `voice`.
+
+## Finance by bank and account (push_finance, get_finance)
+
+Bank data arrives the way health data does: the owner signs in to a bank in the browser and approves 2FA, Claude reads the pages and pushes
+what it read. No bank API, no stored login, read-only; nothing is clicked that moves money.
+
+- `push_finance` kind `balances` (bank, as_of, every account seen): accounts are matched by key, name or the last 4 IBAN characters and created
+  when new; every push is kept as a dated reading. Kind `transactions` (bank, account, list): the same transaction pushed twice is stored once
+  (date, amount, counterparty, purpose); categories come from rules, the rest goes to "To check". Kind `balance`: one balance for a date.
+- `get_finance` view `accounts`: banks and their accounts, net worth and its change since last month, cash against the cash floor, loans sorted
+  by rate with payoff, cash flow by month (transfers between own accounts left out, the shared account kept apart); pass `account` for its
+  transactions. View `freshness`: which accounts are older than 14 days or never read, with the reading guide per bank. Views `snapshot` and
+  `summary` are the older data and still work.
+- Only the last 4 IBAN characters are ever stored; IBANs and card numbers inside a counterparty or purpose are cut to their last 4.
+- A shared account counts with "my share" (50% by default) in net worth. Loans, the credit card and a Bauspar contract in its loan phase are
+  debts; "Reach Net 0" follows the real loan balances (not the credit card) once accounts exist.
+- Voice: `money` says net worth, cash against the floor, loan debt and which banks need a fresh read.
+- The model is `supabase/functions/_shared/fin.js`, shared with the Finance page. Tables: `fin_accounts`, `fin_balances`, `fin_transactions`,
+  `fin_rules`, `fin_settings`.
