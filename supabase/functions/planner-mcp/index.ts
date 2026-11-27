@@ -31,6 +31,7 @@ import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import "../_shared/freetime.js"; // sets globalThis.PPFree: the same free-time function the page uses
+import "../_shared/fin.js"; // sets globalThis.PPFin: finance by bank and account (the Finance page uses the same code)
 import "../_shared/day.js"; // sets globalThis.PPDay: one day built from the planner's tables (the Day page uses the same code)
 import { openPdf, scanPages, imageFileMime, isPdf, b64, MAX_IMAGE_BYTES } from "../_shared/scanpages.ts"; // scanned pages as pictures
 
@@ -299,7 +300,7 @@ const FOLD = new Set([
   "add_knowledge_source", "set_source_privacy", "remove_knowledge_source", "sync_source",
   "memory_get", "memory_search", "memory_overview", "memory_topics",
   "create_place", "edit_place", "create_scenario", "edit_scenario",
-  "get_finance", "get_finance_snapshot",
+  "get_finance", "get_finance_snapshot", "get_finance_accounts", "finance_freshness",
   "get_communication_status", "get_whatsapp_sync_state",
 ]);
 // deno-lint-ignore no-explicit-any
@@ -482,13 +483,14 @@ async function refreshGoalScores(): Promise<{ updated: number; error?: string }>
   const S = ((snaps as any).data || []) as any[], first = S.find((x) => debtOf(x.snapshot) != null), last = S.slice().reverse().find((x) => debtOf(x.snapshot) != null);
   // deno-lint-ignore no-explicit-any
   const A = ((acts as any).data || []) as any[], P = ((projs as any).data || []) as any[];
+  const finDebt = need("net_zero") ? await finLoanDebt() : null;   // real loan balances, once bank accounts exist
   let updated = 0;
   for (const goal of goals) {
     let v: number | null = null, base = goal.score_baseline || null;
     if (goal.score_mode === "sleep") v = sleep;
     else if (goal.score_mode === "workout") v = workout;
     else if (goal.score_mode === "net_zero") {
-      const d0 = base && typeof base.debt0 === "number" ? base.debt0 : first ? debtOf(first.snapshot) : null, cur = last ? debtOf(last.snapshot) : null;
+      const d0 = base && typeof base.debt0 === "number" ? base.debt0 : first ? debtOf(first.snapshot) : null, cur = finDebt != null ? finDebt : last ? debtOf(last.snapshot) : null;
       if (d0 && cur != null) { v = Math.max(0, Math.min(100, (d0 - cur) / d0 * 100)); base = { debt0: d0, as_of0: base && base.as_of0 || (first && first.as_of), debt: cur, as_of: last && last.as_of, cleared: Math.max(0, d0 - cur), currency: (last && last.snapshot && last.snapshot.currency) || "EUR" }; }
     } else if (goal.score_mode === "tasks") {
       // deno-lint-ignore no-explicit-any
@@ -891,6 +893,159 @@ tool("get_finance", {
         amount: Number(t.amount) || 0, area: t.area, subcategory: t.subcategory || "", source: t.source,
       })),
     });
+  },
+});
+
+// ============================ FINANCE BY BANK AND ACCOUNT ============================
+// Tables fin_accounts / fin_balances / fin_transactions / fin_rules / fin_settings (see
+// _Memory/migration_finance_accounts.sql). The model is PPFin (supabase/functions/_shared/fin.js), shared with
+// the Finance page. Data arrives the way health data does: the owner signs in to a bank in the browser, Claude
+// reads the pages and pushes what it read. No bank API, no stored login; only the last 4 IBAN characters are kept.
+// deno-lint-ignore no-explicit-any
+const PPFin = (globalThis as any).PPFin;
+const FIN_DAY = /^\d{4}-\d{2}-\d{2}$/;
+const FIN2_HINT = " (if the table is missing, the owner needs to run _Memory/migration_finance_accounts.sql)";
+const FIN_GUIDE = [
+  "The owner signs in to each bank in Chrome and approves 2FA; you only read. Never click anything that moves money, changes settings or places an order.",
+  "Berliner Volksbank: the account overview (Girokonto, credit card, Tagesgeld Plus), then each account's transactions, the Union depot (value, gain, Sparplan), the Bauspar contract (balance, phase, rate) and the annuity loan (balance, rate, payment).",
+  "Scalable Capital: portfolio value, each holding (name, ISIN, quantity, value) and the cash balance.",
+  "DKB: the shared account's balance and transactions.",
+  "After reading a bank call push_finance kind 'balances' once with every account you saw, then kind 'transactions' per account. Pushing the same data twice is safe. Never send a full IBAN or card number; ibanLast4 is enough.",
+].join(" ");
+async function finRaw(months = 12) {
+  // deno-lint-ignore no-explicit-any
+  const rows = async (q: any) => { const r = await q; if (r.error) throw new Error(r.error.message + FIN2_HINT); return r.data || []; };
+  const from = new Date(Date.now() - months * 31 * 86400000).toISOString().slice(0, 10);
+  const [accounts, balances, transactions, rules, settings] = await Promise.all([
+    rows(owned("fin_accounts").is("archived_at", null).order("position")), rows(owned("fin_balances").order("as_of")),
+    rows(owned("fin_transactions").is("archived_at", null).gte("date", from).order("date", { ascending: false }).limit(5000)),
+    rows(owned("fin_rules").is("archived_at", null)), rows(owned("fin_settings")),
+  ]);
+  return { accounts, balances, transactions, rules, settings: settings[0] || null };
+}
+async function finLoanDebt(): Promise<number | null> {
+  try { const raw = await finRaw(1); if (!raw.accounts.length) return null; const M = PPFin.model(raw, berlinToday()); return M.loanDebt; } catch { return null; }
+}
+// deno-lint-ignore no-explicit-any
+function finFind(accounts: any[], bank: string | undefined, ref: string): any {
+  const pool = bank ? accounts.filter((a) => a.bank === bank) : accounts, r = String(ref || "").trim(), slug = PPFin.slug(r), l4 = /^[0-9A-Za-z]{4}$/.test(r) ? r.toUpperCase() : null;
+  return pool.find((a) => a.key === r || a.key === slug) || pool.find((a) => String(a.name).toLowerCase() === r.toLowerCase()) || (l4 && pool.find((a) => a.iban_last4 === l4)) || pool.find((a) => PPFin.norm(a.name).includes(PPFin.norm(r)) && PPFin.norm(r).length >= 4) || null;
+}
+const FIN_BANK = z.string().min(2).max(30).describe("volksbank, scalable, dkb or other");
+const FIN_TYPE = z.enum(["checking", "savings", "credit_card", "investment", "building_savings", "loan", "share", "shared"]);
+const FIN_ACC = z.object({
+  key: z.string().max(40).optional().describe("the account's stable id if you know it (from get_finance), e.g. giro"),
+  name: z.string().min(2).max(120), type: FIN_TYPE,
+  balance: z.number().describe("the balance shown by the bank. For loans, credit cards and a Bauspar contract in its loan phase: what is owed, as a positive number"),
+  currency: z.string().length(3).optional(), ibanLast4: z.string().regex(/^[0-9A-Za-z]{4}$/).optional().describe("the last 4 characters only; never the full IBAN"),
+  value: z.number().optional(), gainEur: z.number().optional(), gainPct: z.number().optional(), sparplan: z.number().optional().describe("investments: current value, gain in EUR and %, monthly savings plan"),
+  holdings: z.array(z.object({ name: z.string().max(120), isin: z.string().max(12).optional(), quantity: z.number().optional(), value: z.number().optional() })).max(60).optional(),
+  rate: z.number().optional(), monthlyPayment: z.number().optional(), monthsLeft: z.number().optional(), original: z.number().optional().describe("loans: yearly rate in %, monthly payment, remaining months, the original amount"),
+  phase: z.enum(["saving", "loan"]).optional().describe("Bauspar contract: saving or loan phase"),
+});
+const FIN_TX = z.object({ date: z.string().regex(FIN_DAY, "use YYYY-MM-DD"), amount: z.number().describe("positive = money in, negative = money out"), counterparty: z.string().max(160).optional(), purpose: z.string().max(400).optional(), category: z.string().max(60).optional() });
+tool("push_finance", {
+  description: "Push what you read from a bank into the Finance page. kind 'balances': bank, as_of and every account you saw (new accounts are created, known ones matched by key, name or ibanLast4 and updated; each push is kept as a dated reading). kind 'transactions': bank, account and its transactions (the same transaction pushed twice is stored once; categories are applied by rules, the rest goes to 'To check'). kind 'balance': one account's balance, for something the owner tells you (account, amount, date). Read-only work: the owner signs in and approves 2FA, you never click anything that moves money. Call get_finance view 'freshness' first to see what needs reading and the reading guide.",
+  inputSchema: z.object({
+    kind: z.enum(["balances", "transactions", "balance"]), bank: FIN_BANK.optional(),
+    as_of: z.string().regex(FIN_DAY, "use YYYY-MM-DD").optional().describe("balances: the date of the reading (default today, Berlin)"),
+    accounts: z.array(FIN_ACC).max(30).optional(),
+    account: z.string().max(120).optional().describe("transactions and balance: the account's key or name"),
+    transactions: z.array(FIN_TX).max(500).optional(),
+    amount: z.number().optional(), date: z.string().regex(FIN_DAY, "use YYYY-MM-DD").optional(),
+  }),
+  // deno-lint-ignore no-explicit-any
+  handler: async (a: any) => {
+    const acc = await owned("fin_accounts").is("archived_at", null);
+    if (acc.error) return fail(acc.error.message + FIN2_HINT);
+    // deno-lint-ignore no-explicit-any
+    const accounts: any[] = acc.data || [], today = berlinToday();
+    // deno-lint-ignore no-explicit-any
+    const reading = async (id: string, as_of: string, balance: number, details: Record<string, unknown>, source = "claude"): Promise<any> => {
+      const had = await db.from("fin_balances").select("id").eq("user_id", OWNER).eq("account_id", id).eq("as_of", as_of).limit(1);
+      if (had.error) return had.error;
+      const row = { balance, details, source };
+      const w = had.data && had.data[0] ? await db.from("fin_balances").update(row).eq("id", had.data[0].id).eq("user_id", OWNER) : await db.from("fin_balances").insert({ user_id: OWNER, account_id: id, as_of, ...row });
+      return w.error || null;
+    };
+    if (a.kind === "balances") {
+      if (!a.bank || !a.accounts || !a.accounts.length) return fail("balances needs bank and accounts");
+      const as_of = a.as_of || today, out: unknown[] = [];
+      if (as_of > today) return fail("as_of is in the future");
+      for (const x of a.accounts) {
+        const det: Record<string, unknown> = {}; for (const k of ["value", "gainEur", "gainPct", "holdings"]) if (x[k] !== undefined) det[k] = x[k];
+        const keep: Record<string, unknown> = {}; for (const k of ["sparplan", "rate", "monthlyPayment", "monthsLeft", "original", "phase"]) if (x[k] !== undefined) keep[k] = x[k];
+        let row = finFind(accounts, a.bank, x.key || x.name) || (x.ibanLast4 && finFind(accounts, a.bank, x.ibanLast4)), created = false;
+        if (!row) {
+          const ins = await db.from("fin_accounts").insert({ user_id: OWNER, bank: a.bank, key: PPFin.slug(x.key || x.name), name: PPFin.scrub(x.name), type: x.type, currency: x.currency || "EUR", iban_last4: x.ibanLast4 ? x.ibanLast4.toUpperCase() : null, my_share: x.type === "shared" ? 0.5 : 1, details: keep, position: accounts.filter((y) => y.bank === a.bank).length + 1 }).select("*").single();
+          if (ins.error) return fail(ins.error.message + FIN2_HINT);
+          row = ins.data; accounts.push(row); created = true;
+        } else {
+          const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+          if (Object.keys(keep).length) patch.details = { ...(row.details || {}), ...keep };
+          if (x.ibanLast4 && !row.iban_last4) patch.iban_last4 = x.ibanLast4.toUpperCase();
+          const up = await db.from("fin_accounts").update(patch).eq("id", row.id).eq("user_id", OWNER); if (up.error) return fail(up.error.message);
+        }
+        const err = await reading(row.id, as_of, x.balance, det); if (err) return fail(err.message + FIN2_HINT);
+        out.push({ account: row.name, balance: x.balance, created });
+      }
+      await refreshGoalScores().catch(() => null);
+      return ok({ ok: true, bank: PPFin.bankName(a.bank), as_of, accounts: out });
+    }
+    if (!a.account) return fail("say which account (its key or name)");
+    const row = finFind(accounts, a.bank, a.account);
+    if (!row) return fail("no account matches '" + a.account + "'" + (a.bank ? " at " + a.bank : "") + ". Known: " + accounts.map((y) => y.bank + "/" + y.key).join(", ") + ". Push balances first to create one.");
+    if (a.kind === "balance") {
+      if (typeof a.amount !== "number") return fail("balance needs amount");
+      const d = a.date || today; if (d > today) return fail("date is in the future");
+      const err = await reading(row.id, d, a.amount, {}, "me"); if (err) return fail(err.message + FIN2_HINT);
+      await refreshGoalScores().catch(() => null);
+      return ok({ ok: true, account: row.name, balance: a.amount, date: d });
+    }
+    if (!a.transactions || !a.transactions.length) return fail("transactions needs a list");
+    // deno-lint-ignore no-explicit-any
+    const list = a.transactions.map((t: any) => ({ date: t.date, amount: t.amount, counterparty: PPFin.scrub(t.counterparty || "").slice(0, 160), purpose: PPFin.scrub(t.purpose || "").slice(0, 400), category: t.category || null }));
+    const prints: string[] = PPFin.fingerprints(list), dates = list.map((t: { date: string }) => t.date).sort();
+    const [had, rules] = await Promise.all([db.from("fin_transactions").select("fingerprint").eq("user_id", OWNER).eq("account_id", row.id).gte("date", dates[0]).lte("date", dates[dates.length - 1]).limit(10000), owned("fin_rules").is("archived_at", null)]);
+    if (had.error) return fail(had.error.message + FIN2_HINT);
+    const seen = new Set((had.data || []).map((x: { fingerprint: string }) => x.fingerprint));
+    // deno-lint-ignore no-explicit-any
+    const fresh = list.map((t: any, i: number) => ({ user_id: OWNER, account_id: row.id, ...t, category: t.category || PPFin.categorize(t, rules.data || []), fingerprint: prints[i] })).filter((t: any) => !seen.has(t.fingerprint));
+    if (fresh.length) { const ins = await db.from("fin_transactions").insert(fresh); if (ins.error) return fail(ins.error.message + FIN2_HINT); }
+    // deno-lint-ignore no-explicit-any
+    return ok({ ok: true, account: row.name, added: fresh.length, alreadyThere: list.length - fresh.length, toCheck: fresh.filter((t: any) => !t.category).length });
+  },
+});
+tool("get_finance_accounts", {
+  description: "Money by bank and account: net worth and its change since last month, cash against the cash floor, every bank with its accounts (balance, date read, days old), loans sorted by rate with payoff, cash flow per month with categories (the shared account's flows kept apart), and what needs a refresh. Pass account to also get that account's recent transactions. No account numbers are returned.",
+  inputSchema: z.object({ account: z.string().max(120).optional().describe("an account's key or name: also return its transactions"), months: z.number().int().min(1).max(24).optional().describe("how many months of cash flow (default 6)") }),
+  handler: async (a: { account?: string; months?: number }) => {
+    // deno-lint-ignore no-explicit-any
+    let raw: any; try { raw = await finRaw(a.months || 6); } catch (e) { return fail(String((e as Error).message)); }
+    const M = PPFin.model(raw, berlinToday()), C = PPFin.cashflow(raw.transactions, raw.accounts, raw.rules);
+    // deno-lint-ignore no-explicit-any
+    const out: any = { ...PPFin.brief(M), cashFlow: C.months.slice(-(a.months || 6)), toCheck: C.toCheck.length };
+    if (!raw.accounts.length) out.note = "No accounts yet. Read a bank and call push_finance kind 'balances'.";
+    if (a.account) {
+      const row = finFind(raw.accounts, undefined, a.account);
+      if (!row) return fail("no account matches '" + a.account + "'");
+      // deno-lint-ignore no-explicit-any
+      out.account = { name: row.name, bank: PPFin.bankName(row.bank), transactions: raw.transactions.filter((t: any) => t.account_id === row.id).slice(0, 100).map((t: any) => ({ date: t.date, amount: Number(t.amount), counterparty: t.counterparty, purpose: t.purpose, category: t.category || PPFin.categorize(t, raw.rules) || "To check", internal: !!C.internal[t.id] || undefined })) };
+    }
+    return ok(out);
+  },
+});
+tool("finance_freshness", {
+  description: "Which bank accounts need a new read (older than 14 days, or never read), grouped by bank, with the reading guide: what to read at each bank and the rules for doing it.",
+  inputSchema: z.object({}),
+  handler: async () => {
+    // deno-lint-ignore no-explicit-any
+    let raw: any; try { raw = await finRaw(1); } catch (e) { return fail(String((e as Error).message)); }
+    const M = PPFin.model(raw, berlinToday());
+    // deno-lint-ignore no-explicit-any
+    const byBank: Record<string, any[]> = {}; for (const x of M.needsRefresh) (byBank[PPFin.bankName(x.bank)] = byBank[PPFin.bankName(x.bank)] || []).push({ account: x.name, key: x.key, lastRead: x.asOf, daysOld: x.ageDays });
+    // deno-lint-ignore no-explicit-any
+    return ok({ today: M.today, staleAfterDays: PPFin.STALE_DAYS, needsRefresh: byBank, upToDate: M.accounts.filter((x: any) => !x.stale).map((x: any) => PPFin.bankName(x.bank) + ": " + x.name), knownAccounts: M.accounts.map((x: any) => x.bank + "/" + x.key), guide: FIN_GUIDE });
   },
 });
 
@@ -5248,7 +5403,8 @@ merged("place", "Places on the Location page. actions: create, edit.", ["action"
 merged("scenario", "Scenarios for a decision. actions: create (under an action, optionally under another scenario), edit.", ["action"], [
   { when: { action: "create" }, tool: "create_scenario" }, { when: { action: "edit" }, tool: "edit_scenario" },
 ]);
-merged("get_finance", "Money. views: summary (accounts and transactions in a range), snapshot (the latest imported finance snapshot, or as of a date).", ["view"], [
+merged("get_finance", "Money. views: accounts (banks and their accounts, net worth, cash against the floor, loans, cash flow; pass account for its transactions), freshness (which accounts need a new read, with the reading guide for each bank), snapshot (the older imported monthly snapshot, or as of a date), summary (the legacy account list).", ["view"], [
+  { when: { view: "accounts" }, tool: "get_finance_accounts" }, { when: { view: "freshness" }, tool: "finance_freshness" },
   { when: { view: "summary" }, tool: "get_finance" }, { when: { view: "snapshot" }, tool: "get_finance_snapshot" },
 ]);
 merged("comm_status", "Communication page. views: sources (iCloud Mail and WhatsApp: status, last sync, counts, whether Claude may read), whatsapp (what is saved per chat, before saving more).", ["view"], [
@@ -5439,6 +5595,13 @@ vtool("day", "How one day went, in a sentence: sleep score, mood, stress, workou
 });
 vtool("save_summary", "Save a short summary of this voice conversation to today's Day page: 3 to 8 short points, and a few topics. Use it at the end of a conversation or when asked to remember what was discussed.", z.object({ summary: z.array(z.string().min(3).max(300)).min(3).max(8), topics: z.array(z.string().max(40)).max(8).optional(), date: z.string().regex(CC_DAY, "use YYYY-MM-DD").optional() }), async (a) => {
   const r = await saveDaySummary(a, "voice"); return r.error ? "I couldn't save the summary: " + r.error : "Saved a summary with " + r.bullets + " points to your day page.";
+});
+vtool("money", "Money in a sentence: net worth, cash against the floor, loan debt, and which banks need a fresh read.", z.object({}), async () => {
+  const raw = await finRaw(1); if (!raw.accounts.length) return "There are no bank accounts in the planner yet.";
+  const M = PPFin.model(raw, berlinToday()), eur = (v: number | null) => v == null ? "unknown" : Math.round(v).toLocaleString("en-GB") + " euros";
+  // deno-lint-ignore no-explicit-any
+  const banks = Array.from(new Set(M.needsRefresh.map((x: any) => PPFin.bankName(x.bank))));
+  return "Net worth " + eur(M.netWorth) + (M.change != null ? ", " + (M.change >= 0 ? "up " : "down ") + eur(Math.abs(M.change)) + " since last month" : "") + ". Cash " + eur(M.cash) + " against a floor of " + eur(M.cashFloor) + ". Loans " + eur(M.loanDebt) + "." + (banks.length ? " Needs a fresh read: " + banks.join(", ") + "." : "");
 });
 vtool("checkin", "Log how you feel today: energy and mood from 1 to 5, and an optional note.", z.object({ energy: z.number().int().min(1).max(5), mood: z.number().int().min(1).max(5), note: z.string().max(300).optional() }), async (a) => {
   const res = vOut(await ALL_DEFS.log_checkin.handler({ energy: a.energy, note: ("Mood " + a.mood + "/5" + (a.note ? ". " + a.note.trim() : "")).slice(0, 400), source: "claude" }));
@@ -5701,6 +5864,7 @@ const SERVER_INSTRUCTIONS = [
   "In voice mode the answer is spoken: keep it short, lead with times and titles, never read out ids, JSON or long lists, and prefer one tool call over several.",
   "To add something said aloud, quick_add takes plain language (\"call the landlord Wed 10:00\").",
   "Archive, never delete. Health notes and notes about other people are private: summarise them, and only read details aloud when asked.",
+  "Bank data: the owner signs in to each bank in the browser and approves 2FA; you read balances and transactions and send them with push_finance (get_finance view freshness lists what to read and how). Read-only: never click anything that moves money, and never keep a full IBAN or card number.",
 ].join(" ");
 async function withInstructions(res: Response, instructions = SERVER_INSTRUCTIONS): Promise<Response> {
   try {
