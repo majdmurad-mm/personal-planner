@@ -26,7 +26,8 @@
   /* months left and the interest still to pay, from balance, yearly rate (%) and monthly payment */
   F.payoff = function (balance, ratePct, payment) {
     var B = num(balance), P = num(payment), r = num(ratePct); if (B == null || !P || B <= 0) return { months: B === 0 ? 0 : null, interest: B === 0 ? 0 : null };
-    if (!r) return { months: Math.ceil(B / P), interest: 0 };
+    if (r == null) return { months: Math.ceil(B / P), interest: null };   // rate unknown: an end date, but no interest figure
+    if (r === 0) return { months: Math.ceil(B / P), interest: 0 };
     var i = r / 100 / 12; if (P <= B * i) return { months: null, interest: null };   // the payment does not cover the interest
     var n = -Math.log(1 - i * B / P) / Math.log(1 + i); return { months: Math.ceil(n), interest: r2(Math.max(0, n * P - B)) };
   };
@@ -46,7 +47,7 @@
         mine: bal == null ? null : r2(sign * bal * share), prevMine: prev && num(prev.balance) != null ? r2(sign * +prev.balance * share) : null, prevAsOf: prev ? day(prev.as_of) : null,
         history: hist.map(function (h) { return { d: day(h.as_of), v: num(h.balance) }; }).filter(function (h) { return h.v != null; }) };
       if (debt && a.type !== "credit_card") {
-        var p = F.payoff(bal, det.rate, det.monthlyPayment), orig = num(det.original) != null ? +det.original : (o.history.length ? Math.max.apply(null, o.history.map(function (h) { return h.v; })) : null);
+        var p = F.payoff(bal, det.rate, det.monthlyPayment), orig = num(det.original) != null ? +det.original : (o.history.length > 1 ? Math.max.apply(null, o.history.map(function (h) { return h.v; })) : null);
         o.loan = { rate: num(det.rate), payment: num(det.monthlyPayment), monthsLeft: num(det.monthsLeft) != null ? +det.monthsLeft : p.months, futureInterest: num(det.futureInterest) != null ? +det.futureInterest : p.interest, original: orig, progress: orig && bal != null ? Math.max(0, Math.min(1, 1 - bal / orig)) : null };
       }
       return o;

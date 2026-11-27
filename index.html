@@ -20433,7 +20433,7 @@
   /* Finance page: the snapshot dashboard (finance/). The numbers live only in the finance_snapshots table
      (private to the signed-in owner by row level security); this repo holds the code and an invented sample.
      Bump FINANCE_VER with each release of finance/*. */
-  var FINANCE_VER = "4", financeLoading = null, financeSnaps = null, financeHandle = null, financeTheme = null, financeSample = false;
+  var FINANCE_VER = "5", financeLoading = null, financeSnaps = null, financeHandle = null, financeTheme = null, financeSample = false;
   function financeLoadScripts(){
     if(financeLoading) return financeLoading;
     financeLoading = ["river", "finance", "sample"].reduce(function(chain, f){
@@ -20470,9 +20470,83 @@
       onSample: function(){ financeSample = true; financeMount(host); }
     });
   }
+  /* Finance by bank and account (finance/accounts.js + supabase/functions/_shared/fin.js, shared with the connector).
+     Tables fin_accounts / fin_balances / fin_transactions / fin_rules / fin_settings, private by row level security.
+     Until those tables exist the page is the snapshot dashboard exactly as before. Once they do, the page opens on
+     banks and accounts and the snapshot dashboard is one click away as "Monthly history". */
+  var finAcc = { state:null, handle:null, loading:null, mode:"accounts", pending:false, at:0 };   // state: null unknown | false no tables | data
+  function finAccScripts(){
+    if(window.PPFinAccounts && window.PPFin) return Promise.resolve();
+    if(finAcc.loading) return finAcc.loading;
+    var one = function(src){ return new Promise(function(resolve, reject){ var el = document.createElement("script"); el.src = src; el.onload = resolve; el.onerror = function(){ reject(new Error(src)); }; document.head.appendChild(el); }); };
+    finAcc.loading = one("supabase/functions/_shared/fin.js?v=" + FINANCE_VER).then(function(){ return one("finance/accounts.js?v=" + FINANCE_VER); });
+    finAcc.loading.catch(function(){ finAcc.loading = null; });
+    return finAcc.loading;
+  }
+  async function finAccFetch(){
+    var from = new Date(Date.now() - 400 * 86400000).toISOString().slice(0, 10);
+    var r = await Promise.all([
+      sb.from("fin_accounts").select("*").is("archived_at", null).order("position"), sb.from("fin_balances").select("account_id,as_of,balance,details").order("as_of"),
+      sb.from("fin_transactions").select("id,account_id,date,amount,counterparty,purpose,category,internal,archived_at").is("archived_at", null).gte("date", from).order("date", { ascending:false }).limit(5000),
+      sb.from("fin_rules").select("id,match,category,archived_at").is("archived_at", null), sb.from("fin_settings").select("cash_floor").maybeSingle()
+    ]);
+    if(r[0].error) return false;                                    // the tables are not there yet
+    return { accounts:r[0].data || [], balances:r[1].data || [], transactions:r[2].data || [], rules:r[3].data || [], settings:r[4].data || null };
+  }
+  async function finAccCategory(p){
+    var ids = [p.id].concat(p.similarIds || []);
+    var u = await sb.from("fin_transactions").update({ category:p.category }).in("id", ids);
+    if(u.error) throw u.error;
+    var rule = null;
+    if(p.rule){ var ins = await sb.from("fin_rules").insert({ user_id:currentUser.id, match:String(p.rule).slice(0, 80), category:p.category }).select("id").single(); if(!ins.error) rule = ins.data.id; }
+    pushUndo("file " + ids.length + (ids.length === 1 ? " transaction" : " transactions") + " under " + p.category, async function(){
+      await sb.from("fin_transactions").update({ category:null }).in("id", ids);
+      if(rule) await sb.from("fin_rules").update({ archived_at:new Date().toISOString() }).eq("id", rule);
+      finAcc.state = await finAccFetch(); if(finAcc.handle && finAcc.state) finAcc.handle.update({ data:finAcc.state });
+    });
+    finAcc.state = await finAccFetch(); return finAcc.state;
+  }
+  async function finAccSettings(p){
+    var u = await sb.from("fin_settings").upsert({ user_id:currentUser.id, cash_floor:p.cashFloor, updated_at:new Date().toISOString() }, { onConflict:"user_id" });
+    if(u.error) throw u.error;
+    for(var i = 0; i < (p.shares || []).length; i++){ var w = await sb.from("fin_accounts").update({ my_share:p.shares[i].share, updated_at:new Date().toISOString() }).eq("id", p.shares[i].id); if(w.error) throw w.error; }
+    finAcc.state = await finAccFetch(); return finAcc.state;
+  }
+  function finAccShow(mode){
+    finAcc.mode = mode;
+    var a = document.getElementById("finAccHost"), w = document.getElementById("finSnapWrap"); if(!a || !w) return;
+    a.hidden = mode !== "accounts"; w.hidden = mode === "accounts";
+    var dark = currentTheme() === "dark"; w.style.background = dark ? "#15110A" : "#FBF7EA"; w.style.color = dark ? "#F7EBC0" : "#2B2110";
+    if(mode === "history" && !financeHandle){
+      financeLoadScripts().then(function(){ return financeSnaps || financeFetch(); }).then(function(list){ financeSnaps = list; if(!financeHandle) financeMount(document.getElementById("finSnapHost")); }).catch(function(err){ console.warn(err); });
+    }
+  }
+  function renderFinanceAccounts(host){
+    Promise.all([finAccScripts(), financeSnaps || financeFetch().catch(function(){ return []; })]).then(function(got){
+      financeSnaps = got[1];
+      if(!finAcc.state) return;
+      if(activeSection !== "finance") return;
+      if(!document.getElementById("finAccHost")){
+        host.innerHTML = '<div id="finAccHost"></div><div id="finSnapWrap" hidden style="min-height:100vh"><div style="padding:calc(var(--ppf-top,0px) + 12px) 16px 0;max-width:1180px;margin:0 auto"><button id="finBackBtn" type="button" style="font:inherit;font-size:13.5px;color:inherit;background:transparent;border:1px solid currentColor;border-radius:999px;padding:6px 14px;cursor:pointer;opacity:.85">← Banks and accounts</button></div><div id="finSnapHost" style="--ppf-top:0px"></div></div>';
+        document.getElementById("finBackBtn").addEventListener("click", function(){ finAccShow("accounts"); });
+      }
+      var data = { data:finAcc.state, snapshot:(financeSnaps || [])[0] || null, theme:currentTheme(), today:todayStr() };
+      if(finAcc.handle) finAcc.handle.update(data);
+      else finAcc.handle = window.PPFinAccounts.mount(document.getElementById("finAccHost"), Object.assign(data, { css:"finance/accounts.css?v=" + FINANCE_VER, onHistory:function(){ finAccShow("history"); }, onCategory:finAccCategory, onSettings:finAccSettings }));
+      finAccShow(finAcc.mode);
+      if(financeHandle && financeTheme !== currentTheme()){ financeTheme = currentTheme(); financeHandle.setTheme(financeTheme); }
+    }).catch(function(err){ console.warn(err); });
+  }
   function renderFinancePage(){
     if(activeSection !== "finance") return;
     var host = document.getElementById("financeSection");
+    if(finAcc.state === null){ if(finAcc.pending) return; finAcc.pending = true; finAccFetch().then(function(st){ finAcc.state = st; }, function(){ finAcc.state = false; }).then(function(){ finAcc.pending = false; finAcc.at = Date.now(); renderFinancePage(); }); return; }
+    if(finAcc.state){
+      renderFinanceAccounts(host);
+      // a push by Claude should show up: read again when the page is revisited after half a minute
+      if(!finAcc.pending && Date.now() - (finAcc.at || 0) > 30000){ finAcc.pending = true; finAccFetch().then(function(st){ finAcc.pending = false; finAcc.at = Date.now(); if(st){ finAcc.state = st; if(activeSection === "finance") renderFinanceAccounts(host); } }, function(){ finAcc.pending = false; }); }
+      return;
+    }
     if(financeHandle){ if(financeTheme !== currentTheme()){ financeTheme = currentTheme(); financeHandle.setTheme(financeTheme); } return; }
     financeLoadScripts().then(function(){ return financeSnaps || financeFetch(); }).then(function(list){
       financeSnaps = list;
